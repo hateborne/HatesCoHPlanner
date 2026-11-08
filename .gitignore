@@ -1,0 +1,22 @@
+# Local reference material (in-game screenshots); never committed
+IGNORE/
+
+# Node / Vite
+node_modules/
+dist/
+*.local
+.vite/
+coverage/
+
+# Python pipeline scratch
+pipeline/.cache/
+__pycache__/
+*.pyc
+.venv/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store
