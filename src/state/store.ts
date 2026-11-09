@@ -326,5 +326,41 @@ export const useStore = create<Store>((set, get) => ({
 }));
 
 if (import.meta.env.DEV) {
-  (window as unknown as { __store: typeof useStore }).__store = useStore;
+  const w = window as unknown as { __store: typeof useStore; __autoWizard: () => string };
+  w.__store = useStore;
+  // Dev helper: walk the wizard to level 50 taking the first legal power and spreading slots.
+  w.__autoWizard = () => {
+    for (let guard = 0; guard < 400; guard++) {
+      const s = useStore.getState();
+      if (s.view !== 'level' || !s.level || !s.gd) return s.view;
+      const l = s.level;
+      if (l.sub === 'slots') {
+        const step = s.steps[l.step]!;
+        for (let k = 0; k < 20; k++) {
+          const cur = useStore.getState().level!;
+          const rules = new BuildRules(s.gd, previewBuild(s.gd, s.steps, cur));
+          if (rules.slotsUsed(step.level) >= rules.slotsGranted(step.level)) break;
+          const cands = rules.entries().filter((e) => e.level <= step.level && rules.slotBlock(e, step.level) === null);
+          const e = cands[k % Math.max(1, cands.length)];
+          if (!e) break;
+          s.addPendingSlot(e.key);
+        }
+        useStore.getState().finishLevel();
+        continue;
+      }
+      const pick = currentPick(s.steps, l);
+      const rules = new BuildRules(s.gd, l.base);
+      let chosen = rules.setOptions(pick).flatMap((o) => o.powers).find((o) => o.state === 'available')?.power.id;
+      if (chosen === undefined) {
+        for (const c of rules.newSetChoices('pool', pick).filter((c) => !c.block)) {
+          chosen = c.set.p.map((pid) => rules.powerOption(pid, pick)).find((o) => o.state === 'available')?.power.id;
+          if (chosen !== undefined) break;
+        }
+      }
+      if (chosen === undefined) return `stuck at pick ${pick}`;
+      useStore.getState().choosePower(chosen);
+      useStore.getState().finishLevel();
+    }
+    return 'guard';
+  };
 }

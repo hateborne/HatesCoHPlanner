@@ -188,11 +188,11 @@ export function SlotRing({ x, y, size = 50, enhIcon, frames, pending, onClick, t
       <Sprite src={ui('creation/enhancements/enhnctray_ringhole')} x={size * 0.04} y={size * 0.04} w={size * 0.92} h={size * 0.92} z={0} />
       {enhIcon ? (
         <>
-          <Sprite src={enhIcon} x={size * 0.05} y={size * 0.05} w={size * 0.9} h={size * 0.9} z={1} />
+          <Sprite src={enhIcon} x={size * (0.5 - 23 / 64)} y={size * (0.5 - 23 / 64)} w={(size * 46) / 64} h={(size * 46) / 64} z={1} />
           {frames ? (
             <>
-              <Sprite src={iconUrl('enh', frames[0])} x={size * 0.05} y={size * 0.05} w={size * 0.9} h={size * 0.9} z={2} />
-              <Sprite src={iconUrl('enh', frames[1])} x={size * 0.05} y={size * 0.05} w={size * 0.9} h={size * 0.9} z={2} />
+              {frames[0] ? <Sprite src={iconUrl('enh', frames[0])} x={0} y={0} w={size / 2} h={size} z={2} /> : null}
+              {frames[1] ? <Sprite src={iconUrl('enh', frames[1])} x={size / 2} y={0} w={size / 2} h={size} z={2} /> : null}
             </>
           ) : null}
         </>

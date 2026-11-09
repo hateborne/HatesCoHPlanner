@@ -26,7 +26,9 @@ export type EnhKind =
 export function enhKind(gd: GameData, boost: Power): EnhKind {
   if (gd.boostSetOf.has(boost.id)) return 'Set';
   const short = boost.n.split('.')[1] ?? '';
-  if (short.startsWith('Generic_')) return 'Training';
+  // Generic_* covers Training enhancements and a few event pieces; only the plain-framed
+  // "Training:" ones are TOs.
+  if (short.startsWith('Generic_')) return /^Training/i.test(boost.dn) ? 'Training' : 'Other';
   if (/^(Magic|Mutation|Natural|Science|Technology)_/.test(short)) return 'Origin';
   if (short.startsWith('Crafted_')) return 'Invention';
   if (short.startsWith('Hamidon_')) return 'Hamidon';
@@ -79,10 +81,16 @@ export function canSlot(gd: GameData, power: Power, boost: Power, originIndex: n
   return originOk && typeOk;
 }
 
+/** IO set level range as 0-based enhancement levels (boostsets.bin stores 1-based levels). */
+export function setLevelRange(set: { minL: number; maxL: number }): [number, number] {
+  return [Math.max(0, set.minL - 1), Math.max(0, set.maxL - 1)];
+}
+
 /** Default enhancement level for a newly placed enhancement (0-based). */
 export function defaultLevel(gd: GameData, boost: Power): number | undefined {
+  if (boost.bup) return undefined; // attuned: scales with the character
   const ref = gd.boostSetOf.get(boost.id);
-  if (ref) return ref.set.maxL;
+  if (ref) return setLevelRange(ref.set)[1];
   if (boost.bie) return Math.min(49, (boost.maxBL ?? 50) - 1);
   return undefined;
 }

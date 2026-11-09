@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { skinOf } from './engine/build.ts';
 import { useStore } from './state/store.ts';
+import { SideTotals } from './ui/components/SideTotals.tsx';
 import { Stage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
 import { ChooseNewPower } from './ui/screens/ChooseNewPower.tsx';
@@ -36,6 +37,12 @@ export function App() {
     if (level.sub === 'slots') screen = <AddEnhancementSlot skin={skin} />;
     else if (level.sub === 'pool' || level.sub === 'epic') screen = <ChoosePoolSet skin={skin} kind={level.sub} />;
     else screen = <ChooseNewPower skin={skin} />;
+    screen = (
+      <>
+        {screen}
+        <SideTotals />
+      </>
+    );
   } else if (view === 'overview') {
     screen = <Overview skin={skin} />;
   }
