@@ -6,6 +6,7 @@ import type { Skin } from '../skin/skin.ts';
 import { CheckBar, type BarState } from './CheckBar.tsx';
 import { GameScroll } from './GameScroll.tsx';
 import { GameText } from './GameText.tsx';
+import { LockFlash } from './LockFlash.tsx';
 
 /** uiLevelPower.c layout (virtual units): POW_SPACER 50, first bar 35 below the heading. */
 export const POW_SPACER = 50;
@@ -61,10 +62,11 @@ interface PowerColumnProps {
   pending?: number;
   onPick?: (p: Power) => void;
   onHover?: (p: Power | null) => void;
+  flash?: { id: number; key: string; label: string } | null; // a refused pick: that bar flashes `label`
 }
 
 /** One column of the Choose a New Power screen: yellow set headings and their check bars. */
-export function PowerColumn({ skin, g, sets, pending, onPick, onHover }: PowerColumnProps) {
+export function PowerColumn({ skin, g, sets, pending, onPick, onHover, flash }: PowerColumnProps) {
   const items: ReactElement[] = [];
   let head = g.firstHead;
   let bottom = 0; // content height: last bar's lower edge (9 bars end at 485 of the 486 view)
@@ -73,6 +75,8 @@ export function PowerColumn({ skin, g, sets, pending, onPick, onHover }: PowerCo
     let y = head + vy(35);
     for (const o of s.powers) {
       const { state, down } = barState(o, pending);
+      const flashing = flash?.key === `power:${o.power.id}`;
+      if (flashing) items.push(<LockFlash key={`f${o.power.id}-${flash!.id}`} flashKey={flash!.key} x={g.barCX} y={y} w={g.barW} s={S} />);
       items.push(
         <CheckBar
           key={`p${o.power.id}`}
@@ -80,7 +84,7 @@ export function PowerColumn({ skin, g, sets, pending, onPick, onHover }: PowerCo
           x={g.barCX}
           y={y}
           wd={g.barW}
-          text={o.power.dn}
+          text={flashing ? flash!.label : o.power.dn}
           state={state}
           down={down}
           title={o.reason}

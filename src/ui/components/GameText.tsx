@@ -71,8 +71,12 @@ export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align =
   const left = align === 'left' ? x : align === 'right' ? x - w : x - w / 2;
   const top = y - baseOff - (f.outline ? 2 * d : 0);
   const capTop = baseOff - f.cap * px - 3 * d;
-  const g0 = Math.max(0, (capTop / lh) * 100);
-  const g1 = Math.min(100, ((baseOff - d) / lh) * 100);
+  // the colored copy paints its gradient over a box padded above and below the 1em line, so
+  // descenders (Montreal's p, g, y) and tall glyphs are filled too instead of showing the black
+  // outline copy underneath; the stops are in px so the colors stay on the glyph quad
+  const pad = 0.4 * lh;
+  const g0 = Math.max(0, capTop) + pad;
+  const g1 = Math.min(lh, baseOff - d) + pad;
   const layer: CSSProperties = { position: 'absolute', left: 0, top: 0, height: lh, whiteSpace: 'nowrap' };
   return (
     <div
@@ -104,7 +108,11 @@ export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align =
           ...layer,
           position: 'relative',
           display: 'block',
-          backgroundImage: `linear-gradient(to bottom, ${colors[0]} ${g0}%, ${colors[1]} ${g1}%)`,
+          top: -pad,
+          padding: `${pad}px 0`,
+          height: lh + 2 * pad,
+          boxSizing: 'border-box',
+          backgroundImage: `linear-gradient(to bottom, ${colors[0]} ${g0}px, ${colors[1]} ${g1}px)`,
           WebkitBackgroundClip: 'text',
           backgroundClip: 'text',
           color: 'transparent',

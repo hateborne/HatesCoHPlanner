@@ -1,3 +1,4 @@
+import type { GameVersion } from './versions.ts';
 import type { Archetype, BoostSet, BoostsFile, Core, Power, Powerset } from './types.ts';
 
 /** Where an enhancement sits inside an IO set. */
@@ -127,15 +128,20 @@ export class GameData {
 }
 
 /**
- * Fetch the latest exported data set from the site.
+ * Fetch one game version's exported data set from the site.
  *
  * @param base Site base URL (import.meta.env.BASE_URL).
+ * @param version The version to load (its hash keeps browsers from mixing in stale cached files).
  * @return Indexed game data.
  */
-export async function loadGameData(base: string): Promise<GameData> {
-  const latest = (await (await fetch(`${base}data/latest.json`)).json()) as { dataVersion: string };
-  const root = `${base}data/${latest.dataVersion}/`;
-  const get = async <T,>(f: string): Promise<T> => (await (await fetch(root + f)).json()) as T;
+export async function loadGameData(base: string, version: GameVersion): Promise<GameData> {
+  const root = `${base}data/${version.id}/`;
+  const q = version.hash ? `?v=${version.hash}` : '';
+  const get = async <T,>(f: string): Promise<T> => {
+    const r = await fetch(root + f + q);
+    if (!r.ok) throw new Error(`game data ${version.id}/${f} is missing (HTTP ${r.status})`);
+    return (await r.json()) as T;
+  };
   const [core, powersets, powers, boosts] = await Promise.all([
     get<Core>('core.json'),
     get<Powerset[]>('powersets.json'),

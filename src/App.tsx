@@ -3,6 +3,7 @@ import { skinOf } from './engine/build.ts';
 import { TIP_MODES, useStore, type TipMode } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
+import { ConfirmDialog } from './ui/components/ConfirmDialog.tsx';
 import { Stage, useStage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
 import { BuildMenu } from './ui/screens/BuildMenu.tsx';
@@ -57,6 +58,22 @@ function AudioToggles() {
   );
 }
 
+/**
+ * A refused change ("Remove enhancements first"): small red text at the bottom center that fades
+ * after ~2s, kept clear of each screen's own bottom elements (Slots Available, the help box).
+ */
+function Notice() {
+  const { notice, view, level } = useStore();
+  const stage = useStage();
+  if (!notice) return null;
+  const y = stage.phone ? stage.h - 84 : view === 'level' && level?.sub === 'slots' ? 985 : 1050;
+  return (
+    <div key={notice.id} className="abs body-text notice-msg" style={{ left: 0, width: stage.w, top: y, textAlign: 'center', fontSize: 15, color: '#ff5a5a', zIndex: 80 }}>
+      {notice.text}
+    </div>
+  );
+}
+
 /** Top-level router: loading, setup, the level-up screens and the build overview. */
 export function App() {
   const { view, error, build, level, load, menuOpen, setMenu, setupAlign } = useStore();
@@ -102,6 +119,8 @@ export function App() {
     <Stage skin={view === 'setup' ? SKINS[skinOf(setupAlign)] : skin}>
       {screen}
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
+      <Notice />
+      <ConfirmDialog />
       <AudioToggles />
       <div className="abs notice" style={{ left: 0, right: 0, bottom: 4, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
         Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.

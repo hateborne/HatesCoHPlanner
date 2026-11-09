@@ -8,6 +8,7 @@ import type { GameData } from '../data/gamedata.ts';
 import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
+import { defaultOn } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, fromBase64, streamBytes, toBase64 } from './binary.ts';
 
 export interface MidsMap {
@@ -26,12 +27,29 @@ const MIDS_ALIGN = ['Hero', 'Rogue', 'Vigilante', 'Villain', 'Loyalist', 'Resist
 const RELATIVE = ['None', 'MinusThree', 'MinusTwo', 'MinusOne', 'Even', 'PlusOne', 'PlusTwo', 'PlusThree', 'PlusFour', 'PlusFive'];
 const GRADES = ['None', 'TrainingO', 'DualO', 'SingleO'];
 
-let mapPromise: Promise<MidsMap> | null = null;
+const mapPromises = new Map<string, Promise<MidsMap>>(); // one per game version
 
-/** Load mids-map.json for the current data version (once). */
+/**
+ * Load mids-map.json for the current data version (once). MidsReborn is an untrusted reference,
+ * so a missing or broken map rejects with a readable message and the next call tries again.
+ */
 export function loadMidsMap(gd: GameData): Promise<MidsMap> {
-  mapPromise ??= fetch(`${import.meta.env.BASE_URL}data/${gd.core.manifest.dataVersion}/mids-map.json`).then((r) => r.json() as Promise<MidsMap>);
-  return mapPromise;
+  const version = gd.core.manifest.dataVersion;
+  const hit = mapPromises.get(version);
+  if (hit) return hit;
+  const p = fetch(`${import.meta.env.BASE_URL}data/${version}/mids-map.json?v=${gd.core.manifest.hash ?? ''}`)
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`Mids data is not available for this game version (HTTP ${r.status})`);
+      const m = (await r.json()) as MidsMap;
+      if (!m || !Array.isArray(m.enh) || !Array.isArray(m.powers)) throw new Error('Mids data is incomplete');
+      return m;
+    })
+    .catch((e: unknown) => {
+      mapPromises.delete(version);
+      throw e instanceof Error ? e : new Error(String(e));
+    });
+  mapPromises.set(version, p);
+  return p;
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -205,6 +223,10 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     if (bp.bb && rel > 4) out.boosters = rel - 4;
     return out;
   };
+  // Mids' StatInclude is always explicit; keep it only when it differs from the planner's
+  // default for the power, so an export -> import round trip leaves the build unchanged
+  const onOverride = (pid: number, stat: boolean | undefined): boolean | undefined =>
+    stat === undefined || stat === defaultOn(gd.power(pid)) ? undefined : stat;
   const toSlots = (p: MbdPower, where: string): Slot[] =>
     p.SlotEntries.map((s) => ({ level: Math.max(0, s.Level - 1), enh: toEnh(s.Enhancement, where) }));
 
@@ -229,12 +251,11 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
         return;
       }
       used.add(idx);
-      b.picks[idx] = { power: pid, level, slots: toSlots(p, name), on: p.StatInclude === undefined ? undefined : p.StatInclude };
+      b.picks[idx] = { power: pid, level, slots: toSlots(p, name), on: onOverride(pid, p.StatInclude) };
     } else {
-      b.granted[pid] = { slots: toSlots(p, name), on: p.StatInclude };
+      b.granted[pid] = { slots: toSlots(p, name), on: onOverride(pid, p.StatInclude) };
     }
   });
-  // Drop "on" overrides that just restate the default so the build stays clean.
   return { build: b, warnings: warn };
 }
 
@@ -276,7 +297,8 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
   const entry = (pid: number | null, level: number, slots: Slot[], on: boolean | undefined): MbdPower => ({
     PowerName: pid === null ? '' : t.midsPowerName(pid),
     Level: pid === null ? -1 : level + 1,
-    StatInclude: on ?? false,
+    // Mids has no "default": write what the planner actually counts (autos and toggles on)
+    StatInclude: pid === null ? false : (on ?? defaultOn(gd.power(pid))),
     ProcInclude: false,
     VariableValue: 0,
     InherentSlotsUsed: 0,

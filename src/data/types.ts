@@ -99,6 +99,10 @@ export interface Power {
   bll?: number;
   bhl?: number;
   bcc?: number; // catalyst conversion target id
+  bcm?: number; // BoostCombinable (TO/DO/SO style); IOs and set pieces can't be combined
+  ntr?: number; // not tradeable
+  bab?: number; // account bound
+  cat?: string; // the enhancement's category line (its Boosts.* set's short help: "Invention", ...)
 }
 
 export interface Powerset {
@@ -177,7 +181,8 @@ export interface Core {
   boostEffect: { above: number[]; below: number[]; boosters: number[] };
   exemplar: { Limits: number[]; Weights: number[]; PreClamp: number[]; PostClamp: number[] };
   manifest: {
-    dataVersion: string;
+    dataVersion: string; // the game version id (its folder under public/data/)
+    hash?: string; // content hash of this version's data files
     generated: string;
     counts: Record<string, number>;
   };

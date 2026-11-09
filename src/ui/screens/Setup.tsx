@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
 import type { Archetype, Powerset } from '../../data/types.ts';
@@ -44,7 +44,7 @@ function startingSets(gd: NonNullable<ReturnType<typeof useStore.getState>['gd']
  * name. Finish starts the level 1 power picks.
  */
 export function Setup() {
-  const { gd, build, startBuild, toOverview } = useStore();
+  const { gd, build, startBuild, toOverview, versions, selectVersion } = useStore();
   const [at, setAt] = useState<number | undefined>(build?.at);
   const [pri, setPri] = useState<number | undefined>(build?.primary);
   const [sec, setSec] = useState<number | undefined>(build?.secondary);
@@ -63,12 +63,22 @@ export function Setup() {
   }, [align]);
   if (!gd) return null;
   const skin = SKINS[skinOf(align)];
-  const ready = at !== undefined && pri !== undefined && sec !== undefined && origin !== undefined;
+  // ids are stable across game versions, but a choice may not exist in the version picked here
+  const ready =
+    archetype !== undefined && pris.some((s) => s.id === pri) && secs.some((s) => s.id === sec) && gd.core.origins.some((o) => o.id === origin);
   const ROW = 47;
-  const finish = () => {
-    if (at !== undefined && pri !== undefined && sec !== undefined && origin !== undefined) {
-      startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec });
+  const finish = async () => {
+    if (at === undefined || pri === undefined || sec === undefined || origin === undefined) return;
+    // a new build replaces the current one (and this tab's address): ask first when it has any work
+    if (build && (build.picks.some((p) => p) || Object.values(build.granted).some((g) => g.slots.some((s) => s.enh)))) {
+      const ok = await useStore.getState().askConfirm({
+        title: 'Start a new build?',
+        text: `This replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first (Saved builds / Import) if you want to keep it.`,
+        okLabel: 'Start new',
+      });
+      if (!ok) return;
     }
+    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec });
   };
   const pickAt = (a: Archetype) => {
     if (a.id === at) return;
@@ -76,6 +86,23 @@ export function Setup() {
     setPri(undefined);
     setSec(undefined);
   };
+  /** Which game version's data the new build uses (each version keeps its own data on the site). */
+  const versionPicker = (style: CSSProperties) => (
+    <select
+      className="abs body-text"
+      aria-label="Game version"
+      title="Game version: the patch whose powers and enhancements this build uses"
+      value={gd.core.manifest.dataVersion}
+      onChange={(e) => void selectVersion(e.target.value)}
+      style={{ fontFamily: "'Montreal'", fontSize: 20, color: '#fff', background: 'linear-gradient(#0c2a6e, #04102e)', border: '2px solid #4f94ff', borderRadius: 22, padding: '0 12px 0 18px', cursor: 'pointer', ...style }}
+    >
+      {(versions?.versions ?? []).map((v) => (
+        <option key={v.id} value={v.id} style={{ background: '#04102e' }}>
+          {v.label}
+        </option>
+      ))}
+    </select>
+  );
   const nameStyle = { background: '#000', border: '2px solid #4f94ff', borderRadius: 22, color: '#fff', fontSize: 22, padding: '0 20px', boxSizing: 'border-box' as const };
 
   if (phone) {
@@ -108,7 +135,8 @@ export function Setup() {
     return (
       <>
         <TitleBar skin={skin} text="CREATE A BUILD" />
-        <input className="abs body-text" value={name} maxLength={40} placeholder="Build name" onChange={(e) => setName(e.target.value)} style={{ ...nameStyle, left: 30, top: 104, width: 600, height: 44 }} />
+        <input className="abs body-text" value={name} maxLength={40} placeholder="Build name" onChange={(e) => setName(e.target.value)} style={{ ...nameStyle, left: 30, top: 104, width: 380, height: 44 }} />
+        {versionPicker({ left: 425, top: 104, width: 230, height: 44 })}
         <button className="info-button" style={{ left: 820, top: 126, transform: 'translate(-50%, -50%)' }} onClick={() => useStore.getState().setMenu(true)}>
           Saved / Import
         </button>
@@ -136,6 +164,7 @@ export function Setup() {
         onChange={(e) => setName(e.target.value)}
         style={{ ...nameStyle, right: 50, top: 6, width: 520, height: 44 }}
       />
+      {versionPicker({ right: 586, top: 6, width: 260, height: 44 })}
       <MenuFrame x={32} y={FRAME_TOP} w={1937} h={988} r25 outer skin={skin} />
       <InfoButton skin={skin} x={1000} y={FRAME_TOP} text="Saved builds / Import" onClick={() => useStore.getState().setMenu(true)} />
       {COLS.map((c) => (

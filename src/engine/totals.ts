@@ -7,7 +7,7 @@
  * Active powers: autos and toggles on, clicks off, each overridable per power.
  */
 import { GameData } from '../data/gamedata.ts';
-import type { Archetype, Effect, Mod, Power } from '../data/types.ts';
+import type { Archetype, BoostSet, Effect, Mod, Power } from '../data/types.ts';
 import type { Build } from './build.ts';
 import { powerStrength } from './enhance.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
@@ -28,6 +28,20 @@ export interface StatLine {
   sources: Source[];
 }
 
+/** One aggregated stat of a set's bonuses ("Energy (Res)" 1.5%, "Max HP" 1.13%, "Knockback (Prot)" 4). */
+export interface SetBonusStat {
+  label: string;
+  value: number; // fraction for '%', magnitude for 'mag', feet for 'ft'
+  unit: '%' | 'mag' | 'ft';
+}
+
+/** Every bonus one set gives the build, summed over the powers it is slotted in. */
+export interface SetBonusGroup {
+  set: BoostSet;
+  counts: number[]; // pieces slotted per power, largest first: Decimation (6) (3) (2)
+  stats: SetBonusStat[];
+}
+
 export interface Totals {
   level: number;
   lines: Map<string, StatLine>;
@@ -38,6 +52,10 @@ export interface Totals {
   regenPerSecRaw: number; // before the archetype's regeneration cap
   recovPerSecRaw: number; // before the recovery cap
   hpRaw: number; // max HP before the HP cap
+  setGroups: SetBonusGroup[]; // active set bonuses by set (rule-of-5 copies left out)
+  bonusesOver5: number; // bonus copies suppressed by the rule of 5
+  speeds: { run: number; fly: number; jump: number; jumpHeight: number }; // x 21 ft/s (height: x 4 ft), capped
+  perception: number; // feet, capped
   endMax: number;
   endUsePerSec: number;
   bonuses: EarnedBonus[];
@@ -84,6 +102,21 @@ function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) 
 }
 
 const SPEED_BASE = 21; // ft/s for base run/jump speed of 1.0
+
+// status effects: attribute name -> label (Current aspect: protection, Resistance aspect: resistance)
+export const MEZ: Record<string, string> = {
+  Held: 'Hold',
+  Immobilized: 'Immobilize',
+  Stunned: 'Stun',
+  Sleep: 'Sleep',
+  Knock: 'Knockback',
+  Knockup: 'Knockup',
+  Confused: 'Confuse',
+  Terrorized: 'Terrorize',
+  Repel: 'Repel',
+  Teleport: 'Teleport',
+};
+const MEZ_NAMES = Object.keys(MEZ);
 
 /**
  * Compute totals for a build.
@@ -142,14 +175,14 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
           else if (name === 'JumpHeight') add('jumph', 'Jump Height', mag, srcName);
           else if (name === 'StealthRadius') add('stealth', 'Stealth', mag, srcName);
           else if (name === 'PerceptionRadius') add('perc', 'Perception', mag, srcName);
-          else if (['Held', 'Stunned', 'Sleep', 'Immobilized', 'Confused', 'Terrorized', 'Knockup', 'Knock', 'Repel'].includes(name)) {
-            if (mag < 0) add(`mezprot.${name}`, name, -mag, srcName);
+          else if (MEZ_NAMES.includes(name)) {
+            if (mag < 0) add(`mezprot.${name}`, MEZ[name]!, -mag, srcName);
           }
           break;
         case 'Resistance':
           if (dm) add(`res.${dm[1]}`, damageName(Number(dm[1])), mag, srcName);
-          else if (['Held', 'Stunned', 'Sleep', 'Immobilized', 'Confused', 'Terrorized', 'Knockup', 'Knock', 'Repel'].includes(name)) {
-            add(`mezres.${name}`, name, mag, srcName);
+          else if (MEZ_NAMES.includes(name)) {
+            add(`mezres.${name}`, MEZ[name]!, mag, srcName);
           } else add(`resx.${name}`, `${name} resistance`, mag, srcName);
           break;
         case 'Strength':
@@ -158,6 +191,7 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
           else if (name === 'Accuracy') add('acc', 'Accuracy', mag, srcName);
           else if (name === 'EnduranceDiscount') add('endrdx', 'Endurance Reduction', mag, srcName);
           else if (name === 'Range') add('range', 'Range', mag, srcName);
+          else if (name === 'HitPoints') add('heal', 'Healing', mag, srcName);
           break;
         case 'Maximum':
           if (name === 'HitPoints') add('hp', 'Max HP', mag, srcName);
@@ -206,18 +240,41 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     walkEffects(p.eff, ctx, (m) => apply(p, m, str, p.dn));
     walkEffects(p.act, ctx, (m) => apply(p, m, str, p.dn));
     if (p.type === 'Toggle' && p.end && p.ap) {
-      endUse += p.end / p.ap / (1 + (str.get(gd.attribByName.get('EnduranceDiscount') ?? 368) ?? 0));
+      const cost = p.end / p.ap / (1 + (str.get(gd.attribByName.get('EnduranceDiscount') ?? 368) ?? 0));
+      endUse += cost;
+      add('enduse', 'End use', -cost, p.dn); // per toggle, negative: what drains the endurance bar
     }
   }
 
-  // Set bonuses
+  // Set bonuses, also summed per set for the breakdown (rule-of-5 copies count for neither)
+  const hpBase0 = GameData.attrAt(at.max, 'HitPoints', level);
   const bonuses = earnedBonuses(gd, entries, level);
+  const groups = new Map<number, { set: BoostSet; counts: Map<string, number>; stats: Map<string, SetBonusStat> }>();
+  const bonusStats = (p: Power, m: Mod): SetBonusStat[] => describeBonusMod(gd, at, p, m, level, hpBase0, damageName, defenseName);
+  let bonusesOver5 = 0;
   for (const bn of bonuses) {
-    if (bn.suppressed) continue;
+    const g = groups.get(bn.set.id) ?? { set: bn.set, counts: new Map<string, number>(), stats: new Map<string, SetBonusStat>() };
+    groups.set(bn.set.id, g);
+    g.counts.set(bn.entryKey, bn.slotted);
+    if (bn.suppressed) {
+      bonusesOver5++;
+      continue;
+    }
     const label = `${bn.set.dn} (${bn.slotted})`;
-    walkEffects(bn.power.eff, ctx, (m) => m.tg === 'Caster' && apply(bn.power, m, null, label));
-    walkEffects(bn.power.act, ctx, (m) => apply(bn.power, m, null, label));
+    const take = (m: Mod) => {
+      apply(bn.power, m, null, label);
+      for (const st of bonusStats(bn.power, m)) {
+        const cur = g.stats.get(st.label);
+        if (cur) cur.value += st.value;
+        else g.stats.set(st.label, { ...st });
+      }
+    };
+    walkEffects(bn.power.eff, ctx, (m) => m.tg === 'Caster' && take(m));
+    walkEffects(bn.power.act, ctx, take);
   }
+  const setGroups: SetBonusGroup[] = [...groups.values()]
+    .filter((g) => g.stats.size > 0)
+    .map((g) => ({ set: g.set, counts: [...g.counts.values()].sort((a, b) => b - a), stats: [...g.stats.values()] }));
 
   // Fold the "all types" defense into each typed defense, apply caps.
   const allDef = lines.get('def.base');
@@ -255,6 +312,9 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
   const regenTotal = 1 + (lines.get('regen')?.value ?? 0);
   const recovTotal = 1 + (lines.get('recov')?.value ?? 0);
   const baseRegen = GameData.attrAt(at.base, 'Regeneration', level, 0.25);
+  // archetype base + bonus, held under the archetype maximum
+  const capAt = (attr: string, base: number, key: string) =>
+    Math.min(GameData.attrAt(at.base, attr, level, base) + (lines.get(key)?.value ?? 0), GameData.attrAt(at.max, attr, level, 1e9));
   const baseRecov = GameData.attrAt(at.base, 'Recovery', level, 1);
   const regenCap = GameData.attrAt(at.max, 'Regeneration', level, 20);
   const recovCap = GameData.attrAt(at.max, 'Recovery', level, 5);
@@ -268,6 +328,19 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     regenPerSecRaw: regenTotal * baseRegen * (1 / 0.6) * (hpMax / 100),
     recovPerSecRaw: recovTotal * baseRecov * (1 / 0.6) * (endMax / 100),
     hpRaw: hpBase + (lines.get('hp')?.value ?? 0),
+    setGroups,
+    bonusesOver5,
+    speeds: {
+      run: capAt('SpeedRunning', 1, 'run'),
+      fly: capAt('SpeedFlying', 1.5, 'fly'),
+      jump: capAt('SpeedJumping', 1, 'jumpspd'),
+      jumpHeight: capAt('JumpHeight', 1, 'jumph'),
+    },
+    // perception mods are fractions of the base radius (+0.6 = +60%), unlike stealth's feet
+    perception: Math.min(
+      GameData.attrAt(at.base, 'PerceptionRadius', level, 500) * (1 + (lines.get('perc')?.value ?? 0)),
+      GameData.attrAt(at.max, 'PerceptionRadius', level, 1e9),
+    ),
     endMax,
     endUsePerSec: endUse,
     bonuses,
@@ -278,3 +351,82 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
 export function speedFtPerSec(v: number, base = 1): number {
   return (base + v) * SPEED_BASE;
 }
+
+/**
+ * A set bonus mod as readable stats for the per-set breakdown: damage and defense types one by
+ * one, a mod covering five or more status effects as "Mez", Max HP as a share of the base HP.
+ */
+function describeBonusMod(
+  gd: GameData,
+  at: Archetype,
+  p: Power,
+  m: Mod,
+  level: number,
+  hpBase: number,
+  damageName: (i: number) => string,
+  defenseName: (i: number) => string,
+): SetBonusStat[] {
+  if (!affectsSelf(p, m) || (m.t !== 'Magnitude' && m.t !== 'Duration')) return [];
+  const mag = m.t === 'Duration' ? (m.mag ?? 1) : gd.table(at, m.tbl, level) * m.sc;
+  const names = m.a.map((a) => gd.attribName.get(a) ?? '');
+  const out: SetBonusStat[] = [];
+  const pct = (label: string, v = mag) => out.push({ label, value: v, unit: '%' });
+  const mez = names.filter((n) => MEZ_NAMES.includes(n));
+  const dmgTypes = names.filter((n) => /^DamageType\d+$/.test(n));
+  const defTypes = names.filter((n) => /^DefenseType\d+$/.test(n));
+  const other = names.filter((n) => !mez.includes(n) && !dmgTypes.includes(n) && !defTypes.includes(n));
+  const dmgLabel = (n: string) => damageName(Number(n.slice('DamageType'.length))).replace(/_/g, ' ');
+  const defLabel = (n: string) => defenseName(Number(n.slice('DefenseType'.length))).replace(/_/g, ' ');
+  const nice = (n: string) => BONUS_LABEL[n] ?? n.replace(/([a-z])([A-Z])/g, '$1 $2');
+  switch (m.asp) {
+    case 'Resistance':
+      for (const n of dmgTypes) pct(`${dmgLabel(n)} (Res)`);
+      if (mez.length >= 5) pct('Mez (Res)');
+      else for (const n of mez) pct(`${MEZ[n]} (Res)`);
+      if (defTypes.length) pct('Defense (Res)');
+      for (const n of other) pct(`${/^Speed(Running|Flying)$/.test(n) ? 'Slow' : nice(n)} (Res)`);
+      break;
+    case 'Current':
+      for (const n of defTypes) pct(`${defLabel(n)} (Def)`);
+      if (mag < 0 && mez.length >= 5) out.push({ label: 'Mez (Prot)', value: -mag, unit: 'mag' });
+      else if (mag < 0) for (const n of mez) out.push({ label: `${MEZ[n]} (Prot)`, value: -mag, unit: 'mag' });
+      for (const n of other) {
+        if (n === 'Defense') pct('All (Def)');
+        else if (n === 'StealthRadius') out.push({ label: 'Stealth', value: mag, unit: 'ft' });
+        else if (n === 'PerceptionRadius') pct('Perception');
+        else pct(nice(n));
+      }
+      break;
+    case 'Strength':
+      if (dmgTypes.length >= 8) pct('Damage');
+      else for (const n of dmgTypes) pct(`${dmgLabel(n)} Damage`);
+      for (const n of other) pct(nice(n));
+      break;
+    case 'Maximum':
+      for (const n of other) {
+        if (n === 'HitPoints') pct('Max HP', mag / hpBase);
+        else if (n === 'Endurance') pct('Max End', mag / 100);
+        else pct(`Max ${nice(n)}`);
+      }
+      break;
+    default:
+      break;
+  }
+  return out;
+}
+
+const BONUS_LABEL: Record<string, string> = {
+  Regeneration: 'Regeneration',
+  Recovery: 'Recovery',
+  ToHit: 'ToHit',
+  RechargeTime: 'Recharge',
+  Accuracy: 'Accuracy',
+  EnduranceDiscount: 'End Discount',
+  Range: 'Range',
+  SpeedRunning: 'Run Speed',
+  SpeedFlying: 'Fly Speed',
+  SpeedJumping: 'Jump Speed',
+  JumpHeight: 'Jump Height',
+  HitPoints: 'Healing',
+  Endurance: 'Endurance',
+};

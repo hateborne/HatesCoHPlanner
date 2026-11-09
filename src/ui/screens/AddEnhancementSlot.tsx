@@ -1,8 +1,14 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
+import { boostPog } from '../../engine/enhance.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, useStore, useTipLevel } from '../../state/store.ts';
+import { useEscape } from '../escape.ts';
+import { useFreshHover, useHover } from '../hover.ts';
 import { SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
+import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { FadingText, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
@@ -118,6 +124,8 @@ function phonePanel(): PanelGeom {
 function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
   const ref = useRef<HTMLDivElement>(null);
   const [h1, setH1] = useState(0);
+  // measured after every render on purpose (the help text changes size); it settles once h1 matches
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const h = ref.current?.offsetHeight ?? 0;
     if (h !== h1) setH1(h);
@@ -151,13 +159,47 @@ function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
   );
 }
 
+/** The last hovered power's info box (desktop) or one-line description (phone). */
+function HoveredInfo({ gd, phone }: { gd: GameData; phone: boolean }) {
+  const hovered = useHover((h) => h.desc?.p);
+  if (phone) {
+    return hovered ? (
+      <div className="abs body-text" style={{ left: 40, top: 1545, width: 920, color: '#7fd3ff', fontSize: 24 }}>
+        {hovered.dn}: {hovered.sh}
+      </div>
+    ) : null;
+  }
+  return <PowInfoBox power={hovered} set={hovered ? gd.setOfPower.get(hovered.id)?.set : undefined} />;
+}
+
+/** The slot-details / Advanced tooltip for the power bar under the pointer. */
+function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: number }) {
+  const tip = useHover((h) => h.tip);
+  const tipLevel = useTipLevel();
+  const hint = useShiftHint();
+  if (!tip || tipLevel === 'off') return null;
+  return (
+    <SlotTip
+      gd={gd}
+      power={tip.entry.power}
+      x={tip.x}
+      y={tip.y}
+      hint={tipLevel === 'basic' && hint}
+      advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(atId)} entry={tip.entry} level={level} /> : undefined}
+    />
+  );
+}
+
 /**
  * "ADD AN ENHANCEMENT SLOT" (uiLevelSpec.c specMenu): click owned powers to place this level's
  * slots; click a just-placed slot to take it back. Finish unlocks when every slot is placed.
  */
 export function AddEnhancementSlot({ skin }: { skin: Skin }) {
-  const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel } = useStore();
-  const [hover, setHover] = useState<BuildEntry | null>(null);
+  const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel, lockFlash, flashLocked } = useStore(
+    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, addPendingSlot: s.addPendingSlot, removePendingSlot: s.removePendingSlot, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
+  );
+  useEscape(backLevel, level?.mode === 'edit'); // Escape cancels a level reopened from the overview
+  useFreshHover(); // hover lives in useHover: hovering a bar redraws only the info box and tooltip
   // fadingText queue: "No slots to assign!" at the bottom, "FULL!" over the clicked bar
   const [fades, setFades] = useState<{ id: number; key?: string; full: boolean }[]>([]);
   const fadeId = useRef(0);
@@ -165,9 +207,6 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const { phone } = useStage();
   // hover tooltip: the game's slot details, or the Advanced view (setting or Shift)
   const mouse = usePointer();
-  const [tip, setTip] = useState<{ entry: BuildEntry; x: number; y: number } | null>(null);
-  const tipLevel = useTipLevel();
-  const hint = useShiftHint();
   const step = level ? steps[level.step] : undefined;
   const preview = useMemo(() => (gd && level ? previewBuild(gd, steps, level) : null), [gd, steps, level]);
   const rules = useMemo(() => (gd && preview ? new BuildRules(gd, preview) : null), [gd, preview]);
@@ -201,7 +240,11 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     );
   const unclick = (key: string) => {
     const idx = level.pendingSlots.lastIndexOf(key);
-    if (idx < 0) return;
+    if (idx < 0) {
+      // nothing movable here: say why when the power's slots at this level hold enhancements
+      if (rules.entries().some((x) => x.key === key && x.slots.some((s, i) => i > 0 && s.level === L && s.enh))) flashLocked(key);
+      return;
+    }
     play('delete');
     removePendingSlot(idx);
   };
@@ -225,22 +268,28 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             y={y}
             wd={g.barW}
             halfText
-            text={e.power.dn}
+            text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
             state="standard"
             icon={icon('powers', e.power.icon || 'power_missing')}
             onClick={() => click(e)}
             onRightClick={() => unclick(e.key)}
             onHover={(on) => {
-              if (on) {
-                setHover(e);
-                if (!phone) setTip({ entry: e, x: mouse.current.x, y: mouse.current.y });
-              } else setTip((t) => (t?.entry.key === e.key ? null : t));
+              // the info box keeps the last hovered power; the tooltip only while over the bar
+              if (on) useHover.setState({ desc: { p: e.power }, tip: phone ? null : { entry: e, x: mouse.current.x, y: mouse.current.y } });
+              else useHover.setState((h) => (h.tip?.entry.key === e.key ? { tip: null } : h));
             }}
           />,
         );
-        // pending slots sit next to the bar (positions 1..k); the owned ones slide right by k
-        const pending = e.slots.filter((s, i) => i > 0 && s.level === L).length;
-        const owned = e.slots.slice(0, e.slots.length - pending);
+        if (lockFlash?.key === e.key) items.push(<LockFlash key={`${e.key}:flash-${lockFlash.id}`} flashKey={e.key} x={g.barCX} y={y} w={g.barW} s={S} />);
+        // pending slots sit next to the bar (positions 1..k); the owned ones slide right by k. Only
+        // this level's empty slots are pending -- ones holding an enhancement stay locked
+        const pending = level.pendingSlots.filter((k) => k === e.key).length;
+        let skip = pending;
+        const owned = e.slots.filter((s, i) => {
+          const isPending = skip > 0 && i > 0 && s.level === L && !s.enh;
+          if (isPending) skip--;
+          return !isPending;
+        });
         for (let k = 0; k < pending; k++) {
           items.push(<SlotRing skin={skin} key={`${e.key}:n${k}`} x={g.ringX + (k + 1) * SPEC_WD * S} y={y + 20 * S} size={RING} pending title="Click or right-click to remove this slot" onClick={() => unclick(e.key)} onRightClick={() => unclick(e.key)} />);
         }
@@ -255,7 +304,10 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
               size={RING}
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
-              title={`Slot gained at level ${s.level + 1}`}
+              pog={boost ? boostPog(gd, boost) : undefined}
+              title={boost && s.level === L ? 'Holds an enhancement: remove it on the build screen to move this slot' : `Slot gained at level ${s.level + 1}`}
+              onClick={boost && s.level === L ? () => flashLocked(e.key) : undefined}
+              onRightClick={boost && s.level === L ? () => flashLocked(e.key) : undefined}
             />,
           );
         });
@@ -278,8 +330,6 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     );
   };
 
-  const hovered = hover?.power;
-  const hoveredSet = hovered ? gd.setOfPower.get(hovered.id)?.set : undefined;
   if (phone) {
     const g = phonePanel();
     return (
@@ -291,11 +341,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         {renderPanel(g, groups(rules, entries, tab), 0)}
         <SlotsAvailable n={remaining} x={300} y={1465} w={400} h={56} />
         {noSlotFades}
-        {hovered ? (
-          <div className="abs body-text" style={{ left: 40, top: 1545, width: 920, color: '#7fd3ff', fontSize: 24 }}>
-            {hovered.dn}: {hovered.sh}
-          </div>
-        ) : null}
+        <HoveredInfo gd={gd} phone />
         <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
         <NextButton skin={skin} dir="right" text="Finish" locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
       </>
@@ -319,17 +365,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       <Sprite src={dot} x={headX - (headW / 2 + 15 * S)} y={headY - 5 * S} w={10 * S} h={10 * S} />
       <Sprite src={dot} x={headX + headW / 2 + 5 * S} y={headY - 5 * S} w={10 * S} h={10 * S} />
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), groups(rules, entries, i), i))}
-      <PowInfoBox power={hovered} set={hoveredSet} />
-      {tip && tipLevel !== 'off' ? (
-        <SlotTip
-          gd={gd}
-          power={tip.entry.power}
-          x={tip.x}
-          y={tip.y}
-          hint={tipLevel === 'basic' && hint}
-          advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(preview!.at)} entry={tip.entry} level={L} /> : undefined}
-        />
-      ) : null}
+      <HoveredInfo gd={gd} phone={false} />
+      <SlotTipLayer gd={gd} atId={preview!.at} level={L} />
       <SlotsAvailable n={remaining} />
       {noSlotFades}
       <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />

@@ -41,7 +41,7 @@ describe('alignment', () => {
 
   it('round-trips a Praetorian build through the share URL and exports it to Mids as Loyalist', async () => {
     const b = { ...sample(), alignment: 'Praetorian' as const };
-    expect((await decodeShare(await encodeShare(b), b.dataVersion)).alignment).toBe('Praetorian');
+    expect((await decodeShare(await encodeShare(b))).alignment).toBe('Praetorian');
     expect(exportMbd(gd, map, b).mbd.Alignment).toBe('Loyalist');
     expect(importMbd(gd, map, { ...exportMbd(gd, map, b).mbd, Alignment: 'Resistance' }).build.alignment).toBe('Praetorian');
   });
@@ -52,7 +52,7 @@ describe('share URL', () => {
     const b = sample();
     const code = await encodeShare(b);
     expect(code.length).toBeLessThan(300);
-    expect(await decodeShare(code, b.dataVersion)).toEqual(b);
+    expect(await decodeShare(code)).toEqual(b);
   });
 });
 
@@ -79,9 +79,11 @@ describe('Mids interop', () => {
     expect(back.build.picks[3]?.slots[0]?.enh?.boost).toBe(b.picks[3]?.slots[0]?.enh?.boost);
   });
 
-  const local = join(process.env.USERPROFILE ?? '', 'Documents', 'Hero & Villain Builds', 'Sample - Tanker (Fiery Aura - Fiery Melee).mbd');
-  it.skipIf(!existsSync(local))('imports a real Mids build (local file)', () => {
-    const mbd = JSON.parse(readFileSync(local, 'utf-8').replace(/^﻿/, '')) as Mbd;
+  // a real Mids .mbd of a Fiery Aura / Fiery Melee Tanker on this machine (set HCP_MIDS_SAMPLE to
+  // its path); skipped when unset, so no personal file names live in the repository
+  const local = process.env.HCP_MIDS_SAMPLE ?? '';
+  it.skipIf(!local || !existsSync(local))('imports a real Mids build (HCP_MIDS_SAMPLE)', () => {
+    const mbd = JSON.parse(readFileSync(local, 'utf-8').replace(/^\uFEFF/, '')) as Mbd;
     const { build, warnings } = importMbd(gd, map, mbd);
     const picked = build.picks.filter(Boolean).length;
     expect(picked).toBeGreaterThanOrEqual(22);

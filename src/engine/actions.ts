@@ -5,6 +5,25 @@
 import type { GameData } from '../data/gamedata.ts';
 import { cloneBuild, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { canSlot } from './enhance.ts';
+import { BuildRules } from './rules.ts';
+
+/**
+ * Whether taking pick `i` out of the build would take enhancements with it.
+ *
+ * Counts the pick's own slots and the slots of powers it grants (Kheldian form attacks, Bright
+ * Nova's blasts, ...), which disappear with it: the build's enhancements are compared with and
+ * without the pick.
+ *
+ * @param gd Game data.
+ * @param b The build.
+ * @param i 0-based pick index.
+ * @return True when the pick (or anything it grants) holds an enhancement.
+ */
+export function pickHoldsEnhancements(gd: GameData, b: Build, i: number): boolean {
+  if (b.picks[i]?.slots.some((s) => s.enh)) return true;
+  const count = (x: Build) => new BuildRules(gd, x).entries().reduce((n, e) => n + e.slots.filter((s) => s.enh).length, 0);
+  return count({ ...b, picks: b.picks.map((p, k) => (k === i ? null : p)) }) < count(b);
+}
 
 function originIndex(gd: GameData, b: Build): number {
   return gd.core.origins.findIndex((o) => o.id === b.origin);

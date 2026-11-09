@@ -297,3 +297,52 @@ export function allowedSetCategories(gd: GameData, p: Power): string[] {
   const rest = seen.filter((g) => rank(g) === 2).reverse();
   return [...seen.filter((g) => rank(g) === 0), ...seen.filter((g) => rank(g) === 1), ...rest];
 }
+
+// help-text placeholders {Boost.Attrib.<group>.Scale} -> attribute names the group covers
+const HELP_GROUPS: Record<string, string[]> = {
+  mez: ['held', 'stunned', 'sleep', 'immobilized', 'confused', 'terrorized'],
+  movement: ['speed', 'jump', 'fly'],
+  heal: ['heal', 'hitpoints'],
+  regen: ['regeneration'],
+  knock: ['knock'],
+};
+
+/**
+ * An enhancement's help text with its {Boost.Attrib.<group>.Scale} placeholders filled in
+ * (character_BoostGetHelpText): the enhancement's own value for that attribute group at its
+ * level, as a percentage with one decimal ("Increases flight speed by 42.4%.").
+ *
+ * @param e The slotted enhancement (level, boosters).
+ * @param charLevel 0-based character level (attuned pieces follow it).
+ */
+export function boostHelpText(gd: GameData, at: Archetype, e: SlottedEnh, charLevel: number): string {
+  const boost = gd.powerById.get(e.boost);
+  if (!boost) return '';
+  const eff = Math.max(0, effectiveness(gd, boost, e, charLevel)) || 1;
+  const lvl = boostLevel(boost, e, charLevel);
+  const vals: { name: string; v: number }[] = [];
+  for (const m of boostMods(boost)) {
+    const v = gd.table(at, m.tbl, lvl) * m.sc * eff;
+    for (const a of m.a) vals.push({ name: (gd.attribName.get(a) ?? '').toLowerCase(), v });
+  }
+  return (boost.lh || '').replace(/\{Boost\.Attrib\.([A-Za-z]+)\.Scale\}/g, (_, g: string) => {
+    const key = g.toLowerCase();
+    const names = HELP_GROUPS[key] ?? [key];
+    const hit = vals.find((x) => names.some((n) => x.name.includes(n))) ?? vals[0];
+    return hit ? (hit.v * 100).toFixed(1) : '?';
+  });
+}
+
+/**
+ * The enhancement's type disc (the client's "pog", drawEnhancementOriginLevelEx): the icon of the
+ * first enhancement type it allows (attrib_names Boost), drawn between the origin / invention
+ * frame and the icon -- the yellow accuracy or red damage disc of an SO or IO.
+ *
+ * @return Texture name (no extension), or undefined when it allows no type.
+ */
+export function boostPog(gd: GameData, boost: Power): string | undefined {
+  const v = (boost.ba ?? []).find((x) => x >= ORIGIN_COUNT);
+  const name = v !== undefined ? gd.core.attribNames.Boost[v - ORIGIN_COUNT]?.icon : undefined;
+  return name ? name.replace(/\.tga$/i, '') : undefined;
+}
+

@@ -4,6 +4,7 @@ import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/li
 import { buildToMxDz, exportMbd, importMidsText, loadMidsMap, mbdToChunk } from '../../io/mids.ts';
 import { decodeShare, shareLink } from '../../io/share.ts';
 import { useStore } from '../../state/store.ts';
+import { useEscape } from '../escape.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TitleText } from '../components/GameText.tsx';
@@ -13,6 +14,7 @@ const btn = (left: number, top: number) => ({ left, top, position: 'absolute' as
 /** Save / load / share / Mids import-export, in the in-game skin. */
 export function BuildMenu({ onClose }: { onClose: () => void }) {
   const { gd, build, loadBuild } = useStore();
+  useEscape(onClose);
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');
   const [status, setStatus] = useState<string[]>([]);
@@ -39,19 +41,31 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     a.click();
     URL.revokeObjectURL(a.href);
   };
+  /** Mids is an untrusted reference: a failed export says so instead of failing silently. */
+  const midsFailed = (e: unknown) => say(`Mids export failed: ${e instanceof Error ? e.message : String(e)}`);
+  /** Ask before a loaded or imported build replaces the current one (when it has any picks). */
+  const replaceOk = async (incoming: string) => {
+    if (!build || !build.picks.some((p) => p)) return true;
+    return useStore.getState().askConfirm({
+      title: 'Replace the current build?',
+      text: `Loading ${incoming ? `"${incoming}"` : 'this build'} replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+      okLabel: 'Replace',
+    });
+  };
   const doImport = async (src: string) => {
     try {
       const t = src.trim();
       let b: Build;
       let warnings: string[] = [];
       const m = /#b=([A-Za-z0-9_-]+)/.exec(t);
-      if (m) b = await decodeShare(m[1]!, gd.core.manifest.dataVersion);
+      if (m) b = await decodeShare(m[1]!);
       else {
         const res = await importMidsText(gd, await loadMidsMap(gd), t);
         b = res.build;
         warnings = res.warnings;
       }
-      loadBuild(b);
+      if (!(await replaceOk(b.name))) return;
+      await loadBuild(b);
       say(`Imported "${b.name || 'build'}".`, ...warnings.map((w) => `Warning: ${w}`));
     } catch (e) {
       say(`Could not import: ${e instanceof Error ? e.message : String(e)}`);
@@ -95,7 +109,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                       const { mbd, warnings } = exportMbd(gd, map, build);
                       download(`${build.name || 'build'}.mbd`, JSON.stringify(mbd, null, 2));
                       say('Mids .mbd downloaded.', ...warnings.map((w) => `Warning: ${w}`));
-                    })
+                    }).catch(midsFailed)
                   }
                 >
                   Download Mids .mbd
@@ -110,7 +124,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                       const { mbd, warnings } = exportMbd(gd, map, build);
                       await copy(await mbdToChunk(mbd), 'Mids share code');
                       if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
-                    })
+                    }).catch(midsFailed)
                   }
                 >
                   Copy Mids share code
@@ -125,7 +139,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                       const { text: code, warnings } = await buildToMxDz(gd, map, build);
                       await copy(code, 'Legacy Mids (MxDz) code');
                       if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
-                    })
+                    }).catch(midsFailed)
                   }
                 >
                   Copy legacy MxDz code
@@ -164,7 +178,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                 <span style={{ flex: 1, color: '#cfe8ff' }}>
                   {s.name} <span style={{ color: '#8fa1b8', fontSize: 14 }}>({gd.archetypeById.get(s.at)?.dn}, {new Date(s.saved).toLocaleString()})</span>
                 </span>
-                <button className="info-button" style={{ position: 'static', height: 32 }} onClick={() => { loadBuild(s.build); say(`Loaded "${s.name}".`); }}>
+                <button className="info-button" style={{ position: 'static', height: 32 }} onClick={() => void replaceOk(s.name).then(async (ok) => { if (ok) { await loadBuild(s.build); say(`Loaded "${s.name}".`); } })}>
                   Load
                 </button>
                 <button className="info-button" style={{ position: 'static', height: 32 }} onClick={() => void deleteBuild(s.id!).then(refresh)}>

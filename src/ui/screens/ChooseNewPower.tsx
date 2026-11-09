@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { Power } from '../../data/types.ts';
 import { BuildRules, type SetOption } from '../../engine/rules.ts';
 import { currentPick, useStore } from '../../state/store.ts';
+import { useEscape } from '../escape.ts';
+import { hoverPower, useFreshHover, useHover } from '../hover.ts';
 import { DescBox, MenuBar, MenuFrame, NextButton, TitleBar } from '../components/Chrome.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
@@ -14,9 +17,19 @@ import { icon, type Skin } from '../skin/skin.ts';
  * "CHOOSE A NEW POWER" (uiLevelPower.c): primary and secondary panels, a third panel for pools,
  * the epic pool and VEAT branches, the green description line, and Back/Cancel + Finish.
  */
+/** The green description box: follows the hovered power (on phones, the chosen one when nothing is hovered). */
+function HoverDesc({ skin, fallback }: { skin: Skin; fallback: Power | null }) {
+  const shown = useHover((h) => h.desc?.p) ?? fallback;
+  return <DescBox skin={skin} iconSrc={shown ? icon('powers', shown.icon || 'power_missing') : undefined} text={shown ? shown.lh || shown.sh : ''} />;
+}
+
 export function ChooseNewPower({ skin }: { skin: Skin }) {
-  const { gd, steps, level, choosePower, openSetPicker, finishLevel, backLevel } = useStore();
-  const [hover, setHover] = useState<Power | null>(null);
+  const { gd, steps, level, choosePower, openSetPicker, finishLevel, backLevel, lockFlash, flashLocked } = useStore(
+    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, choosePower: s.choosePower, openSetPicker: s.openSetPicker, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
+  );
+  // Escape cancels a level reopened from the overview (in the wizard, Back stays a button)
+  useEscape(backLevel, level?.mode === 'edit');
+  useFreshHover(); // hover lives in useHover: hovering a bar redraws only the description box
   const [tab, setTab] = useState(0);
   const { phone } = useStage();
   const pick = level ? currentPick(steps, level) : -1;
@@ -37,8 +50,15 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   const canEpic = rules.canAddNewSet('epic', pick);
   // the client clears the help text when the mouse leaves a bar (uiLevelPower.c); phones have no
   // hover, so there the chosen power's text stays up
-  const shown = hover ?? (phone && level.pendingPower !== undefined ? gd.power(level.pendingPower) : null);
+  const fallback = phone && level.pendingPower !== undefined ? gd.power(level.pendingPower) : null;
   const onPick = (p: Power) => {
+    // reopened from the overview: a power that can't hold this pick's bought slots would leave them
+    // hidden, so those slots must be removed first
+    const prev = level.mode === 'edit' ? level.orig.picks[pick] : null;
+    if (prev && prev.slots.length > 1 && p.id !== prev.power && (!rules.slottable(p) || prev.slots.length > (p.maxB ?? 0))) {
+      flashLocked(`power:${p.id}`, 'Remove Slots First!');
+      return;
+    }
     choosePower(p.id === level.pendingPower ? undefined : p.id);
     // a power from a set chosen on the pool picker keeps that set shown; others drop it
   };
@@ -47,7 +67,10 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   const extraButtons = (canPool ? 1 : 0) + (canEpic ? 1 : 0);
 
   const BAR_H = vy(28);
-  const desc = <DescBox skin={skin} iconSrc={shown ? icon('powers', shown.icon || 'power_missing') : undefined} text={shown ? shown.lh || shown.sh : ''} />;
+  // without the client's Show Detailed Info buttons over the frame tops, the lists start 25
+  // higher (the third keeps its place under the new pool / epic set bars)
+  const UP = -vy(25);
+  const desc = <HoverDesc skin={skin} fallback={fallback} />;
   const buttons = (
     <>
       <NextButton skin={skin} dir="left" text={level.mode === 'edit' || firstStep ? 'Cancel' : 'Back'} onClick={backLevel} />
@@ -76,7 +99,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', extraButtons || extra.length ? 'Pools' : 'Other']} active={tab} onChange={setTab} />
         <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h} skin={skin} />
         {tab === 2 ? newSetBars(P.x + P.w / 2, P.y + 6 + BAR_H / 2, BAR_H + 6, P.w - 12) : null}
-        <PowerColumn skin={skin} g={g} sets={lists[tab] ?? []} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
+        <PowerColumn skin={skin} g={g} sets={lists[tab] ?? []} pending={level.pendingPower} onPick={onPick} onHover={hoverPower} flash={lockFlash} />
         {desc}
         {buttons}
       </>
@@ -90,10 +113,10 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
       {[0, 1, 2].map((i) => (
         <MenuFrame key={i} x={vx(16 + 336 * i)} y={vy(70)} w={vx(320)} h={vy(520)} skin={skin} />
       ))}
-      <PowerColumn skin={skin} g={desktopColumn(0)} sets={primary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
-      <PowerColumn skin={skin} g={desktopColumn(1)} sets={secondary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
+      <PowerColumn skin={skin} g={desktopColumn(0, UP)} sets={primary} pending={level.pendingPower} onPick={onPick} onHover={hoverPower} flash={lockFlash} />
+      <PowerColumn skin={skin} g={desktopColumn(1, UP)} sets={secondary} pending={level.pendingPower} onPick={onPick} onHover={hoverPower} flash={lockFlash} />
       {newSetBars(vx(1024 - 16 - 160), vy(canPool && canEpic ? 55 : 85), vy(30), vx(320))}
-      <PowerColumn skin={skin} g={desktopColumn(2)} sets={extra} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
+      <PowerColumn skin={skin} g={desktopColumn(2, extraButtons ? 0 : UP)} sets={extra} pending={level.pendingPower} onPick={onPick} onHover={hoverPower} flash={lockFlash} />
       {desc}
       {buttons}
     </>

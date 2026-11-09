@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { BoostSet, Power } from '../../data/types.ts';
 import type { SlottedEnh } from '../../engine/build.ts';
-import { canSlot, defaultLevel, enhKind, enhValues, setLevelRange, type EnhKind } from '../../engine/enhance.ts';
+import { boostPog, canSlot, defaultLevel, enhKind, enhValues, setLevelRange, type EnhKind } from '../../engine/enhance.ts';
 import type { BuildEntry } from '../../engine/rules.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { icon, type Skin } from '../skin/skin.ts';
 import { TitleText } from '../components/GameText.tsx';
+import { useEscape } from '../escape.ts';
 
 type Tab = 'Training' | 'Origin' | 'Invention' | 'Sets' | 'Special';
 const TABS: Tab[] = ['Training', 'Origin', 'Invention', 'Sets', 'Special'];
@@ -103,7 +104,17 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     return lastTab === 'Sets' && last?.set !== undefined && sets.some((x) => x.id === last.set) ? last.set : undefined;
   });
   const chosenSet: BoostSet | undefined = setId !== undefined ? gd.boostSetById.get(setId) : undefined;
-  const taken = new Set(entry.slots.filter((s, i) => i !== slot && s.enh).map((s) => s.enh!.boost));
+  // a power holds each set piece once (any of its crafted / attuned / superior versions); common
+  // IOs, TO/DO/SO and HOs may repeat (diminishing returns does the limiting)
+  const takenPieces = new Set<string>();
+  entry.slots.forEach((s, i) => {
+    const r = i !== slot && s.enh ? gd.boostSetOf.get(s.enh.boost) : undefined;
+    if (r) takenPieces.add(`${r.set.id}:${r.letter}`);
+  });
+  const pieceTaken = (b: Power) => {
+    const r = gd.boostSetOf.get(b.id);
+    return !!r && takenPieces.has(`${r.set.id}:${r.letter}`);
+  };
 
   /** @return The piece's level range (0-based) when its level can be chosen, else null. */
   const rangeOf = (b: Power): [number, number] | null => {
@@ -116,6 +127,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     const range = rangeOf(b);
     const ioLevel = range && last?.ioLevel !== undefined ? Math.max(range[0], Math.min(range[1], last.ioLevel)) : defaultLevel(gd, b);
     setSel({ boost: b.id, ioLevel, rel: b.bie ? undefined : 0, boosters: 0 });
+    setLvlDraft(null);
   };
   const place = () => {
     if (!sel) return;
@@ -126,6 +138,16 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
   const values = selBoost && sel ? enhValues(gd, at, entry.power, sel, 49) : [];
   const ref = selBoost ? gd.boostSetOf.get(selBoost.id) : undefined;
   const levelRange = selBoost ? rangeOf(selBoost) : null;
+  // the level box's text while it is being typed (null: show the selection's level)
+  const [lvlDraft, setLvlDraft] = useState<string | null>(null);
+  /** Clamp a typed level into the piece's range (an unreadable entry keeps the current level). */
+  const commitLevel = () => {
+    if (lvlDraft === null || !levelRange || !sel) return;
+    const n = Math.round(Number(lvlDraft)) - 1;
+    if (Number.isFinite(n)) setSel({ ...sel, ioLevel: Math.max(levelRange[0], Math.min(levelRange[1], n)) });
+    setLvlDraft(null);
+  };
+  useEscape(onClose);
   const attunedAlt = ref ? ref.set.slots[ref.letter]?.[ref.variant === 0 ? 1 : 0] : undefined;
 
   const grid = (list: Power[]) => (
@@ -137,7 +159,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
           title={gameText(b.sh)}
           style={{ width: 128, cursor: 'pointer', textAlign: 'center', padding: 6, borderRadius: 10, border: `2px solid ${sel?.boost === b.id ? '#00d919' : 'transparent'}`, background: sel?.boost === b.id ? 'rgba(0,217,25,0.15)' : 'transparent' }}
         >
-          <EnhIcon b={b} size={64} />
+          <EnhIcon gd={gd} b={b} size={64} />
           <div className="body-text" style={{ fontSize: 13, color: '#cfe8ff', lineHeight: 1.15 }}>
             {b.dn}
           </div>
@@ -186,11 +208,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                 ))}
               </div>
               <div style={{ flex: 1 }}>
-                {chosenSet ? grid(chosenSet.slots.map((v) => gd.power(v[0]!)).filter((b) => canSlot(gd, entry.power, b, originIndex) && !taken.has(b.id))) : <div className="desc-text">Choose a set.</div>}
+                {chosenSet ? grid(chosenSet.slots.map((v) => gd.power(v[0]!)).filter((b) => canSlot(gd, entry.power, b, originIndex) && !pieceTaken(b))) : <div className="desc-text">Choose a set.</div>}
               </div>
             </div>
           ) : (
-            grid((byTab.get(tab) ?? []).filter((b) => !taken.has(b.id) || b.id === current?.boost))
+            grid((byTab.get(tab) ?? []).filter((b) => !pieceTaken(b)))
           )}
         </div>
         {/* selection details and controls */}
@@ -198,7 +220,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
         <div className="abs body-text scroll-y" style={{ left: ix, top: iy, width: iw, height: dh - 30, fontSize: phone ? 22 : 16, color: '#cfe8ff' }}>
           {selBoost ? (
             <>
-              <EnhIcon b={selBoost} size={80} />
+              <EnhIcon gd={gd} b={selBoost} size={80} />
               <TitleText style={{ fontSize: 20, whiteSpace: 'normal' }}>
                 {selBoost.dn}
               </TitleText>
@@ -210,8 +232,20 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                     type="number"
                     min={levelRange[0] + 1}
                     max={levelRange[1] + 1}
-                    value={(sel?.ioLevel ?? levelRange[1]) + 1}
-                    onChange={(e) => setSel({ ...sel!, ioLevel: Math.max(levelRange[0], Math.min(levelRange[1], Number(e.target.value) - 1)) })}
+                    value={lvlDraft ?? String((sel?.ioLevel ?? levelRange[1]) + 1)}
+                    onChange={(e) => {
+                      // keep what is typed ("2" on the way to "25"); apply at once only when in range
+                      const v = e.target.value;
+                      const n = Number(v) - 1;
+                      if (v !== '' && Number.isInteger(n) && n >= levelRange[0] && n <= levelRange[1]) {
+                        setSel({ ...sel!, ioLevel: n });
+                        setLvlDraft(null);
+                      } else setLvlDraft(v);
+                    }}
+                    onBlur={commitLevel}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitLevel();
+                    }}
                     style={{ width: 70, background: '#000', color: '#fff', border: '1px solid #4f94ff' }}
                   />
                 </label>
@@ -278,14 +312,20 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
   );
 }
 
-/** Enhancement icon: 46/64 icon centered inside the left and right origin/IO frame halves. */
-export function EnhIcon({ b, size }: { b: Power; size: number }) {
+/**
+ * Enhancement icon as drawEnhancementOriginLevelEx layers it: the left / right origin or
+ * invention frame halves, the type disc (pog, 48/64) and the 46/64 icon on top.
+ */
+export function EnhIcon({ gd, b, size }: { gd: GameData; b: Power; size: number }) {
   const inner = (size * 46) / 64;
+  const pogSize = (size * 48) / 64;
+  const pog = boostPog(gd, b);
   return (
     <div style={{ position: 'relative', width: size, height: size, margin: '0 auto' }}>
-      <img src={icon('enh', b.icon)} width={inner} height={inner} alt="" style={{ position: 'absolute', left: (size - inner) / 2, top: (size - inner) / 2 }} />
       {b.bf?.[0] ? <img src={icon('enh', b.bf[0])} width={size / 2} height={size} alt="" style={{ position: 'absolute', left: 0, top: 0 }} /> : null}
       {b.bf?.[1] ? <img src={icon('enh', b.bf[1])} width={size / 2} height={size} alt="" style={{ position: 'absolute', left: size / 2, top: 0 }} /> : null}
+      {pog ? <img src={icon('enh', pog)} width={pogSize} height={pogSize} alt="" style={{ position: 'absolute', left: (size - pogSize) / 2, top: (size - pogSize) / 2 }} /> : null}
+      <img src={icon('enh', b.icon)} width={inner} height={inner} alt="" style={{ position: 'absolute', left: (size - inner) / 2, top: (size - inner) / 2 }} />
     </div>
   );
 }

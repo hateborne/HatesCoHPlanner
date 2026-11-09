@@ -1,5 +1,9 @@
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
+import type { Build } from '../../engine/build.ts';
+import { boostPog, canSlot } from '../../engine/enhance.ts';
 import { setEnh, setExclusive, setOn } from '../../engine/actions.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { computeTotals, defaultOn } from '../../engine/totals.ts';
@@ -10,7 +14,8 @@ import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
-import { DescTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
+import { DescTip, EnhTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
+import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
@@ -18,6 +23,8 @@ import { S, SX, SY, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
+import { useEscape } from '../escape.ts';
+import { clearHover, useFreshHover, useHover } from '../hover.ts';
 
 const COLS = [
   { x: 33, w: 480, column: 0 },
@@ -28,7 +35,11 @@ const TOP = 170;
 const H = 875;
 const POWER_SPEC_HT = 65; // uiLevelSpec.c row height (virtual)
 const SPEC_WD = 36; // ring spacing (virtual, x s)
-const RING = vs(35); // EnhncTray_Ring at scale .5
+// EnhncTray_Ring at scale .5, 12% smaller here than on the slot screen so a full row of six
+// reads as separate rings
+const RING = vs(35) * 0.88;
+// ring spacing shrunk with the rings, so they sit edge to edge like the slot screen's
+const RING_STEP = SPEC_WD * S * 0.88;
 const SWITCH = 30; // the floating on/off button
 
 interface Group {
@@ -49,9 +60,48 @@ interface Geom {
 }
 
 function geom(width: number, unit: number): Geom {
-  const barCX = 96; // room for the level tag left of the icon
+  const barCX = 62; // the level tag sits in the margin left of the icon
   const barW = width - barCX - 2 * SWITCH - 6;
   return { barCX, barW, ringX: barCX - 2 * SX, boxW: barW - 10 * SX, start: -19 * unit, row: POWER_SPEC_HT * unit, unit };
+}
+
+/** A soft halo drawn only while the level orb `level` is hovered (subscribes to that one fact). */
+function OrbGlow({ level, style }: { level: number; style: CSSProperties }) {
+  const lit = useHover((h) => h.orb === level);
+  return lit ? <div className="abs hover-glow" style={style} /> : null;
+}
+
+/** One level orb; it glows while the power picked at its level is hovered. */
+function LevelOrb({ level, isPick, className, style, title, onClick, children }: { level: number; isPick: boolean; className: string; style: CSSProperties; title: string; onClick: () => void; children: ReactNode }) {
+  const lit = useHover((h) => isPick && h.pick === level);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => useHover.setState({ orb: level })}
+      onMouseLeave={() => useHover.setState((h) => (h.orb === level ? { orb: null } : h))}
+      title={title}
+      className={`${className}${lit ? ' hover-glow' : ''}`}
+      style={style}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** The power / enhancement hover boxes; the only part of the overview that follows the pointer. */
+function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; build: Build; end: number }) {
+  const { tip, ringTip } = useHover(useShallow((h) => ({ tip: h.tip, ringTip: h.ringTip })));
+  const tipLevel = useTipLevel();
+  const hint = useShiftHint();
+  return (
+    <>
+      {ringTip && tipLevel !== 'off' ? <EnhTip gd={gd} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
+      {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} hint={hint} /> : null}
+      {tip && tipLevel === 'advanced' ? (
+        <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
+      ) : null}
+    </>
+  );
 }
 
 /**
@@ -65,13 +115,18 @@ function geom(width: number, unit: number): Geom {
  * enhancement and a right-click clears it.
  */
 export function Overview({ skin }: { skin: Skin }) {
-  const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling } = useStore();
+  // only the fields drawn here: a store change elsewhere (Shift, a notice) must not redraw the screen
+  const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling, lockFlash } = useStore(
+    useShallow((s) => ({ gd: s.gd, build: s.build, steps: s.steps, editPick: s.editPick, editSlots: s.editSlots, toSetup: s.toSetup, setBuild: s.setBuild, setMenu: s.setMenu, continueLeveling: s.continueLeveling, lockFlash: s.lockFlash })),
+  );
   const [picker, setPicker] = useState<{ entry: BuildEntry; slot: number } | null>(null);
   const [tab, setTab] = useState(0);
-  const [tip, setTip] = useState<{ entry: BuildEntry; x: number; y: number } | null>(null);
-  const tipLevel = useTipLevel();
-  const hint = useShiftHint();
   const [oaOpen, setOaOpen] = useState(false);
+  useEscape(() => setOaOpen(false), oaOpen);
+  // Hover state (tooltips, and the links between level orbs and the build) lives in useHover, so a
+  // hover redraws only the glow / orb / tooltip that subscribes to it, not this whole screen.
+  useFreshHover();
+  useEffect(() => clearHover(), [build]); // entries are rebuilt; drop any tooltip holding an old one
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
@@ -105,8 +160,10 @@ export function Overview({ skin }: { skin: Skin }) {
 
   const hoverOn = (e: BuildEntry, on: boolean) => {
     if (phone) return;
-    if (on) setTip({ entry: e, x: mouse.current.x, y: mouse.current.y });
-    else setTip((t) => (t?.entry.key === e.key ? null : t));
+    useHover.setState((h) => ({
+      pick: e.source !== 'pick' ? h.pick : on ? e.level : h.pick === e.level ? null : h.pick,
+      tip: on ? { entry: e, x: mouse.current.x, y: mouse.current.y } : h.tip?.entry.key === e.key ? null : h.tip,
+    }));
   };
 
   const renderPanel = (view: { left: number; top: number; width: number; height: number }, bar: { x: number; top: number; height: number }, g: Geom, list: Group[], key: number) => {
@@ -127,6 +184,10 @@ export function Overview({ skin }: { skin: Skin }) {
         // a group's drop-down replaces the switch and takes the bar's right end
         const SELECT_W = 150;
         const barW = members ? g.barW + SWITCH + 4 - SELECT_W - 8 : g.barW;
+        if (e.source === 'pick') {
+          // picked at the hovered orb's level: a soft halo behind the bar
+          items.push(<OrbGlow key={`${e.key}:glow`} level={e.level} style={{ left: g.barCX - 19 * S, top: y - 17 * S, width: barW + 17 * S, height: 34 * S, borderRadius: 17 * S }} />);
+        }
         items.push(
           <CheckBar
             key={e.key}
@@ -135,7 +196,7 @@ export function Overview({ skin }: { skin: Skin }) {
             y={y}
             wd={barW}
             halfText
-            text={e.power.dn}
+            text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
             state={flagged.length ? 'unselectable' : on ? 'selected' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
@@ -143,10 +204,11 @@ export function Overview({ skin }: { skin: Skin }) {
             onHover={(h) => hoverOn(e, h)}
           />,
         );
+        if (lockFlash?.key === e.key) items.push(<LockFlash key={`${e.key}:flash-${lockFlash.id}`} flashKey={e.key} x={g.barCX} y={y} w={barW} s={S} />);
         // the level the power was taken, left of its icon (not for what every character starts with)
         if (!(e.source === 'grant' && e.level <= 4)) {
           items.push(
-            <GameText key={`${e.key}:lv`} font="title_9" scale={S} x={g.barCX - 24 * S} y={y} centerY align="right" colors={[skin.standard.text, skin.standard.text2]} text={String(e.level + 1)} />,
+            <GameText key={`${e.key}:lv`} font="title_9" scale={S} x={g.barCX - 22 * S - 4} y={y} centerY align="right" colors={[skin.standard.text, skin.standard.text2]} text={String(e.level + 1)} />,
           );
         }
         if (members) {
@@ -185,21 +247,35 @@ export function Overview({ skin }: { skin: Skin }) {
         }
         e.slots.forEach((s, i) => {
           const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+          if (i > 0) {
+            // placed at the hovered orb's level
+            items.push(<OrbGlow key={`${e.key}:${i}:glow`} level={s.level} style={{ left: g.ringX + (i + 1) * RING_STEP - RING / 2, top: y + 20 * S - RING / 2, width: RING, height: RING, borderRadius: RING / 2 }} />);
+          }
           items.push(
             <SlotRing
               skin={skin}
               key={`${e.key}:${i}`}
-              x={g.ringX + (i + 1) * SPEC_WD * S}
+              x={g.ringX + (i + 1) * RING_STEP}
               y={y + 20 * S}
               size={RING}
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
-              title={boost ? `${boost.dn} (slot from level ${s.level + 1}; right-click to clear)` : `Empty slot (level ${s.level + 1})`}
+              pog={boost ? boostPog(gd, boost) : undefined}
+              title={boost ? undefined : `Empty slot (level ${s.level + 1})`}
+              onHover={
+                boost && !phone
+                  ? (h) =>
+                      useHover.setState((st) => ({
+                        ringTip: h ? { entry: e, slot: i, x: mouse.current.x, y: mouse.current.y } : st.ringTip?.entry.key === e.key && st.ringTip.slot === i ? null : st.ringTip,
+                      }))
+                  : undefined
+              }
               onClick={() => setPicker({ entry: e, slot: i })}
               onRightClick={
                 boost
                   ? () => {
                       play('delete');
+                      useHover.setState({ ringTip: null });
                       setBuild(setEnh(build, e.key, i, undefined, e.level));
                     }
                   : undefined
@@ -231,20 +307,32 @@ export function Overview({ skin }: { skin: Skin }) {
     renderPanel({ left: c.x + 2, top: TOP + 6, width: c.w - 4, height: H - 12 }, { x: c.x + c.w, top: TOP + 18, height: H - 36 }, geom(c.w - 4, SY), groups(c.column), c.column);
 
   const shown = steps.filter((s) => s.level <= end);
+  /** The orb's hover text: the power(s) picked there ("Flight: Fly"), or the slots placed there. */
+  const orbTitle = (s: (typeof steps)[number]) => {
+    if (s.picks.length) {
+      const names = s.picks.map((k) => build.picks[k]).filter((p) => !!p).map((p) => `${gd.setOfPower.get(p!.power)?.set.dn ?? ''}: ${gd.power(p!.power).dn}`);
+      return names.length ? names.join('\n') : `Level ${s.level + 1}: choose a power`;
+    }
+    const placed = new Map<string, number>();
+    for (const e of entries) for (const sl of e.slots.slice(1)) if (sl.level === s.level) placed.set(e.power.dn, (placed.get(e.power.dn) ?? 0) + 1);
+    return placed.size ? [...placed].map(([n, c]) => `${n} +${c} slot${c > 1 ? 's' : ''}`).join('\n') : `Level ${s.level + 1}: ${s.slots} enhancement slots`;
+  };
   const levelStrip = (x0: number, y0: number, perRow: number, size: number) =>
     shown.map((s, i) => {
       const isPick = s.picks.length > 0;
       const filled = isPick ? s.picks.every((k) => build.picks[k]) : rules.slotsUsed(s.level) >= s.slots;
       return (
-        <div
+        <LevelOrb
           key={s.level}
+          level={s.level}
+          isPick={isPick}
           onClick={() => (isPick ? editPick(s.picks[0]!) : editSlots(s.level))}
-          title={isPick ? `Level ${s.level + 1}: choose a power` : `Level ${s.level + 1}: ${s.slots} enhancement slots`}
+          title={orbTitle(s)}
           className="abs body-text"
           style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? '#ffd200' : '#4f94ff'}`, background: filled ? (isPick ? '#6b5400' : '#0b3d9a') : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
         >
           {s.level + 1}
-        </div>
+        </LevelOrb>
       );
     });
   // a build stopped short of 50 can pick up where it left off
@@ -277,7 +365,7 @@ export function Overview({ skin }: { skin: Skin }) {
                   w={PW}
                   origin={build.origin}
                   align={build.alignment}
-                  onOrigin={(id) => setBuild({ ...build, origin: id })}
+                  onOrigin={(id) => void changeOrigin(id)}
                   onAlign={(a) => setBuild({ ...build, alignment: a })}
                 />
               </div>
@@ -286,6 +374,35 @@ export function Overview({ skin }: { skin: Skin }) {
         ) : null}
       </>
     );
+  };
+
+  /**
+   * Switch origin. Enhancements only the old origin can use (its DOs / SOs) are listed in a
+   * confirmation; Proceed switches and empties those slots, Cancel keeps the old origin.
+   */
+  const changeOrigin = async (id: number) => {
+    if (id === build.origin) return;
+    const oi = gd.core.origins.findIndex((o) => o.id === id);
+    const bound: { e: BuildEntry; slot: number }[] = [];
+    for (const e of rules.entries()) {
+      e.slots.forEach((s, i) => {
+        const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+        if (boost && !canSlot(gd, e.power, boost, oi)) bound.push({ e, slot: i });
+      });
+    }
+    if (bound.length) {
+      const from = gd.core.origins.find((o) => o.id === build.origin)?.dn ?? 'the old origin';
+      const to = gd.core.origins[oi]?.dn ?? 'the new origin';
+      const ok = await useStore.getState().askConfirm({
+        title: 'Change origin?',
+        text: `Changing from ${from} to ${to} will remove ${bound.length} enhancement${bound.length > 1 ? 's' : ''} bound to ${from}.`,
+        okLabel: 'Proceed',
+      });
+      if (!ok) return;
+    }
+    let nb = { ...build, origin: id };
+    for (const { e, slot } of bound) nb = setEnh(nb, e.key, slot, undefined, e.level);
+    setBuild(nb);
   };
 
   const picker_ = picker ? (
@@ -346,10 +463,7 @@ export function Overview({ skin }: { skin: Skin }) {
       <GameScroll skin={skin} left={1515} top={TOP + 18} width={444} height={H - 36} barX={1503 + 464}>
         <TotalsPanel gd={gd} t={totals} width={420} />
       </GameScroll>
-      {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} hint={hint} /> : null}
-      {tip && tipLevel === 'advanced' ? (
-        <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
-      ) : null}
+      <OverviewTips gd={gd} skin={skin} build={build} end={end} />
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker_}

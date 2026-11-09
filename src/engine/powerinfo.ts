@@ -744,7 +744,7 @@ export function powerInfo(
         pchMag = '.3 per Health Percentage Point below 60% ';
       else if (joined.toLowerCase() === '75kHitPointssource>-0100minmax60/0.5*'.toLowerCase())
         pchMag = '.8 per Health Percentage Point below 75% ';
-      else pchMag = 'Special';
+      else pchMag = 'Special '; // trailing space like the two client strings above
     }
 
     const value = attribValueMarkup(O, eType, m, offset, fMag, boosted, showBoth, pchMag);

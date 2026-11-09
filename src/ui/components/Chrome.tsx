@@ -455,12 +455,14 @@ export function SlotsAvailable({ n, x = vx(412), y = vy(695), w = vx(200), h = v
 }
 
 /** An enhancement slot ring, empty or holding an enhancement icon (half-scale tray ring). */
-export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pending, onClick, onRightClick, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pending?: boolean; onClick?: () => void; onRightClick?: () => void; title?: string; skin?: Skin }) {
+export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, onClick, onRightClick, onHover, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; onClick?: () => void; onRightClick?: () => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin }) {
   return (
     <div
       className="abs"
       title={title}
       onClick={onClick}
+      onMouseEnter={onHover ? () => onHover(true) : undefined}
+      onMouseLeave={onHover ? () => onHover(false) : undefined}
       onContextMenu={
         onRightClick
           ? (e) => {
@@ -475,16 +477,19 @@ export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pending, onClic
       <Sprite src={ui('creation/enhancements/enhnctray_ringhole', skin)} x={size * 0.04} y={size * 0.04} w={size * 0.92} h={size * 0.92} z={0} />
       {enhIcon ? (
         <>
-          <Sprite src={enhIcon} x={size * (0.5 - 23 / 64)} y={size * (0.5 - 23 / 64)} w={(size * 46) / 64} h={(size * 46) / 64} z={1} />
+          {/* drawEnhancementOriginLevelEx: frame halves, then the type disc (pog), then the icon --
+              origin / training / attuned frames are solid behind their ring */}
           {frames ? (
             <>
-              {frames[0] ? <Sprite src={iconUrl('enh', frames[0])} x={0} y={0} w={size / 2} h={size} z={2} /> : null}
-              {frames[1] ? <Sprite src={iconUrl('enh', frames[1])} x={size / 2} y={0} w={size / 2} h={size} z={2} /> : null}
+              {frames[0] ? <Sprite src={iconUrl('enh', frames[0])} x={0} y={0} w={size / 2} h={size} z={1} /> : null}
+              {frames[1] ? <Sprite src={iconUrl('enh', frames[1])} x={size / 2} y={0} w={size / 2} h={size} z={1} /> : null}
             </>
           ) : null}
+          {pog ? <Sprite src={iconUrl('enh', pog)} x={size * (0.5 - 24 / 64)} y={size * (0.5 - 24 / 64)} w={(size * 48) / 64} h={(size * 48) / 64} z={2} /> : null}
+          <Sprite src={enhIcon} x={size * (0.5 - 23 / 64)} y={size * (0.5 - 23 / 64)} w={(size * 46) / 64} h={(size * 46) / 64} z={3} />
         </>
       ) : null}
-      <Sprite src={ui(pending ? 'creation/enhancements/enhnctray_ring_highlight' : 'creation/enhancements/enhnctray_ring', skin)} x={0} y={0} w={size} h={size} z={3} />
+      <Sprite src={ui(pending ? 'creation/enhancements/enhnctray_ring_highlight' : 'creation/enhancements/enhnctray_ring', skin)} x={0} y={0} w={size} h={size} z={4} />
     </div>
   );
 }

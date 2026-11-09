@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { Power, Powerset } from '../../data/types.ts';
 import { BuildRules } from '../../engine/rules.ts';
 import { currentPick, useStore } from '../../state/store.ts';
+import { useEscape } from '../escape.ts';
+import { useFreshHover, useHover } from '../hover.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetFrame, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -14,16 +17,29 @@ import { icon, type Skin } from '../skin/skin.ts';
 const ROW = vy(61); // PSET_SPACER / POW_SPACER
 
 /**
+ * The description box: the hovered set or power. The client shows help only while the mouse is
+ * over the lists (uiPowers.c); phones have no hover, so there the chosen set / power stays described.
+ */
+function PoolDesc({ skin, phone, power, chosen }: { skin: Skin; phone: boolean; power?: Power; chosen?: Powerset }) {
+  const hover = useHover((h) => h.desc);
+  const shownP = hover?.p ?? (phone && !hover ? power : undefined);
+  const shownS = hover?.s ?? (hover || !phone ? undefined : chosen);
+  const descText = hover?.s ? hover.s.lh || hover.s.sh : shownP ? shownP.lh || shownP.sh : shownS ? shownS.lh || shownS.sh : '';
+  return <DescBox skin={skin} iconSrc={shownP ? icon('powers', shownP.icon || 'power_missing') : undefined} text={descText} color={skin.poolDesc} textScale={1.05} />;
+}
+
+/**
  * "CHOOSE A POOL POWER SET" (uiPowers.c): 1. choose one pool (or epic) set on the left,
  * 2. choose one power from it on the right; Finish returns to Choose a New Power with it picked.
  */
 export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic' }) {
-  const { gd, steps, level, closeSetPicker } = useStore();
+  const { gd, steps, level, closeSetPicker } = useStore(useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, closeSetPicker: s.closeSetPicker })));
+  useFreshHover(); // hover lives in useHover: hovering a bar redraws only the description box
+  useEscape(() => closeSetPicker()); // back to the power list
   const pick = level ? currentPick(steps, level) : -1;
   const rules = useMemo(() => (gd && level ? new BuildRules(gd, level.base) : null), [gd, level]);
   const [setId, setSetId] = useState<number | undefined>(level?.pendingSet);
   const [power, setPower] = useState<number | undefined>(level?.pendingSet !== undefined ? level.pendingPower : undefined);
-  const [hover, setHover] = useState<{ p?: Power; s?: Powerset } | null>(null);
   const [tab, setTab] = useState(level?.pendingSet !== undefined ? 1 : 0);
   const { phone } = useStage();
   if (!gd || !level || !rules) return null;
@@ -31,11 +47,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
   const choices = rules.newSetChoices(kind, pick);
   const chosen = setId !== undefined ? gd.powerset(setId) : undefined;
   const powers = chosen ? chosen.p.map((pid) => rules.powerOption(pid, pick)) : [];
-  // the client shows help only while the mouse is over the lists (uiPowers.c); phones have no
-  // hover, so there the chosen set / power stays described
-  const shownP = hover?.p ?? (phone && power !== undefined ? gd.power(power) : undefined);
-  const shownS = hover?.s ?? (hover || !phone ? undefined : chosen);
-  const descText = hover?.s ? hover.s.lh || hover.s.sh : shownP ? shownP.lh || shownP.sh : shownS ? shownS.lh || shownS.sh : '';
+  const desc = <PoolDesc skin={skin} phone={phone} power={power !== undefined ? gd.power(power) : undefined} chosen={chosen} />;
   const setBars = (x0: number, y0: number, wd: number) =>
     choices.map((c, i) => (
       <CheckBar
@@ -53,7 +65,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
           setPower(undefined);
           setTab(1);
         }}
-        onHover={(on) => setHover(on ? { s: c.set } : null)}
+        onHover={(on) => useHover.setState({ desc: on ? { s: c.set } : null })}
       />
     ));
   const powerBars = (x0: number, y0: number, wd: number) =>
@@ -71,7 +83,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         icon={o.power.id === power ? icon('powers', o.power.icon || 'power_missing') : undefined}
         title={o.reason}
         onClick={o.state === 'available' ? () => setPower(o.power.id === power ? undefined : o.power.id) : undefined}
-        onHover={(on) => setHover(on ? { p: o.power } : null)}
+        onHover={(on) => useHover.setState({ desc: on ? { p: o.power } : null })}
       />
     ));
 
@@ -86,7 +98,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         <GameScroll skin={skin} left={P.x + 4} top={P.y + 20} width={P.w - 8} height={P.h - 40} barX={P.x + P.w}>
           <div style={{ position: 'relative', height: n * ROW + 60 }}>{tab === 0 ? setBars(70, 50, P.w - 130) : powerBars(70, 50, P.w - 130)}</div>
         </GameScroll>
-        <DescBox skin={skin} iconSrc={shownP ? icon('powers', shownP.icon || 'power_missing') : undefined} text={descText} color={skin.poolDesc} textScale={1.05} />
+        {desc}
         <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
         <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
       </>
@@ -129,7 +141,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
           {powerBars(vx(636) - R.left, powY, vx(270))}
         </div>
       </GameScroll>
-      <DescBox skin={skin} iconSrc={shownP ? icon('powers', shownP.icon || 'power_missing') : undefined} text={descText} color={skin.poolDesc} textScale={1.05} />
+      {desc}
       <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
       <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
     </>

@@ -71,7 +71,9 @@ function useTinted(src: string, tint?: { r: number; g: number; b: number }): str
     return () => {
       alive = false;
     };
-  }, [key, ready]); // src and tint are folded into key
+    // src and tint are folded into key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, ready]);
   return ready;
 }
 

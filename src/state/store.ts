@@ -4,11 +4,13 @@
  */
 import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
-import { addSlot, setPick } from '../engine/actions.ts';
-import { cloneBuild, newBuild, toAlignment, type Alignment, type Build } from '../engine/build.ts';
+import { loadVersions, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
+import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
+import { cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
+import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, type LevelStep } from '../engine/schedule.ts';
-import { decodeShare } from '../io/share.ts';
+import { decodeShare, encodeShare } from '../io/share.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
 /** Hover tooltips: Enabled (description / slot details; Shift shows Advanced), Advanced, Disabled. */
@@ -30,8 +32,11 @@ export interface LevelCtx {
 }
 
 interface Store {
-  gd?: GameData;
+  gd?: GameData; // the data of the version being shown (the build's, or the one picked on New Build)
   steps: LevelStep[];
+  versions?: GameVersions; // every game version the site has data for
+  /** Show another game version's data (the New Build screen's version picker); false if it failed. */
+  selectVersion(id: string): Promise<boolean>;
   error?: string;
   view: View;
   build?: Build;
@@ -42,6 +47,14 @@ interface Store {
   tips: TipMode; // hover tooltip setting (remembered per browser)
   shift: boolean; // Shift held: Enabled tooltips show the Advanced view
   setTips(m: TipMode): void;
+  notice: { id: number; text: string } | null; // a short red message (a refused change)
+  notify(text: string): void;
+  lockFlash: { id: number; key: string; label: string } | null; // a power bar flashing a refusal
+  flashLocked(key: string, label?: string): void;
+  confirm: { title: string; text: string; okLabel?: string; resolve: (ok: boolean) => void } | null;
+  /** Ask a yes / no question in the planner's dialog; resolves true on Proceed. */
+  askConfirm(q: { title: string; text: string; okLabel?: string }): Promise<boolean>;
+  closeConfirm(ok: boolean): void;
   load(): Promise<void>;
   startBuild(args: { name: string; at: number; origin: number; alignment: Alignment; primary: number; secondary: number }): void;
   setBuild(b: Build): void;
@@ -63,28 +76,62 @@ interface Store {
   setMusicOn(on: boolean): void;
   menuOpen: boolean;
   setMenu(open: boolean): void;
-  loadBuild(b: Build): void;
+  /** Open a build from outside (link, saved, import) with its own game version's data. */
+  loadBuild(b: Build): Promise<void>;
 }
 
 const STORAGE_KEY = 'hcp.current';
 
+// one fetch per game version per page: switching back to a version already seen is instant
+const dataCache = new Map<string, Promise<GameData>>();
+function dataFor(v: GameVersion): Promise<GameData> {
+  let p = dataCache.get(v.id);
+  if (!p) {
+    p = loadGameData(import.meta.env.BASE_URL, v);
+    p.catch(() => dataCache.delete(v.id)); // a failed fetch may be retried
+    dataCache.set(v.id, p);
+  }
+  return p;
+}
+
+/** Say so when a build asked for a game version this site no longer has. */
+function missingNote(missing: string | undefined, used: GameVersion): string | undefined {
+  return missing ? `This build was made for game version "${missing}", which is no longer available; it was opened with ${used.label}.` : undefined;
+}
+
+/**
+ * Remember the build: per tab (sessionStorage, so two tabs hold two builds) and as the browser's
+ * most recent build (localStorage, what a brand-new tab starts from). The address bar carries it
+ * too (see the #b= sync below).
+ */
 function persist(b: Build | undefined): void {
+  if (!b) return;
+  const raw = JSON.stringify(b);
   try {
-    if (b) localStorage.setItem(STORAGE_KEY, JSON.stringify(b));
+    sessionStorage.setItem(STORAGE_KEY, raw);
+  } catch {
+    /* storage unavailable (private mode) */
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, raw);
   } catch {
     /* storage unavailable (private mode) -- the build just isn't remembered */
   }
 }
 
+/** @return This tab's build, else the browser's most recent one (unchecked: see checkBuild). */
 function restore(): Build | undefined {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return undefined;
-    const b = JSON.parse(raw) as Build;
-    return { ...b, alignment: toAlignment(b.alignment) };
-  } catch {
-    return undefined;
-  }
+  // even touching window.sessionStorage throws when site data is blocked, so the access itself is
+  // inside the try
+  const read = (get: () => Storage) => {
+    try {
+      const raw = get().getItem(STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as Build) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  return read(() => sessionStorage) ?? read(() => localStorage);
 }
 
 /** @return The pick index the flow is on (power steps only). */
@@ -111,27 +158,42 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
   return l.pendingPower !== undefined && pick >= 0 ? setPick(gd, l.base, pick, l.pendingPower, carry) : l.base;
 }
 
-/** Remove a level's choices so it can be redone: the pick itself, or slots gained at the level. */
-function withoutLevel(b: Build, step: LevelStep, pick: number | null, dropLater: boolean): Build {
+/**
+ * Remove a level's choices so it can be redone: the pick itself, or slots gained at the level.
+ *
+ * @param keepEnhanced Keep slots that hold an enhancement (reopening a slot level: they stay
+ *   placed and locked; only empty slots can be moved).
+ */
+function withoutLevel(b: Build, step: LevelStep, pick: number | null, dropLater: boolean, keepEnhanced = false): Build {
   const nb = cloneBuild(b);
   if (pick !== null) nb.picks = nb.picks.map((p, i) => (i === pick || (dropLater && i > pick) ? null : p));
   else if (dropLater) nb.picks = nb.picks.map((p) => (p && p.level > step.level ? null : p));
   const drop = (lvl: number) => (dropLater ? lvl >= step.level : lvl === step.level);
-  const filt = <T extends { level: number }>(slots: T[]) => slots.filter((s, i) => i === 0 || !drop(s.level));
+  const filt = <T extends { level: number; enh?: unknown }>(slots: T[]) => slots.filter((s, i) => i === 0 || !drop(s.level) || (keepEnhanced && !!s.enh));
   for (const p of nb.picks) if (p) p.slots = filt(p.slots);
   for (const g of Object.values(nb.granted)) g.slots = filt(g.slots);
   return nb;
 }
 
-function slotKeysAt(gd: GameData, b: Build, level: number): string[] {
+/** @return Entry keys of the slots gained at a level, one per slot (only empty ones if asked). */
+function slotKeysAt(gd: GameData, b: Build, level: number, emptyOnly = false): string[] {
   const keys: string[] = [];
   for (const e of new BuildRules(gd, b).entries()) {
     e.slots.forEach((s, i) => {
-      if (i > 0 && s.level === level) keys.push(e.key);
+      if (i > 0 && s.level === level && !(emptyOnly && s.enh)) keys.push(e.key);
     });
   }
   return keys;
 }
+
+/** @return Whether undoing a level (and, with dropLater, everything after it) would discard an enhancement. */
+function dropsEnhancements(gd: GameData, b: Build, step: LevelStep, pick: number | null, dropLater: boolean): boolean {
+  const after = withoutLevel(b, step, pick, dropLater);
+  const count = (x: Build) => new BuildRules(gd, x).entries().reduce((n, e) => n + e.slots.filter((s) => s.enh).length, 0);
+  return count(after) < count(b);
+}
+
+const LOCKED = 'Remove enhancements first';
 
 export const useStore = create<Store>((set, get) => ({
   steps: [],
@@ -153,6 +215,35 @@ export const useStore = create<Store>((set, get) => ({
 
   menuOpen: false,
   setupAlign: 'Hero',
+  lockFlash: null,
+  confirm: null,
+  askConfirm(q) {
+    get().confirm?.resolve(false); // a newer question replaces an unanswered one
+    return new Promise<boolean>((resolve) => set({ confirm: { ...q, resolve } }));
+  },
+  closeConfirm(ok) {
+    const c = get().confirm;
+    if (!c) return;
+    set({ confirm: null });
+    c.resolve(ok);
+  },
+  flashLocked(key, label = 'Remove Enhancements First!') {
+    const id = (get().lockFlash?.id ?? 0) + 1;
+    // loaded lazily: the sound module imports this store, so a static import would be circular
+    void import('../ui/sound.ts').then((m) => m.play('reject5'));
+    set({ lockFlash: { id, key, label } });
+    window.setTimeout(() => {
+      if (get().lockFlash?.id === id) set({ lockFlash: null });
+    }, 1600);
+  },
+  notice: null,
+  notify(text) {
+    const id = (get().notice?.id ?? 0) + 1;
+    set({ notice: { id, text } });
+    window.setTimeout(() => {
+      if (get().notice?.id === id) set({ notice: null });
+    }, 2200);
+  },
   tips: (() => {
     try {
       const v = localStorage.getItem('hcp.tooltips') as TipMode | null;
@@ -176,31 +267,80 @@ export const useStore = create<Store>((set, get) => ({
     set({ menuOpen: open });
   },
 
-  loadBuild(b) {
-    const { gd } = get();
-    if (!gd) return;
-    const nb = { ...b, alignment: toAlignment(b.alignment), dataVersion: gd.core.manifest.dataVersion };
+  async selectVersion(id) {
+    const { versions, gd } = get();
+    const v = versions?.versions.find((x) => x.id === id);
+    if (!v) return false;
+    if (gd?.core.manifest.dataVersion === id) return true;
+    try {
+      const data = await dataFor(v);
+      set({ gd: data, steps: levelSteps(data.core) });
+      return true;
+    } catch (e) {
+      get().notify(`Couldn't load ${v.label}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  },
+
+  async loadBuild(b) {
+    const { versions } = get();
+    if (!versions) return;
+    const { version, missing } = resolveVersion(versions, b.dataVersion);
+    let gd: GameData;
+    try {
+      gd = await dataFor(version);
+    } catch (e) {
+      get().notify(`That build can't be opened (${e instanceof Error ? e.message : String(e)})`);
+      return;
+    }
+    // checked before it replaces anything: an unusable build is refused, a repairable one repaired
+    const { build: nb, fixes } = checkBuild(gd, b);
+    if (!nb) {
+      get().notify(`That build can't be opened (${fixes[fixes.length - 1] ?? 'invalid'})`);
+      return;
+    }
+    if (fixes.length) console.warn('build repaired:', fixes);
     persist(nb);
-    set({ build: nb, view: 'overview', level: undefined, menuOpen: false });
+    set({ gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false });
+    const note = missingNote(missing, version);
+    if (note) get().notify(note);
   },
 
   async load() {
     try {
-      const gd = await loadGameData(import.meta.env.BASE_URL);
-      const steps = levelSteps(gd.core);
-      let saved = restore();
-      // A share link (#b=...) wins over the remembered build.
-      const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
-      if (m) {
+      const versions = await loadVersions(import.meta.env.BASE_URL);
+      set({ versions });
+      // every build from outside the app is checked (and repaired where safe) against its own game
+      // version's data before it is used or saved again: a share link (#b=...) first, else this
+      // tab's / the browser's remembered build
+      const candidates: (() => Promise<Build | undefined>)[] = [
+        async () => {
+          const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
+          return m ? decodeShare(m[1]!) : undefined;
+        },
+        async () => restore(),
+      ];
+      for (const next of candidates) {
+        let raw: Build | undefined;
         try {
-          saved = await decodeShare(m[1]!, gd.core.manifest.dataVersion);
-          persist(saved);
+          raw = await next();
         } catch {
-          /* bad link: fall back to the remembered build */
+          continue; // bad link: fall back to the remembered build
         }
+        if (!raw) continue;
+        const { version, missing } = resolveVersion(versions, typeof raw.dataVersion === 'string' ? raw.dataVersion : undefined);
+        const gd = await dataFor(version);
+        const c = checkBuild(gd, raw);
+        if (!c.build) continue;
+        if (c.fixes.length) console.warn('saved build repaired:', c.fixes);
+        persist(c.build);
+        set({ gd, steps: levelSteps(gd.core), build: c.build, view: 'overview' });
+        const note = missingNote(missing, version);
+        if (note) get().notify(note);
+        return;
       }
-      const ok = saved && gd.archetypeById.has(saved.at) && saved.picks.length === gd.core.schedule.power.length;
-      set({ gd, steps, build: ok ? saved : undefined, view: ok ? 'overview' : 'setup' });
+      const gd = await dataFor(resolveVersion(versions, undefined).version);
+      set({ gd, steps: levelSteps(gd.core), build: undefined, view: 'setup' });
     } catch (e) {
       set({ view: 'error', error: e instanceof Error ? e.message : String(e) });
     }
@@ -228,6 +368,12 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   toOverview() {
+    // the New Build screen may have switched to another game version: show the build's own again
+    const { build, gd } = get();
+    if (build && gd && build.dataVersion !== gd.core.manifest.dataVersion) {
+      void get().loadBuild(build);
+      return;
+    }
     set({ view: 'overview', level: undefined });
   },
 
@@ -334,6 +480,11 @@ export const useStore = create<Store>((set, get) => ({
     }
     const target = steps[step]!;
     const committed = level.base;
+    // Back discards that level and everything after it: not while any of it holds enhancements
+    if (dropsEnhancements(gd, committed, target, sub === 'slots' ? null : target.picks[pickInStep]!, true)) {
+      get().notify(LOCKED);
+      return;
+    }
     if (sub === 'slots') {
       const pending = slotKeysAt(gd, committed, target.level);
       const base = withoutLevel(committed, target, null, true);
@@ -355,6 +506,14 @@ export const useStore = create<Store>((set, get) => ({
   editPick(pickIndex) {
     const { build, steps } = get();
     if (!build) return;
+    // swapping a power that holds enhancements (itself, or the powers it grants) could leave set
+    // pieces in a power that can't take them (an AoE set in a single-target attack): empty its
+    // slots first
+    const gd = get().gd;
+    if (gd && pickHoldsEnhancements(gd, build, pickIndex)) {
+      get().flashLocked(`pick:${pickIndex}`);
+      return;
+    }
     const step = steps.findIndex((s) => s.picks.includes(pickIndex));
     if (step < 0) return;
     const base = cloneBuild(build);
@@ -379,8 +538,9 @@ export const useStore = create<Store>((set, get) => ({
     if (!gd || !build) return;
     const step = steps.findIndex((s) => s.level === lvl && s.slots > 0);
     if (step < 0) return;
-    const pending = slotKeysAt(gd, build, lvl);
-    const base = withoutLevel(build, steps[step]!, null, false);
+    // slots holding enhancements stay where they are (locked); only the empty ones can move
+    const pending = slotKeysAt(gd, build, lvl, true);
+    const base = withoutLevel(build, steps[step]!, null, false, true);
     set({ view: 'level', level: { step, pickInStep: 0, mode: 'edit', sub: 'slots', base, orig: build, pendingSlots: pending } });
   },
 
@@ -411,8 +571,8 @@ export const useStore = create<Store>((set, get) => ({
     persist(b);
     const firstPick = target.picks.findIndex((k) => !b.picks[k]);
     const sub: LevelSub = firstPick >= 0 ? 'power' : 'slots';
-    const pendingSlots = sub === 'slots' ? slotKeysAt(gd, b, target.level) : [];
-    const base = sub === 'slots' ? withoutLevel(b, target, null, false) : b;
+    const pendingSlots = sub === 'slots' ? slotKeysAt(gd, b, target.level, true) : [];
+    const base = sub === 'slots' ? withoutLevel(b, target, null, false, true) : b;
     set({
       build: base,
       view: 'level',
@@ -438,6 +598,42 @@ export const useStore = create<Store>((set, get) => ({
     set({ musicOn: on });
   },
 }));
+
+// The address bar always carries this tab's build as a share code (#b=...), replaced in place so
+// edits don't pile up Back-button entries: a reload, a bookmark or a copied address brings back
+// exactly this build, and two tabs keep two builds apart.
+if (typeof window !== 'undefined') {
+  let timer = 0;
+  let written = '';
+  useStore.subscribe((s, prev) => {
+    if (s.build === prev.build || !s.build) return;
+    const b = s.build;
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      void encodeShare(b)
+        .then((code) => {
+          if (code === written || useStore.getState().build !== b) return;
+          written = code;
+          // replaceState fires no hashchange, so this doesn't reload the build
+          history.replaceState(history.state, '', `${location.pathname}${location.search}#b=${code}`);
+        })
+        .catch(() => undefined);
+    }, 300);
+  });
+}
+
+// A share link pasted into a tab that already has the planner open only changes the hash (the
+// page does not reload), so load the linked build when the hash changes too
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', () => {
+    const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
+    const { versions, loadBuild } = useStore.getState();
+    if (!m || !versions) return;
+    void decodeShare(m[1]!)
+      .then((b) => loadBuild(b)) // loadBuild loads its game version and checks it first
+      .catch(() => undefined); // a bad link leaves the current build alone
+  });
+}
 
 // Shift held anywhere switches Enabled tooltips to their Advanced view
 if (typeof window !== 'undefined') {

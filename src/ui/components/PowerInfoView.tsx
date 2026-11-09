@@ -48,9 +48,9 @@ const Divider = () => <div style={{ borderTop: '1px solid #5a6aa8', margin: `${T
 
 /**
  * The detailed power info (the game's "Show Detailed Info Here" panel, ported in
- * engine/powerinfo.ts) for an Advanced tooltip: the "as used by level N <class>" title, the
- * enhanced-and-(base) note, the stats and target tables and every effect line, at the tooltip's
- * font size. The PvP switch and level slider are left out (they can't be used in a tooltip).
+ * engine/powerinfo.ts) for an Advanced tooltip: the stats and target tables and every effect
+ * line (enhanced values with the base in parentheses), at the tooltip's font size. The panel's
+ * title line, PvP switch and level slider are left out (nothing to adjust in a tooltip).
  *
  * @param props.entry The hovered power with its slots (their enhancements give the enhanced values).
  * @param props.level 0-based character level the values are shown at.
@@ -80,15 +80,12 @@ export function AdvancedInfo({ gd, at, entry, level }: { gd: GameData; at: Arche
       </div>,
     );
   }
+  // no "as used by level N <class>" title or values note: the tooltip has no class / level slider
   return (
     <>
-      <div style={{ fontSize: TIP_PX * 1.15, fontWeight: 700 }}>
-        <Segs segs={info.title} />
-      </div>
-      <div style={{ color: INFO_LABEL_COLOR, textAlign: 'center', fontSize: TIP_PX * 0.9, margin: `${TIP_PX * 0.3}px 0` }}>Displaying enhanced and (base) values.</div>
       {blocks.map((b, i) => (
         <Fragment key={i}>
-          <Divider />
+          {i ? <Divider /> : null}
           {b}
         </Fragment>
       ))}

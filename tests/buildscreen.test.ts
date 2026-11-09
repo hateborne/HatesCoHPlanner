@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { setExclusive, setPick } from '../src/engine/actions.ts';
 import { newBuild, type Build } from '../src/engine/build.ts';
-import { allowedSetCategories, allowedTypes, canSlot } from '../src/engine/enhance.ts';
+import { allowedSetCategories, allowedTypes, boostHelpText, canSlot } from '../src/engine/enhance.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { computeTotals, defaultOn } from '../src/engine/totals.ts';
 import { decodeShare, encodeShare } from '../src/io/share.ts';
@@ -87,8 +87,8 @@ describe('reopening a pick level', () => {
 describe('builds planned short of 50', () => {
   it('keeps the stop level through a share link', async () => {
     const b = { ...tanker(base), endLevel: 19 };
-    expect((await decodeShare(await encodeShare(b), b.dataVersion)).endLevel).toBe(19);
-    expect((await decodeShare(await encodeShare(tanker(base)), b.dataVersion)).endLevel).toBeUndefined();
+    expect((await decodeShare(await encodeShare(b))).endLevel).toBe(19);
+    expect((await decodeShare(await encodeShare(tanker(base)))).endLevel).toBeUndefined();
   });
   it('computes totals at the stop level', () => {
     const b = tanker(base);
@@ -104,5 +104,36 @@ describe('power tooltip slot details', () => {
     const p = set.p.map((id) => gd.power(id)).find((x) => x.dn === 'Crushing Field')!;
     expect(allowedTypes(gd, p)).toEqual(['Enhance Slow Movement', 'Reduce Endurance Cost', 'Enhance Range', 'Enhance Recharge Speed', 'Enhance Immobilization', 'Enhance Damage', 'Enhance Accuracy']);
     expect(allowedSetCategories(gd, p)).toEqual(['Controller Archetype Sets', 'Universal Damage Sets', 'Slow Movement', 'Immobilize', 'Ranged AoE Damage']);
+  });
+});
+
+describe('enhancement tooltip text', () => {
+  it('fills the help text with the piece value (Invention: Flight Speed at 50)', () => {
+    const at = gd.archetypeByName.get('class_blaster')!;
+    const fly = gd.boosts.find((b) => b.n === 'Boosts.Crafted_Fly.Crafted_Fly')!;
+    expect(boostHelpText(gd, at, { boost: fly.id, ioLevel: 49 }, 49)).toBe('Increases flight speed by 42.4%.');
+    expect(fly.cat).toBe('Invention');
+    expect(fly.bcm).toBeUndefined(); // "You may not combine this Enhancement with any others."
+  });
+});
+
+describe('totals sections', () => {
+  it('sums set bonuses per set (the user Blaster link: six Decimation in Burst)', async () => {
+    const LINK = 'eJwdzMtOwkAAQNE71BmeIowUCgq0WCwVW-y6nX_T-Ds-EhUXJkYTF8b_MUaJojI5yV1eIQTSBe_egGKtRVT63mSlRbT1ucmHFpF61yI6L4ClESiBokKFGjXOCgfujERJGjRo0iTjxpRRZVq08FmQcWuqqCo-AQGLf9emjqrTocM-I0acFtvwm-_AW9jGaaPRvIa7sM5dlEuXLh4eIT95D6dHSMyF6aP6DBjYjc9LuAdf-RA1JCSyYi7NmNKYgOd0gppwYCVkPKVT5JRDK-ExnSFnxBxZD-kcOefYSrgyKazyE-APA8cpuQ';
+    const b = await decodeShare(LINK);
+    const t = computeTotals(gd, new BuildRules(gd, b), b);
+    const g = t.setGroups.find((x) => x.set.dn === 'Decimation')!;
+    expect(g.counts).toEqual([6]);
+    const stat = (label: string) => g.stats.find((s) => s.label === label)?.value ?? NaN;
+    expect(stat('Energy (Res)')).toBeCloseTo(0.015, 6);
+    expect(stat('Negative Energy (Res)')).toBeCloseTo(0.015, 6);
+    expect(stat('Mez (Res)')).toBeCloseTo(0.1, 6); // 2.5% at (2) + 7.5% at (6)
+    expect(stat('Max HP')).toBeCloseTo(0.01125, 4);
+  });
+  it('reads perception bonuses as a share of the base radius', () => {
+    const b = tanker(base);
+    const t = computeTotals(gd, new BuildRules(gd, b), b);
+    expect(t.perception).toBeCloseTo(500 * (1 + (t.lines.get('perc')?.value ?? 0)), 6);
+    expect(t.speeds.run).toBeGreaterThanOrEqual(1);
   });
 });

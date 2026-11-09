@@ -77,6 +77,9 @@ button {
    even 1-device-px outline at 80%: a stroked black copy under the gradient text). */
 .title-text {
   position: relative;
+  /* own block formatting context: the fill layer's negative margin (below) must not collapse
+     through the heading and shift it away from its outline layer */
+  display: flow-root;
   font-family: 'ParagonCity', 'MontrealHeavy', sans-serif;
   font-style: normal;
   transform: skewX(-8.53deg);
@@ -99,6 +102,9 @@ button {
 .title-text .title-t {
   position: relative;
   display: block;
+  /* fill glyph parts outside the line box too (see GameText) */
+  padding: 0.3em 0;
+  margin: -0.3em 0;
   background: linear-gradient(var(--title-top), var(--title-bottom));
   -webkit-background-clip: text;
   background-clip: text;
@@ -346,3 +352,53 @@ button {
     transform: scale(var(--grow));
   }
 }
+
+/* build screen hover links (level orb <-> power / slots): a gentle pulsing halo */
+@keyframes hoverglow {
+  from {
+    box-shadow: 0 0 4px 1px rgba(150, 220, 255, 0.4);
+  }
+  to {
+    box-shadow: 0 0 12px 4px rgba(150, 220, 255, 0.8);
+  }
+}
+.hover-glow {
+  animation: hoverglow 0.7s ease-in-out infinite alternate !important;
+  pointer-events: none;
+}
+
+/* a refused change ("Remove enhancements first"): small red text that fades out */
+@keyframes noticefade {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.notice-msg {
+  animation: noticefade 2.2s ease-out forwards;
+  pointer-events: none;
+}
+
+/* a power bar refusing a change while it holds enhancements: three quick red flashes */
+@keyframes lockflash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.lock-flash {
+  animation: lockflash 0.4s ease-in-out 3 forwards;
+  background: rgba(255, 40, 40, 0.42);
+  box-shadow: 0 0 10px 3px rgba(255, 60, 60, 0.75);
+  pointer-events: none;
+}
+
