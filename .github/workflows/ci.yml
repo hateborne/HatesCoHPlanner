@@ -1,0 +1,99 @@
+# Checks every pull request into main must pass before it can merge (see the main branch ruleset).
+# Actions are pinned to release commit SHAs; the comment names the release.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web app (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # what ships to visitors (React, zustand, brotli-wasm) must have no known advisories at all
+      - name: Shipped dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+      # build and test tools: high and critical advisories fail the check
+      - name: Development tools
+        run: npm audit --audit-level=high
+
+  pipeline:
+    name: Data pipeline (Python compiles)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - run: python -m compileall -q pipeline tools
+      - name: JSON files parse
+        run: |
+          python - <<'EOF'
+          import json, pathlib
+          bad = []
+          for p in [*pathlib.Path('public/data').rglob('*.json'), *pathlib.Path('pipeline').glob('*.json')]:
+              try:
+                  json.loads(p.read_text(encoding='utf-8'))
+              except ValueError as e:
+                  bad.append(f'{p}: {e}')
+          if bad:
+              raise SystemExit('\n'.join(bad))
+          EOF
+
+  privacy:
+    name: Privacy (no local paths or machine settings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Machine settings are not tracked
+        run: |
+          if git ls-files --error-unmatch pipeline/paths.local.json >/dev/null 2>&1; then
+            echo "pipeline/paths.local.json holds machine paths and must stay untracked"; exit 1
+          fi
+      - name: No Windows drive paths in tracked text files
+        run: |
+          # drive-letter paths into a user folder or a game install; machine paths belong in
+          # pipeline/paths.local.json (untracked) or environment variables
+          if git grep -nIE '(^|[^A-Za-z0-9])[A-Za-z]:(\\\\|\\|/)(Users|Games|Program Files|CityOfHeroes)' -- . ':!package-lock.json'; then
+            echo "Remove the local paths above (use pipeline/paths.local.json or environment variables)"; exit 1
+          fi
