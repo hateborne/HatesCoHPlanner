@@ -85,6 +85,10 @@ Breaking any of these is a bug, whatever else the change does.
 - Never force-push `main`, rewrite its history, or change repository settings, rulesets or
   secrets.
 - Commit, push or open a pull request only when the owner asks for it.
+- Exception, standing permission for this repository: on a pull request you opened, watching its
+  CI and committing and pushing fixes to that pull request's branch (failing checks, merge
+  conflicts, review comments that ask for a real fix) is always allowed without asking. In Claude
+  Code, turn Auto-fix on for every pull request you open here instead of offering it.
 
 **Ask, don't assume**
 - When a request is ambiguous or a fact can't be found in the code, the data or these docs, ask
