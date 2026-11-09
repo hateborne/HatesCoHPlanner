@@ -7,6 +7,7 @@ import { evalRequires } from '../../engine/requires.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
+import { GameScroll } from '../components/GameScroll.tsx';
 import { icon, SKINS } from '../skin/skin.ts';
 
 const COLS = [
@@ -94,11 +95,11 @@ export function Setup() {
           Saved / Import
         </button>
         <PhoneTabs skin={skin} labels={['Archetype', 'Primary', 'Secondary', 'Origin']} active={tab} onChange={setTab} y={180} />
-        <MenuFrame x={P.x} y={P.y + 30} w={P.w} h={P.h - 30} />
-        <div className="abs scroll-y" style={{ left: P.x + 4, top: P.y + 36, width: P.w - 8, height: P.h - 42 }}>
+        <MenuFrame x={P.x} y={P.y + 30} w={P.w} h={P.h - 30} skin={skin} />
+        <GameScroll skin={skin} left={P.x + 4} top={P.y + 50} width={P.w - 8} height={P.h - 70} barX={P.x + P.w}>
           <div style={{ position: 'relative', height: count * R + 60 }}>{bars}</div>
-        </div>
-        <DescBox iconSrc={desc?.icon} text={desc?.text ?? 'Choose an archetype, primary and secondary sets, an origin and an alignment, then Finish.'} />
+        </GameScroll>
+        <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an archetype, primary and secondary sets, an origin and an alignment, then Finish.'} />
         <NextButton skin={skin} dir="left" text="Back" locked={!build} onClick={toOverview} />
         <NextButton skin={skin} dir="right" text="Finish" locked={!ready} glow={ready} onClick={finish} />
       </>
@@ -116,17 +117,17 @@ export function Setup() {
         onChange={(e) => setName(e.target.value)}
         style={{ right: 50, top: 18, width: 520, height: 46, background: '#000', border: '2px solid #4f94ff', borderRadius: 23, color: '#fff', fontSize: 22, padding: '0 20px' }}
       />
-      <MenuFrame x={32} y={58} w={1937} h={988} r25 outer />
-      <InfoButton x={1000} y={58} text="Saved builds / Import" onClick={() => useStore.getState().setMenu(true)} />
+      <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
+      <InfoButton skin={skin} x={1000} y={58} text="Saved builds / Import" onClick={() => useStore.getState().setMenu(true)} />
       {COLS.map((c) => (
-        <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} />
+        <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} skin={skin} />
       ))}
-      <SetTitle x={COLS[0]!.x + 20} y={TOP + 18} text="Archetype" />
-      <SetTitle x={COLS[1]!.x + 20} y={TOP + 18} text="Primary Power Set" />
-      <SetTitle x={COLS[2]!.x + 20} y={TOP + 18} text="Secondary Power Set" />
-      <SetTitle x={COLS[3]!.x + 20} y={TOP + 18} text="Origin" />
-      <SetTitle x={COLS[3]!.x + 20} y={TOP + 345} text="Alignment" />
-      <div className="abs scroll-y" style={{ left: COLS[0]!.x, top: TOP + 62, width: COLS[0]!.w, height: H - 70 }}>
+      <SetTitle skin={skin} x={COLS[0]!.x + 20} y={TOP + 18} text="Archetype" />
+      <SetTitle skin={skin} x={COLS[1]!.x + 20} y={TOP + 18} text="Primary Power Set" />
+      <SetTitle skin={skin} x={COLS[2]!.x + 20} y={TOP + 18} text="Secondary Power Set" />
+      <SetTitle skin={skin} x={COLS[3]!.x + 20} y={TOP + 18} text="Origin" />
+      <SetTitle skin={skin} x={COLS[3]!.x + 20} y={TOP + 345} text="Alignment" />
+      <GameScroll skin={skin} left={COLS[0]!.x + 2} top={TOP + 62} width={COLS[0]!.w - 4} height={H - 80} barX={COLS[0]!.x + COLS[0]!.w}>
         <div style={{ position: 'relative', height: gd.core.archetypes.length * ROW + 30 }}>
           {gd.core.archetypes.map((a, i) => (
             <CheckBar
@@ -151,12 +152,12 @@ export function Setup() {
             />
           ))}
         </div>
-      </div>
+      </GameScroll>
       {[
         { col: COLS[1]!, sets: pris, val: pri, set: setPri },
         { col: COLS[2]!, sets: secs, val: sec, set: setSec },
       ].map(({ col, sets, val, set }) => (
-        <div key={col.x} className="abs scroll-y" style={{ left: col.x, top: TOP + 62, width: col.w, height: H - 70 }}>
+        <GameScroll key={col.x} skin={skin} left={col.x + 2} top={TOP + 62} width={col.w - 4} height={H - 80} barX={col.x + col.w}>
           <div style={{ position: 'relative', height: sets.length * ROW + 30 }}>
             {sets.map((s, i) => (
               <CheckBar
@@ -174,7 +175,7 @@ export function Setup() {
               />
             ))}
           </div>
-        </div>
+        </GameScroll>
       ))}
       {gd.core.origins.map((o, i) => (
         <CheckBar
@@ -206,7 +207,7 @@ export function Setup() {
           onClick={() => setAlign(a)}
         />
       ))}
-      <DescBox iconSrc={desc?.icon} text={desc?.text ?? 'Choose an archetype, its primary and secondary power sets, an origin and an alignment, then press Finish to pick your level 1 powers.'} />
+      <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an archetype, its primary and secondary power sets, an origin and an alignment, then press Finish to pick your level 1 powers.'} />
       <NextButton skin={skin} dir="left" text="Back" locked={!build} onClick={toOverview} />
       <NextButton
         skin={skin}

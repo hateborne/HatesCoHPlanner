@@ -41,7 +41,7 @@ export function useStageScale(): { dims: StageDims; scale: number } {
  */
 export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
   const { dims, scale } = useStageScale();
-  const bg = ui(`creation/common/backgrounds/${skin.prefix}background_skyline_normal`);
+  const bg = ui(`creation/common/backgrounds/background_skyline_normal`, skin);
   return (
     <StageCtx.Provider value={dims}>
       <div className="viewport">
@@ -57,8 +57,11 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
               left: 0,
               top: 0,
               backgroundImage: `url(${bg})`,
-              // desktop: the game's centered skyline; phone: keep the skyline at the bottom
-              backgroundPosition: dims.phone ? 'center bottom' : 'center',
+              // desktop: drawBackground runs before scaling is disabled, so the 1024x768 skyline
+              // (with its rounded border) is stretched by sx/sy to fill the screen; phone: keep
+              // the skyline at the bottom
+              backgroundPosition: dims.phone ? 'center bottom' : '0 0',
+              backgroundSize: dims.phone ? 'cover' : '100% 100%',
               ['--menu-border' as string]: skin.menuBorder,
               ['--title-top' as string]: skin.title[0],
               ['--title-bottom' as string]: skin.title[1],

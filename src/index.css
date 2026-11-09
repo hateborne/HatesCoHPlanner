@@ -12,7 +12,6 @@
 @font-face {
   font-family: 'Montreal';
   src: url('/assets/fonts/mont_demibold.ttf') format('truetype');
-  font-weight: 600;
   font-display: block;
 }
 @font-face {
@@ -74,14 +73,18 @@ button {
 
 /* ---- text ------------------------------------------------------------------------------------ */
 
+/* Inline-flow headings: same look as GameText title_* (RedCircle sheared by 0.15, 1px outline at 80%). */
 .title-text {
   font-family: 'ParagonCity', 'MontrealHeavy', sans-serif;
-  font-style: italic;
+  font-style: normal;
   background: linear-gradient(var(--title-top), var(--title-bottom));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 0 1px #000) drop-shadow(1px 1px 0 #000);
+  filter: drop-shadow(1px 0 0 rgba(0, 0, 0, 0.8)) drop-shadow(-1px 0 0 rgba(0, 0, 0, 0.8)) drop-shadow(0 1px 0 rgba(0, 0, 0, 0.8))
+    drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.8));
+  transform: skewX(-8.53deg);
+  transform-origin: 0 100%;
   white-space: nowrap;
   letter-spacing: 1px;
 }
@@ -185,28 +188,36 @@ button {
   cursor: default;
 }
 
-.slots-available {
-  position: absolute;
-  border: 3px solid #ff2020;
-  border-radius: 14px;
-  background: #000;
-  color: #ff3030;
-  font-family: 'Montreal', Verdana, sans-serif;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+
+.noscrollbar {
+  scrollbar-width: none;
 }
-.slots-available.done {
-  border-color: #20ff40;
-  color: #40ff60;
+.noscrollbar::-webkit-scrollbar {
+  display: none;
 }
 
+/* Native scrollers outside the ported game panels: no track, a rounded 2a77ff thumb like doScrollBarEx. */
 .scroll-y {
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: #2f6bff #000a2a;
+}
+.scroll-y::-webkit-scrollbar {
+  width: 14px;
+}
+.scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-y::-webkit-scrollbar-thumb {
+  background: linear-gradient(to right, #1a4fb0, #2a77ff 40%, #7fb0ff 55%, #2a77ff 70%, #1a4fb0);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 7px;
+}
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-y {
+    scrollbar-width: thin;
+    scrollbar-color: #2a77ff transparent;
+  }
 }
 
 .side-tab {

@@ -1,110 +1,125 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+/**
+ * Shared front-end chrome, each ported from its client drawing function (uiUtilMenu.c unless
+ * noted) with sizes from the source: positions in virtual 1024x768 units (vx/vy), sprites and
+ * text at the uniform screen scale S.
+ */
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { FONTS, S, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
 import { icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
+import { GameText, useFontsReady } from './GameText.tsx';
 import { PHONE_DESC, PHONE_NEXT_Y } from './Phone.tsx';
 import { Sprite } from './Sprite.tsx';
 import { useStage } from './Stage.tsx';
 
+const TITLE_SCALE = 1.5;
+
 /**
- * The animated title bar in the top-left corner (drawMenuTitle): glowing dot, horizontal pipes,
- * right cap, and the title in the RedCircle font that slides open when a new menu appears.
+ * drawMenuTitle(10*sx, 30*sy, s): glowing dot, black bar with pipes and right cap that slides
+ * open by 30s per frame, and the title_18 x 1.5 title starting on top of the dot.
  */
-export function TitleBar({ skin, text, x = 55, y = 46, scale: scaleIn }: { skin: Skin; text: string; x?: number; y?: number; scale?: number }) {
+export function TitleBar({ skin, text, scale: scaleIn }: { skin: Skin; text: string; scale?: number }) {
+  useFontsReady();
   const stage = useStage();
-  const scale = scaleIn ?? (stage.phone ? 1.35 : 1.9);
-  const [open, setOpen] = useState(false);
-  const measure = useRef<HTMLSpanElement>(null);
-  const [measured, setMeasured] = useState(0);
-  useLayoutEffect(() => {
-    setMeasured(measure.current?.offsetWidth ?? 0);
-  }, [text]);
+  const s = scaleIn ?? (stage.phone ? S * 0.8 : S);
+  const x = stage.phone ? 14 : vx(10);
+  const y = stage.phone ? 44 : vy(30);
+  const strwd = textWidth(FONTS.title_18, FONTS.title_18.size * TITLE_SCALE * s, text);
+  const wd = strwd + 45 * s;
+  const [acwd, setAcwd] = useState(45 * s);
   useEffect(() => {
-    setOpen(false);
-    const t = window.setTimeout(() => setOpen(true), 30);
-    // fonts load after first layout; re-measure once they're ready
-    void document.fonts?.ready.then(() => setMeasured(measure.current?.offsetWidth ?? 0));
-    return () => window.clearTimeout(t);
-  }, [text]);
-  const p = skin.prefix;
+    setAcwd(45 * s);
+    let w = 45 * s;
+    const t = window.setInterval(() => {
+      w = Math.min(wd, w + 30 * s);
+      setAcwd(w);
+      if (w >= wd) window.clearInterval(t);
+    }, 1000 / 30);
+    return () => window.clearInterval(t);
+  }, [text, wd, s]);
   const dir = 'creation/common/titlebar';
-  const dot = 47 * scale;
-  const capW = 22 * scale;
-  const capH = 38 * scale;
-  const fontSize = 27 * scale;
-  // measured before the font loads can come back too small; never go below a sane estimate
-  const textW = Math.max(measured, text.length * fontSize * 0.62) + 40;
-  const wd = textW + dot / 2 + capW;
+  const praet = skin.name === 'praetorian';
+  const colors: [string, string] = praet ? ['#e6daa4', '#e6daa4'] : ['#ffff00', '#ffa500'];
   return (
-    <div className="abs" style={{ left: x - dot / 2, top: y - dot / 2, width: wd + dot, height: dot, zIndex: 30 }}>
-      <span ref={measure} className="title-text" style={{ position: 'absolute', visibility: 'hidden', fontSize, whiteSpace: 'nowrap' }}>
-        {text}
-      </span>
-      <div
-        className="abs"
-        style={{
-          left: dot / 2,
-          top: dot / 2 - capH / 2 + 4 * scale,
-          height: capH - 8 * scale,
-          width: open ? wd - capW / 2 : 0,
-          background: '#000',
-          transition: 'width 0.45s ease-out',
-          zIndex: 1,
-        }}
-      />
-      <div
-        className="abs"
-        style={{
-          left: dot / 2 - 10 * scale,
-          top: dot / 2 - capH / 2,
-          height: capH,
-          width: open ? wd - capW / 2 : 0,
-          transition: 'width 0.45s ease-out',
-          overflow: 'hidden',
-          zIndex: 6,
-        }}
-      >
-        <div className="title-text" style={{ position: 'absolute', left: 0, top: 2, fontSize, lineHeight: `${capH}px` }}>
-          {text}
-        </div>
+    <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 30 }}>
+      {/* black background bar with a rounded right end */}
+      <div className="abs" style={{ left: praet ? 0 : x + 24 * s, top: y - 15 * s, width: Math.max(0, (praet ? x : 0) + acwd - 31 * s + 16 * s), height: 30 * s, background: '#000', borderRadius: `0 ${12 * s}px ${12 * s}px 0` }} />
+      <Sprite src={ui(`${dir}/titlebar_frame_horiz`, skin)} x={x + 23.5 * s} y={y - 19 * s} w={Math.max(0, acwd - 45 * s)} h={4 * s} z={2} />
+      <Sprite src={ui(`${dir}/titlebar_frame_horiz`, skin)} x={x + 23.5 * s} y={y + 15 * s} w={Math.max(0, acwd - 45 * s)} h={4 * s} z={2} />
+      <Sprite src={ui(`${dir}/titlebar_frame_cap_r`, skin)} x={x + acwd - 22 * s} y={y - 19 * s} w={22 * s} h={38 * s} z={3} />
+      {!praet ? (
+        <>
+          <Sprite src={ui(`${dir}/titlebar_dot_glow`, skin)} x={x - (1.25 * 47 * s - 47 * s) / 2} y={y - (1.25 * 47 * s) / 2} w={1.25 * 47 * s} h={1.25 * 47 * s} z={3} tint="rgba(255,255,255,0.53)" style={{ animation: 'dotpulse 2.09s ease-in-out infinite' }} />
+          <Sprite src={ui(`${dir}/titlebar_dot`, skin)} x={x} y={y - 23 * s} w={47 * s} h={47 * s} z={4} />
+        </>
+      ) : null}
+      {/* text clipped to (x + 13.5s, acwd - 72s) while the bar animates open */}
+      <div className="abs" style={{ left: x + 13.5 * s, top: y - 40 * s, width: acwd < wd ? Math.max(0, acwd - 72 * s) : strwd + 40, height: 80 * s, overflow: 'hidden', zIndex: 6 }}>
+        <GameText font="title_18" scale={TITLE_SCALE * s} x={0} y={40 * s + 13.5 * s} colors={colors} text={text} />
       </div>
-      <Sprite src={ui(`${dir}/${p}titlebar_frame_horiz`)} x={dot / 2} y={dot / 2 - capH / 2} w={open ? wd - capW : 0} h={4 * scale} z={2} style={{ transition: 'width 0.45s ease-out' }} />
-      <Sprite src={ui(`${dir}/${p}titlebar_frame_horiz`)} x={dot / 2} y={dot / 2 + capH / 2 - 4 * scale} w={open ? wd - capW : 0} h={4 * scale} z={2} style={{ transition: 'width 0.45s ease-out' }} />
-      <Sprite src={ui(`${dir}/${p}titlebar_frame_cap_r`)} x={dot / 2 + (open ? wd - capW : 0)} y={dot / 2 - capH / 2} w={capW} h={capH} z={3} style={{ transition: 'left 0.45s ease-out' }} />
-      <Sprite src={ui(`${dir}/${p}titlebar_dot_glow`)} x={-dot * 0.25} y={-dot * 0.25} w={dot * 1.5} h={dot * 1.5} z={3} tint="rgba(255,255,255,0.53)" style={{ animation: 'dotpulse 2.5s ease-in-out infinite' }} />
-      <Sprite src={ui(`${dir}/${p}titlebar_dot`)} x={0} y={0} w={dot} h={dot} z={4} />
     </div>
   );
 }
 
-/** Outer frame + translucent black panel (drawMenuFrame). */
-export function MenuFrame({ x, y, w, h, r25, outer, children, style }: { x: number; y: number; w: number; h: number; r25?: boolean; outer?: boolean; children?: ReactNode; style?: CSSProperties }) {
+/**
+ * drawMenuFrame: 16px corner pieces and 4px pipes, which the client never upscales, over a
+ * 0x00000088 fill. Hero frames use the blue textures; villain/Praetorian use their V_/P_ sets.
+ */
+export function MenuFrame({ x, y, w, h, r25, outer, children, style, skin }: { x: number; y: number; w: number; h: number; r25?: boolean; outer?: boolean; children?: ReactNode; style?: CSSProperties; skin?: Skin }) {
+  const c = r25 ? 29 : 16;
+  const dir = 'creation/common/frame/frame_blue_4px';
+  const r = r25 ? '25r' : '12r';
+  const bg = outer ? 'transparent' : 'rgba(0,0,0,0.533)';
   return (
-    <div className={`menu-frame${r25 ? ' r25' : ''}${outer ? ' outer' : ''}`} style={{ left: x, top: y, width: w, height: h, ...style }}>
+    <div className="abs" style={{ left: x, top: y, width: w, height: h, ...style, background: undefined, border: undefined }}>
+      <div className="abs" style={{ left: 2, top: 2, right: 2, bottom: 2, background: style?.background ?? bg, borderRadius: c / 2 }} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_${r}_ul`, skin)} x={0} y={0} w={c} h={c} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_${r}_ur`, skin)} x={w - c} y={0} w={c} h={c} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_${r}_ll`, skin)} x={0} y={h - c} w={c} h={c} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_${r}_lr`, skin)} x={w - c} y={h - c} w={c} h={c} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_horiz`, skin)} x={c} y={0} w={Math.max(0, w - 2 * c)} h={4} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_horiz`, skin)} x={c} y={h - 4} w={Math.max(0, w - 2 * c)} h={4} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_vert`, skin)} x={0} y={c} w={4} h={Math.max(0, h - 2 * c)} />
+      <Sprite src={ui(`${dir}/frame_blue_4px_vert`, skin)} x={w - 4} y={c} w={4} h={Math.max(0, h - 2 * c)} />
       {children}
     </div>
   );
 }
 
-/** Cancel / Back / Finish buttons (drawNextButton). */
-export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, scale = 0.95 }: { skin: Skin; dir: 'left' | 'right'; text: string; locked?: boolean; glow?: boolean; onClick?: () => void; y?: number; scale?: number }) {
+/**
+ * drawNextButton: 64x64 arrow, 216x36 fade tail and 64x36 after-image at scale s, label in
+ * game_12 x 1.5 (Montreal-DemiBold, outlined) at x + 37s (left) or right-aligned to x - 32s,
+ * baseline y + 7s. Called at (40*sx, 740*sy) and (980*sx, 740*sy).
+ */
+export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, scale: scaleIn }: { skin: Skin; dir: 'left' | 'right'; text: string; locked?: boolean; glow?: boolean; onClick?: () => void; y?: number; scale?: number }) {
+  useFontsReady();
   const [hover, setHover] = useState(false);
   const stage = useStage();
-  const y = yIn ?? (stage.phone ? PHONE_NEXT_Y : 1083);
+  const s = scaleIn ?? S;
+  const y = yIn ?? (stage.phone ? PHONE_NEXT_Y : vy(740));
+  const x = dir === 'left' ? (stage.phone ? 60 : vx(40)) : stage.phone ? stage.w - 60 : vx(980);
   const d = dir === 'left' ? 'l' : 'r';
   const l = locked ? 'locked_' : '';
-  const p = skin.prefix;
   const nb = 'creation/common/nextbuttons';
-  const arrow = 64 * scale;
-  const tailW = 216 * scale;
-  const tailH = 36 * scale;
-  const x = dir === 'left' ? 78 : stage.w - 88;
   const lit = hover && !locked;
-  const textColors = locked ? ['#fff', '#aaa'] : lit ? ['#fff', skin.name === 'villain' ? '#ff4444' : '#8888ff'] : [skin.title[0], skin.title[1]];
-  const fontSize = 26;
+  const praet = skin.name === 'praetorian';
+  const colors: [string, string] = locked
+    ? ['#ffffff', '#aaaaaa']
+    : lit
+      ? ['#ffffff', skin.name === 'villain' ? '#ff4444' : praet ? '#ffffff' : '#8888ff']
+      : praet
+        ? ['#e6daa4', '#e6daa4']
+        : ['#ffff00', '#ffa500'];
+  const ts = 1.5 * s;
+  const wdText = textWidth(FONTS.game_12, FONTS.game_12.size * ts, text);
+  const arrowSc = lit ? 1.1 * s : s;
+  const arrow = 64 * arrowSc;
+  const boxL = dir === 'left' ? x - 32 * s : x - 216 * s;
+  const glowTint = skin.name === 'hero' ? 'rgba(122,255,116,0.67)' : 'rgba(255,255,122,0.67)';
   return (
     <div
       className="abs"
-      style={{ left: dir === 'left' ? x - arrow / 2 : x - tailW - 200, top: y - arrow / 2, width: tailW + arrow / 2 + 200, height: arrow, cursor: locked ? 'default' : 'pointer', zIndex: 20 }}
+      style={{ left: boxL, top: y - 32 * s, width: 248 * s, height: 64 * s, cursor: locked ? 'default' : 'pointer', zIndex: 20 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={
@@ -116,40 +131,129 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
             }
       }
     >
-      <div className="abs" style={{ left: dir === 'left' ? arrow / 2 : tailW + 200, top: arrow / 2, width: 0, height: 0 }}>
+      <div className="abs" style={{ left: -boxL, top: -(y - 32 * s), width: 0, height: 0 }}>
         {dir === 'left' ? (
           <>
-            <Sprite src={ui(`${nb}/${p}next_${l}fade_tail_l`)} x={0} y={-tailH / 2} w={tailW} h={tailH} z={0} />
-            <Sprite src={ui(`${nb}/${p}next_${l}fade_afterimage_l`)} x={0} y={-tailH / 2} w={64 * scale} h={tailH} z={1} />
-            <Sprite src={ui(`${nb}/${p}next_${lit ? '' : l}button_${d}${lit ? '_glow' : ''}`)} x={-arrow / 2} y={-arrow / 2} w={arrow} h={arrow} z={2} />
-            <div className="title-text" style={{ position: 'absolute', left: arrow / 2 + 5, top: -fontSize * 0.62, fontSize, fontFamily: 'MontrealHeavy, sans-serif', fontStyle: 'normal', backgroundImage: `linear-gradient(${textColors[0]}, ${textColors[1]})` }}>
-              {text}
-            </div>
+            <Sprite src={ui(`${nb}/next_${l}fade_tail_l`, skin)} x={x} y={y - 18 * s} w={216 * s} h={36 * s} z={0} />
+            <Sprite src={ui(`${nb}/next_${l}fade_afterimage_l`, skin)} x={x} y={y - 18 * s} w={64 * s} h={36 * s} z={1} />
           </>
         ) : (
           <>
-            <Sprite src={ui(`${nb}/${p}next_${l}fade_tail_r`)} x={-tailW} y={-tailH / 2} w={tailW} h={tailH} z={0} />
-            <Sprite src={ui(`${nb}/${p}next_${l}fade_afterimage_r`)} x={-64 * scale} y={-tailH / 2} w={64 * scale} h={tailH} z={1} />
-            <Sprite src={ui(`${nb}/${p}next_${lit ? '' : l}button_${d}${lit ? '_glow' : ''}`)} x={-arrow / 2} y={-arrow / 2} w={arrow} h={arrow} z={2} />
+            <Sprite src={ui(`${nb}/next_${l}fade_tail_r`, skin)} x={x - 216 * s} y={y - 18 * s} w={216 * s} h={36 * s} z={0} />
+            <Sprite src={ui(`${nb}/next_${l}fade_afterimage_r`, skin)} x={x - 64 * s} y={y - 18 * s} w={64 * s} h={36 * s} z={1} />
             {glow && !locked ? (
-              <div className="abs" style={{ right: arrow / 2 + 10, top: -28 * scale, height: 56 * scale, width: text.length * 17 + 40, borderRadius: 28, boxShadow: '0 0 18px 6px rgba(122,255,116,0.55)', animation: 'dotpulse 2.5s ease-in-out infinite', zIndex: 1 }} />
+              <>
+                <Sprite src={ui(`${nb}/next_glowkit_l`)} x={x - (wdText + (20 + 32) * s)} y={y - 28 * s} w={35 * s} h={56 * s} z={1} tint={glowTint} style={{ animation: 'dotpulse 2.09s ease-in-out infinite' }} />
+                <Sprite src={ui(`${nb}/next_glowkit_mid`)} x={x + 35 * s - (wdText + (20 + 32) * s)} y={y - 28 * s} w={Math.max(0, wdText - 20 * s)} h={56 * s} z={1} tint={glowTint} style={{ animation: 'dotpulse 2.09s ease-in-out infinite' }} />
+                <Sprite src={ui(`${nb}/next_glowkit_r`)} x={x + 35 * s - (32 + 40) * s} y={y - 28 * s} w={35 * s} h={56 * s} z={1} tint={glowTint} style={{ animation: 'dotpulse 2.09s ease-in-out infinite' }} />
+              </>
             ) : null}
-            <div className="title-text" style={{ position: 'absolute', right: arrow / 2 + 5, top: -fontSize * 0.62, fontSize, fontFamily: 'MontrealHeavy, sans-serif', fontStyle: 'normal', backgroundImage: `linear-gradient(${textColors[0]}, ${textColors[1]})` }}>
-              {text}
-            </div>
           </>
+        )}
+        <Sprite src={ui(`${nb}/next_${lit ? '' : l}button_${d}${lit ? '_glow' : ''}`, skin)} x={x - arrow / 2} y={y - arrow / 2} w={arrow} h={arrow} z={2} />
+        {dir === 'left' ? (
+          <GameText font="game_12" scale={ts} x={x + 37 * s} y={y + 7 * s} colors={colors} text={text} z={3} />
+        ) : (
+          <GameText font="game_12" scale={ts} x={x - 32 * s} y={y + 7 * s} align="right" colors={colors} text={text} z={3} />
         )}
       </div>
     </div>
   );
 }
 
-/** "Show Detailed Info Here" style pill button. */
-export function InfoButton({ x, y, text, onClick, disabled }: { x: number; y: number; text: string; onClick?: () => void; disabled?: boolean }) {
+/**
+ * drawMenuBar: the full-width rounded bar at the top of the pool column ("Choose from new pool
+ * power set"), skin base color (selected = green), game_12 x 1.1 white text centered at y + 6s.
+ */
+export function MenuBar({ skin, x, y, w, h, text, selected, onClick }: { skin: Skin; x: number; y: number; w: number; h: number; text: string; selected?: boolean; onClick?: () => void }) {
+  useFontsReady();
+  const [hover, setHover] = useState(false);
+  const c = selected ? skin.selected : skin.standard;
   return (
-    <button className="info-button" style={{ left: x, top: y, transform: 'translate(-50%, -50%)' }} onClick={onClick} disabled={disabled}>
-      {text}
-    </button>
+    <div
+      className="abs"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={() => {
+        play('powerselect2');
+        onClick?.();
+      }}
+      style={{
+        left: x,
+        top: y,
+        width: w,
+        height: h,
+        borderRadius: h / 2,
+        cursor: 'pointer',
+        border: `2px solid ${c.frame}`,
+        background: `linear-gradient(to bottom, rgba(255,255,255,0.45), ${c.base} 45%, ${c.base} 75%, rgba(0,0,0,0.35))`,
+        filter: hover ? 'brightness(1.25)' : undefined,
+        zIndex: 12,
+      }}
+    >
+      <GameText font="game_12" scale={1.1 * S} x={w / 2} y={h / 2 + 6 * S - 2} align="center" colors={['#ffffff', '#ffffff']} text={text} />
+    </div>
+  );
+}
+
+/** CLR_BTN_HERO / VILLAIN / ROGUE after drawStdButton's brightenColor(-20). */
+function stdButtonColor(skin?: Skin): [number, number, number] {
+  if (skin?.name === 'villain') return [0xeb, 0x0e, 0x0e];
+  if (skin?.name === 'praetorian') return [0x3a, 0x3a, 0x3a];
+  return [0x16, 0x63, 0xeb];
+}
+
+/**
+ * drawStdButton (uiUtil.c:134): GenericButton L/MID/R pieces (24x46 caps, dropshadow, shadow and
+ * meat tinted by the skin color, white highlight) scaled to ht/46, centered on (x, y), with
+ * game_12 text at s centered in white at 75% (100% on hover, 27% locked; shrunk to fit wd - 5).
+ * Defaults are the level screens' 120x30 virtual buttons.
+ */
+export function InfoButton({ x, y, text, onClick, disabled, skin, w = vx(120), h = vy(30) }: { x: number; y: number; text: string; onClick?: () => void; disabled?: boolean; skin?: Skin; w?: number; h?: number }) {
+  useFontsReady();
+  const [hover, setHover] = useState(false);
+  const [down, setDown] = useState(false);
+  const lit = hover && !disabled;
+  const press = lit && down ? 0.95 : 1;
+  const ht = Math.min(h, 46 * SY) * press;
+  const sc = ht / 46;
+  const wd = Math.max(w * press, 48 * sc);
+  const [r, g, b] = stdButtonColor(skin);
+  const a = disabled ? 0x88 / 255 : lit ? 0xdf / 255 : 1;
+  const color = `rgba(${r},${g},${b},${a})`;
+  const drop = disabled ? 'rgba(0,0,0,0.533)' : lit ? 'rgba(255,255,255,1)' : 'rgba(0,0,0,1)';
+  const textA = disabled ? 0x44 / 255 : lit ? 1 : 0xbf / 255;
+  const ts = Math.min(S, textWidth(FONTS.game_12, FONTS.game_12.size * S, text) > w - 5 ? (S * (w - 5)) / textWidth(FONTS.game_12, FONTS.game_12.size * S, text) : S) * press;
+  const px = FONTS.game_12.size * ts;
+  const dir = 'hud/common/select_buttons/genericbutton';
+  const st = lit && down ? 'press' : 'rest';
+  const piece = (side: 'l' | 'mid' | 'r', px0: number, pw: number) => (
+    <>
+      <Sprite src={ui(`${dir}_${st}_${side}_dropshadow`, skin)} x={px0} y={0} w={pw} h={ht} z={0} tint={drop} />
+      <Sprite src={ui(`${dir}_${st}_${side}_meat`, skin)} x={px0} y={0} w={pw} h={ht} z={1} tint={color} />
+      <Sprite src={ui(`${dir}_${st}_${side}_shadow`, skin)} x={px0} y={0} w={pw} h={ht} z={2} tint={color} />
+      <Sprite src={ui(`${dir}_${st}_${side}_highlight`, skin)} x={px0} y={0} w={pw} h={ht} z={2} />
+    </>
+  );
+  const cap = 24 * sc;
+  return (
+    <div
+      className="abs"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => {
+        setHover(false);
+        setDown(false);
+      }}
+      onMouseDown={() => setDown(true)}
+      onMouseUp={() => setDown(false)}
+      onClick={disabled ? undefined : onClick}
+      style={{ left: x - wd / 2, top: y - ht / 2, width: wd, height: ht, cursor: disabled ? 'default' : 'pointer', zIndex: 12 }}
+    >
+      {piece('l', 0, cap)}
+      {piece('mid', cap, Math.max(0, wd - 2 * cap))}
+      {piece('r', wd - cap, cap)}
+      <GameText font="game_12" scale={ts} x={wd / 2} y={ht / 2 + (px * FONTS.game_12.cap) / 2} align="center" colors={[`rgba(255,255,255,${textA})`, `rgba(255,255,255,${textA})`]} text={text} z={3} />
+    </div>
   );
 }
 
@@ -165,37 +269,92 @@ export function gameText(s: string | undefined): string {
     .replace(/&gt;/g, '>');
 }
 
-/** Bottom description box with the round icon frame (power/AT description in green). */
-export function DescBox(props: { x?: number; y?: number; w?: number; h?: number; iconSrc?: string; text?: string }) {
+/**
+ * The bottom help frame (85, 600, 865x90 virtual) with powers_description_iconring (72x72 at s)
+ * centered at (85, 645) and the description as SMF game_12 text (no outline) at (125, 615),
+ * line height round(1.255 x px). `color` is 48ff48 on the level-up screen, 00ff00 on the pool
+ * picker (which also draws it at 1.05s).
+ */
+export function DescBox(props: { x?: number; y?: number; w?: number; h?: number; iconSrc?: string; text?: string; color?: string; textScale?: number; skin?: Skin }) {
   const stage = useStage();
-  const d = stage.phone ? PHONE_DESC : { x: 168, y: 880, w: 1687, h: 128 };
-  const { x = d.x, y = d.y, w = d.w, h = d.h, iconSrc, text } = props;
+  const d = stage.phone ? PHONE_DESC : { x: vx(85), y: vy(600), w: vx(865), h: vy(90) };
+  const { x = d.x, y = d.y, w = d.w, h = d.h, iconSrc, text, textScale = 1, skin } = props;
+  const color = props.color ?? skin?.desc ?? '#48ff48';
+  const px = FONTS.smf_12.size * S * textScale;
+  const ring = 72 * S;
   return (
     <>
-      <MenuFrame x={x} y={y} w={w} h={h} style={{ borderWidth: 2 }} />
-      <div className="abs" style={{ left: x - 52, top: y + h / 2 - 50, width: 100, height: 100, borderRadius: 50, border: '4px solid #2f6bff', background: '#000d33', boxShadow: '0 0 8px #2f6bff', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
-        <div style={{ width: 76, height: 76, borderRadius: 38, border: '3px solid #2f6bff', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {iconSrc ? <img src={iconSrc} width={56} height={56} alt="" /> : null}
-        </div>
-      </div>
-      <div className="abs desc-text scroll-y" style={{ left: x + 75, top: y + 18, width: w - 100, height: h - 26, whiteSpace: 'pre-line' }}>
+      <MenuFrame x={x} y={y} w={w} h={h} skin={skin} />
+      <Sprite src={ui(`creation/powers/powers_description_iconring`, skin)} x={x - ring / 2} y={y + h / 2 - ring / 2} w={ring} h={ring} z={3} />
+      {iconSrc ? <Sprite src={iconSrc} x={x - 16 * S} y={y + h / 2 - 16 * S} w={32 * S} h={32 * S} z={4} /> : null}
+      <div
+        className="abs scroll-y"
+        style={{
+          left: stage.phone ? x + 60 : vx(125),
+          top: stage.phone ? y + 15 : vy(615) - px * 0.15,
+          width: stage.phone ? w - 75 : vx(815),
+          height: stage.phone ? h - 25 : y + h - vy(615),
+          color,
+          fontFamily: "'Montreal'",
+          fontSize: px,
+          lineHeight: `${Math.round(1.255 * px)}px`,
+          whiteSpace: 'pre-line',
+        }}
+      >
         {gameText(text)}
       </div>
     </>
   );
 }
 
-/** Section heading inside a panel (yellow italic). */
-export function SetTitle({ x, y, text, center, width, size = 30 }: { x: number; y: number; text: string; center?: boolean; width?: number; size?: number }) {
+/**
+ * Yellow set heading (setHeadingFontFromSkin: title_12, CLR_YELLOW -> CLR_ORANGE).
+ * `size` is the em in stage px (the level-up screens use 1.2s, i.e. 14.4 x S); `y` is the
+ * TOP of the text box for layout convenience, `center` centers within `width`.
+ */
+export function SetTitle({ x, y, text, center, width, size = 12 * 1.2 * S, skin }: { x: number; y: number; text: string; center?: boolean; width?: number; size?: number; skin?: Skin }) {
+  useFontsReady();
+  const scale = size / FONTS.title_12.size;
   return (
-    <div className="title-text abs" style={{ left: x, top: y, fontSize: size, textTransform: 'uppercase', width, textAlign: center ? 'center' : 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-      {text}
+    <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0 }}>
+      <GameText
+        font="title_12"
+        scale={scale}
+        x={center && width ? x + width / 2 : x}
+        y={y + size * 0.9}
+        align={center ? 'center' : 'left'}
+        colors={skin?.heading ?? ['#ffff00', '#ffa500']}
+        text={text}
+      />
     </div>
   );
 }
 
+/**
+ * drawFrame(PIX2, R6, ...) -- the small inner frame around a set's bars (uiPowers.c / uiLevelSpec.c):
+ * a 2px 0xffffffaa border with radius 6 over PSET_FRAME_CLR (0000ff44 / ff000044 / 00000066).
+ * The border measures dark grey on the user's screenshots, so it is drawn with those colors.
+ */
+export function SetFrame({ x, y, w, h, skin }: { x: number; y: number; w: number; h: number; skin: Skin }) {
+  const fill = skin.name === 'villain' ? 'rgba(255,0,0,0.153)' : skin.name === 'praetorian' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,255,0.153)';
+  return <div className="abs" style={{ left: x, top: y, width: w, height: Math.max(0, h), border: `${2 * S}px solid #3a3a3e`, borderTopColor: '#4d4d50', borderRadius: 6 * S, background: fill, boxSizing: 'border-box' }} />;
+}
+
+/** "Slots Available: N": game_12 at s in red (slots left) or green (done), centered in a flat frame. */
+export function SlotsAvailable({ n, x = vx(412), y = vy(695), w = vx(200), h = vy(30) }: { n: number; x?: number; y?: number; w?: number; h?: number }) {
+  useFontsReady();
+  const color = n > 0 ? '#ff0000' : '#00ff00';
+  const px = FONTS.game_12.size * S;
+  return (
+    <>
+      <div className="abs" style={{ left: x, top: y, width: w, height: h, border: `3px solid ${color}`, borderRadius: 10, background: '#000' }} />
+      <GameText font="game_12" scale={S} x={x + w / 2} y={y + h / 2 + (px * 0.721) / 2} align="center" colors={[color, color]} text={`Slots Available: ${Math.max(0, n)}`} z={2} />
+    </>
+  );
+}
+
 /** An enhancement slot ring, empty or holding an enhancement icon (half-scale tray ring). */
-export function SlotRing({ x, y, size = 50, enhIcon, frames, pending, onClick, title }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pending?: boolean; onClick?: () => void; title?: string }) {
+export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pending, onClick, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pending?: boolean; onClick?: () => void; title?: string; skin?: Skin }) {
   return (
     <div
       className="abs"
@@ -203,7 +362,7 @@ export function SlotRing({ x, y, size = 50, enhIcon, frames, pending, onClick, t
       onClick={onClick}
       style={{ left: x - size / 2, top: y - size / 2, width: size, height: size, cursor: onClick ? 'pointer' : 'default', zIndex: 8, animation: pending ? 'slotflash 0.6s ease-out' : undefined }}
     >
-      <Sprite src={ui('creation/enhancements/enhnctray_ringhole')} x={size * 0.04} y={size * 0.04} w={size * 0.92} h={size * 0.92} z={0} />
+      <Sprite src={ui('creation/enhancements/enhnctray_ringhole', skin)} x={size * 0.04} y={size * 0.04} w={size * 0.92} h={size * 0.92} z={0} />
       {enhIcon ? (
         <>
           <Sprite src={enhIcon} x={size * (0.5 - 23 / 64)} y={size * (0.5 - 23 / 64)} w={(size * 46) / 64} h={(size * 46) / 64} z={1} />
@@ -215,7 +374,7 @@ export function SlotRing({ x, y, size = 50, enhIcon, frames, pending, onClick, t
           ) : null}
         </>
       ) : null}
-      <Sprite src={ui(pending ? 'creation/enhancements/enhnctray_ring_highlight' : 'creation/enhancements/enhnctray_ring')} x={0} y={0} w={size} h={size} z={3} />
+      <Sprite src={ui(pending ? 'creation/enhancements/enhnctray_ring_highlight' : 'creation/enhancements/enhnctray_ring', skin)} x={0} y={0} w={size} h={size} z={3} />
     </div>
   );
 }

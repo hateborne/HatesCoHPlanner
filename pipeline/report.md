@@ -1,6 +1,6 @@
 # Pipeline report -- data 20261017-f94d0e09
 
-Generated 2026-11-08T19:47:57.
+Generated 2026-11-08T20:26:05.
 
 ## Decode health
 
@@ -49,7 +49,7 @@ PvP-only effects dropped: 4113. Unresolved references: 0. New IDs: {'power': 0, 
 
 ## Assets
 
-powers: 1726, enh: 368, at: 15, origin: 5, ui: 270, fonts: 4, sounds: 9
+powers: 1726, enh: 368, at: 15, origin: 5, ui: 289, fonts: 4, sounds: 9
 
 - Missing powers (4): RadiationMelee_AssassinStrike, Spring_Attack_Spring_Attack_pow, Staff_Mastery, UtilityBelt_EnvenomedBarrage
 

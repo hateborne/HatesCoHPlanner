@@ -1,22 +1,46 @@
 import type { ReactElement } from 'react';
 import type { Power } from '../../data/types.ts';
 import type { PowerOption, SetOption } from '../../engine/rules.ts';
+import { S, vx, vy } from '../skin/metrics.ts';
 import type { Skin } from '../skin/skin.ts';
 import { CheckBar, type BarState } from './CheckBar.tsx';
+import { GameScroll } from './GameScroll.tsx';
+import { GameText } from './GameText.tsx';
 
-export const ROW = 73.3;
+/** uiLevelPower.c layout (virtual units): POW_SPACER 50, first bar 35 below the heading. */
+export const POW_SPACER = 50;
 
-interface PowerColumnProps {
-  skin: Skin;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  sets: SetOption[];
-  pending?: number;
-  onPick?: (p: Power) => void;
-  onHover?: (p: Power | null) => void;
-  titleSize?: number;
+/** Geometry of one power column in stage px (see desktopColumn / phone callers). */
+export interface ColumnGeom {
+  left: number; // scroll viewport
+  top: number;
+  width: number;
+  height: number;
+  barX: number; // scrollbar anchor (the client's xp*sx)
+  headX: number; // heading x, relative to `left`
+  barCX: number; // check-box center x of the bars, relative to `left`
+  barW: number; // bar width
+  firstHead: number; // first heading baseline, relative to `top`
+}
+
+/**
+ * Desktop column i (0 primary, 1 secondary, 2 pools): frames at x 16 + 336i (320 wide),
+ * headings at 26 + 336i, bars at 56 + 336i (240*sx wide), clip/scroll region y 99..585,
+ * scrollbar on the frame's right edge (xp 336/672/1008), first heading baseline at y 130.
+ */
+export function desktopColumn(i: number, extraTop = 0): ColumnGeom {
+  const frame = vx(16 + 336 * i);
+  return {
+    left: frame,
+    top: vy(99) + extraTop,
+    width: vx(320),
+    height: vy(486) - extraTop,
+    barX: vx(336 + 336 * i),
+    headX: vx(26 + 336 * i) - frame,
+    barCX: vx(56 + 336 * i) - frame,
+    barW: vx(240),
+    firstHead: vy(130 - 99),
+  };
 }
 
 /** State of a pill on the power-pick screens (owned = grey with check, chosen = green). */
@@ -27,29 +51,32 @@ export function barState(o: PowerOption, pending?: number): { state: BarState; d
   return { state: 'standard', down: false };
 }
 
-/**
- * One panel column on the Choose a New Power screen: each set's yellow italic title followed by
- * its powers as check bars, scrolling when the sets don't fit.
- */
-export function PowerColumn({ skin, x, y, w, h, sets, pending, onPick, onHover, titleSize = 30 }: PowerColumnProps) {
-  let cy = 0;
+interface PowerColumnProps {
+  skin: Skin;
+  g: ColumnGeom;
+  sets: SetOption[];
+  pending?: number;
+  onPick?: (p: Power) => void;
+  onHover?: (p: Power | null) => void;
+}
+
+/** One column of the Choose a New Power screen: yellow set headings and their check bars. */
+export function PowerColumn({ skin, g, sets, pending, onPick, onHover }: PowerColumnProps) {
   const items: ReactElement[] = [];
+  let head = g.firstHead;
+  let bottom = 0; // content height: last bar's lower edge (9 bars end at 485 of the 486 view)
   for (const s of sets) {
-    items.push(
-      <div key={`t${s.set.id}`} className="title-text abs" style={{ left: 20, top: cy + 55, fontSize: titleSize, textTransform: 'uppercase', maxWidth: w - 40, overflow: 'hidden' }}>
-        {s.set.dn}
-      </div>,
-    );
-    cy += 138;
+    items.push(<GameText key={`t${s.set.id}`} font="title_12" scale={1.2 * S} x={g.headX} y={head} colors={skin.heading} text={s.set.dn} />);
+    let y = head + vy(35);
     for (const o of s.powers) {
       const { state, down } = barState(o, pending);
       items.push(
         <CheckBar
           key={`p${o.power.id}`}
           skin={skin}
-          x={76}
-          y={cy}
-          wd={w - 120}
+          x={g.barCX}
+          y={y}
+          wd={g.barW}
           text={o.power.dn}
           state={state}
           down={down}
@@ -58,13 +85,14 @@ export function PowerColumn({ skin, x, y, w, h, sets, pending, onPick, onHover, 
           onHover={(on) => onHover?.(on ? o.power : null)}
         />,
       );
-      cy += ROW;
+      bottom = y + 19 * S;
+      y += vy(POW_SPACER);
     }
-    cy += 10;
+    head = y + vy(15);
   }
   return (
-    <div className="abs scroll-y" style={{ left: x, top: y, width: w, height: h }}>
-      <div style={{ position: 'relative', height: cy, width: '100%' }}>{items}</div>
-    </div>
+    <GameScroll skin={skin} left={g.left} top={g.top} width={g.width} height={g.height} barX={g.barX}>
+      <div style={{ position: 'relative', height: Math.ceil(bottom), width: '100%' }}>{items}</div>
+    </GameScroll>
   );
 }

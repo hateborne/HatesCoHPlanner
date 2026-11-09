@@ -1,3 +1,5 @@
+import { SKIN_VARIANTS } from './skinVariants.ts';
+
 /**
  * In-game UI skins. Colors are the client's own (Game/src/UI/uiUtil.h + setupUIColors in
  * uiUtilMenu.c), stored as CSS rgba() strings. Texture variants use the V_ / P_ prefixes the
@@ -23,6 +25,10 @@ export interface Skin {
   selected: ElemColors;
   unselectable: ElemColors;
   title: [string, string]; // heading gradient (top, bottom)
+  heading: [string, string]; // set headings: setHeadingFontFromSkin(1) (uiUtilMenu.c)
+  desc: string; // level-up description text (uiLevelPower.c gTextAttr)
+  poolDesc: string; // pool picker description text (uiPowers.c gSmallTextAttr)
+  poolHeader: string; // drawMenuHeader bottom color ("POOL POWERS")
   menuBorder: string;
 }
 
@@ -71,6 +77,10 @@ export const SKINS: Record<SkinName, Skin> = {
     },
     unselectable: grey,
     title: ['#ffff00', '#ffa500'],
+    heading: ['#ffff00', '#ffa500'],
+    desc: '#48ff48',
+    poolDesc: '#00ff00',
+    poolHeader: '#88b6ff',
     menuBorder: rgba(0x4f94ffff),
   },
   villain: {
@@ -94,6 +104,10 @@ export const SKINS: Record<SkinName, Skin> = {
     },
     unselectable: grey,
     title: ['#ffff00', '#ffa500'],
+    heading: ['#ffff00', '#ffa500'],
+    desc: '#48ff48',
+    poolDesc: '#ff8800',
+    poolHeader: '#aaaaaa',
     menuBorder: rgba(0xff944fff),
   },
   praetorian: {
@@ -117,6 +131,10 @@ export const SKINS: Record<SkinName, Skin> = {
     },
     unselectable: { ...grey, text2: rgba(0x8fa1b8ff) },
     title: ['#ffffff', '#c8c8c8'],
+    heading: ['#ffffff', '#ffffff'],
+    desc: '#e8cc4c',
+    poolDesc: '#e8cc4c',
+    poolHeader: '#ffffff',
     menuBorder: rgba(CLR_GREY),
   },
 };
@@ -126,19 +144,25 @@ export const CLR_CBLOW = rgba(0x00000093);
 export const CLR_CRDS = rgba(0x000000bf);
 export const CLR_DESC = rgba(0x48ff48ff);
 
-/** URL of an exported UI texture, e.g. ui('creation/common/checkbar/checkbar_meat_base_mid'). */
-export function ui(path: string): string {
-  const big = path.includes('/backgrounds/');
-  return `${import.meta.env.BASE_URL}assets/ui/${path.toLowerCase()}.${big ? 'webp' : 'png'}`;
-}
-
-/** Skin-specific texture when the client ships one (V_/P_ prefix on the file name), else the base. */
-export function skinned(skin: Skin, dir: string, file: string, available: Set<string>): string {
-  if (skin.prefix) {
-    const alt = `${dir}/${skin.prefix}${file}`.toLowerCase();
-    if (available.has(alt)) return ui(alt);
+/**
+ * URL of an exported UI texture, e.g. ui('creation/common/checkbar/checkbar_meat_base_mid', skin).
+ *
+ * With a villain or Praetorian skin this ports addAtlasTex (textureatlas.c): the "v_" / "p_" +
+ * file name variant is used whenever the client ships one, else the plain texture.
+ *
+ * @param path Texture path under gui/, without extension.
+ * @param skin The current skin; omit for skin-independent textures.
+ * @return The asset URL.
+ */
+export function ui(path: string, skin?: Skin): string {
+  let p = path.toLowerCase();
+  if (skin?.prefix) {
+    const i = p.lastIndexOf('/');
+    const alt = `${p.slice(0, i + 1)}${skin.prefix}${p.slice(i + 1)}`;
+    if (SKIN_VARIANTS.has(alt)) p = alt;
   }
-  return ui(`${dir}/${file}`);
+  const big = p.includes('/backgrounds/');
+  return `${import.meta.env.BASE_URL}assets/ui/${p}.${big ? 'webp' : 'png'}`;
 }
 
 /** URL of an icon: kind = powers | enh | at | origin. */

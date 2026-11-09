@@ -4,7 +4,10 @@ import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { computeTotals, defaultOn } from '../../engine/totals.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { MenuFrame, NextButton, SlotRing, TitleBar } from '../components/Chrome.tsx';
+import { MenuFrame, NextButton, SetTitle, SlotRing, TitleBar } from '../components/Chrome.tsx';
+import { GameScroll } from '../components/GameScroll.tsx';
+import { GameText } from '../components/GameText.tsx';
+import { S, vx, vy } from '../skin/metrics.ts';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
@@ -50,9 +53,7 @@ export function Overview({ skin }: { skin: Skin }) {
       if (!col.kinds.includes(kind)) continue;
       if (ref && ref.set.id !== lastSet) {
         items.push(
-          <div key={`s${ref.set.id}`} className="title-text abs" style={{ left: 16, top: y + 6, fontSize: 22, textTransform: 'uppercase' }}>
-            {ref.set.dn}
-          </div>,
+          <SetTitle skin={skin} key={`s${ref.set.id}`} x={16} y={y + 6} text={ref.set.dn.toUpperCase()} size={22} />,
         );
         y += 44;
         lastSet = ref.set.id;
@@ -98,6 +99,7 @@ export function Overview({ skin }: { skin: Skin }) {
         const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
         items.push(
           <SlotRing
+            skin={skin}
             key={`${e.key}:${i}`}
             x={110 + i * RING_STEP}
             y={py + 38}
@@ -112,9 +114,9 @@ export function Overview({ skin }: { skin: Skin }) {
       y += e.slots.length ? ROW : 58;
     }
     return (
-      <div key={col.x} className="abs scroll-y" style={{ left: col.x + 2, top: top + 6, width: col.w - 4, height: height - 12 }}>
+      <GameScroll key={col.x} skin={skin} left={col.x + 2} top={top + 18} width={col.w - 4} height={height - 36} barX={col.x + col.w}>
         <div style={{ position: 'relative', height: y + 30 }}>{items}</div>
-      </div>
+      </GameScroll>
     );
   };
 
@@ -156,17 +158,15 @@ export function Overview({ skin }: { skin: Skin }) {
     return (
       <>
         <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
-        <div className="title-text abs" style={{ right: 24, top: 90, fontSize: 28 }}>
-          {gd.archetype(build.at).dn.toUpperCase()}
-        </div>
+        <GameText font="title_14" scale={S} x={980} y={118} align="right" colors={skin.heading} text={gd.archetype(build.at).dn.toUpperCase()} />
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} />
-        <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h - 150} />
+        <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h - 150} skin={skin} />
         {tab < 3 ? (
           column({ x: P.x, w: P.w, kinds: COLS[tab]!.kinds }, P.y, P.h - 150)
         ) : (
-          <div className="abs scroll-y" style={{ left: P.x + 20, top: P.y + 10, width: P.w - 40, height: P.h - 170, fontSize: 30 }}>
+          <GameScroll skin={skin} left={P.x + 20} top={P.y + 18} width={P.w - 40} height={P.h - 186} barX={P.x + P.w}>
             <TotalsPanel gd={gd} t={totals} width={P.w - 60} />
-          </div>
+          </GameScroll>
         )}
         {levelStrip(30, P.y + P.h - 130, 25, 34)}
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
@@ -179,20 +179,18 @@ export function Overview({ skin }: { skin: Skin }) {
   return (
     <>
       <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
-      <div className="title-text abs" style={{ right: 50, top: 22, fontSize: 30 }}>
-        {gd.archetype(build.at).dn.toUpperCase()}
-      </div>
-      <MenuFrame x={32} y={58} w={1937} h={988} r25 outer />
+      <GameText font="title_14" scale={S} x={vx(1010)} y={vy(38)} align="right" colors={skin.heading} text={gd.archetype(build.at).dn.toUpperCase()} />
+      <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
       {/* level strip: reopen any level's in-game screen */}
       {levelStrip(50, 92, 50, 34)}
       {COLS.map((c) => (
-        <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} />
+        <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} skin={skin} />
       ))}
       {COLS.map((c) => column(c))}
-      <MenuFrame x={1503} y={TOP} w={464} h={H} />
-      <div className="abs scroll-y" style={{ left: 1515, top: TOP + 8, width: 444, height: H - 16 }}>
+      <MenuFrame x={1503} y={TOP} w={464} h={H} skin={skin} />
+      <GameScroll skin={skin} left={1515} top={TOP + 18} width={444} height={H - 36} barX={1503 + 464}>
         <TotalsPanel gd={gd} t={totals} width={420} />
-      </div>
+      </GameScroll>
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker_}
