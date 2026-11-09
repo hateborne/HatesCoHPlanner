@@ -16,7 +16,7 @@ from pipeline.coh import p7reader as P
 from pipeline.coh.messages import decode_messages
 from pipeline.label.attribs import all_attributes
 
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 
 
 @dataclass
@@ -102,6 +102,8 @@ def decode_all(verbose=True) -> LiveData:
         "mod.ApplicationType": P.enum_of(am, "ApplicationType"),
         "mod.StackType": P.enum_of(am, "StackType"),
         "mod.CasterStackType": P.enum_of(am, "CasterStackType"),
+        "mod.Flags": P.enum_of(am, "Flags"),        # bit index -> name (2-word bit array)
+        "effect.Flags": P.enum_of(next(c for c in bp if c.name == "Effect").subtable, "Flags"),
     }
     if verbose:
         print("decoding powers.bin ...", flush=True)

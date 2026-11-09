@@ -162,9 +162,9 @@ class Exporter:
                          ("DelayedRequires", "dreq"), ("Suppress", "sup")):
             if a.get(src):
                 o[dst] = a[src]
-        fl = a.get("Flags") or []
-        if any(fl):
-            o["fl"] = fl
+        names = self.mod_flags(a.get("Flags") or [])
+        if names:
+            o["fl"] = names
         if a.get("BoostModAllowed"):
             o["bma"] = a["BoostModAllowed"]
         if set(a["Attrib"]) & GRANT_ATTRIBS:
@@ -173,11 +173,28 @@ class Exporter:
                        if self.power_name(n)]
         return o
 
+    def mod_flags(self, words: list) -> list[str]:
+        """AttribMod Flags bit array -> flag names (e.g. IgnoreStrength, Boost)."""
+        names = []
+        en = self.E.get("mod.Flags", {})
+        for wi, w in enumerate(words):
+            for b in range(32):
+                if w & (1 << b):
+                    names.append(en.get(wi * 32 + b, f"bit{wi * 32 + b}"))
+        return names
+
+    def effect_flags(self, v: int) -> list[str]:
+        en = self.E.get("effect.Flags", {})
+        return [n for bit, n in sorted(en.items()) if v & bit]
+
     def conv_effects(self, effs) -> list:
         out = []
         for e in effs or []:
             req = e.get("Requires") or []
-            if contains_seq(req, PVP_ONLY) and not contains_seq(req, PVE_ONLY):
+            eflags = self.effect_flags(e.get("Flags") or 0)
+            pvp = "PVPOnly" in eflags or (contains_seq(req, PVP_ONLY)
+                                          and not contains_seq(req, PVE_ONLY))
+            if pvp:
                 self.report["pvp_effects_dropped"] += 1
                 continue
             o = {}
@@ -191,8 +208,8 @@ class Exporter:
                 o["req"] = req
             if e.get("Tag"):
                 o["tag"] = e["Tag"]
-            if e.get("Flags"):
-                o["fl"] = e["Flags"]
+            if eflags:
+                o["fl"] = eflags
             if e.get("EvalFlags"):
                 o["ef"] = e["EvalFlags"]
             mods = [self.conv_mod(a) for a in e.get("AttribMod") or []]
@@ -233,6 +250,9 @@ class Exporter:
         if area != "Character":
             o["area"] = area
         o["tgt"] = self.enum("power.Target", r["Target"])
+        ea = [self.enum("power.EntsAffected", v) for v in r.get("EntsAffected") or []]
+        if ea and ea != [o["tgt"]]:
+            o["ea"] = ea
         for src, dst in (("BuyRequires", "br"), ("ActivateRequires", "actr"),
                          ("SlotRequires", "slr"), ("BoostsAllowed", "ba"),
                          ("GroupMembership", "gm"), ("AttackTypes", "atk"),
