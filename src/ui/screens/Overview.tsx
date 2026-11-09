@@ -16,9 +16,9 @@ import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
 
 const COLS = [
-  { x: 33, w: 480, kinds: ['primary'] },
-  { x: 523, w: 480, kinds: ['secondary'] },
-  { x: 1013, w: 480, kinds: ['branch', 'pool', 'epic', 'inherent', 'other'] },
+  { x: 33, w: 480, column: 0 },
+  { x: 523, w: 480, column: 1 },
+  { x: 1013, w: 480, column: 2 },
 ];
 const TOP = 170;
 const H = 875;
@@ -43,14 +43,13 @@ export function Overview({ skin }: { skin: Skin }) {
   const entries = rules.entries().filter((e) => e.power.sm !== 0 && (rules.slottable(e.power) || e.source === 'pick'));
   const originIndex = gd.core.origins.findIndex((o) => o.id === build.origin);
 
-  const column = (col: { x: number; w: number; kinds: string[] }, top = TOP, height = H) => {
+  const column = (col: { x: number; w: number; column: number }, top = TOP, height = H) => {
     const items: ReactElement[] = [];
     let y = 0;
     let lastSet = -1;
     for (const e of entries) {
       const ref = gd.setOfPower.get(e.power.id);
-      const kind = ref ? rules.setKind(ref.set) : 'other';
-      if (!col.kinds.includes(kind)) continue;
+      if ((ref ? rules.column(ref.set) : 2) !== col.column) continue;
       if (ref && ref.set.id !== lastSet) {
         items.push(
           <SetTitle skin={skin} key={`s${ref.set.id}`} x={16} y={y + 6} text={ref.set.dn.toUpperCase()} size={22} />,
@@ -162,7 +161,7 @@ export function Overview({ skin }: { skin: Skin }) {
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} />
         <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h - 150} skin={skin} />
         {tab < 3 ? (
-          column({ x: P.x, w: P.w, kinds: COLS[tab]!.kinds }, P.y, P.h - 150)
+          column({ x: P.x, w: P.w, column: COLS[tab]!.column }, P.y, P.h - 150)
         ) : (
           <GameScroll skin={skin} left={P.x + 20} top={P.y + 18} width={P.w - 40} height={P.h - 186} barX={P.x + P.w}>
             <TotalsPanel gd={gd} t={totals} width={P.w - 60} />

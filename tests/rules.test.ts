@@ -146,7 +146,7 @@ describe('power picks', () => {
     expect(choices).not.toContain('Epic.Dark_Mastery');
   });
 
-  it('offers VEAT branches at level 24', () => {
+  it('lists VEAT branches in their columns, greyed until level 24', () => {
     const at = gd.archetypeByName.get('class_arachnos_soldier')!;
     const b = newBuild({
       dataVersion: '',
@@ -158,12 +158,25 @@ describe('power picks', () => {
       pickCount: 24,
     });
     const r = new BuildRules(gd, b);
-    const before = r.setOptions(12).map((s) => s.set.n);
-    expect(before).not.toContain('Arachnos_Soldiers.Bane_Spider_Soldier');
+    // Like the client, the branch sets are always listed in their category's column (in data
+    // order, after the main set) but every power stays unavailable until level 24.
+    const avail = (pick: number, n: string) =>
+      r.setOptions(pick).find((s) => s.set.n === n)!.powers.filter((p) => p.state === 'available').length;
+    const before = r.setOptions(12);
+    expect(before.filter((s) => s.column === 0).map((s) => s.set.n)).toEqual([
+      'Arachnos_Soldiers.Arachnos_Soldier',
+      'Arachnos_Soldiers.Bane_Spider_Soldier',
+      'Arachnos_Soldiers.Crab_Spider_Soldier',
+    ]);
+    expect(before.filter((s) => s.column === 1).map((s) => s.set.n)).toEqual([
+      'Training_Gadgets.Training_and_Gadgets',
+      'Training_Gadgets.Crab_Spider_Training',
+      'Training_Gadgets.Bane_Spider_Training',
+    ]);
+    expect(avail(12, 'Arachnos_Soldiers.Bane_Spider_Soldier')).toBe(0);
     const lvl24 = gd.core.schedule.power.indexOf(23);
-    const after = r.setOptions(lvl24).map((s) => s.set.n);
-    expect(after).toContain('Arachnos_Soldiers.Bane_Spider_Soldier');
-    expect(after).toContain('Arachnos_Soldiers.Crab_Spider_Soldier');
+    expect(avail(lvl24, 'Arachnos_Soldiers.Bane_Spider_Soldier')).toBeGreaterThan(0);
+    expect(avail(lvl24, 'Arachnos_Soldiers.Crab_Spider_Soldier')).toBeGreaterThan(0);
   });
 });
 

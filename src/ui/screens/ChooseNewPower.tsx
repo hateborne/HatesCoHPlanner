@@ -24,14 +24,14 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   if (!gd || !level || !rules) return null;
 
   const options = rules.setOptions(pick);
-  const primary = options.filter((o) => o.kind === 'primary');
-  const secondary = options.filter((o) => o.kind === 'secondary');
-  const extra: SetOption[] = options.filter((o) => o.kind !== 'primary' && o.kind !== 'secondary');
+  const primary = options.filter((o) => o.column === 0);
+  const secondary = options.filter((o) => o.column === 1);
+  const extra: SetOption[] = options.filter((o) => o.column === 2);
   if (level.pendingSet !== undefined && !extra.some((o) => o.set.id === level.pendingSet)) {
     // A set chosen on the pool/epic picker shows only the chosen power, as in the game.
     const s = gd.powerset(level.pendingSet);
     const chosen = s.p.filter((pid) => pid === level.pendingPower).map((pid) => rules.powerOption(pid, pick));
-    extra.push({ set: s, kind: rules.setKind(s), owned: false, powers: chosen });
+    extra.push({ set: s, kind: rules.setKind(s), column: 2, owned: false, powers: chosen });
   }
   const canPool = rules.canAddNewSet('pool', pick);
   const canEpic = rules.canAddNewSet('epic', pick);
@@ -91,8 +91,8 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
       {[0, 1, 2].map((i) => (
         <MenuFrame key={i} x={vx(16 + 336 * i)} y={vy(70)} w={vx(320)} h={vy(520)} skin={skin} />
       ))}
-      <InfoButton skin={skin} x={vx(16 + 160)} y={vy(70)} text="Show Detailed Info Here" disabled />
-      <InfoButton skin={skin} x={vx(352 + 160)} y={vy(70)} text="Show Detailed Info Here" disabled />
+      <InfoButton skin={skin} x={vx(16 + 160)} y={vy(70)} text="Show Detailed Info Here" />
+      <InfoButton skin={skin} x={vx(352 + 160)} y={vy(70)} text="Show Detailed Info Here" />
       <PowerColumn skin={skin} g={desktopColumn(0)} sets={primary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
       <PowerColumn skin={skin} g={desktopColumn(1)} sets={secondary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
       {newSetBars(vx(688) + 4, vy(70) + 4, vx(320) - 8)}

@@ -32,13 +32,12 @@ interface Group {
   entries: BuildEntry[];
 }
 
-/** Group owned, slottable entries by powerset for one panel. */
-function groups(rules: BuildRules, entries: BuildEntry[], kinds: string[]): Group[] {
+/** Group owned, slottable entries by powerset for one panel (column 0 / 1 / 2, by category). */
+function groups(rules: BuildRules, entries: BuildEntry[], column: number): Group[] {
   const by = new Map<number, Group>();
   for (const e of entries) {
     const ref = rules.gd.setOfPower.get(e.power.id);
-    const kind = ref ? rules.setKind(ref.set) : 'other';
-    if (!kinds.includes(kind)) continue;
+    if ((ref ? rules.column(ref.set) : 2) !== column) continue;
     const id = ref?.set.id ?? -1;
     const g = by.get(id) ?? { set: ref?.set ?? null, title: ref?.set.dn ?? 'Other', entries: [] };
     g.entries.push(e);
@@ -168,7 +167,6 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const entries = rules.entries().filter((e) => e.level <= L && rules.slottable(e.power) && e.power.sm !== 0);
   const remaining = rules.slotsGranted(L) - rules.slotsUsed(L);
   const anyPlaceable = entries.some((e) => rules.slotBlock(e, L) === null);
-  const kinds = [['primary'], ['secondary'], ['branch', 'pool', 'epic', 'inherent', 'other']];
 
   const click = (e: BuildEntry) => {
     const block = rules.slotBlock(e, L);
@@ -262,7 +260,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         <GameText font="title_14" scale={S} x={980} y={118} align="right" colors={skin.heading} text={`LEVEL ${L + 1}`} />
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pool Powers']} active={tab} onChange={setTab} />
         <MenuFrame x={g.frame.x} y={g.frame.y} w={g.frame.w} h={g.frame.h} skin={skin} />
-        {renderPanel(g, groups(rules, entries, kinds[tab] ?? []), 0)}
+        {renderPanel(g, groups(rules, entries, tab), 0)}
         <SlotsAvailable n={remaining} x={300} y={1465} w={400} h={56} />
         {hovered ? (
           <div className="abs body-text" style={{ left: 40, top: 1545, width: 920, color: '#7fd3ff', fontSize: 24 }}>
@@ -287,13 +285,13 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         const f = desktopPanel(i).frame;
         return <MenuFrame key={i} x={f.x} y={f.y} w={f.w} h={f.h} skin={skin} />;
       })}
-      <InfoButton skin={skin} x={vx(FRAME_SPACE + FRAME_WIDTH / 2)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" disabled />
-      <InfoButton skin={skin} x={vx(512)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" disabled />
+      <InfoButton skin={skin} x={vx(FRAME_SPACE + FRAME_WIDTH / 2)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" />
+      <InfoButton skin={skin} x={vx(512)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" />
       {/* drawMenuHeader: gamebold_18 white -> 88b6ff centered on (848, 72), a dot 5s outside each end */}
       <GameText font="gamebold_18" scale={S} x={headX} y={headY} centerY align="center" colors={['#ffffff', skin.poolHeader]} text="POOL POWERS" />
       <Sprite src={dot} x={headX - (headW / 2 + 15 * S)} y={headY - 5 * S} w={10 * S} h={10 * S} />
       <Sprite src={dot} x={headX + headW / 2 + 5 * S} y={headY - 5 * S} w={10 * S} h={10 * S} />
-      {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), groups(rules, entries, kinds[i]!), i))}
+      {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), groups(rules, entries, i), i))}
       <PowInfoBox power={hovered} set={hoveredSet} />
       <SlotsAvailable n={remaining} />
       <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />

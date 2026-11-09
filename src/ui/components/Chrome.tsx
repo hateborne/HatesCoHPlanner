@@ -247,7 +247,7 @@ export function InfoButton({ x, y, text, onClick, disabled, skin, w = vx(120), h
       onMouseDown={() => setDown(true)}
       onMouseUp={() => setDown(false)}
       onClick={disabled ? undefined : onClick}
-      style={{ left: x - wd / 2, top: y - ht / 2, width: wd, height: ht, cursor: disabled ? 'default' : 'pointer', zIndex: 12 }}
+      style={{ left: x - wd / 2, top: y - ht / 2, width: wd, height: ht, cursor: disabled || !onClick ? 'default' : 'pointer', zIndex: 12 }}
     >
       {piece('l', 0, cap)}
       {piece('mid', cap, Math.max(0, wd - 2 * cap))}

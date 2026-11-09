@@ -116,7 +116,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
       <MenuFrame x={858} y={118} w={295} h={307} skin={skin} />
       <MenuFrame x={858} y={541} w={295} h={307} skin={skin} />
       <MenuFrame x={1153} y={118} w={702} h={730} skin={skin} />
-      <InfoButton skin={skin} x={vx(512)} y={vy(330)} text="Show Detailed Info" disabled />
+      <InfoButton skin={skin} x={vx(512)} y={vy(330)} text="Show Detailed Info" disabled={setId === undefined} />
       <GameScroll skin={skin} left={L.left} top={clipTop} width={L.width} height={clipH} barX={vx(85) + 4 * S} barTop={barTop} barHeight={barH}>
         <div style={{ position: 'relative', height: contentH((choices.length + 1) * 61) }}>
           {choices.length ? <SetFrame skin={skin} x={vx(135) - L.left} y={setY - vy(48)} w={vx(260)} h={vy((choices.length - 1) * 61 + 96)} /> : null}

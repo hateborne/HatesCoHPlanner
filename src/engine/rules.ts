@@ -27,6 +27,7 @@ export interface PowerOption {
 export interface SetOption {
   set: Powerset;
   kind: SetKind;
+  column: 0 | 1 | 2; // screen column: primary category, secondary category, everything else
   owned: boolean;
   powers: PowerOption[];
 }
@@ -81,6 +82,21 @@ export class BuildRules {
     if (cat === cats.epic) return 'epic';
     if (cat === cats.inherent) return 'inherent';
     return 'other';
+  }
+
+  /**
+   * The screen column a set is drawn in. The client places sets by their category (pcatParent):
+   * the AT's primary category (the primary and its VEAT branches), its secondary category, and
+   * everything else (pools, epics, inherents).
+   *
+   * @param set The powerset.
+   * @return 0, 1 or 2.
+   */
+  column(set: Powerset): 0 | 1 | 2 {
+    const cat = this.gd.categoryOfSet.get(set.id) ?? '';
+    if (cat === this.at.cats.pri) return 0;
+    if (cat === this.at.cats.sec) return 1;
+    return 2;
   }
 
   /** @return Whether a power can take enhancement slots at all. */
@@ -285,8 +301,9 @@ export class BuildRules {
   }
 
   /**
-   * Panels for the "Choose a New Power" screen at a pick: primary, secondary, then every other
-   * set already owned or currently addable (pools, epic, VEAT branches).
+   * Panels for the "Choose a New Power" screen at a pick: the primary and the other sets of its
+   * category (VEAT branches, always listed and greyed until they unlock, as the client lists
+   * every set the character has), the same for the secondary, then owned pool / epic sets.
    *
    * @param pickIndex Pick being made.
    */
@@ -299,16 +316,17 @@ export class BuildRules {
       out.push({
         set,
         kind: this.setKind(set),
+        column: this.column(set),
         owned: ownedSets.has(set.id),
         powers: set.p.map((pid) => this.powerOption(pid, pickIndex)),
       });
     };
-    add(this.gd.powerset(this.b.primary));
-    add(this.gd.powerset(this.b.secondary));
-    for (const cat of [this.at.cats.pri, this.at.cats.sec]) {
-      for (const s of this.gd.setsInCategory(cat)) {
-        if (s.spa && (ownedSets.has(s.id) || this.newSetBlock(s, pickIndex) === null)) add(s);
-      }
+    for (const [main, cat] of [
+      [this.b.primary, this.at.cats.pri],
+      [this.b.secondary, this.at.cats.sec],
+    ] as const) {
+      add(this.gd.powerset(main));
+      for (const s of this.gd.setsInCategory(cat)) if (s.spa) add(s);
     }
     for (const kind of ['pool', 'epic'] as const) {
       const cat = kind === 'pool' ? this.at.cats.pool : this.at.cats.epic;
