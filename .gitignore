@@ -8,8 +8,9 @@ dist/
 .vite/
 coverage/
 
-# Python pipeline scratch
+# Python pipeline scratch and this machine's input paths
 pipeline/.cache/
+pipeline/paths.local.json
 __pycache__/
 *.pyc
 .venv/

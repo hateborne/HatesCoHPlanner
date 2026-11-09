@@ -14,6 +14,11 @@ REGISTRY = config.REPO / "pipeline" / "ids.json"
 KINDS = ("power", "powerset", "boostset", "archetype", "origin")
 
 
+def data_exists() -> bool:
+    """@return Whether public/data already holds an exported data set."""
+    return config.DATA_OUT.is_dir() and any(config.DATA_OUT.glob("*/core.json"))
+
+
 class IdRegistry:
     """Name -> id maps per entity kind, loaded from and saved to pipeline/ids.json."""
 
@@ -23,6 +28,10 @@ class IdRegistry:
             data = json.loads(REGISTRY.read_text(encoding="utf-8"))
             for k in KINDS:
                 self.maps[k] = {n: int(i) for n, i in data.get(k, {}).items()}
+        if not any(self.maps.values()) and data_exists():
+            raise SystemExit("error: pipeline/ids.json is missing or empty but public/data already "
+                             "holds data -- refusing to renumber the stable IDs. Restore ids.json "
+                             "from version control.")
         self.added = {k: 0 for k in KINDS}
 
     def get(self, kind: str, name: str) -> int:
@@ -37,4 +46,4 @@ class IdRegistry:
     def save(self) -> None:
         """Write the registry (sorted by id for readable diffs)."""
         out = {k: dict(sorted(self.maps[k].items(), key=lambda kv: kv[1])) for k in KINDS}
-        config.out_path(REGISTRY).write_text(json.dumps(out, indent=0), encoding="utf-8")
+        config.atomic_write(REGISTRY, json.dumps(out, indent=0))

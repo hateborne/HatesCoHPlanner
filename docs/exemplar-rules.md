@@ -1,7 +1,7 @@
 # Exemplar rules (for sign-off before any code)
 
-Source root: `<COH_SOURCE>\CityOfHeroes_OuroV2_Source` (I24 engine), abbreviated `SRC`.
-Data: `<COH_SOURCE>\CityOfHeroes_OuroV2_Data\bin\serverdata\Defs\exemplar_handicaps.def` and the
+Source root: `CityOfHeroes_OuroV2_Source` (the I24 engine source checkout), abbreviated `SRC`.
+Data: `CityOfHeroes_OuroV2_Data\bin\serverdata\Defs\exemplar_handicaps.def` (the engine data checkout) and the
 live Homecoming values in `public\data\20261017-f94d0e09\core.json` ("exemplar", "boostEffect").
 All levels below are 0-based (character level 1 = 0) unless written "level N". E = exemplar combat
 level (0-based). X = the character's real/XP level (0-based; 49 for a level-50 build).

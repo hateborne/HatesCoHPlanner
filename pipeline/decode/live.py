@@ -1,12 +1,14 @@
 """Decode every live Homecoming bin the planner needs, with health stats and a local cache.
 
 Result (`LiveData`) holds raw decoded records exactly as the client parse tables describe them;
-labelling and trimming happen later in export.py. The cache key covers the exe and pigg sizes and
-mtimes, so a client patch forces a fresh decode.
+labelling and trimming happen later in export.py. The cache key is the sha1 of the exe and the two
+pigg inputs plus a sha1 over the decoder source, so a client patch or a decoder change forces a
+fresh decode (file dates play no part).
 """
 from __future__ import annotations
 
 import hashlib
+import os
 import pickle
 import time
 from dataclasses import dataclass, field
@@ -16,7 +18,7 @@ from pipeline.coh import p7reader as P
 from pipeline.coh.messages import decode_messages
 from pipeline.label.attribs import all_attributes
 
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 
 
 @dataclass
@@ -41,21 +43,37 @@ class LiveData:
     fingerprint: dict = field(default_factory=dict)
 
 
-def _fingerprint() -> dict:
-    fp = {}
-    for p in (config.EXE, config.BIN_PIGG, config.POWERS_PIGG):
-        st = p.stat()
-        fp[p.name] = {"size": st.st_size, "mtime": int(st.st_mtime)}
-    return fp
+_SHA_MEMO: dict[tuple, str] = {}
 
 
 def sha1(path) -> str:
-    """SHA-1 of a file (manifest provenance)."""
+    """SHA-1 of a file (memoized per process so a run hashes each input once)."""
+    key = str(path)
+    if key not in _SHA_MEMO:
+        h = hashlib.sha1()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        _SHA_MEMO[key] = h.hexdigest()
+    return _SHA_MEMO[key]
+
+
+def decoder_hash() -> str:
+    """@return SHA-1 over the decoder source: tools/*.py, pipeline/coh/*.py, pipeline/decode/*.py."""
     h = hashlib.sha1()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
+    for folder in (config.TOOLS_DIR, config.REPO / "pipeline" / "coh", config.REPO / "pipeline" / "decode"):
+        for f in sorted(folder.glob("*.py")):
+            h.update(f"{folder.name}/{f.name}\n".encode())
+            h.update(f.read_bytes().replace(b"\r\n", b"\n"))  # line endings must not change the key
+            h.update(b"\n--\n")
     return h.hexdigest()
+
+
+def _fingerprint() -> dict:
+    """@return The decode cache key: input file hashes plus the decoder source hash."""
+    fp = {p.name: sha1(p) for p in (config.EXE, config.BIN_PIGG, config.POWERS_PIGG)}
+    fp["decoder"] = decoder_hash()
+    return fp
 
 
 def _earray(member: str, table, pigg=None, inline_links=False, health=None):
@@ -82,7 +100,7 @@ def _single(member: str, table, wrapped=False, health=None):
 
 def decode_all(verbose=True) -> LiveData:
     """Decode the live bins (no cache)."""
-    import coh_exe  # from U:\\ tools via p7reader's path setup
+    import coh_exe  # from the repo tools/ folder via p7reader's path setup
 
     t0 = time.time()
     health: dict = {}
@@ -174,7 +192,7 @@ def _origins(health) -> list:
 
 
 def load(force=False, verbose=True) -> LiveData:
-    """Decode with a pickle cache under pipeline/.cache keyed by client fingerprint."""
+    """Decode with a pickle cache under pipeline/.cache keyed by input and decoder hashes."""
     fp = _fingerprint()
     cache = config.CACHE_DIR / "live.pickle"
     if cache.exists() and not force:
@@ -190,6 +208,8 @@ def load(force=False, verbose=True) -> LiveData:
     data = decode_all(verbose)
     data.fingerprint = fp
     out = config.out_path(cache)
-    with open(out, "wb") as f:
+    tmp = out.with_name(out.name + ".tmp")
+    with open(tmp, "wb") as f:
         pickle.dump((CACHE_VERSION, fp, data), f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp, out)
     return data

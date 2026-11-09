@@ -1,6 +1,6 @@
 # Game rules the planner ports (from the engine source)
 
-Source: `<COH_SOURCE>\CityOfHeroes_OuroV2_Source` (I24 engine; Homecoming data is
+Source: `CityOfHeroes_OuroV2_Source` (the engine source checkout) (I24 engine; Homecoming data is
 decoded from the live client). Paths below are relative to that root. All levels in data are
 0-based (`Available[]`, schedules, `SpecializeAt`); the UI shows level + 1.
 

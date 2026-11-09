@@ -5,8 +5,10 @@ A `.texture` file is: TextureFileHeader {i32 headerSize, i32 fileSize, i32 width
 to a power of two, so the decoded image is cropped to the header's width x height.
 
 Sources, later ones override earlier ones (matched by lower-cased path under texture_library/):
-  1. I24 loose files: CityOfHeroes_OuroV2_Data/bin/data/texture_library/
-  2. live Homecoming overlay: assets/live/texture_gui.pigg (and texture_library.pigg if needed)
+  1. I24 loose files: CityOfHeroes_OuroV2_Data/bin/data/texture_library/ (only when COH_SOURCE is set)
+  2. I24 client piggs (assets/issue24 texGui1/stage1b/stage2/stage3.pigg: the same content, used only when the loose
+     folder is not available, i.e. COH_SOURCE is unset)
+  3. live Homecoming overlay: assets/live/texture_gui.pigg (and texture_library.pigg if needed)
 """
 from __future__ import annotations
 
@@ -19,11 +21,12 @@ from pathlib import Path
 from PIL import Image
 
 from pipeline import config
-from pipeline.coh import p7reader as P  # noqa: F401  (puts U:\ tools on sys.path)
+from pipeline.coh import p7reader as P  # noqa: F401  (puts the repo's tools/ on sys.path)
 
 import pigg_extract as pex  # noqa: E402
 
-LOOSE_ROOT = config.OURO_DATA / "bin" / "data" / "texture_library"
+LOOSE_ROOT = config.OURO_DATA / "bin" / "data" / "texture_library" if config.OURO_DATA else None
+I24_PIGGS = [config.I24_ASSETS / n for n in ("texGui1.pigg", "stage1b.pigg", "stage2.pigg", "stage3.pigg")]
 LIVE_PIGGS = [config.LIVE_ASSETS / "texture_gui.pigg", config.LIVE_ASSETS / "texture_library.pigg"]
 
 
@@ -50,11 +53,13 @@ class TextureIndex:
 
     def __init__(self, gui_only: bool = True):
         self.by_rel: dict[str, TexSource] = {}
-        root = LOOSE_ROOT / "GUI" if gui_only else LOOSE_ROOT
-        for f in root.rglob("*.texture"):
-            rel = f.relative_to(LOOSE_ROOT).with_suffix("").as_posix().lower()
-            self.by_rel[rel] = TexSource(rel, file=f)
-        for pg in LIVE_PIGGS:
+        loose = LOOSE_ROOT is not None and LOOSE_ROOT.is_dir()
+        if loose:
+            root = LOOSE_ROOT / "GUI" if gui_only else LOOSE_ROOT
+            for f in root.rglob("*.texture"):
+                rel = f.relative_to(LOOSE_ROOT).with_suffix("").as_posix().lower()
+                self.by_rel[rel] = TexSource(rel, file=f)
+        for pg in ([] if loose else I24_PIGGS) + LIVE_PIGGS:
             if not pg.exists():
                 continue
             with open(pg, "rb") as fh:

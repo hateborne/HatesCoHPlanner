@@ -1,6 +1,7 @@
 """Turn the raw live decode into the compact JSON the site loads.
 
-Output: public/data/<dataVersion>/{core,powersets,powers,boosts}.json plus public/data/latest.json.
+Output: public/data/<gameVersion>/{core,powersets,powers,boosts,mids-map}.json, then
+public/data/versions.json and latest.json (last).
 Only player-reachable data is exported: the 15 archetypes' primary/secondary categories, Pool,
 Epic and Inherent sets, every enhancement (Boosts.*) and IO set, the set-bonus powers they grant,
 and anything those powers redirect to or grant. PvP-only effects are dropped (PvP is out of v1).
@@ -8,7 +9,9 @@ and anything those powers redirect to or grant. PvP-only effects are dropped (Pv
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
+from pathlib import Path
 from collections import Counter
 
 from pipeline import config
@@ -278,9 +281,12 @@ class Exporter:
             for src, dst in (("BoostPog", "pog"), ("BoostBoostable", "bb"),
                              ("BoostUsePlayerLevel", "bup"), ("BoostIgnoreEffectiveness", "bie"),
                              ("BoostAlwaysCountForSet", "bac"), ("BoostLicenseLevel", "bll"),
-                             ("BoostHideLevel", "bhl")):
+                             ("BoostHideLevel", "bhl"), ("BoostCombinable", "bcm"),
+                             ("BoostAccountBound", "bab")):
                 if r.get(src):
                     o[dst] = r[src]
+            if not r.get("BoostTradeable"):
+                o["ntr"] = 1  # the tooltip's "You may not trade this Enhancement.
             cc = r.get("BoostCatalystConversion")
             if cc and self.power_name(cc):
                 o["bcc"] = self.ids.get("power", self.power_name(cc))
@@ -439,28 +445,76 @@ class Exporter:
             "exemplar": {k: [num(x) for x in v] for k, v in self.L.exemplar.items()},
         }
         powers = [p for n, p in powers_by_name.items() if n not in boost_names and n not in bonus_names]
+        # each enhancement's category line (its Boosts.* set's short help: "Invention",
+        # "Training (All Origins)", "Set: Apocalypse", ...) for the enhancement tooltip
+        for n in boost_names:
+            pset = self.sets.get(n.rsplit(".", 1)[0])
+            cat = self.text(pset.get("DisplayShortHelp", "")) if pset else ""
+            if cat and n in powers_by_name:
+                powers_by_name[n]["cat"] = cat
         boosts = {"boosts": [powers_by_name[n] for n in sorted(boost_names) if n in powers_by_name],
                   "bonusPowers": [powers_by_name[n] for n in sorted(bonus_names)],
                   "sets": boostsets}
         return {"core": core, "powersets": sets, "powers": powers, "boosts": boosts}
 
 
-def data_version(live: LiveData) -> str:
-    """'YYYYMMDD-<sha8>' from the powers pigg (changes whenever the client data changes)."""
-    st = config.POWERS_PIGG.stat()
-    day = dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y%m%d")
-    return f"{day}-{sha1(config.POWERS_PIGG)[:8]}"
+def utc_now() -> str:
+    """@return The current UTC time as 'YYYY-MM-DDTHH:MM:SSZ'."""
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def write(live: LiveData) -> dict:
-    """Export everything and return a summary for the report."""
-    ex = Exporter(live)
+def _dump(obj) -> str:
+    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+
+
+def content_hash(core: dict, others: list[str]) -> str:
+    """12-hex hash of the four data files as written (core.json without its own manifest.hash).
+
+    @param core core.json content (the manifest.hash key is ignored).
+    @param others Serialized powersets, powers and boosts JSON text, in that order.
+    """
+    c = dict(core)
+    m = dict(c["manifest"])
+    m.pop("hash", None)
+    c["manifest"] = m
+    h = hashlib.sha1()
+    for text in [_dump(c)] + others:
+        h.update(text.encode("utf-8"))
+    return h.hexdigest()[:12]
+
+
+def newest_mids_map(exclude) -> "Path | None":
+    """@return The newest mids-map.json in a version folder other than `exclude`, or None."""
+    found = [p for p in config.DATA_OUT.glob("*/mids-map.json") if p.parent.resolve() != exclude.resolve()]
+    return max(found, key=lambda p: p.stat().st_mtime) if found else None
+
+
+def write(live: LiveData, version: str) -> dict:
+    """Export the data set for game version `version` and return a summary for the report.
+
+    Order: build in memory (Mids map included, failures tolerated), save ids.json, then write the
+    data files atomically. The version index files are written afterwards by write_indexes().
+    """
+    ex = Exporter(live)          # refuses to run if ids.json is gone while data exists
     out = ex.build()
-    ver = data_version(live)
-    root = config.DATA_OUT / ver
+    warnings: list[str] = []
+    mids_text = None
+    try:
+        from pipeline import mids_map
+        _m, mids = mids_map.prepare(live, ex)
+        mids_text = mids.pop("text", None)
+    except Exception as e:  # noqa: BLE001 -- Mids is an untrusted reference; never fail the run
+        mids = {"skipped": f"Mids map failed: {type(e).__name__}: {e}"}
+        warnings.append(f"WARNING: Mids map skipped ({type(e).__name__}: {e})")
+    if mids.get("skipped") and not any("Mids map" in w for w in warnings):
+        warnings.append(f"WARNING: Mids map skipped ({mids['skipped']})")
+
+    ex.ids.save()                # ids first, so a crash later never loses allocations
+
+    root = config.DATA_OUT / version
     manifest = {
-        "dataVersion": ver,
-        "generated": dt.datetime.now().isoformat(timespec="seconds"),
+        "dataVersion": version,
+        "generated": utc_now(),
         "source": {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
                    "bin_powers.pigg": sha1(config.POWERS_PIGG)},
         "counts": {"archetypes": len(out["core"]["archetypes"]),
@@ -471,16 +525,70 @@ def write(live: LiveData) -> dict:
         "files": ["core.json", "powersets.json", "powers.json", "boosts.json"],
     }
     out["core"]["manifest"] = manifest
+    texts = {n: _dump(out[n]) for n in ("powersets", "powers", "boosts")}
+    others = [texts["powersets"], texts["powers"], texts["boosts"]]
+    # no churn: if the content hash matches what is on disk, keep its generated timestamp
+    old = None
+    try:
+        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
+    except (OSError, ValueError, KeyError):
+        pass
+    if old and old.get("generated"):
+        manifest["generated"] = old["generated"]
+        if old.get("hash") != content_hash(out["core"], others):
+            manifest["generated"] = utc_now()
+    manifest["hash"] = content_hash(out["core"], others)
+    texts["core"] = _dump(out["core"])
     sizes = {}
     for name in ("core", "powersets", "powers", "boosts"):
-        p = config.out_path(root / f"{name}.json")
-        text = json.dumps(out[name], separators=(",", ":"), ensure_ascii=False)
-        p.write_text(text, encoding="utf-8")
-        sizes[name] = len(text.encode("utf-8"))
-    config.out_path(config.DATA_OUT / "latest.json").write_text(
-        json.dumps({"dataVersion": ver}), encoding="utf-8")
-    from pipeline import mids_map
-    mids = mids_map.write(live, ex, root)
-    ex.ids.save()
+        config.atomic_write(root / f"{name}.json", texts[name])
+        sizes[name] = len(texts[name].encode("utf-8"))
+
+    mids_path = root / "mids-map.json"
+    if mids_text is not None:
+        config.atomic_write(mids_path, mids_text)
+    elif not mids_path.exists():
+        prev = newest_mids_map(root)
+        if prev is not None:
+            config.atomic_write(mids_path, prev.read_bytes())
+            mids["carried_from"] = prev.parent.name
+            warnings.append(f"WARNING: mids-map.json was carried forward from {prev.parent.name}; "
+                            "it may be stale")
+        else:
+            warnings.append("WARNING: no mids-map.json exists in any version folder; "
+                            "Mids import/export will not work until the Mids map is built")
     return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added,
-            "mids": mids}
+            "mids": mids, "warnings": warnings, "version": version, "root": root}
+
+
+def write_indexes(version: str, label: str, content_hash_: str, make_default: bool) -> str:
+    """Upsert this version into public/data/versions.json and refresh latest.json (written last).
+
+    @param version Game version id (the data folder name).
+    @param label Human-readable label.
+    @param content_hash_ manifest.hash of this version.
+    @param make_default Make this version the default even if versions.json already exists.
+    @return The default version id.
+    """
+    vpath = config.DATA_OUT / "versions.json"
+    try:
+        idx = json.loads(vpath.read_text(encoding="utf-8"))
+        if not isinstance(idx.get("versions"), list):
+            raise ValueError("no versions list")
+        new_file = False
+    except OSError:
+        idx, new_file = {"default": version, "versions": []}, True
+    except ValueError as e:
+        raise SystemExit(f"error: public/data/versions.json is unreadable ({e}); fix or remove it")
+    entry = {"id": version, "label": label, "hash": content_hash_}
+    for i, v in enumerate(idx["versions"]):
+        if v.get("id") == version:
+            idx["versions"][i] = entry
+            break
+    else:
+        idx["versions"].append(entry)
+    if new_file or make_default or not idx.get("default"):
+        idx["default"] = version
+    config.atomic_write(vpath, json.dumps({"default": idx["default"], "versions": idx["versions"]}, indent=2) + "\n")
+    config.atomic_write(config.DATA_OUT / "latest.json", json.dumps({"dataVersion": idx["default"]}))
+    return idx["default"]

@@ -1,0 +1,5 @@
+{
+  "client": "path/to/City_of_Heroes",
+  "source": "path/to/folder-holding/CityOfHeroes_OuroV2_Data",
+  "mids": "path/to/MidsReborn/Data/Homecoming"
+}

@@ -4,10 +4,15 @@ Usage (from the repo root):
     python -m pipeline.run            # uses the decode cache when the client is unchanged
     python -m pipeline.run --force    # re-decode everything
     python -m pipeline.run --no-assets
+    python -m pipeline.run --game-version i28p4 --game-label "Issue 28, Page 4" [--make-default]
+
+The game version id names the data folder public/data/<id>/. It defaults to "gameVersion" /
+"gameLabel" under "homecoming" in pipeline/patch-watch.json.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -17,12 +22,41 @@ from pipeline import config  # noqa: E402
 from pipeline.decode import live  # noqa: E402
 
 
-def render_report(data, exp, assets, val) -> str:
+PATCH_WATCH = config.REPO / "pipeline" / "patch-watch.json"
+
+
+def default_game_version() -> tuple[str | None, str | None]:
+    """@return (gameVersion, gameLabel) from patch-watch.json's "homecoming" entry (None if absent)."""
+    try:
+        h = json.loads(PATCH_WATCH.read_text(encoding="utf-8")).get("homecoming", {})
+    except (OSError, ValueError):
+        return None, None
+    return h.get("gameVersion"), h.get("gameLabel")
+
+
+def render_failure(data, reason: str) -> str:
+    """Report for a run that aborted before writing anything."""
+    L = ["# Pipeline report -- FAILED\n", f"**{reason}**\n",
+         "Nothing under public/ was written and pipeline/ids.json was not touched.\n",
+         "## Decode health\n", "| Bin | Records | Clean | Partial |\n|---|---|---|---|"]
+    for k, v in data.health.items():
+        L.append(f"| {k} | {v['records']} | {v['clean']} | {v['partial']} |")
+    for k, v in data.health.items():
+        for ex in v.get("partial_examples") or []:
+            L.append(f"\n- {k}: {str(ex)[:160]}")
+    return "\n".join(L) + "\n"
+
+
+def render_report(data, exp, assets, val, warnings=()) -> str:
     """Markdown summary of a pipeline run."""
     L = []
     m = exp["manifest"]
     L.append(f"# Pipeline report -- data {m['dataVersion']}\n")
-    L.append(f"Generated {m['generated']}.\n")
+    L.append(f"Generated {m['generated']} (UTC).\n")
+    if warnings:
+        L.append("## Warnings\n")
+        L.extend(f"- {w}" for w in warnings)
+        L.append("")
     L.append("## Decode health\n")
     L.append("| Bin | Records | Clean | Partial |\n|---|---|---|---|")
     total_partial = 0
@@ -43,8 +77,12 @@ def render_report(data, exp, assets, val) -> str:
              f"Unresolved references: {sum(rep['unresolved_refs'].values())}. "
              f"New IDs: {exp['ids_added']}.\n")
     mm = exp.get("mids")
-    if mm:
-        L.append("## Mids map\n")
+    if mm and mm.get("skipped"):
+        extra = (f" mids-map.json was carried forward from {mm['carried_from']} and may be stale."
+                 if mm.get("carried_from") else "")
+        L.append(f"## Mids map\n\nSkipped: {mm['skipped']}.{extra}\n")
+    elif mm:
+        L.append("## Mids map (MidsReborn is a reference, not a source of truth)\n")
         L.append(f"{mm['enh_total']} Mids enhancements, {mm['powers_total']} Mids powers mapped, "
                  f"{mm['renames_used']} power renames, {mm['bytes']} bytes. Unmapped enhancements "
                  f"({len(mm['unmapped_enh'])}): {', '.join(mm['unmapped_enh'][:40]) or 'none'}\n")
@@ -56,7 +94,8 @@ def render_report(data, exp, assets, val) -> str:
                 L.append(f"- Missing {k} ({len(v)}): {', '.join(v)}")
         L.append("")
     if val:
-        L.append("## Validation vs MidsReborn (pre-I28 oracle)\n")
+        L.append("## Validation vs MidsReborn (a reference: disagreements are evidence to check, "
+                 "not errors in our data)\n")
         n = val["names"]
         L.append(f"Display names: {n['same']} of {n['in_both']} powers match; {n['different']} "
                  "differ (I28 renames, Mids typos, Mids-only conventions). First differences "
@@ -90,29 +129,66 @@ def render_report(data, exp, assets, val) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--force", action="store_true", help="ignore the decode cache")
     ap.add_argument("--no-assets", action="store_true")
     ap.add_argument("--no-validate", action="store_true")
+    ap.add_argument("--game-version", help='game version id, e.g. "i28p4" (names the data folder)')
+    ap.add_argument("--game-label", help='label shown in the app, e.g. "Issue 28, Page 4"')
+    ap.add_argument("--make-default", action="store_true",
+                    help="make this version the default in versions.json")
     args = ap.parse_args()
 
+    dv, dl = default_game_version()
+    version = args.game_version or dv
+    label = args.game_label or (dl if not args.game_version else None) or version
+    if not version:
+        print("error: no game version: pass --game-version or set homecoming.gameVersion in "
+              "pipeline/patch-watch.json")
+        return 2
+    if not all(c.isalnum() or c in "-_." for c in version) or version.startswith("."):
+        print(f"error: invalid game version id {version!r}")
+        return 2
+
+    config.preflight()
     from pipeline import export
+    from pipeline.ids import IdRegistry
+    IdRegistry()  # refuses to run when ids.json is missing/empty but public/data holds data
+
     data = live.load(force=args.force)
-    exp = export.write(data)
-    root = config.DATA_OUT / exp["manifest"]["dataVersion"]
+    # health gate: decide before anything is written
+    partial = sum(v["partial"] for v in data.health.values())
+    if partial:
+        bad = ", ".join(k for k, v in data.health.items() if v["partial"])
+        msg = f"decode health gate FAILED: {partial} partial records ({bad}); nothing was written"
+        config.atomic_write(config.REPORT, render_failure(data, msg))
+        print(f"error: {msg}")
+        return 1
+
+    exp = export.write(data, version)
+    warnings = list(exp["warnings"])
+    root = exp["root"]
     assets = None
     if not args.no_assets:
         from pipeline.assets import export_assets
         assets = export_assets.run(root)
     val = None
     if not args.no_validate:
-        from pipeline.validate import mids
-        val = mids.run(data)
-    text = render_report(data, exp, assets, val)
-    config.out_path(config.REPORT).write_text(text, encoding="utf-8")
-    print(f"wrote {config.REPORT}")
-    partial = sum(v["partial"] for v in data.health.values())
-    return 1 if partial else 0
+        if config.mids_available():
+            try:
+                from pipeline.validate import mids
+                val = mids.run(data)
+            except Exception as e:  # noqa: BLE001 -- Mids is an untrusted reference
+                warnings.append(f"WARNING: Mids validation skipped ({type(e).__name__}: {e})")
+        else:
+            warnings.append(f"WARNING: Mids validation skipped (no MidsReborn data at {config.MIDS_DATA})")
+    default = export.write_indexes(version, label, exp["manifest"]["hash"], args.make_default)
+    text = render_report(data, exp, assets, val, warnings)
+    config.atomic_write(config.REPORT, text)
+    print(f"wrote {config.REPORT} (version {version}, hash {exp['manifest']['hash']}, default {default})")
+    for w in warnings:
+        print(w)
+    return 0
 
 
 if __name__ == "__main__":

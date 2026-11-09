@@ -16,12 +16,12 @@ import json
 import time
 from collections import Counter, defaultdict
 
-from pipeline import config
+from pipeline import config, mids_ref
 from pipeline.decode.live import LiveData
 
-MIDS_JSON = config.DECODED_DIR / "powers-live-mids.json"
+# Mids is a reference: its numbers back up or question ours, they never replace them
 
-# Mids EffectType ids (MidsReborn Core/Enums.cs, transcribed in U:\ tools/mids_enums.py).
+# Mids EffectType ids (MidsReborn Core/Enums.cs).
 MIDS_ET = {0: "None", 1: "Accuracy", 2: "ViewAttrib", 3: "Damage", 4: "DamageBuff", 5: "Defense",
            6: "DropToggles", 7: "Endurance", 8: "EnduranceDiscount", 9: "Enhancement", 10: "Fly",
            11: "SpeedFlying", 12: "GrantPower", 13: "Heal", 14: "HitPoints", 15: "InterruptTime",
@@ -98,10 +98,12 @@ def expected_family(attr_name: str, aspect: str, live: LiveData) -> set[str]:
     return base
 
 
-def run(live: LiveData) -> dict:
-    """Run all checks; returns a dict the report renderer formats."""
+def run(live: LiveData) -> dict | None:
+    """Run all checks; returns a dict the report renderer formats (None without Mids data)."""
+    if not config.mids_available():
+        return None
     t0 = time.time()
-    mids = json.loads(MIDS_JSON.read_text(encoding="utf-8"))["powers"]
+    mids = mids_ref.powers()
     mp = {p["FullName"].lower(): p for p in mids}
     ours = {p["FullName"].lower(): p for p in live.powers}
     M = live.messages

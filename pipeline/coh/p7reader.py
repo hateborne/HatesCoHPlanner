@@ -1,4 +1,4 @@
-"""Parse7 (Homecoming live) bin reader built on the U:\\ decoder tools.
+"""Parse7 (Homecoming live) bin reader built on the decoders in the repo tools/ folder.
 
 Adds three Homecoming rules on top of parse_bin.BinReader + parse7_patch:
 

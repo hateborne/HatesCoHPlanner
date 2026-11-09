@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 
-from pipeline import config
+from pipeline import config, mids_ref
 
 config.use_tools()
 from enhdb_decode import read_enh_set, read_enhancement  # noqa: E402
@@ -57,7 +57,7 @@ def build(live, exporter) -> tuple[dict, dict]:
             renames[b] = game_names[a.lower()]
     rep["renames_used"] = len(renames)
 
-    mids = json.loads((config.DECODED_DIR / "powers-live-mids.json").read_text(encoding="utf-8"))["powers"]
+    mids = mids_ref.powers()
     powers = []
     for p in mids:
         name = renames.get(p["FullName"], p["FullName"])
@@ -96,12 +96,17 @@ def build(live, exporter) -> tuple[dict, dict]:
     return {"dbVersion": _db_version(), "renames": renames, "powers": powers, "enh": enh}, rep
 
 
-def write(live, exporter, root) -> dict:
-    """Write mids-map.json next to the other data files."""
+def prepare(live, exporter) -> tuple[dict | None, dict]:
+    """Build the map in memory without writing anything.
+
+    @return (map, report); map is None (and report["skipped"] set) when no Mids data is configured.
+    """
+    if not config.mids_available():
+        return None, {"skipped": f"no MidsReborn data at {config.MIDS_DATA}"}
     m, rep = build(live, exporter)
-    out = config.out_path(root / "mids-map.json")
-    out.write_text(json.dumps(m, separators=(",", ":")), encoding="utf-8")
-    rep["bytes"] = out.stat().st_size
+    text = json.dumps(m, separators=(",", ":"))
+    rep["text"] = text
+    rep["bytes"] = len(text.encode("utf-8"))
     rep["enh_total"] = len(m["enh"])
     rep["powers_total"] = len(m["powers"])
-    return rep
+    return m, rep

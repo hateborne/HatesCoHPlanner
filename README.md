@@ -25,17 +25,47 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
 ## Data
 
 All game data comes from the live Homecoming client files, decoded by the Python pipeline in
-`pipeline/` (run locally; it needs the decoder tools in `<COH_SOURCE>\tools` and a
-Homecoming client install). MidsReborn's database is used only to validate the decode
-(`pipeline/report.md`) and to map names for importing and exporting Mids build files.
+`pipeline/` with the decoders in `tools/`. MidsReborn's database is a **reference only**, never a
+source of truth: it backs up or questions our numbers in the validation report
+(`pipeline/report.md`) and maps names for importing and exporting Mids build files. Without it the
+pipeline carries the newest existing Mids map forward and skips that report section.
+
+The pipeline's inputs live on your machine and are never committed: copy
+`pipeline/paths.example.json` to `pipeline/paths.local.json` (gitignored) and fill in the
+Homecoming client folder (`client`), and optionally the folder holding the
+`CityOfHeroes_OuroV2_Data` checkout (`source`: loose textures and sounds; without it they come from
+the client piggs) and a MidsReborn data folder (`mids`). The `COH_CLIENT`, `COH_SOURCE` and
+`COH_MIDS` environment variables override the file. The game fonts are vendored in
+`pipeline/inputs/fonts/` (they never change), so they need no input. The run checks its inputs
+first and names any missing setting.
+
+`pipeline/patch-watch.json` records the newest Homecoming patch-notes post the data was checked
+against (for a scheduled job that notices new patches) and the game version the next run exports
+(`homecoming.gameVersion`, e.g. `i28p4`, and `gameLabel`, e.g. `Issue 28, Page 4`).
+
+Each game version lives in its own folder, `public/data/<id>/` (`core`, `powersets`, `powers`,
+`boosts`, `mids-map`). `public/data/versions.json` lists them (`{"default", "versions": [{id,
+label, hash}]}`, where `hash` is `manifest.hash` for cache busting) and `latest.json` names the
+default for older clients. Both are written last.
 
 Refreshing the data after a game patch:
 
-1. `python -m pipeline.run` (add `--force` to ignore the decode cache)
+1. `python -m pipeline.run` (add `--force` to ignore the decode cache). Options:
+   `--game-version <id> --game-label "<label>"` override patch-watch.json for a new version
+   (for example `--game-version i29p1 --game-label "Issue 29, Page 1"`), `--make-default` makes
+   it the default in `versions.json` (a new `versions.json` defaults to the first version run),
+   `--no-assets`, `--no-validate`.
 2. Review `pipeline/report.md`
 3. Commit `public/data/`, `public/assets/` and `pipeline/ids.json`
 
-`pipeline/ids.json` holds the stable IDs that share links use; never delete or renumber it.
+Safety rails: the run aborts before writing anything if any bin decodes with partial records, and
+refuses to run if `pipeline/ids.json` is missing or empty while `public/data` holds data
+(`pipeline/ids.json` holds the stable IDs that share links use; never delete or renumber it). It
+also fails if an asset class ends up smaller than `public/assets/manifest.json` lists. A broken or
+missing MidsReborn folder only adds a warning to the report (the newest existing `mids-map.json`
+is carried forward, possibly stale). Re-running with no game change produces no file changes.
+The decode cache (`pipeline/.cache`) is keyed by the sha1 of the client files and the decoder
+source.
 
 Engine notes: `docs/game-rules.md` (pick, auto-grant and slot rules) and `docs/exemplar-rules.md`
 (exemplar rules, pending review).
