@@ -4,20 +4,21 @@ import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import { boostPog } from '../../engine/enhance.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
-import { previewBuild, useStore, useTipLevel } from '../../state/store.ts';
+import { previewBuild, stepsOf, useStore, useTipLevel } from '../../state/store.ts';
+import { stepSlotLevels } from '../../engine/schedule.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { FadingText, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
+import { FadingText, MenuFrame, NextButton, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { Sprite } from '../components/Sprite.tsx';
 import { useStage } from '../components/Stage.tsx';
-import { fitScale, FONTS, S, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
+import { fitScale, FONTS, S, STAGE_W, SY, textWidth, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { smf } from '../smf.tsx';
@@ -207,19 +208,24 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const { phone } = useStage();
   // hover tooltip: the game's slot details, or the Advanced view (setting or Shift)
   const mouse = usePointer();
-  const step = level ? steps[level.step] : undefined;
+  const flow = level ? stepsOf(steps, level) : steps;
+  const step = level ? flow[level.step] : undefined;
   const preview = useMemo(() => (gd && level ? previewBuild(gd, steps, level) : null), [gd, steps, level]);
   const rules = useMemo(() => (gd && preview ? new BuildRules(gd, preview) : null), [gd, preview]);
   if (!gd || !level || !step || !rules) return null;
   const L = step.level;
-  const entries = rules.entries().filter((e) => e.level <= L && rules.slottable(e.power) && e.power.sm !== 0);
-  const remaining = rules.slotsGranted(L) - rules.slotsUsed(L);
-  const anyPlaceable = entries.some((e) => rules.slotBlock(e, L) === null);
+  const levels = stepSlotLevels(step); // a respec screen places the slots of several levels
+  // a respec (uiReSpec.c respec_assignment) draws every power, greying the ones bought later
+  const respec = !!level.flow;
+  const later = (e: BuildEntry) => e.level > L;
+  const entries = rules.entries().filter((e) => (respec || !later(e)) && rules.slottable(e.power) && e.power.sm !== 0);
+  const remaining = rules.slotsLeft(levels);
+  const anyPlaceable = entries.some((e) => rules.slotBlock(e, L, levels) === null);
 
   const click = (e: BuildEntry) => {
     // specLevel's order: no slots left beats a full power
     const noSlots = remaining <= 0;
-    const block = noSlots ? 'No Slots' : rules.slotBlock(e, L);
+    const block = noSlots ? 'No Slots' : rules.slotBlock(e, L, levels);
     if (block) {
       play('reject5');
       const id = ++fadeId.current;
@@ -242,7 +248,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     const idx = level.pendingSlots.lastIndexOf(key);
     if (idx < 0) {
       // nothing movable here: say why when the power's slots at this level hold enhancements
-      if (rules.entries().some((x) => x.key === key && x.slots.some((s, i) => i > 0 && s.level === L && s.enh))) flashLocked(key);
+      if (rules.entries().some((x) => x.key === key && x.slots.some((s, i) => i > 0 && levels.includes(s.level) && s.enh))) flashLocked(key);
       return;
     }
     play('delete');
@@ -269,10 +275,10 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             wd={g.barW}
             halfText
             text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
-            state="standard"
+            state={respec && later(e) ? 'unselectable' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
-            onClick={() => click(e)}
-            onRightClick={() => unclick(e.key)}
+            onClick={respec && later(e) ? undefined : () => click(e)}
+            onRightClick={respec && later(e) ? undefined : () => unclick(e.key)}
             onHover={(on) => {
               // the info box keeps the last hovered power; the tooltip only while over the bar
               if (on) useHover.setState({ desc: { p: e.power }, tip: phone ? null : { entry: e, x: mouse.current.x, y: mouse.current.y } });
@@ -286,7 +292,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         const pending = level.pendingSlots.filter((k) => k === e.key).length;
         let skip = pending;
         const owned = e.slots.filter((s, i) => {
-          const isPending = skip > 0 && i > 0 && s.level === L && !s.enh;
+          const isPending = skip > 0 && i > 0 && levels.includes(s.level) && !s.enh;
           if (isPending) skip--;
           return !isPending;
         });
@@ -305,9 +311,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
               pog={boost ? boostPog(gd, boost) : undefined}
-              title={boost && s.level === L ? 'Holds an enhancement: remove it on the build screen to move this slot' : `Slot gained at level ${s.level + 1}`}
-              onClick={boost && s.level === L ? () => flashLocked(e.key) : undefined}
-              onRightClick={boost && s.level === L ? () => flashLocked(e.key) : undefined}
+              title={boost && levels.includes(s.level) ? 'Holds an enhancement: remove it on the build screen to move this slot' : `Slot gained at level ${s.level + 1}`}
+              onClick={boost && levels.includes(s.level) ? () => flashLocked(e.key) : undefined}
+              onRightClick={boost && levels.includes(s.level) ? () => flashLocked(e.key) : undefined}
             />,
           );
         });
@@ -330,20 +336,54 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     );
   };
 
+  const title = respec ? 'CHOOSE ALL ENHANCEMENT SLOTS:' : 'ADD AN ENHANCEMENT SLOT';
+  /**
+   * A panel's sets. The respec screen lists the third panel in the order the character got the
+   * sets (ppPowerSets): the inherent sets from character creation first, then pools as picked
+   * (checked in game: Inherent, Inherent Fitness, ..., Leadership, Psionic Mastery).
+   */
+  const panelGroups = (column: number) => {
+    const list = groups(rules, entries, column);
+    if (!respec || column !== 2) return list;
+    const rank = (g: Group) => (g.set?.n === 'Inherent.Inherent' ? 0 : g.set?.n.startsWith('Inherent.') ? 1 : 2);
+    // within a set, powers in the set's own order (granted in that order)
+    const inSet = (g: Group, e: BuildEntry) => g.set?.p.indexOf(e.power.id) ?? 0;
+    return [...list].sort((a, b) => rank(a) - rank(b)).map((g) => ({ ...g, entries: [...g.entries].sort((a, b) => inSet(g, a) - inSet(g, b)) }));
+  };
+  // Homecoming's respec slot screen: one line, "Slots Available: N" until every slot is placed
+  const counter = (box?: { x: number; y: number; w: number; h: number }) =>
+    respec ? (
+      <RespecCounter done={remaining <= 0} lines={[remaining > 0 ? `Slots Available: ${remaining}` : "Click 'Next' to Continue"]} {...box} />
+    ) : (
+      <SlotsAvailable n={remaining} {...box} />
+    );
+  const finishText = respec && level.mode === 'wizard' ? 'Next' : 'Finish';
+  // which level the slots belong to: a planner extra on the slot screen; in a respec the game's own
+  // line, drawn unscaled at screen pixel (1000, 30) (uiReSpec.c prnt(1000, 30, ...)), so on the
+  // 3840 x 2160 reference it is small text just above the title bar
+  const levelLine = (x: number, y: number) =>
+    respec && phone ? (
+      <GameText font="title_12" scale={S} x={x} y={y} align="right" colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
+    ) : respec ? (
+      <GameText font="title_12" scale={STAGE_W / 3840} x={(1000 * STAGE_W) / 3840} y={(30 * STAGE_W) / 3840} colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
+    ) : (
+      <GameText font="title_14" scale={S} x={x} y={y} align="right" colors={skin.heading} text={`LEVEL ${L + 1}`} />
+    );
+
   if (phone) {
     const g = phonePanel();
     return (
       <>
-        <TitleBar skin={skin} text="ADD AN ENHANCEMENT SLOT" />
-        <GameText font="title_14" scale={S} x={980} y={118} align="right" colors={skin.heading} text={`LEVEL ${L + 1}`} />
+        <TitleBar skin={skin} text={title} />
+        {levelLine(980, 118)}
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pool Powers']} active={tab} onChange={setTab} />
         <MenuFrame x={g.frame.x} y={g.frame.y} w={g.frame.w} h={g.frame.h} skin={skin} />
-        {renderPanel(g, groups(rules, entries, tab), 0)}
-        <SlotsAvailable n={remaining} x={300} y={1465} w={400} h={56} />
+        {renderPanel(g, panelGroups(tab), 0)}
+        {counter({ x: 300, y: 1465, w: 400, h: 56 })}
         {noSlotFades}
         <HoveredInfo gd={gd} phone />
         <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
-        <NextButton skin={skin} dir="right" text="Finish" locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
+        <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
       </>
     );
   }
@@ -353,24 +393,28 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const dot = ui(`creation/enhancements/enhnctray_powertitle_dot`, skin);
   return (
     <>
-      <TitleBar skin={skin} text="ADD AN ENHANCEMENT SLOT" />
-      {/* planner extra (not drawn by specMenu): which level these slots belong to */}
-      <GameText font="title_14" scale={S} x={vx(1010)} y={vy(38)} align="right" colors={skin.heading} text={`LEVEL ${L + 1}`} />
+      <TitleBar skin={skin} text={title} />
+      {levelLine(TOP_LABEL_RIGHT, vy(38))}
       {[0, 1, 2].map((i) => {
         const f = desktopPanel(i).frame;
         return <MenuFrame key={i} x={f.x} y={f.y} w={f.w} h={f.h} skin={skin} />;
       })}
       {/* drawMenuHeader: gamebold_18 white -> 88b6ff centered on (848, 72), a dot 5s outside each end */}
-      <GameText font="gamebold_18" scale={S} x={headX} y={headY} centerY align="center" colors={['#ffffff', skin.poolHeader]} text="POOL POWERS" />
-      <Sprite src={dot} x={headX - (headW / 2 + 15 * S)} y={headY - 5 * S} w={10 * S} h={10 * S} />
-      <Sprite src={dot} x={headX + headW / 2 + 5 * S} y={headY - 5 * S} w={10 * S} h={10 * S} />
-      {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), groups(rules, entries, i), i))}
+      {/* the respec screen (uiReSpec.c respec_assignment) draws no POOL POWERS header */}
+      {respec ? null : (
+        <>
+          <GameText font="gamebold_18" scale={S} x={headX} y={headY} centerY align="center" colors={['#ffffff', skin.poolHeader]} text="POOL POWERS" />
+          <Sprite src={dot} x={headX - (headW / 2 + 15 * S)} y={headY - 5 * S} w={10 * S} h={10 * S} />
+          <Sprite src={dot} x={headX + headW / 2 + 5 * S} y={headY - 5 * S} w={10 * S} h={10 * S} />
+        </>
+      )}
+      {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), panelGroups(i), i))}
       <HoveredInfo gd={gd} phone={false} />
       <SlotTipLayer gd={gd} atId={preview!.at} level={L} />
-      <SlotsAvailable n={remaining} />
+      {counter()}
       {noSlotFades}
       <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
-      <NextButton skin={skin} dir="right" text="Finish" locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
+      <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
     </>
   );
 }

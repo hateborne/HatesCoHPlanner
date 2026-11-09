@@ -9,7 +9,7 @@ import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
 import { cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
-import { levelSteps, type LevelStep } from '../engine/schedule.ts';
+import { levelSteps, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
@@ -29,6 +29,7 @@ export interface LevelCtx {
   pendingPower?: number;
   pendingSet?: number; // a new pool/epic set chosen on the set picker
   pendingSlots: string[]; // entry keys, one per slot placed at this level
+  flow?: LevelStep[]; // a Respec build's wizard order (respecSteps); absent: the leveling order
 }
 
 interface Store {
@@ -56,7 +57,8 @@ interface Store {
   askConfirm(q: { title: string; text: string; okLabel?: string }): Promise<boolean>;
   closeConfirm(ok: boolean): void;
   load(): Promise<void>;
-  startBuild(args: { name: string; at: number; origin: number; alignment: Alignment; primary: number; secondary: number }): void;
+  /** Start a new build's wizard; `respecTo` (0-based) makes it a Respec: every power first, then the slots. */
+  startBuild(args: { name: string; at: number; origin: number; alignment: Alignment; primary: number; secondary: number; respecTo?: number }): void;
   setBuild(b: Build): void;
   toSetup(): void;
   toOverview(): void;
@@ -134,22 +136,56 @@ function restore(): Build | undefined {
   return read(() => sessionStorage) ?? read(() => localStorage);
 }
 
+/** @return The steps the level-up flow walks: a Respec's own order, else the leveling steps. */
+export function stepsOf(steps: LevelStep[], l: LevelCtx): LevelStep[] {
+  return l.flow ?? steps;
+}
+
 /** @return The pick index the flow is on (power steps only). */
 export function currentPick(steps: LevelStep[], l: LevelCtx): number {
-  return steps[l.step]?.picks[l.pickInStep] ?? -1;
+  return stepsOf(steps, l)[l.step]?.picks[l.pickInStep] ?? -1;
+}
+
+/**
+ * Give each slot placed on a step its level. Outside a respec that is the step's level; a respec
+ * screen merges several slot levels, and each slot takes the lowest one its power is owned at.
+ *
+ * @param step The step the slots are placed on.
+ * @param owned For each slot, the level its power was taken.
+ * @param taken Levels already held by slots kept on the screen (ones holding enhancements stay
+ *   put when it is reopened): not handed out again.
+ * @return One level per slot, in the same order.
+ */
+function spreadSlots(step: LevelStep, owned: number[], taken: number[] = []): number[] {
+  if (!step.slotLevels) return owned.map(() => step.level);
+  const free = [...step.slotLevels].sort((a, b) => a - b);
+  for (const lv of taken) {
+    const k = free.indexOf(lv);
+    if (k >= 0) free.splice(k, 1);
+  }
+  const out: number[] = [];
+  for (const i of owned.map((_, k) => k).sort((a, b) => owned[a]! - owned[b]!)) {
+    let k = free.findIndex((lv) => lv >= owned[i]!);
+    if (k < 0) k = free.length - 1;
+    out[i] = k >= 0 ? free.splice(k, 1)[0]! : step.level;
+  }
+  return out;
 }
 
 /** Build with this level's pending choices applied (what the screens draw). */
 export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Build {
-  const step = steps[l.step];
+  const step = stepsOf(steps, l)[l.step];
   if (!step) return l.base;
   if (l.sub === 'slots') {
     let b = l.base;
-    const rules = new BuildRules(gd, b);
-    for (const key of l.pendingSlots) {
-      const e = rules.entries().find((x) => x.key === key);
-      if (e) b = addSlot(b, key, step.level, e.level);
-    }
+    const entries = new BuildRules(gd, b).entries();
+    const pending = l.pendingSlots.map((key) => entries.find((x) => x.key === key));
+    const span = new Set(step.slotLevels ?? []);
+    const taken = entries.flatMap((x) => x.slots.filter((sl, i) => i > 0 && span.has(sl.level)).map((sl) => sl.level));
+    const levels = spreadSlots(step, pending.map((e) => e?.level ?? 0), taken);
+    pending.forEach((e, i) => {
+      if (e) b = addSlot(b, e.key, levels[i]!, e.level);
+    });
     return b;
   }
   const pick = currentPick(steps, l);
@@ -163,37 +199,54 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
  *
  * @param keepEnhanced Keep slots that hold an enhancement (reopening a slot level: they stay
  *   placed and locked; only empty slots can be moved).
+ * @param order Pick indices in the order the flow asks them (default: index order).
  */
-function withoutLevel(b: Build, step: LevelStep, pick: number | null, dropLater: boolean, keepEnhanced = false): Build {
+function withoutLevel(b: Build, step: LevelStep, pick: number | null, dropLater: boolean, keepEnhanced = false, order?: number[]): Build {
   const nb = cloneBuild(b);
-  if (pick !== null) nb.picks = nb.picks.map((p, i) => (i === pick || (dropLater && i > pick) ? null : p));
+  const levels = stepSlotLevels(step);
+  const first = Math.min(...levels);
+  // "later" follows the flow's own order (a respec asks level 1's pick 1 before pick 0)
+  const rank = (i: number) => (order ? order.indexOf(i) : i);
+  if (pick !== null) nb.picks = nb.picks.map((p, i) => (i === pick || (dropLater && rank(i) > rank(pick)) ? null : p));
   else if (dropLater) nb.picks = nb.picks.map((p) => (p && p.level > step.level ? null : p));
-  const drop = (lvl: number) => (dropLater ? lvl >= step.level : lvl === step.level);
+  const drop = (lvl: number) => (dropLater ? lvl >= first : levels.includes(lvl));
   const filt = <T extends { level: number; enh?: unknown }>(slots: T[]) => slots.filter((s, i) => i === 0 || !drop(s.level) || (keepEnhanced && !!s.enh));
   for (const p of nb.picks) if (p) p.slots = filt(p.slots);
   for (const g of Object.values(nb.granted)) g.slots = filt(g.slots);
   return nb;
 }
 
-/** @return Entry keys of the slots gained at a level, one per slot (only empty ones if asked). */
-function slotKeysAt(gd: GameData, b: Build, level: number, emptyOnly = false): string[] {
+/** @return Entry keys of the slots gained at these levels, one per slot (only empty ones if asked). */
+function slotKeysAt(gd: GameData, b: Build, levels: number[], emptyOnly = false): string[] {
   const keys: string[] = [];
   for (const e of new BuildRules(gd, b).entries()) {
     e.slots.forEach((s, i) => {
-      if (i > 0 && s.level === level && !(emptyOnly && s.enh)) keys.push(e.key);
+      if (i > 0 && levels.includes(s.level) && !(emptyOnly && s.enh)) keys.push(e.key);
     });
   }
   return keys;
 }
 
 /** @return Whether undoing a level (and, with dropLater, everything after it) would discard an enhancement. */
-function dropsEnhancements(gd: GameData, b: Build, step: LevelStep, pick: number | null, dropLater: boolean): boolean {
-  const after = withoutLevel(b, step, pick, dropLater);
+function dropsEnhancements(gd: GameData, b: Build, step: LevelStep, pick: number | null, dropLater: boolean, order?: number[]): boolean {
+  const after = withoutLevel(b, step, pick, dropLater, false, order);
   const count = (x: Build) => new BuildRules(gd, x).entries().reduce((n, e) => n + e.slots.filter((s) => s.enh).length, 0);
   return count(after) < count(b);
 }
 
 const LOCKED = 'Remove enhancements first';
+
+/** @return Whether a step's picks are made and its slots (if it grants any) are all placed. */
+function stepDone(rules: BuildRules, b: Build, s: LevelStep): boolean {
+  return s.picks.every((k) => b.picks[k]) && (s.slots === 0 || rules.slotsLeft(stepSlotLevels(s)) <= 0);
+}
+
+/** @return Whether a Respec build still has powers or slots to place (it offers Continue Respec). */
+export function respecUnfinished(gd: GameData, b: Build, steps: LevelStep[]): boolean {
+  if (b.respecTo === undefined) return false;
+  const rules = new BuildRules(gd, b);
+  return respecSteps(steps, b.respecTo).some((s) => !stepDone(rules, b, s));
+}
 
 export const useStore = create<Store>((set, get) => ({
   steps: [],
@@ -351,10 +404,11 @@ export const useStore = create<Store>((set, get) => ({
     if (!gd) return;
     const b = newBuild({ ...args, dataVersion: gd.core.manifest.dataVersion, pickCount: gd.core.schedule.power.length });
     persist(b);
+    const flow = args.respecTo !== undefined ? respecSteps(get().steps, args.respecTo) : undefined;
     set({
       build: b,
       view: 'level',
-      level: { step: 0, pickInStep: 0, mode: 'wizard', sub: 'power', base: b, orig: b, pendingSlots: [] },
+      level: { step: 0, pickInStep: 0, mode: 'wizard', sub: 'power', base: b, orig: b, pendingSlots: [], flow },
     });
   },
 
@@ -420,9 +474,10 @@ export const useStore = create<Store>((set, get) => ({
       return;
     }
     // advance the wizard
+    const flow = stepsOf(steps, level);
     let step = level.step;
     let pickInStep = level.pickInStep;
-    const cur = steps[step];
+    const cur = flow[step];
     if (level.sub !== 'slots' && cur && pickInStep + 1 < cur.picks.length) {
       pickInStep++;
     } else if (level.sub !== 'slots' && cur && cur.slots > 0) {
@@ -432,7 +487,7 @@ export const useStore = create<Store>((set, get) => ({
       step++;
       pickInStep = 0;
     }
-    const next = steps[step];
+    const next = flow[step];
     if (!next) {
       set({ build: b, view: 'overview', level: undefined });
       return;
@@ -447,6 +502,7 @@ export const useStore = create<Store>((set, get) => ({
         base: b,
         orig: b,
         pendingSlots: [],
+        flow: level.flow,
       },
     });
   },
@@ -459,10 +515,11 @@ export const useStore = create<Store>((set, get) => ({
       return;
     }
     // previous position in the wizard
+    const flow = stepsOf(steps, level);
     let step = level.step;
     let pickInStep = level.pickInStep;
     let sub: LevelSub = level.sub === 'slots' ? 'slots' : 'power';
-    const cur = steps[step];
+    const cur = flow[step];
     if (sub === 'slots' && cur && cur.picks.length) {
       sub = 'power';
       pickInStep = cur.picks.length - 1;
@@ -470,7 +527,7 @@ export const useStore = create<Store>((set, get) => ({
       pickInStep--;
     } else {
       step--;
-      const prev = steps[step];
+      const prev = flow[step];
       if (!prev) {
         set({ view: 'setup', level: undefined });
         return;
@@ -478,22 +535,23 @@ export const useStore = create<Store>((set, get) => ({
       sub = prev.slots > 0 ? 'slots' : 'power';
       pickInStep = Math.max(0, prev.picks.length - 1);
     }
-    const target = steps[step]!;
+    const target = flow[step]!;
     const committed = level.base;
     // Back discards that level and everything after it: not while any of it holds enhancements
-    if (dropsEnhancements(gd, committed, target, sub === 'slots' ? null : target.picks[pickInStep]!, true)) {
+    const order = flow.flatMap((s) => s.picks);
+    if (dropsEnhancements(gd, committed, target, sub === 'slots' ? null : target.picks[pickInStep]!, true, order)) {
       get().notify(LOCKED);
       return;
     }
     if (sub === 'slots') {
-      const pending = slotKeysAt(gd, committed, target.level);
+      const pending = slotKeysAt(gd, committed, stepSlotLevels(target));
       const base = withoutLevel(committed, target, null, true);
-      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingSlots: pending } });
+      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingSlots: pending, flow: level.flow } });
     } else {
       const pick = target.picks[pickInStep]!;
       const pendingPower = committed.picks[pick]?.power;
-      const base = withoutLevel(committed, target, pick, true);
-      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingPower, pendingSlots: [] } });
+      const base = withoutLevel(committed, target, pick, true, false, order);
+      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingPower, pendingSlots: [], flow: level.flow } });
     }
   },
 
@@ -536,10 +594,28 @@ export const useStore = create<Store>((set, get) => ({
   editSlots(lvl) {
     const { gd, build, steps } = get();
     if (!gd || !build) return;
+    if (build.respecTo !== undefined && lvl <= build.respecTo) {
+      // a respec places its slots after every power is chosen: until then, Continue Respec
+      const end = build.respecTo;
+      if (build.picks.some((p, i) => !p && (gd.core.schedule.power[i] ?? 99) <= end)) {
+        get().notify('Choose every power first: use Continue Respec');
+        return;
+      }
+      // a respec's slots all came from one screen, on any power: reopen that screen (slots holding
+      // enhancements stay locked; the empty ones can move anywhere)
+      const flow = respecSteps(steps, build.respecTo);
+      const at = flow.findIndex((s) => s.slots > 0);
+      const target = flow[at];
+      if (!target) return;
+      const pendingSlots = slotKeysAt(gd, build, stepSlotLevels(target), true);
+      const base = withoutLevel(build, target, null, false, true);
+      set({ view: 'level', level: { step: at, pickInStep: 0, mode: 'edit', sub: 'slots', base, orig: build, pendingSlots, flow } });
+      return;
+    }
     const step = steps.findIndex((s) => s.level === lvl && s.slots > 0);
     if (step < 0) return;
     // slots holding enhancements stay where they are (locked); only the empty ones can move
-    const pending = slotKeysAt(gd, build, lvl, true);
+    const pending = slotKeysAt(gd, build, [lvl], true);
     const base = withoutLevel(build, steps[step]!, null, false, true);
     set({ view: 'level', level: { step, pickInStep: 0, mode: 'edit', sub: 'slots', base, orig: build, pendingSlots: pending } });
   },
@@ -549,9 +625,11 @@ export const useStore = create<Store>((set, get) => ({
     // included) and the overview hides the levels after it
     const { gd, steps, level } = get();
     if (!gd || !level || level.mode !== 'wizard') return;
-    const step = steps[level.step];
+    const step = stepsOf(steps, level)[level.step];
     if (!step) return;
-    const b = { ...previewBuild(gd, steps, level), endLevel: step.level };
+    const now = previewBuild(gd, steps, level);
+    // a respec stopped on its slot screens has every power: it ends at its respec level
+    const b = { ...now, endLevel: level.flow && !step.picks.length ? (now.respecTo ?? 49) : step.level };
     persist(b);
     set({ build: b, view: 'overview', level: undefined, menuOpen: openMenu });
   },
@@ -562,21 +640,25 @@ export const useStore = create<Store>((set, get) => ({
     const { gd, build, steps } = get();
     if (!gd || !build) return;
     const rules = new BuildRules(gd, build);
-    const done = (s: LevelStep) => s.picks.every((k) => build.picks[k]) && rules.slotsUsed(s.level) >= s.slots;
-    const step = steps.findIndex((s) => !done(s));
+    // an unfinished respec picks up where it stopped (powers, then slots); after it, leveling goes on
+    const rflow = build.respecTo !== undefined ? respecSteps(steps, build.respecTo) : undefined;
+    const ri = rflow ? rflow.findIndex((s) => !stepDone(rules, build, s)) : -1;
+    const flow = ri >= 0 ? rflow : undefined;
+    const step = flow ? ri : steps.findIndex((s) => !stepDone(rules, build, s));
     if (step < 0) return;
-    const target = steps[step]!;
+    const target = (flow ?? steps)[step]!;
     const b = cloneBuild(build);
-    delete b.endLevel;
+    if (flow) b.endLevel = build.respecTo! < 49 ? build.respecTo : undefined;
+    else delete b.endLevel;
     persist(b);
     const firstPick = target.picks.findIndex((k) => !b.picks[k]);
     const sub: LevelSub = firstPick >= 0 ? 'power' : 'slots';
-    const pendingSlots = sub === 'slots' ? slotKeysAt(gd, b, target.level, true) : [];
+    const pendingSlots = sub === 'slots' ? slotKeysAt(gd, b, stepSlotLevels(target), true) : [];
     const base = sub === 'slots' ? withoutLevel(b, target, null, false, true) : b;
     set({
       build: base,
       view: 'level',
-      level: { step, pickInStep: Math.max(0, firstPick), mode: 'wizard', sub, base, orig: base, pendingSlots },
+      level: { step, pickInStep: Math.max(0, firstPick), mode: 'wizard', sub, base, orig: base, pendingSlots, flow },
     });
   },
 
@@ -665,7 +747,7 @@ export function useTipLevel(): 'off' | 'basic' | 'advanced' {
   return tips === 'advanced' || shift ? 'advanced' : 'basic';
 }
 
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   const w = window as unknown as { __store: typeof useStore; __autoWizard: () => string };
   w.__store = useStore;
   // Dev helper: walk the wizard to level 50 taking the first legal power and spreading slots.
@@ -675,12 +757,13 @@ if (import.meta.env.DEV) {
       if (s.view !== 'level' || !s.level || !s.gd) return s.view;
       const l = s.level;
       if (l.sub === 'slots') {
-        const step = s.steps[l.step]!;
-        for (let k = 0; k < 20; k++) {
+        const step = stepsOf(s.steps, l)[l.step]!;
+        const levels = stepSlotLevels(step);
+        for (let k = 0; k < 200; k++) {
           const cur = useStore.getState().level!;
           const rules = new BuildRules(s.gd, previewBuild(s.gd, s.steps, cur));
-          if (rules.slotsUsed(step.level) >= rules.slotsGranted(step.level)) break;
-          const cands = rules.entries().filter((e) => e.level <= step.level && rules.slotBlock(e, step.level) === null);
+          if (rules.slotsLeft(levels) <= 0) break;
+          const cands = rules.entries().filter((e) => rules.slotBlock(e, step.level, levels) === null);
           const e = cands[k % Math.max(1, cands.length)];
           if (!e) break;
           s.addPendingSlot(e.key);

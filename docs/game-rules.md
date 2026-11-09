@@ -71,3 +71,30 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
 `kGrantPower`/`kGrantBoostedPower`/`kExecutePower` attribmods carry power names in their
 `Params` (decoded by the pipeline into `pw` id lists). Granted powers go through the same
 Available/BuyRequires checks; Temporary_Powers get `MaxBoosts = 0`.
+
+## Respec order
+
+Homecoming's live respec, checked in game (November 2026), differs from the I24 code in
+`Game/src/UI/uiReSpec.c` and `MapServer/src/entity/character_respec.c`; the planner follows the
+live game:
+
+- Powers first, one "Choose a new power" screen per pick, in level order, with the usual
+  availability rules (`respec_powerLevel`). At level 1 the **secondary** power comes first (the
+  primary column is locked), then the primary: the I24 code did that only for VEATs
+  (`pickingPrimary`) and otherwise auto-bought the first secondary power. A "Powers Bought /
+  Powers Remaining" counter and Back / Next; Back removes the last pick.
+- Then **one** "Choose All Enhancement Slots:" screen with every slot up to the respec level
+  ("Slots Available: 67" at 50) and every power selectable: slots are free-for-all, any power can
+  take any of them (Next unlocks when all are placed). I24 instead stepped through the slot
+  levels (`respec_slotAdvanceLevel`), greyed out powers bought after each level
+  (`iLevelBought <= iLevel`), and its server refused such slots (`respec_VerifyBoosts`).
+  MidsReborn's Respec mode also still gives each slot the first free level at or after its
+  power's level (`Character.SlotCheck`).
+- "Current Respec Level: N" shows the character level as the game holds it, 0-based: 0 at the
+  first pick, 49 on the slot screen of a level 50 respec. On the power screens it is drawn at
+  (450, 30) scaled; on the slot screen at screen pixel (1000, 30) unscaled (tiny at 4K).
+- Then the game places the character's existing enhancements (`respec_placement`); the planner
+  goes to the build overview instead.
+- The respec runs up to the character's level (`maxRespecLevel`); the planner asks for that
+  level on New Build (50 by default). In the planner a respec's slots carry levels only for
+  bookkeeping; the "slot below the power level" check skips them.

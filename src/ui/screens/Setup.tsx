@@ -26,6 +26,23 @@ const FRAME_TOP = 58; // the outer frame; the name field sits fully above it
 // an archetype click also plays N_Archetype_<class> (origin sounds live with OriginAlignPane)
 const atSounds = (a: Archetype) => [...SELECT, `n_archetype_${a.n}`];
 
+/** How the build is made: leveling up one level at a time, or a respec (every power, then every slot). */
+type BuildType = 'leveling' | 'respec';
+const BUILD_TYPES: { id: BuildType; label: string; help: string }[] = [
+  { id: 'leveling', label: 'Leveling', help: 'Leveling: choose a power or place enhancement slots one level at a time, the way a character levels up.' },
+  {
+    id: 'respec',
+    label: 'Respec',
+    help: "Respec: choose every power first, level by level, then place every enhancement slot, the way the game's respecification works. Set the level to respec to (50 unless you change it).",
+  },
+];
+
+/** @return A typed respec level as a whole level from 1 to 50 (50 when it isn't a number). */
+const respecLevel = (raw: string) => {
+  const n = Math.round(Number(raw));
+  return Number.isFinite(n) && raw.trim() !== '' ? Math.min(50, Math.max(1, n)) : 50;
+};
+
 /** Playable starting sets of a category (VEAT branches and gated sets are not offered). */
 function startingSets(gd: NonNullable<ReturnType<typeof useStore.getState>['gd']>, cat: string, at: Archetype): Powerset[] {
   const ctx = {
@@ -52,6 +69,8 @@ export function Setup() {
   const [align, setAlign] = useState<Alignment>(build?.alignment ?? 'Hero');
   const [name, setName] = useState(build?.name ?? '');
   const [desc, setDesc] = useState<{ text: string; icon?: string } | null>(null);
+  const [buildType, setBuildType] = useState<BuildType>(build?.respecTo !== undefined ? 'respec' : 'leveling');
+  const [respecTo, setRespecTo] = useState(String((build?.respecTo ?? 49) + 1)); // typed text, 1-based
   const [tab, setTab] = useState(0);
   const { phone } = useStage();
   const archetype = at !== undefined ? gd?.archetypeById.get(at) : undefined;
@@ -78,7 +97,7 @@ export function Setup() {
       });
       if (!ok) return;
     }
-    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec });
+    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: buildType === 'respec' ? respecLevel(respecTo) - 1 : undefined });
   };
   const pickAt = (a: Archetype) => {
     if (a.id === at) return;
@@ -103,6 +122,48 @@ export function Setup() {
       ))}
     </select>
   );
+  /** The Build Type bars (Leveling / Respec) from (x, y), `step` apart, `wd` wide. */
+  const typeBars = (x: number, y: number, step: number, wd: number, scale?: number) =>
+    BUILD_TYPES.map((t, i) => (
+      <CheckBar
+        key={t.id}
+        skin={skin}
+        x={x}
+        y={y + i * step}
+        wd={wd}
+        scale={scale}
+        text={t.label}
+        state={t.id === buildType ? 'selected' : 'standard'}
+        down={t.id === buildType}
+        clickSounds={SELECT}
+        hoverSounds
+        onClick={() => {
+          setBuildType(t.id);
+          setDesc({ text: t.help });
+        }}
+        onHover={(on) => setDesc(on ? { text: t.help } : null)}
+      />
+    ));
+  /** "Respec to level" and its field, shown while Respec is ticked; the label's left edge at x. */
+  const levelField = (x: number, cy: number, size: number) =>
+    buildType === 'respec' ? (
+      <div className="abs body-text" style={{ left: x, top: cy - size, height: 2 * size, display: 'flex', alignItems: 'center', gap: size * 0.6, color: '#cfe8ff', fontSize: size, zIndex: 5 }}>
+        <label htmlFor="respec-level">Respec to level</label>
+        <input
+          id="respec-level"
+          type="number"
+          min={1}
+          max={50}
+          value={respecTo}
+          onChange={(e) => setRespecTo(e.target.value)}
+          onBlur={() => setRespecTo(String(respecLevel(respecTo)))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') setRespecTo(String(respecLevel(respecTo)));
+          }}
+          style={{ width: size * 4.2, height: size * 1.9, background: '#000', border: '2px solid #4f94ff', borderRadius: size, color: '#fff', fontSize: size, textAlign: 'center', boxSizing: 'border-box' }}
+        />
+      </div>
+    ) : null;
   const nameStyle = { background: '#000', border: '2px solid #4f94ff', borderRadius: 22, color: '#fff', fontSize: 22, padding: '0 20px', boxSizing: 'border-box' as const };
 
   if (phone) {
@@ -116,6 +177,9 @@ export function Setup() {
       ALIGNMENTS.forEach((a, i) =>
         bars.push(<CheckBar key={a} skin={skin} x={70} y={420 + i * R} wd={P.w - 130} text={a} state={a === align ? 'selected' : 'standard'} down={a === align} clickSounds={SELECT} hoverSounds onClick={() => setAlign(a)} />),
       );
+      bars.push(...typeBars(70, 640, R, P.w - 130));
+      const field = levelField(40, 780, 26);
+      if (field) bars.push(<div key="respec-level">{field}</div>);
     } else if (tab === 1) {
       gd.core.archetypes.forEach((a, i) =>
         bars.push(
@@ -131,7 +195,7 @@ export function Setup() {
         bars.push(<CheckBar key={s.id} skin={skin} x={70} y={50 + i * R} wd={P.w - 130} noBox text={s.dn} state={s.id === val ? 'selected' : 'standard'} down={s.id === val} clickSounds={SELECT} hoverSounds onClick={() => { setv(s.id); setDesc({ text: s.lh || s.sh }); }} />),
       );
     }
-    const count = tab === 1 ? gd.core.archetypes.length : tab === 0 ? 9 : Math.max(1, (tab === 2 ? pris : secs).length);
+    const count = tab === 1 ? gd.core.archetypes.length : tab === 0 ? 13 : Math.max(1, (tab === 2 ? pris : secs).length);
     return (
       <>
         <TitleBar skin={skin} text="CREATE A BUILD" />
@@ -171,6 +235,10 @@ export function Setup() {
         <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} skin={skin} />
       ))}
       <OriginAlignPane skin={skin} x={cOrigin.x} y={TOP} w={cOrigin.w} origin={origin} align={align} onOrigin={setOrigin} onAlign={setAlign} onDesc={setDesc} />
+      {/* Build Type under Alignment, spaced like the pane's own headings and bars */}
+      <SetTitle skin={skin} x={cOrigin.x + 20} y={TOP + 566} text="Build Type" />
+      {typeBars(cOrigin.x + 60, TOP + 636, 47, cOrigin.w - 100, 1)}
+      {levelField(cOrigin.x + 60, TOP + 728, 20)}
       <SetTitle skin={skin} x={cAt.x + 20} y={TOP + 18} text="Archetype" />
       <SetTitle skin={skin} x={cPri.x + 20} y={TOP + 18} text="Primary Power Set" />
       <SetTitle skin={skin} x={cSec.x + 20} y={TOP + 18} text="Secondary Power Set" />

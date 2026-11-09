@@ -2,14 +2,16 @@ import { useMemo, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { BoostSet, Power } from '../../data/types.ts';
 import type { SlottedEnh } from '../../engine/build.ts';
-import { boostPog, canSlot, defaultLevel, enhKind, enhValues, setLevelRange, type EnhKind } from '../../engine/enhance.ts';
+import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, isLegacyDuplicate, pieceName, setLevelRange, type EnhKind } from '../../engine/enhance.ts';
 import type { BuildEntry } from '../../engine/rules.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { icon, type Skin } from '../skin/skin.ts';
 import { TitleText } from '../components/GameText.tsx';
+import { TotalsRow } from '../components/TotalsPanel.tsx';
 import { useEscape } from '../escape.ts';
+import { smf } from '../smf.tsx';
 
 type Tab = 'Training' | 'Origin' | 'Invention' | 'Sets' | 'Special';
 const TABS: Tab[] = ['Training', 'Origin', 'Invention', 'Sets', 'Special'];
@@ -68,9 +70,10 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
   const current = entry.slots[slot]?.enh;
   const valid = useMemo(() => {
     const list = gd.boosts.filter((b) => canSlot(gd, entry.power, b, originIndex));
-    // hide fixed-level legacy duplicates of the common IOs (Crafted_X_10 ... _50)
-    return list.filter((b) => !/^Crafted_[A-Za-z_]+_\d+$/.test(b.n.split('.')[1] ?? '') || gd.boostSetOf.has(b.id));
-  }, [gd, entry.power, originIndex]);
+    // hide legacy copies (fixed-level common IOs, the "Cone" range enhancements); one already in
+    // this slot still shows
+    return list.filter((b) => !isLegacyDuplicate(gd, b) || b.id === current?.boost);
+  }, [gd, entry.power, originIndex, current?.boost]);
   const byTab = useMemo(() => {
     const m = new Map<Tab, Power[]>();
     for (const b of valid) {
@@ -135,7 +138,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     onPlace(sel);
   };
 
-  const values = selBoost && sel ? enhValues(gd, at, entry.power, sel, 49) : [];
+  const values = selBoost && sel ? enhLines(gd, at, entry.power, sel, 49) : [];
   const ref = selBoost ? gd.boostSetOf.get(selBoost.id) : undefined;
   const levelRange = selBoost ? rangeOf(selBoost) : null;
   // the level box's text while it is being typed (null: show the selection's level)
@@ -150,21 +153,37 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
   useEscape(onClose);
   const attunedAlt = ref ? ref.set.slots[ref.letter]?.[ref.variant === 0 ? 1 : 0] : undefined;
 
-  const grid = (list: Power[]) => (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-      {list.map((b) => (
-        <div
-          key={b.id}
-          onClick={() => pickBoost(b)}
-          title={gameText(b.sh)}
-          style={{ width: 128, cursor: 'pointer', textAlign: 'center', padding: 6, borderRadius: 10, border: `2px solid ${sel?.boost === b.id ? '#00d919' : 'transparent'}`, background: sel?.boost === b.id ? 'rgba(0,217,25,0.15)' : 'transparent' }}
-        >
-          <EnhIcon gd={gd} b={b} size={64} />
-          <div className="body-text" style={{ fontSize: 13, color: '#cfe8ff', lineHeight: 1.15 }}>
-            {b.dn}
+  /**
+   * Enhancements as a list, one row each: the icon and the name. A set's pieces drop the set name
+   * the left-hand list already shows ("To Hit Buff/Recharge").
+   *
+   * @param setName The chosen set's name (Sets tab), stripped from the front of each piece's name.
+   */
+  const enhList = (list: Power[], setName?: string) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {list.map((b) => {
+        const own = setName === undefined ? b.dn : pieceName(b, setName);
+        // a set row stands for its piece: it stays lit when the attuned version is the one chosen
+        const ref = gd.boostSetOf.get(b.id);
+        const selRef = sel ? gd.boostSetOf.get(sel.boost) : undefined;
+        const on = sel?.boost === b.id || (!!ref && !!selRef && ref.set.id === selRef.set.id && ref.letter === selRef.letter);
+        return (
+          <div
+            key={b.id}
+            onClick={() => pickBoost(b)}
+            title={gameText(b.sh)}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '4px 10px', borderRadius: 10, border: `2px solid ${on ? '#00d919' : 'transparent'}`, background: on ? 'rgba(0,217,25,0.15)' : 'transparent' }}
+          >
+            {/* its own box: EnhIcon centers itself with auto margins, which a flex row would stretch */}
+            <div style={{ flexShrink: 0 }}>
+              <EnhIcon gd={gd} b={b} size={phone ? 64 : 52} />
+            </div>
+            <div className="body-text" style={{ fontSize: phone ? 22 : 16, color: '#cfe8ff', lineHeight: 1.2 }}>
+              {own || b.dn}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 
@@ -186,10 +205,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
         {TABS.filter((t) => byTab.has(t)).map((t, i) => (
           <CheckBar key={t} skin={skin} x={tx0 + i * tstep} y={ty} wd={twd} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />
         ))}
-        <div className="abs scroll-y" style={{ left: lx, top: ly, width: lw, height: lh }}>
+        <div className={tab === 'Sets' ? 'abs' : 'abs scroll-y'} style={{ left: lx, top: ly, width: lw, height: lh }}>
           {tab === 'Sets' ? (
-            <div style={{ display: 'flex', gap: 16, flexDirection: phone ? 'column' : 'row' }}>
-              <div style={phone ? { maxHeight: 330, overflowY: 'auto' } : { width: 430 }}>
+            // the set names and the chosen set's pieces scroll separately
+            <div style={{ display: 'flex', gap: 16, flexDirection: phone ? 'column' : 'row', height: '100%' }}>
+              <div className="scroll-y" style={phone ? { maxHeight: 330, flexShrink: 0 } : { width: 430, height: '100%' }}>
                 {sets.map((s, i) => (
                   <div key={s.id}>
                     {i === 0 || sets[i - 1]!.grp !== s.grp ? (
@@ -207,12 +227,12 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                   </div>
                 ))}
               </div>
-              <div style={{ flex: 1 }}>
-                {chosenSet ? grid(chosenSet.slots.map((v) => gd.power(v[0]!)).filter((b) => canSlot(gd, entry.power, b, originIndex) && !pieceTaken(b))) : <div className="desc-text">Choose a set.</div>}
+              <div className="scroll-y" style={{ flex: 1, minHeight: 0, height: phone ? undefined : '100%' }}>
+                {chosenSet ? enhList(chosenSet.slots.map((v) => gd.power(v[0]!)).filter((b) => canSlot(gd, entry.power, b, originIndex) && !pieceTaken(b)), chosenSet.dn) : <div className="desc-text">Choose a set.</div>}
               </div>
             </div>
           ) : (
-            grid((byTab.get(tab) ?? []).filter((b) => !pieceTaken(b)))
+            enhList((byTab.get(tab) ?? []).filter((b) => !pieceTaken(b)))
           )}
         </div>
         {/* selection details and controls */}
@@ -224,70 +244,81 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
               <TitleText style={{ fontSize: 20, whiteSpace: 'normal' }}>
                 {selBoost.dn}
               </TitleText>
+              {/* the choices for this enhancement on one row: level (or relative level), attuned, boosters */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 18, rowGap: 6, margin: '8px 0' }}>
+                {levelRange ? (
+                  <label>
+                    Level{' '}
+                    <input
+                      type="number"
+                      min={levelRange[0] + 1}
+                      max={levelRange[1] + 1}
+                      value={lvlDraft ?? String((sel?.ioLevel ?? levelRange[1]) + 1)}
+                      onChange={(e) => {
+                        // keep what is typed ("2" on the way to "25"); apply at once only when in range
+                        const v = e.target.value;
+                        const n = Number(v) - 1;
+                        if (v !== '' && Number.isInteger(n) && n >= levelRange[0] && n <= levelRange[1]) {
+                          setSel({ ...sel!, ioLevel: n });
+                          setLvlDraft(null);
+                        } else setLvlDraft(v);
+                      }}
+                      onBlur={commitLevel}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitLevel();
+                      }}
+                      style={{ width: 70, background: '#000', color: '#fff', border: '1px solid #4f94ff' }}
+                    />
+                  </label>
+                ) : selBoost.bup ? (
+                  <span style={{ color: '#8fa1b8' }}>Scales with your level</span>
+                ) : (
+                  <label>
+                    Relative level{' '}
+                    <select value={sel?.rel ?? 0} onChange={(e) => setSel({ ...sel!, rel: Number(e.target.value) })} style={{ background: '#000', color: '#fff' }}>
+                      {[3, 2, 1, 0, -1, -2, -3].map((r) => (
+                        <option key={r} value={r}>
+                          {r > 0 ? `+${r}` : r}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {attunedAlt !== undefined ? (
+                  <label>
+                    <input type="checkbox" checked={!!selBoost.bup} onChange={() => pickBoost(gd.power(attunedAlt))} /> Attuned
+                  </label>
+                ) : null}
+                {selBoost.bb ? (
+                  <label>
+                    Boosters{' '}
+                    <select value={sel?.boosters ?? 0} onChange={(e) => setSel({ ...sel!, boosters: Number(e.target.value) })} style={{ background: '#000', color: '#fff' }}>
+                      {[0, 1, 2, 3, 4, 5].map((r) => (
+                        <option key={r} value={r}>
+                          +{r}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+              {/* the game's tooltip: the short help in blue, then the long help with this piece's values
+                  filled in (as the build screen's enhancement tooltip shows it) */}
               <div style={{ margin: '6px 0', color: '#7fd3ff' }}>{gameText(selBoost.sh)}</div>
-              {levelRange ? (
-                <label style={{ display: 'block', margin: '8px 0' }}>
-                  Level{' '}
-                  <input
-                    type="number"
-                    min={levelRange[0] + 1}
-                    max={levelRange[1] + 1}
-                    value={lvlDraft ?? String((sel?.ioLevel ?? levelRange[1]) + 1)}
-                    onChange={(e) => {
-                      // keep what is typed ("2" on the way to "25"); apply at once only when in range
-                      const v = e.target.value;
-                      const n = Number(v) - 1;
-                      if (v !== '' && Number.isInteger(n) && n >= levelRange[0] && n <= levelRange[1]) {
-                        setSel({ ...sel!, ioLevel: n });
-                        setLvlDraft(null);
-                      } else setLvlDraft(v);
-                    }}
-                    onBlur={commitLevel}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitLevel();
-                    }}
-                    style={{ width: 70, background: '#000', color: '#fff', border: '1px solid #4f94ff' }}
-                  />
-                </label>
-              ) : selBoost.bup ? (
-                <div style={{ margin: '8px 0', color: '#8fa1b8' }}>Attuned: scales with your level</div>
-              ) : (
-                <label style={{ display: 'block', margin: '8px 0' }}>
-                  Relative level{' '}
-                  <select value={sel?.rel ?? 0} onChange={(e) => setSel({ ...sel!, rel: Number(e.target.value) })} style={{ background: '#000', color: '#fff' }}>
-                    {[3, 2, 1, 0, -1, -2, -3].map((r) => (
-                      <option key={r} value={r}>
-                        {r > 0 ? `+${r}` : r}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {selBoost.bb ? (
-                <label style={{ display: 'block', margin: '8px 0' }}>
-                  Boosters{' '}
-                  <select value={sel?.boosters ?? 0} onChange={(e) => setSel({ ...sel!, boosters: Number(e.target.value) })} style={{ background: '#000', color: '#fff' }}>
-                    {[0, 1, 2, 3, 4, 5].map((r) => (
-                      <option key={r} value={r}>
-                        +{r}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {sel ? <div style={{ margin: '6px 0 10px', color: '#ffffff', lineHeight: 1.3 }}>{smf(boostHelpText(gd, at, sel, 49))}</div> : null}
+              {values.length ? (
+                <>
+                  {/* about two lines of space after the description, so the panel reads less busy */}
+                  <TitleText style={{ fontSize: 16, marginTop: phone ? 44 : 32 }}>
+                    Adds to this power (before ED)
+                  </TitleText>
+                  {/* laid out like the build overview's totals: label left, value right (green: it helps);
+                      nothing here expands, so no +/- column */}
+                  {values.map((v) => (
+                    <TotalsRow key={v.label} label={v.label} value={`${(v.value * 100).toFixed(2)}%`} tone={v.value} noMark />
+                  ))}
+                </>
               ) : null}
-              {attunedAlt !== undefined ? (
-                <label style={{ display: 'block', margin: '8px 0' }}>
-                  <input type="checkbox" checked={!!selBoost.bup} onChange={() => pickBoost(gd.power(attunedAlt))} /> Attuned
-                </label>
-              ) : null}
-              <TitleText style={{ fontSize: 16, marginTop: 10 }}>
-                Adds to this power (before ED)
-              </TitleText>
-              {values.map((v, i) => (
-                <div key={i}>
-                  {gd.attribName.get(v.attrib)?.replace(/_/g, ' ')}: +{(v.value * 100).toFixed(2)}%
-                </div>
-              ))}
             </>
           ) : (
             <div className="desc-text">Choose an enhancement.</div>

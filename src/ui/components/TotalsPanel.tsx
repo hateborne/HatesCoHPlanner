@@ -47,10 +47,18 @@ interface RowProps {
   fmt?: (v: number) => string; // source value format (default srcDefault)
   detail?: ReactNode; // expanded content in place of the source list
   cap?: boolean;
+  noMark?: boolean; // no +/- column: a list where nothing expands (the enhancement picker)
 }
 
-/** A clickable totals row that expands to list every source (the detailed breakdown). */
-function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, detail, cap }: RowProps) {
+/**
+ * A clickable totals row that expands to list every source (the detailed breakdown). Also used
+ * plain (no sources) wherever a stat should read like the totals pane: label left, value right.
+ */
+export function TotalsRow(props: RowProps) {
+  return <Row {...props} />;
+}
+
+function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, detail, cap, noMark }: RowProps) {
   const [open, setOpen] = useState(false);
   const has = !!detail || (!!line && line.sources.length > 0);
   const plain = cap ? CAPPED : PLAIN;
@@ -63,7 +71,7 @@ function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, deta
       >
         {/* the marker sits in its own fixed column so every label starts at the same x */}
         <span style={{ display: 'flex' }}>
-          <span style={{ width: MARK_W, flex: 'none', textAlign: 'center' }}>{has ? (open ? '-' : '+') : ''}</span>
+          {noMark ? null : <span style={{ width: MARK_W, flex: 'none', textAlign: 'center' }}>{has ? (open ? '-' : '+') : ''}</span>}
           <span>{label}</span>
         </span>
         <span style={{ color: toneColor(tone, plain) }}>

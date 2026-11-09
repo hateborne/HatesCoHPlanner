@@ -82,6 +82,7 @@ export interface Build {
   granted: Record<number, GrantedState>; // keyed by power id
   exemplar?: number; // 0-based exemplar level (undefined = full level)
   endLevel?: number; // 0-based level a build planned short of 50 stops at (View Build / Save mid-leveling)
+  respecTo?: number; // Respec build type: the 0-based level it respecs to (absent: built by leveling)
 }
 
 /**
@@ -98,7 +99,9 @@ export function newBuild(args: {
   primary: number;
   secondary: number;
   pickCount: number;
+  respecTo?: number;
 }): Build {
+  const r = args.respecTo;
   return {
     v: 1,
     dataVersion: args.dataVersion,
@@ -110,6 +113,8 @@ export function newBuild(args: {
     secondary: args.secondary,
     picks: Array.from({ length: args.pickCount }, () => null),
     granted: {},
+    // a respec short of 50 ends there, like a build stopped while leveling
+    ...(r !== undefined ? { respecTo: r, endLevel: r < 49 ? r : undefined } : {}),
   };
 }
 

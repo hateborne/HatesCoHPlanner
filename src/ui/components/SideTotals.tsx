@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BuildRules } from '../../engine/rules.ts';
 import { computeTotals } from '../../engine/totals.ts';
-import { previewBuild, useStore } from '../../state/store.ts';
+import { previewBuild, stepsOf, useStore } from '../../state/store.ts';
 import { MenuFrame } from './Chrome.tsx';
 import { TitleText } from './GameText.tsx';
 import { TotalsPanel } from './TotalsPanel.tsx';
@@ -16,7 +16,7 @@ export function SideTotals() {
   const totals = useMemo(() => {
     if (!open || !gd || !level) return null;
     const b = previewBuild(gd, steps, level);
-    const lvl = steps[level.step]?.level ?? 49;
+    const lvl = stepsOf(steps, level)[level.step]?.level ?? 49;
     return computeTotals(gd, new BuildRules(gd, b), b, lvl);
   }, [open, gd, steps, level]);
   if (!gd) return null;
