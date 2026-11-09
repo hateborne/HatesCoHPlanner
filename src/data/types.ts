@@ -111,6 +111,7 @@ export interface Powerset {
   p: number[]; // power ids in display order
   av: number[]; // 0-based level available per power; -1 = granted with the set
   sbr?: string[];
+  sbrt?: string; // the game's message when SetBuyRequires fails
   sr?: string[];
   spr?: string[];
   spa?: number; // SpecializeAt (0-based)

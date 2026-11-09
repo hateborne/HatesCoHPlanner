@@ -1,6 +1,6 @@
 # Pipeline report -- data 20261017-f94d0e09
 
-Generated 2026-11-08T19:18:11.
+Generated 2026-11-08T19:33:32.
 
 ## Decode health
 
@@ -37,7 +37,7 @@ Generated 2026-11-08T19:18:11.
 | File | Bytes |
 |---|---|
 | core.json | 1842965 |
-| powersets.json | 214946 |
+| powersets.json | 215291 |
 | powers.json | 7682142 |
 | boosts.json | 3611879 |
 

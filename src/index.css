@@ -1,28 +1,254 @@
+/* Game fonts (client data/fonts): RedCircle "Paragon City" for titles, Montreal for body text. */
+@font-face {
+  font-family: 'ParagonCity';
+  src: url('/assets/fonts/redcircl.ttf') format('truetype');
+  font-display: block;
+}
+@font-face {
+  font-family: 'ParagonCityItalic';
+  src: url('/assets/fonts/paragon_city_italic.ttf') format('truetype');
+  font-display: block;
+}
+@font-face {
+  font-family: 'Montreal';
+  src: url('/assets/fonts/mont_demibold.ttf') format('truetype');
+  font-weight: 600;
+  font-display: block;
+}
+@font-face {
+  font-family: 'MontrealHeavy';
+  src: url('/assets/fonts/mont_hvbold.ttf') format('truetype');
+  font-display: block;
+}
+
 :root {
   color-scheme: dark;
-  font-family: system-ui, sans-serif;
+  --title-top: #ffff00;
+  --title-bottom: #ffa500;
+  --menu-border: #4f94ff;
+  --desc: #48ff48;
+  font-family: 'Montreal', Verdana, sans-serif;
   background: #000;
   color: #fff;
 }
 
-body {
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+/* ---- the scaled 2000x1125 stage ------------------------------------------------------------ */
+
+.viewport {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #000;
 }
 
-.placeholder {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 48px 16px;
+.stage {
+  position: relative;
+  width: 2000px;
+  height: 1125px;
+  flex: none;
+  overflow: hidden;
+  background: #000 center / cover no-repeat;
+  user-select: none;
 }
 
-.placeholder h1 {
-  color: #ffd200;
+.abs {
+  position: absolute;
+}
+
+/* ---- text ------------------------------------------------------------------------------------ */
+
+.title-text {
+  font-family: 'ParagonCity', 'MontrealHeavy', sans-serif;
   font-style: italic;
+  background: linear-gradient(var(--title-top), var(--title-bottom));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 1px #000) drop-shadow(1px 1px 0 #000);
+  white-space: nowrap;
+  letter-spacing: 1px;
 }
 
-.placeholder .notice {
+.bar-text {
+  font-family: 'ParagonCity', 'MontrealHeavy', sans-serif;
+  font-style: italic;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.8));
+  white-space: nowrap;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
+
+.body-text {
+  font-family: 'Montreal', Verdana, sans-serif;
+}
+
+/* ---- menu frames ----------------------------------------------------------------------------- */
+
+.menu-frame {
+  position: absolute;
+  border: 3px solid var(--menu-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.53);
+  box-shadow:
+    0 0 6px color-mix(in srgb, var(--menu-border) 70%, transparent),
+    inset 0 0 6px color-mix(in srgb, var(--menu-border) 40%, transparent);
+}
+
+.menu-frame.r25 {
+  border-radius: 25px;
+}
+
+.menu-frame.outer {
+  background: transparent;
+}
+
+.set-box {
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.67);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: rgba(0, 0, 255, 0.27);
+}
+
+/* ---- pills ------------------------------------------------------------------------------------ */
+
+.checkbar {
+  position: absolute;
+  cursor: pointer;
+}
+.checkbar.gray {
+  cursor: default;
+}
+.checkbar .layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.sprite {
+  position: absolute;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.sprite.tinted {
+  background-blend-mode: multiply;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* ---- info / description boxes ------------------------------------------------------------- */
+
+.desc-text {
+  color: var(--desc);
+  font-family: 'Montreal', Verdana, sans-serif;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.info-button {
+  position: absolute;
+  height: 40px;
+  border-radius: 20px;
+  border: 2px solid #4f94ff;
+  background: linear-gradient(#1f6dff, #0a3fb5);
+  color: #fff;
+  font-family: 'Montreal', Verdana, sans-serif;
+  font-size: 17px;
+  padding: 0 14px;
+  cursor: pointer;
+  box-shadow: 0 0 6px #1f6dff;
+}
+.info-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.slots-available {
+  position: absolute;
+  border: 3px solid #ff2020;
+  border-radius: 14px;
+  background: #000;
+  color: #ff3030;
+  font-family: 'Montreal', Verdana, sans-serif;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.slots-available.done {
+  border-color: #20ff40;
+  color: #40ff60;
+}
+
+.scroll-y {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #2f6bff #000a2a;
+}
+
+.side-tab {
+  position: fixed;
+  right: 0;
+  top: 40%;
+  z-index: 50;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+}
+
+@keyframes dotpulse {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+@keyframes slotflash {
+  0% {
+    transform: scale(1.8);
+    filter: brightness(3) drop-shadow(0 0 12px #9cf);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+
+.notice {
   color: #8fa1b8;
-  font-size: 0.85rem;
+  font-size: 13px;
 }

@@ -131,9 +131,9 @@ export class BuildRules {
         return !!s && ownedSets.has(s.id);
       },
       prop: (name) => {
+        // engine: anything starting with "arch" or "rank" is the class name ($archtype appears in data)
+        if (name.startsWith('arch') || name.startsWith('rank')) return this.at.n;
         switch (name) {
-          case 'archetype':
-          case 'arch':
           case 'class':
             return this.at.n;
           case 'origin':
@@ -229,6 +229,7 @@ export class BuildRules {
     const kind = this.setKind(set);
     const owned = this.ownedAt(level, pickIndex);
     const ctx = this.ctx(level, owned);
+    if (!evalRequires(set.sr, ctx)) return 'Not available';
     if (kind === 'pool' || kind === 'epic') {
       const sched = kind === 'pool' ? this.gd.core.schedule.pool : this.gd.core.schedule.epic;
       const have = this.ownedOfKind(kind, level, pickIndex);
@@ -242,7 +243,7 @@ export class BuildRules {
     } else if (kind !== 'primary' && kind !== 'secondary') {
       return 'Not available to this archetype';
     }
-    if (!evalRequires(set.sbr, ctx)) return 'Requirements not met';
+    if (!evalRequires(set.sbr, ctx)) return set.sbrt || 'Requirements not met';
     const anyOk = set.p.some((pid, idx) => {
       const p = this.gd.powerById.get(pid);
       const av = set.av[idx] ?? 0;
@@ -328,10 +329,12 @@ export class BuildRules {
     return this.gd
       .setsInCategory(cat)
       .filter((s) => !ownedSets.has(s.id))
-      // Hide sets the game hides (e.g. the retired Pool.Fitness, AT-gated epics).
-      .filter((s) => evalRequires(s.sbr, ctx))
+      // Hide sets the game hides: SetRequires ['0'] (Gadgetry, Utility Belt), the retired
+      // Pool.Fitness, AT-gated epics. Sets blocked only by SetBuyRequires (one specialized pool)
+      // stay listed but greyed with the game's reason.
+      .filter((s) => evalRequires(s.sr, ctx))
+      .filter((s) => !s.spa || evalRequires(s.spr, ctx))
       .filter((s) => kind === 'pool' || s.p.some((pid) => evalRequires(this.gd.power(pid).br, ctx)))
-      .filter((s) => !(s.spa && !evalRequires(s.spr, ctx)))
       .map((s) => ({ set: s, block: this.newSetBlock(s, pickIndex) }));
   }
 

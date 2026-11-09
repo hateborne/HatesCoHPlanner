@@ -304,6 +304,9 @@ class Exporter:
                          ("SpecializeRequires", "spr")):
             if s.get(src):
                 o[dst] = s[src]
+        if s.get("SetBuyRequiresFailedText"):
+            t = s["SetBuyRequiresFailedText"]
+            o["sbrt"] = self.M.get(t, t)
         if s.get("SpecializeAt"):
             o["spa"] = s["SpecializeAt"]
         if not s.get("ShowInManage", 1):
