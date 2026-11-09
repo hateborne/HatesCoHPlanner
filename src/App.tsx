@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { skinOf } from './engine/build.ts';
 import { TIP_MODES, useStore, type TipMode } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
 import { ConfirmDialog } from './ui/components/ConfirmDialog.tsx';
+import { SupportDialog } from './ui/components/SupportDialog.tsx';
 import { Stage, useStage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
 import { BuildMenu } from './ui/screens/BuildMenu.tsx';
@@ -11,7 +12,7 @@ import { ChooseNewPower } from './ui/screens/ChooseNewPower.tsx';
 import { ChoosePoolSet } from './ui/screens/ChoosePoolSet.tsx';
 import { Overview } from './ui/screens/Overview.tsx';
 import { Setup } from './ui/screens/Setup.tsx';
-import { SKINS } from './ui/skin/skin.ts';
+import { SKINS, type Skin } from './ui/skin/skin.ts';
 import { setMusicSkin } from './ui/sound.ts';
 import { TitleText } from './ui/components/GameText.tsx';
 
@@ -37,11 +38,12 @@ const TIP_HELP: Record<TipMode, string> = {
   disabled: 'Tooltips: Disabled -- hovering shows nothing. Click to switch to Enabled.',
 };
 
-/** Sound effects, music and tooltip switches, side by side at the bottom center. */
-function AudioToggles() {
+/** Sound, music and tooltip switches and the Support button, side by side at the bottom center. */
+function BottomBar({ skin }: { skin: Skin }) {
   const { muted, setMuted, musicOn, setMusicOn, tips, setTips } = useStore();
+  const [support, setSupport] = useState(false);
   const stage = useStage();
-  const x0 = stage.w / 2 - (120 + 12 + 120 + 12 + 170) / 2;
+  const x0 = stage.w / 2 - (120 + 12 + 120 + 12 + 170 + 12 + 200) / 2;
   return (
     <>
       <Toggle label="Sound" on={!muted} set={(v) => setMuted(!v)} x={x0} />
@@ -54,6 +56,15 @@ function AudioToggles() {
       >
         Tooltips: {TIP_LABEL[tips]}
       </div>
+      <div
+        className="abs body-text"
+        onClick={() => setSupport(true)}
+        title="How to support the planner"
+        style={{ left: x0 + 446, top: stage.h - 54, width: 200, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: '#cfe8ff', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
+      >
+        Support HateCoHPlanner
+      </div>
+      {support ? <SupportDialog skin={skin} onClose={() => setSupport(false)} /> : null}
     </>
   );
 }
@@ -121,7 +132,7 @@ export function App() {
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
       <Notice />
       <ConfirmDialog />
-      <AudioToggles />
+      <BottomBar skin={view === 'setup' ? SKINS[skinOf(setupAlign)] : skin} />
       <div className="abs notice" style={{ left: 0, right: 0, bottom: 4, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
         Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.
       </div>

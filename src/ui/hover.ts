@@ -12,11 +12,11 @@ export interface HoverState {
   desc: { p?: Power; s?: Powerset } | null; // power / set under the pointer (the green description boxes)
   tip: { entry: BuildEntry; x: number; y: number } | null; // power bar under the pointer (tooltip)
   ringTip: { entry: BuildEntry; slot: number; x: number; y: number } | null; // filled slot ring under the pointer
-  pick: number | null; // 0-based level of the hovered pick (lights its level orb)
+  blink: number | null; // 0-based level whose orb blinks (the hovered pick or slot was taken then)
   orb: number | null; // 0-based level of the hovered orb (lights that level's pick / slots)
 }
 
-const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, pick: null, orb: null };
+const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null };
 
 export const useHover = create<HoverState>(() => EMPTY);
 

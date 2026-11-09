@@ -353,18 +353,22 @@ button {
   }
 }
 
-/* build screen hover links (level orb <-> power / slots): a gentle pulsing halo */
-@keyframes hoverglow {
-  from {
-    box-shadow: 0 0 4px 1px rgba(150, 220, 255, 0.4);
+/* build screen hover links (level orb <-> power / slots): a steady half-white cover, 50% lighter */
+.hover-light {
+  background: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+}
+/* the level orb of a hovered power or slot: lit, then not, once a second (no fade) */
+@keyframes orbblink {
+  0% {
+    opacity: 1;
   }
-  to {
-    box-shadow: 0 0 12px 4px rgba(150, 220, 255, 0.8);
+  50% {
+    opacity: 0;
   }
 }
-.hover-glow {
-  animation: hoverglow 0.7s ease-in-out infinite alternate !important;
-  pointer-events: none;
+.orb-blink {
+  animation: orbblink 1s step-end infinite;
 }
 
 /* a refused change ("Remove enhancements first"): small red text that fades out */
@@ -402,3 +406,13 @@ button {
   pointer-events: none;
 }
 
+
+/* links in the Support box: the tooltip's list blue, brighter on hover */
+.support-link {
+  color: #8fcfff;
+  text-decoration: underline;
+  pointer-events: auto;
+}
+.support-link:hover {
+  color: #d6f0ff;
+}
