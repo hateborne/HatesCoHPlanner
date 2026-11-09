@@ -62,8 +62,6 @@ button {
 
 .stage {
   position: relative;
-  width: 2000px;
-  height: 1125px;
   flex: none;
   overflow: hidden;
   background: #000 center / cover no-repeat;

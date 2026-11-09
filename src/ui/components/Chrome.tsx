@@ -1,13 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
+import { PHONE_DESC, PHONE_NEXT_Y } from './Phone.tsx';
 import { Sprite } from './Sprite.tsx';
+import { useStage } from './Stage.tsx';
 
 /**
  * The animated title bar in the top-left corner (drawMenuTitle): glowing dot, horizontal pipes,
  * right cap, and the title in the RedCircle font that slides open when a new menu appears.
  */
-export function TitleBar({ skin, text, x = 55, y = 46, scale = 1.9 }: { skin: Skin; text: string; x?: number; y?: number; scale?: number }) {
+export function TitleBar({ skin, text, x = 55, y = 46, scale: scaleIn }: { skin: Skin; text: string; x?: number; y?: number; scale?: number }) {
+  const stage = useStage();
+  const scale = scaleIn ?? (stage.phone ? 1.35 : 1.9);
   const [open, setOpen] = useState(false);
   const measure = useRef<HTMLSpanElement>(null);
   const [measured, setMeasured] = useState(0);
@@ -27,7 +31,8 @@ export function TitleBar({ skin, text, x = 55, y = 46, scale = 1.9 }: { skin: Sk
   const capW = 22 * scale;
   const capH = 38 * scale;
   const fontSize = 27 * scale;
-  const textW = (measured || text.length * fontSize * 0.8) + 40;
+  // measured before the font loads can come back too small; never go below a sane estimate
+  const textW = Math.max(measured, text.length * fontSize * 0.62) + 40;
   const wd = textW + dot / 2 + capW;
   return (
     <div className="abs" style={{ left: x - dot / 2, top: y - dot / 2, width: wd + dot, height: dot, zIndex: 30 }}>
@@ -81,8 +86,10 @@ export function MenuFrame({ x, y, w, h, r25, outer, children, style }: { x: numb
 }
 
 /** Cancel / Back / Finish buttons (drawNextButton). */
-export function NextButton({ skin, dir, text, locked, glow, onClick, y = 1083, scale = 0.95 }: { skin: Skin; dir: 'left' | 'right'; text: string; locked?: boolean; glow?: boolean; onClick?: () => void; y?: number; scale?: number }) {
+export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, scale = 0.95 }: { skin: Skin; dir: 'left' | 'right'; text: string; locked?: boolean; glow?: boolean; onClick?: () => void; y?: number; scale?: number }) {
   const [hover, setHover] = useState(false);
+  const stage = useStage();
+  const y = yIn ?? (stage.phone ? PHONE_NEXT_Y : 1083);
   const d = dir === 'left' ? 'l' : 'r';
   const l = locked ? 'locked_' : '';
   const p = skin.prefix;
@@ -90,7 +97,7 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y = 1083, s
   const arrow = 64 * scale;
   const tailW = 216 * scale;
   const tailH = 36 * scale;
-  const x = dir === 'left' ? 78 : 1912;
+  const x = dir === 'left' ? 78 : stage.w - 88;
   const lit = hover && !locked;
   const textColors = locked ? ['#fff', '#aaa'] : lit ? ['#fff', skin.name === 'villain' ? '#ff4444' : '#8888ff'] : [skin.title[0], skin.title[1]];
   const fontSize = 26;
@@ -159,7 +166,10 @@ export function gameText(s: string | undefined): string {
 }
 
 /** Bottom description box with the round icon frame (power/AT description in green). */
-export function DescBox({ x = 168, y = 880, w = 1687, h = 128, iconSrc, text }: { x?: number; y?: number; w?: number; h?: number; iconSrc?: string; text?: string }) {
+export function DescBox(props: { x?: number; y?: number; w?: number; h?: number; iconSrc?: string; text?: string }) {
+  const stage = useStage();
+  const d = stage.phone ? PHONE_DESC : { x: 168, y: 880, w: 1687, h: 128 };
+  const { x = d.x, y = d.y, w = d.w, h = d.h, iconSrc, text } = props;
   return (
     <>
       <MenuFrame x={x} y={y} w={w} h={h} style={{ borderWidth: 2 }} />

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { skinOf } from './engine/build.ts';
 import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
-import { Stage } from './ui/components/Stage.tsx';
+import { Stage, useStage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
 import { BuildMenu } from './ui/screens/BuildMenu.tsx';
 import { ChooseNewPower } from './ui/screens/ChooseNewPower.tsx';
@@ -10,6 +10,21 @@ import { ChoosePoolSet } from './ui/screens/ChoosePoolSet.tsx';
 import { Overview } from './ui/screens/Overview.tsx';
 import { Setup } from './ui/screens/Setup.tsx';
 import { SKINS } from './ui/skin/skin.ts';
+
+/** Remembered mute switch in the stage's bottom bar. */
+function SoundToggle({ muted, setMuted }: { muted: boolean; setMuted: (m: boolean) => void }) {
+  const stage = useStage();
+  return (
+    <div
+      className="abs body-text"
+      onClick={() => setMuted(!muted)}
+      title={muted ? 'Sounds are off (click to turn on)' : 'Sounds are on (click to mute)'}
+      style={{ left: stage.w / 2 - 60, top: stage.h - 27, width: 120, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: muted ? '#8fa1b8' : '#cfe8ff', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
+    >
+      Sound: {muted ? 'off' : 'on'}
+    </div>
+  );
+}
 
 /** Top-level router: loading, setup, the level-up screens and the build overview. */
 export function App() {
@@ -51,14 +66,7 @@ export function App() {
     <Stage skin={view === 'setup' ? SKINS.hero : skin}>
       {screen}
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
-      <div
-        className="abs body-text"
-        onClick={() => setMuted(!muted)}
-        title={muted ? 'Sounds are off (click to turn on)' : 'Sounds are on (click to mute)'}
-        style={{ left: 940, top: 1098, width: 120, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: muted ? '#8fa1b8' : '#cfe8ff', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
-      >
-        Sound: {muted ? 'off' : 'on'}
-      </div>
+      <SoundToggle muted={muted} setMuted={setMuted} />
       <div className="abs notice" style={{ left: 0, right: 0, bottom: 4, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
         Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.
       </div>

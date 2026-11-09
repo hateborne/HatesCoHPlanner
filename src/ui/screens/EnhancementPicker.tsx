@@ -6,6 +6,7 @@ import { canSlot, defaultLevel, enhKind, enhValues, setLevelRange, type EnhKind 
 import type { BuildEntry } from '../../engine/rules.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
+import { useStage } from '../components/Stage.tsx';
 import { icon, type Skin } from '../skin/skin.ts';
 
 type Tab = 'Training' | 'Origin' | 'Invention' | 'Sets' | 'Special';
@@ -52,6 +53,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
   }, [gd, valid]);
   const firstTab = (current ? tabOf(enhKind(gd, gd.power(current.boost))) : null) ?? TABS.find((t) => byTab.has(t)) ?? 'Training';
   const [tab, setTab] = useState<Tab>(firstTab);
+  const { phone } = useStage();
   const [sel, setSel] = useState<SlottedEnh | undefined>(current);
   const [setId, setSetId] = useState<number | undefined>(current ? gd.boostSetOf.get(current.boost)?.set.id : undefined);
   const selBoost = sel ? gd.powerById.get(sel.boost) : undefined;
@@ -98,18 +100,28 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     </div>
   );
 
+  // Desktop: list beside details. Phone: list above details on the portrait canvas.
+  const G = phone
+    ? { frame: [20, 90, 960, 1610], title: [40, 105], tab: [50, 195, 188, 140], list: [40, 240, 920, 800], det: [20, 1060, 960, 520], detIn: [40, 1075, 920], btnY: 1625, btnX: [260, 500, 740] }
+    : { frame: [200, 90, 1600, 940], title: [240, 110], tab: [265, 190, 300, 240], list: [230, 230, 1100, 690], det: [1350, 230, 420, 690], detIn: [1370, 245, 380], btnY: 940, btnX: [1390, 1520, 1650] };
+  const [fx, fy, fw, fh] = G.frame as [number, number, number, number];
+  const [tx0, ty, tstep, twd] = G.tab as [number, number, number, number];
+  const [lx, ly, lw, lh] = G.list as [number, number, number, number];
+  const [dx, dy, dw, dh] = G.det as [number, number, number, number];
+  const [ix, iy, iw] = G.detIn as [number, number, number];
+
   return (
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
-        <MenuFrame x={200} y={90} w={1600} h={940} r25 style={{ background: 'rgba(0,0,20,0.94)' }} />
-        <SetTitle x={240} y={110} size={34} text={`${entry.power.dn} -- slot ${slot + 1}`} />
+        <MenuFrame x={fx} y={fy} w={fw} h={fh} r25 style={{ background: 'rgba(0,0,20,0.94)' }} />
+        <SetTitle x={G.title[0]!} y={G.title[1]!} size={phone ? 28 : 34} width={fw - 60} text={`${entry.power.dn} -- slot ${slot + 1}`} />
         {TABS.filter((t) => byTab.has(t)).map((t, i) => (
-          <CheckBar key={t} skin={skin} x={265 + i * 300} y={190} wd={240} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />
+          <CheckBar key={t} skin={skin} x={tx0 + i * tstep} y={ty} wd={twd} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />
         ))}
-        <div className="abs scroll-y" style={{ left: 230, top: 230, width: 1100, height: 690 }}>
+        <div className="abs scroll-y" style={{ left: lx, top: ly, width: lw, height: lh }}>
           {tab === 'Sets' ? (
-            <div style={{ display: 'flex', gap: 16 }}>
-              <div style={{ width: 430 }}>
+            <div style={{ display: 'flex', gap: 16, flexDirection: phone ? 'column' : 'row' }}>
+              <div style={phone ? { maxHeight: 330, overflowY: 'auto' } : { width: 430 }}>
                 {sets.map((s, i) => (
                   <div key={s.id}>
                     {i === 0 || sets[i - 1]!.grp !== s.grp ? (
@@ -136,8 +148,8 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
           )}
         </div>
         {/* selection details and controls */}
-        <MenuFrame x={1350} y={230} w={420} h={690} />
-        <div className="abs body-text" style={{ left: 1370, top: 245, width: 380, fontSize: 16, color: '#cfe8ff' }}>
+        <MenuFrame x={dx} y={dy} w={dw} h={dh} />
+        <div className="abs body-text scroll-y" style={{ left: ix, top: iy, width: iw, height: dh - 30, fontSize: phone ? 22 : 16, color: '#cfe8ff' }}>
           {selBoost ? (
             <>
               <EnhIcon b={selBoost} size={80} />
@@ -201,13 +213,13 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
             <div className="desc-text">Choose an enhancement.</div>
           )}
         </div>
-        <button className="info-button" style={{ left: 1390, top: 940 }} onClick={() => onPlace(undefined)} disabled={!current}>
+        <button className="info-button" style={{ left: G.btnX[0], top: G.btnY }} onClick={() => onPlace(undefined)} disabled={!current}>
           Remove
         </button>
-        <button className="info-button" style={{ left: 1520, top: 940 }} onClick={onClose}>
+        <button className="info-button" style={{ left: G.btnX[1], top: G.btnY }} onClick={onClose}>
           Cancel
         </button>
-        <button className="info-button" style={{ left: 1650, top: 940 }} onClick={() => onPlace(sel)} disabled={!sel}>
+        <button className="info-button" style={{ left: G.btnX[2], top: G.btnY }} onClick={() => onPlace(sel)} disabled={!sel}>
           Place
         </button>
       </div>

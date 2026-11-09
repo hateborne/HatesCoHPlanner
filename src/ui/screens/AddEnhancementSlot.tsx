@@ -4,7 +4,9 @@ import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { InfoButton, MenuFrame, NextButton, SlotRing, TitleBar } from '../components/Chrome.tsx';
+import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { Sprite } from '../components/Sprite.tsx';
+import { useStage } from '../components/Stage.tsx';
 import { icon, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 
@@ -41,6 +43,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel } = useStore();
   const [hover, setHover] = useState<BuildEntry | null>(null);
   const [msg, setMsg] = useState<{ key: string; text: string } | null>(null);
+  const [tab, setTab] = useState(0);
+  const { phone } = useStage();
   const step = level ? steps[level.step] : undefined;
   const preview = useMemo(() => (gd && level ? previewBuild(gd, steps, level) : null), [gd, steps, level]);
   const rules = useMemo(() => (gd && preview ? new BuildRules(gd, preview) : null), [gd, preview]);
@@ -49,11 +53,15 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const entries = rules.entries().filter((e) => e.level <= L && rules.slottable(e.power) && e.power.sm !== 0);
   const remaining = rules.slotsGranted(L) - rules.slotsUsed(L);
   const anyPlaceable = entries.some((e) => rules.slotBlock(e, L) === null);
-  const panels: { x: number; y: number; w: number; h: number; groups: Group[] }[] = [
-    { x: 33, y: 135, w: 622, h: 910, groups: groups(rules, entries, ['primary']) },
-    { x: 689, y: 135, w: 622, h: 910, groups: groups(rules, entries, ['secondary']) },
-    { x: 1345, y: 135, w: 622, h: 617, groups: groups(rules, entries, ['branch', 'pool', 'epic', 'inherent', 'other']) },
-  ];
+  const kinds = [['primary'], ['secondary'], ['branch', 'pool', 'epic', 'inherent', 'other']];
+  const P = PHONE_PANEL;
+  const panels: { x: number; y: number; w: number; h: number; groups: Group[] }[] = phone
+    ? [{ x: P.x, y: P.y, w: P.w, h: P.h, groups: groups(rules, entries, kinds[tab] ?? []) }]
+    : [
+        { x: 33, y: 135, w: 622, h: 910, groups: groups(rules, entries, kinds[0]!) },
+        { x: 689, y: 135, w: 622, h: 910, groups: groups(rules, entries, kinds[1]!) },
+        { x: 1345, y: 135, w: 622, h: 617, groups: groups(rules, entries, kinds[2]!) },
+      ];
 
   const click = (e: BuildEntry) => {
     const block = rules.slotBlock(e, L);
@@ -138,6 +146,31 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
 
   const hovered = hover?.power;
   const hoveredSet = hovered ? gd.setOfPower.get(hovered.id)?.set : undefined;
+  if (phone) {
+    return (
+      <>
+        <TitleBar skin={skin} text="ADD AN ENHANCEMENT SLOT" />
+        <div className="title-text abs" style={{ right: 24, top: 90, fontSize: 30 }}>
+          LEVEL {L + 1}
+        </div>
+        <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pool Powers']} active={tab} onChange={setTab} />
+        {panels.map((p) => (
+          <MenuFrame key={p.x} x={p.x} y={p.y} w={p.w} h={p.h} />
+        ))}
+        {panels.map(renderPanel)}
+        <div className={`slots-available${remaining <= 0 ? ' done' : ''}`} style={{ left: 280, top: 1470, width: 440, height: 54, fontSize: 26 }}>
+          Slots Available: {Math.max(0, remaining)}
+        </div>
+        {hovered ? (
+          <div className="abs body-text" style={{ left: 40, top: 1545, width: 920, color: '#7fd3ff', fontSize: 24 }}>
+            {hovered.dn}: {hovered.sh}
+          </div>
+        ) : null}
+        <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
+        <NextButton skin={skin} dir="right" text="Finish" locked={remaining > 0 && anyPlaceable} glow={remaining <= 0} onClick={finishLevel} />
+      </>
+    );
+  }
   return (
     <>
       <TitleBar skin={skin} text="ADD AN ENHANCEMENT SLOT" />

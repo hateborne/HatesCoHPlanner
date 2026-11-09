@@ -5,6 +5,7 @@ import { buildToMxDz, exportMbd, importMidsText, loadMidsMap, mbdToChunk } from 
 import { decodeShare, shareLink } from '../../io/share.ts';
 import { useStore } from '../../state/store.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
+import { useStage } from '../components/Stage.tsx';
 
 const btn = (left: number, top: number) => ({ left, top, position: 'absolute' as const });
 
@@ -14,6 +15,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');
   const [status, setStatus] = useState<string[]>([]);
+  const { phone } = useStage();
   const refresh = () => listBuilds().then(setSaved).catch(() => setSaved([]));
   useEffect(() => {
     void refresh();
@@ -55,12 +57,21 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Desktop: two columns. Phone: the same two sections stacked in one scrolling column.
+  const L = phone
+    ? { frame: [20, 90, 960, 1610], title: [40, 105], wrap: { position: 'absolute' as const, left: 40, top: 165, width: 920, height: 1440, overflowY: 'auto' as const } }
+    : { frame: [250, 80, 1500, 960], title: [290, 100], wrap: undefined };
+  const leftStyle = phone
+    ? { position: 'relative' as const, width: 640, height: 720, fontSize: 18, color: '#cfe8ff' }
+    : { left: 290, top: 170, width: 640, fontSize: 18, color: '#cfe8ff' };
+  const rightStyle = phone ? { position: 'relative' as const, width: 900, marginTop: 20 } : { left: 980, top: 170, width: 730 };
   return (
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
-        <MenuFrame x={250} y={80} w={1500} h={960} r25 style={{ background: 'rgba(0,0,20,0.95)' }} />
-        <SetTitle x={290} y={100} size={36} text="Build menu" />
-        <div className="abs body-text" style={{ left: 290, top: 170, width: 640, fontSize: 18, color: '#cfe8ff' }}>
+        <MenuFrame x={L.frame[0]!} y={L.frame[1]!} w={L.frame[2]!} h={L.frame[3]!} r25 style={{ background: 'rgba(0,0,20,0.95)' }} />
+        <SetTitle x={L.title[0]!} y={L.title[1]!} size={36} text="Build menu" />
+        <div style={L.wrap}>
+        <div className={phone ? 'body-text' : 'abs body-text'} style={leftStyle}>
           <div className="title-text" style={{ fontSize: 22 }}>THIS BUILD</div>
           {build ? (
             <>
@@ -143,7 +154,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
             </label>
           </div>
         </div>
-        <div className="abs" style={{ left: 980, top: 170, width: 730 }}>
+        <div className={phone ? '' : 'abs'} style={rightStyle}>
           <div className="title-text" style={{ fontSize: 22 }}>SAVED IN THIS BROWSER</div>
           <div className="scroll-y body-text" style={{ height: 470, marginTop: 10, fontSize: 18 }}>
             {saved.length === 0 ? <div style={{ color: '#8fa1b8' }}>Nothing saved yet.</div> : null}
@@ -165,7 +176,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
             {status.join('\n')}
           </div>
         </div>
-        <button className="info-button" style={{ left: 1600, top: 985 }} onClick={onClose}>
+        </div>
+        <button className="info-button" style={phone ? { left: 430, top: 1630 } : { left: 1600, top: 985 }} onClick={onClose}>
           Close
         </button>
       </div>

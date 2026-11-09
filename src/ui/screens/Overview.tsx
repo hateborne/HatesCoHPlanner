@@ -5,6 +5,8 @@ import { computeTotals, defaultOn } from '../../engine/totals.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, NextButton, SlotRing, TitleBar } from '../components/Chrome.tsx';
+import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
+import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
@@ -29,6 +31,8 @@ const RING_STEP = 54;
 export function Overview({ skin }: { skin: Skin }) {
   const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu } = useStore();
   const [picker, setPicker] = useState<{ entry: BuildEntry; slot: number } | null>(null);
+  const [tab, setTab] = useState(0);
+  const { phone } = useStage();
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
   const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
@@ -36,7 +40,7 @@ export function Overview({ skin }: { skin: Skin }) {
   const entries = rules.entries().filter((e) => e.power.sm !== 0 && (rules.slottable(e.power) || e.source === 'pick'));
   const originIndex = gd.core.origins.findIndex((o) => o.id === build.origin);
 
-  const column = (col: (typeof COLS)[number]) => {
+  const column = (col: { x: number; w: number; kinds: string[] }, top = TOP, height = H) => {
     const items: ReactElement[] = [];
     let y = 0;
     let lastSet = -1;
@@ -108,11 +112,69 @@ export function Overview({ skin }: { skin: Skin }) {
       y += e.slots.length ? ROW : 58;
     }
     return (
-      <div key={col.x} className="abs scroll-y" style={{ left: col.x + 2, top: TOP + 6, width: col.w - 4, height: H - 12 }}>
+      <div key={col.x} className="abs scroll-y" style={{ left: col.x + 2, top: top + 6, width: col.w - 4, height: height - 12 }}>
         <div style={{ position: 'relative', height: y + 30 }}>{items}</div>
       </div>
     );
   };
+
+  const levelStrip = (x0: number, y0: number, perRow: number, size: number) =>
+    steps.map((s, i) => {
+      const isPick = s.picks.length > 0;
+      const filled = isPick ? s.picks.every((k) => build.picks[k]) : rules.slotsUsed(s.level) >= s.slots;
+      return (
+        <div
+          key={s.level}
+          onClick={() => (isPick ? editPick(s.picks[0]!) : editSlots(s.level))}
+          title={isPick ? `Level ${s.level + 1}: choose a power` : `Level ${s.level + 1}: ${s.slots} enhancement slots`}
+          className="abs body-text"
+          style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? '#ffd200' : '#4f94ff'}`, background: filled ? (isPick ? '#6b5400' : '#0b3d9a') : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
+        >
+          {s.level + 1}
+        </div>
+      );
+    });
+  const picker_ = picker ? (
+    <EnhancementPicker
+      gd={gd}
+      skin={skin}
+      entry={picker.entry}
+      slot={picker.slot}
+      originIndex={originIndex}
+      atId={build.at}
+      onClose={() => setPicker(null)}
+      onPlace={(enh) => {
+        play(enh ? 'select5' : 'delete');
+        setBuild(setEnh(build, picker.entry.key, picker.slot, enh, picker.entry.level));
+        setPicker(null);
+      }}
+    />
+  ) : null;
+
+  if (phone) {
+    const P = PHONE_PANEL;
+    return (
+      <>
+        <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
+        <div className="title-text abs" style={{ right: 24, top: 90, fontSize: 28 }}>
+          {gd.archetype(build.at).dn.toUpperCase()}
+        </div>
+        <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} />
+        <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h - 150} />
+        {tab < 3 ? (
+          column({ x: P.x, w: P.w, kinds: COLS[tab]!.kinds }, P.y, P.h - 150)
+        ) : (
+          <div className="abs scroll-y" style={{ left: P.x + 20, top: P.y + 10, width: P.w - 40, height: P.h - 170, fontSize: 30 }}>
+            <TotalsPanel gd={gd} t={totals} width={P.w - 60} />
+          </div>
+        )}
+        {levelStrip(30, P.y + P.h - 130, 25, 34)}
+        <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
+        <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
+        {picker_}
+      </>
+    );
+  }
 
   return (
     <>
@@ -122,49 +184,18 @@ export function Overview({ skin }: { skin: Skin }) {
       </div>
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer />
       {/* level strip: reopen any level's in-game screen */}
-      <div className="abs" style={{ left: 50, top: 92, width: 1900, display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
-        {steps.map((s) => {
-          const isPick = s.picks.length > 0;
-          const filled = isPick ? s.picks.every((i) => build.picks[i]) : rules.slotsUsed(s.level) >= s.slots;
-          return (
-            <div
-              key={s.level}
-              onClick={() => (isPick ? editPick(s.picks[0]!) : editSlots(s.level))}
-              title={isPick ? `Level ${s.level + 1}: choose a power` : `Level ${s.level + 1}: ${s.slots} enhancement slots`}
-              className="body-text"
-              style={{ width: 34, height: 34, borderRadius: 17, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? '#ffd200' : '#4f94ff'}`, background: filled ? (isPick ? '#6b5400' : '#0b3d9a') : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
-            >
-              {s.level + 1}
-            </div>
-          );
-        })}
-      </div>
+      {levelStrip(50, 92, 50, 34)}
       {COLS.map((c) => (
         <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} />
       ))}
-      {COLS.map(column)}
+      {COLS.map((c) => column(c))}
       <MenuFrame x={1503} y={TOP} w={464} h={H} />
       <div className="abs scroll-y" style={{ left: 1515, top: TOP + 8, width: 444, height: H - 16 }}>
         <TotalsPanel gd={gd} t={totals} width={420} />
       </div>
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
-      {picker ? (
-        <EnhancementPicker
-          gd={gd}
-          skin={skin}
-          entry={picker.entry}
-          slot={picker.slot}
-          originIndex={originIndex}
-          atId={build.at}
-          onClose={() => setPicker(null)}
-          onPlace={(enh) => {
-            play(enh ? 'select5' : 'delete');
-            setBuild(setEnh(build, picker.entry.key, picker.slot, enh, picker.entry.level));
-            setPicker(null);
-          }}
-        />
-      ) : null}
+      {picker_}
     </>
   );
 }
