@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
+import { play } from '../sound.ts';
 import { Sprite } from './Sprite.tsx';
 
 /**
@@ -99,7 +100,14 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y = 1083, s
       style={{ left: dir === 'left' ? x - arrow / 2 : x - tailW - 200, top: y - arrow / 2, width: tailW + arrow / 2 + 200, height: arrow, cursor: locked ? 'default' : 'pointer', zIndex: 20 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={locked ? undefined : onClick}
+      onClick={
+        locked
+          ? undefined
+          : () => {
+              play(dir === 'left' ? 'back' : 'next');
+              onClick?.();
+            }
+      }
     >
       <div className="abs" style={{ left: dir === 'left' ? arrow / 2 : tailW + 200, top: arrow / 2, width: 0, height: 0 }}>
         {dir === 'left' ? (

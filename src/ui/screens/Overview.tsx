@@ -7,6 +7,7 @@ import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, NextButton, SlotRing, TitleBar } from '../components/Chrome.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
 import { icon, type Skin } from '../skin/skin.ts';
+import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
 
 const COLS = [
@@ -158,6 +159,7 @@ export function Overview({ skin }: { skin: Skin }) {
           atId={build.at}
           onClose={() => setPicker(null)}
           onPlace={(enh) => {
+            play(enh ? 'select5' : 'delete');
             setBuild(setEnh(build, picker.entry.key, picker.slot, enh, picker.entry.level));
             setPicker(null);
           }}

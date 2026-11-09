@@ -17,6 +17,10 @@ from pipeline.assets.textures import TextureIndex, decode
 UI_PREFIXES = ("gui/creation/common/", "gui/creation/enhancements/", "gui/hud/tray/tray_ring")
 FONT_FILES = ["REDCIRCL.ttf", "Paragon City Italic.ttf", "mont_demibold.TTF", "mont_hvbold.TTF"]
 FONT_DIR = config.OURO_DATA / "bin" / "data" / "fonts"
+# Front-end sounds the level-up screens play (sndPlay in uiLevelPower.c / uiLevelSpec.c /
+# uiPowers.c / uiCombineSpec.c).
+SOUND_DIR = config.OURO_DATA / "bin" / "data" / "sound" / "Ogg" / "FrontEnd"
+SOUNDS = ["powerselect2", "next", "back", "reject5", "select5", "grab4", "delete", "tally", "changescreen"]
 
 
 def _write(img, rel_out: str, webp: bool = False) -> str:
@@ -77,7 +81,19 @@ def run(data_root) -> dict:
         else:
             missing.setdefault("fonts", []).append(fname)
 
+    manifest["sounds"] = []
+    available = {f.stem.lower(): f for f in SOUND_DIR.glob("*.ogg")} if SOUND_DIR.exists() else {}
+    for name in SOUNDS:
+        src = available.get(name)
+        if src is None:
+            missing.setdefault("sounds", []).append(name)
+            continue
+        dst = config.out_path(config.ASSETS_OUT / "sounds" / f"{name}.ogg")
+        shutil.copyfile(src, dst)
+        manifest["sounds"].append(name)
+
     config.out_path(config.ASSETS_OUT / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
     return {"counts": {k: len(v) for k, v in manifest["icons"].items()} | {
-        "ui": len(manifest["ui"]), "fonts": len(manifest["fonts"])}, "missing": missing}
+        "ui": len(manifest["ui"]), "fonts": len(manifest["fonts"]),
+        "sounds": len(manifest["sounds"])}, "missing": missing}

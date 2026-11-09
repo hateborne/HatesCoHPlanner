@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CLR_CBLOW, CLR_CRDS, CLR_SHADOW, ui, type ElemColors, type Skin } from '../skin/skin.ts';
+import { play } from '../sound.ts';
 import { Sprite } from './Sprite.tsx';
 
 export type BarState = 'standard' | 'selected' | 'unselectable';
@@ -59,7 +60,14 @@ export function CheckBar({ skin, x, y, wd, scale = 1.16, text, state, down, icon
         setHover(false);
         onHover?.(false);
       }}
-      onClick={selectable ? onClick : undefined}
+      onClick={
+        selectable
+          ? () => {
+              play('powerselect2');
+              onClick?.();
+            }
+          : undefined
+      }
       title={title}
     >
       <div className="layer" style={{ left: frameL.w / 2 + 3 * sc, top: frameL.h / 2, width: 0, height: 0 }}>

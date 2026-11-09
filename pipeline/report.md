@@ -1,6 +1,6 @@
 # Pipeline report -- data 20261017-f94d0e09
 
-Generated 2026-11-08T19:44:49.
+Generated 2026-11-08T19:47:57.
 
 ## Decode health
 
@@ -46,4 +46,10 @@ PvP-only effects dropped: 4113. Unresolved references: 0. New IDs: {'power': 0, 
 ## Mids map
 
 1345 Mids enhancements, 6900 Mids powers mapped, 94 power renames, 287213 bytes. Unmapped enhancements (6): Crafted_Shrapnel_A (Accuracy/Damage), Crafted_Shrapnel_B (Damage/Endurance), Crafted_Shrapnel_C (Damage/Recharge), Crafted_Shrapnel_D (Accuracy/Damage/Recharge), Crafted_Shrapnel_E (Accuracy/Recharge/Range), Crafted_Shrapnel_F (Endurance/Recharge/Range)
+
+## Assets
+
+powers: 1726, enh: 368, at: 15, origin: 5, ui: 270, fonts: 4, sounds: 9
+
+- Missing powers (4): RadiationMelee_AssassinStrike, Spring_Attack_Spring_Attack_pow, Staff_Mastery, UtilityBelt_EnvenomedBarrage
 

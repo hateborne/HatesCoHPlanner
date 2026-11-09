@@ -6,6 +6,7 @@ import { CheckBar } from '../components/CheckBar.tsx';
 import { InfoButton, MenuFrame, NextButton, SlotRing, TitleBar } from '../components/Chrome.tsx';
 import { Sprite } from '../components/Sprite.tsx';
 import { icon, ui, type Skin } from '../skin/skin.ts';
+import { play } from '../sound.ts';
 
 const ROW = 95;
 const RING = 50;
@@ -57,6 +58,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const click = (e: BuildEntry) => {
     const block = rules.slotBlock(e, L);
     if (block) {
+      play('reject5');
       setMsg({ key: e.key, text: block });
       window.setTimeout(() => setMsg(null), 1400);
       return;
@@ -64,6 +66,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     addPendingSlot(e.key);
   };
   const unclick = (key: string) => {
+    play('delete');
     const idx = level.pendingSlots.lastIndexOf(key);
     if (idx >= 0) removePendingSlot(idx);
   };
