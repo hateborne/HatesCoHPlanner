@@ -42,7 +42,7 @@ export function rgba(c: number): string {
 }
 
 const CLR_WHITE = 0xffffffff;
-const CLR_HIGH = 0xffffff88;
+const CLR_HIGH_N = 0xffffff88;
 const CLR_GREY = 0xa0a0a0ff;
 const DARK_GREY = 0x444444ff;
 
@@ -65,7 +65,7 @@ export const SKINS: Record<SkinName, Skin> = {
       fill: rgba(0x0061d968),
       text: rgba(CLR_WHITE),
       text2: rgba(0x90e2fcff),
-      highlight: rgba(CLR_HIGH),
+      highlight: rgba(CLR_HIGH_N),
     },
     selected: {
       base: rgba(0x00d919ff),
@@ -73,7 +73,7 @@ export const SKINS: Record<SkinName, Skin> = {
       fill: rgba(0x00d91968),
       text: rgba(CLR_WHITE),
       text2: rgba(0x88ffaaff),
-      highlight: rgba(CLR_HIGH),
+      highlight: rgba(CLR_HIGH_N),
     },
     unselectable: grey,
     title: ['#ffff00', '#ffa500'],
@@ -92,7 +92,7 @@ export const SKINS: Record<SkinName, Skin> = {
       fill: rgba(0x58000868),
       text: rgba(CLR_WHITE),
       text2: rgba(0xfce290ff),
-      highlight: rgba(CLR_HIGH),
+      highlight: rgba(CLR_HIGH_N),
     },
     selected: {
       base: rgba(0xa00008ff),
@@ -100,7 +100,7 @@ export const SKINS: Record<SkinName, Skin> = {
       fill: rgba(0xa0000868),
       text: rgba(CLR_WHITE),
       text2: rgba(0xff88aaff),
-      highlight: rgba(CLR_HIGH),
+      highlight: rgba(CLR_HIGH_N),
     },
     unselectable: grey,
     title: ['#ffff00', '#ffa500'],
@@ -140,6 +140,7 @@ export const SKINS: Record<SkinName, Skin> = {
 };
 
 export const CLR_SHADOW = rgba(0x0000007a);
+export const CLR_HIGH = rgba(0xffffff88); // CLR_HIGH: the meat highlight strips
 export const CLR_CBLOW = rgba(0x00000093);
 export const CLR_CRDS = rgba(0x000000bf);
 export const CLR_DESC = rgba(0x48ff48ff);

@@ -73,20 +73,32 @@ button {
 
 /* ---- text ------------------------------------------------------------------------------------ */
 
-/* Inline-flow headings: same look as GameText title_* (RedCircle sheared by 0.15, 1px outline at 80%). */
+/* Inline-flow headings (TitleText): same look as GameText title_* (RedCircle sheared by 0.15, an
+   even 1-device-px outline at 80%: a stroked black copy under the gradient text). */
 .title-text {
+  position: relative;
   font-family: 'ParagonCity', 'MontrealHeavy', sans-serif;
   font-style: normal;
-  background: linear-gradient(var(--title-top), var(--title-bottom));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(1px 0 0 rgba(0, 0, 0, 0.8)) drop-shadow(-1px 0 0 rgba(0, 0, 0, 0.8)) drop-shadow(0 1px 0 rgba(0, 0, 0, 0.8))
-    drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.8));
   transform: skewX(-8.53deg);
   transform-origin: 0 100%;
   white-space: nowrap;
   letter-spacing: 1px;
+}
+.title-text .title-o {
+  position: absolute;
+  inset: 0;
+  color: #000;
+  -webkit-text-stroke: calc(2 * var(--dev-px, 1px)) #000;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.title-text .title-t {
+  position: relative;
+  display: block;
+  background: linear-gradient(var(--title-top), var(--title-bottom));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .bar-text {
@@ -246,6 +258,66 @@ button {
   }
 }
 
+/* drawNextButton's glow kit alpha: (170 + 30 sin t) / 255, sampled every 1/8 period */
+@keyframes glowpulse {
+  0%,
+  100% {
+    opacity: 0.667;
+  }
+  12.5% {
+    opacity: 0.75;
+  }
+  25% {
+    opacity: 0.784;
+  }
+  37.5% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 0.667;
+  }
+  62.5% {
+    opacity: 0.583;
+  }
+  75% {
+    opacity: 0.549;
+  }
+  87.5% {
+    opacity: 0.583;
+  }
+}
+
+/* fadingText (uiFx.c): alpha sin(pi t) over the 1s life while the scale grows 0.01 per tick */
+@keyframes fadingtext {
+  0% {
+    opacity: 0;
+  }
+  12.5% {
+    opacity: 0.383;
+  }
+  25% {
+    opacity: 0.707;
+  }
+  37.5% {
+    opacity: 0.924;
+  }
+  50% {
+    opacity: 1;
+  }
+  62.5% {
+    opacity: 0.924;
+  }
+  75% {
+    opacity: 0.707;
+  }
+  87.5% {
+    opacity: 0.383;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes slotflash {
   0% {
     transform: scale(1.8);
@@ -260,4 +332,13 @@ button {
 .notice {
   color: #8fa1b8;
   font-size: 13px;
+}
+
+@keyframes fadinggrow {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(var(--grow));
+  }
 }

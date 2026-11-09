@@ -24,20 +24,23 @@ export interface ColumnGeom {
 }
 
 /**
- * Desktop column i (0 primary, 1 secondary, 2 pools): frames at x 16 + 336i (320 wide),
- * headings at 26 + 336i, bars at 56 + 336i (240*sx wide), clip/scroll region y 99..585,
- * scrollbar on the frame's right edge (xp 336/672/1008), first heading baseline at y 130.
+ * Desktop column i (0 primary, 1 secondary, 2 pools): frames at x 16 + 336i (320 wide), bars
+ * at x 56 / 392 / 744 (FRAME_SPACE + FRAME_OFFSET, 512 - FRAME_WIDTH/2 + FRAME_OFFSET and
+ * DEFAULT_SCRN_WD - FRAME_WIDTH + FRAME_OFFSET -- the third ignores FRAME_SPACE, so it sits 16
+ * further right inside its frame), 240*sx wide, headings 30 left of the bars, clip/scroll region
+ * y 99..585, scrollbar on the frame's right edge (xp 336/672/1008), first heading baseline at y 130.
  */
 export function desktopColumn(i: number, extraTop = 0): ColumnGeom {
   const frame = vx(16 + 336 * i);
+  const bx = [56, 392, 744][i] ?? 56;
   return {
     left: frame,
     top: vy(99) + extraTop,
     width: vx(320),
     height: vy(486) - extraTop,
     barX: vx(336 + 336 * i),
-    headX: vx(26 + 336 * i) - frame,
-    barCX: vx(56 + 336 * i) - frame,
+    headX: vx(bx - 30) - frame,
+    barCX: vx(bx) - frame,
     barW: vx(240),
     firstHead: vy(130 - 99),
   };

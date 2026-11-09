@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { StatLine, Totals } from '../../engine/totals.ts';
+import { TitleText } from './GameText.tsx';
 
 const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
 const DEF_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 1, 0, 2]; // Smash, Lethal, Fire, Cold, Energy, Neg, Psi, Toxic, Melee, Ranged, AoE
@@ -55,9 +56,9 @@ export function TotalsPanel({ gd, t, width }: { gd: GameData; t: Totals; width: 
   };
   const dn = gd.core.attribNames;
   const head = (s: string) => (
-    <div className="title-text" style={{ fontSize: 20, marginTop: 8 }}>
+    <TitleText style={{ fontSize: 20, marginTop: 8 }}>
       {s}
-    </div>
+    </TitleText>
   );
   return (
     <div className="body-text" style={{ width, fontSize: 16, lineHeight: 1.3 }}>

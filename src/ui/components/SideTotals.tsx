@@ -3,6 +3,7 @@ import { BuildRules } from '../../engine/rules.ts';
 import { computeTotals } from '../../engine/totals.ts';
 import { previewBuild, useStore } from '../../state/store.ts';
 import { MenuFrame } from './Chrome.tsx';
+import { TitleText } from './GameText.tsx';
 import { TotalsPanel } from './TotalsPanel.tsx';
 
 /**
@@ -22,18 +23,18 @@ export function SideTotals() {
   return (
     <>
       <div
-        className="abs title-text"
+        className="abs"
         onClick={() => setOpen(!open)}
-        style={{ right: 0, top: 470, width: 46, height: 190, cursor: 'pointer', zIndex: 60, writingMode: 'vertical-rl', textAlign: 'center', fontSize: 24, lineHeight: '46px', border: '3px solid var(--menu-border)', borderRight: 'none', borderRadius: '16px 0 0 16px', background: 'rgba(0,0,40,0.92)', backgroundClip: 'padding-box' }}
+        style={{ right: 0, top: 470, width: 46, height: 190, cursor: 'pointer', zIndex: 60, writingMode: 'vertical-rl', textAlign: 'center', fontSize: 24, lineHeight: '46px', fontFamily: "'ParagonCity', 'MontrealHeavy', sans-serif", border: '3px solid var(--menu-border)', borderRight: 'none', borderRadius: '16px 0 0 16px', background: 'rgba(0,0,40,0.92)', backgroundClip: 'padding-box' }}
         title={open ? 'Hide totals' : 'Show totals at this level'}
       >
-        <span style={{ background: 'linear-gradient(var(--title-top), var(--title-bottom))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>TOTALS</span>
+        <TitleText style={{ transform: 'none' }}>TOTALS</TitleText>
       </div>
       {open && totals ? (
         <div className="abs" style={{ right: 46, top: 90, width: 470, height: 930, zIndex: 60 }}>
           <MenuFrame x={0} y={0} w={470} h={930} style={{ background: 'rgba(0,0,20,0.95)' }} />
           <div className="abs scroll-y" style={{ left: 18, top: 12, width: 440, height: 906 }}>
-            <div className="title-text" style={{ fontSize: 20 }}>AT LEVEL {totals.level + 1}</div>
+            <TitleText style={{ fontSize: 20 }}>AT LEVEL {totals.level + 1}</TitleText>
             <TotalsPanel gd={gd} t={totals} width={420} />
           </div>
         </div>

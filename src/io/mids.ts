@@ -5,7 +5,7 @@
  * silently dropped.
  */
 import type { GameData } from '../data/gamedata.ts';
-import { ALIGNMENTS, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
+import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { ByteReader, ByteWriter, fromBase64, streamBytes, toBase64 } from './binary.ts';
@@ -170,7 +170,7 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
   const at = gd.archetypeByName.get(m.Class.toLowerCase());
   if (!at) throw new Error(`Unknown archetype ${m.Class}`);
   const origin = gd.core.origins.find((o) => o.n.toLowerCase() === m.Origin.toLowerCase()) ?? gd.core.origins[0]!;
-  const alignment = (ALIGNMENTS.find((a) => a.toLowerCase() === m.Alignment?.toLowerCase()) ?? 'Hero') as Alignment;
+  const alignment = toAlignment(m.Alignment);
   const primary = setIdFor(gd, t, m.PowerSets[0] ?? '');
   const secondary = setIdFor(gd, t, m.PowerSets[1] ?? '');
   if (primary === undefined || secondary === undefined) throw new Error(`Unknown power sets ${m.PowerSets[0]} / ${m.PowerSets[1]}`);
@@ -296,7 +296,8 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     Level: '49',
     Class: at.n,
     Origin: origin.n,
-    Alignment: b.alignment,
+    // Mids has no plain Praetorian; Loyalist and Resistance only differ in its colors and labels
+    Alignment: b.alignment === 'Praetorian' ? 'Loyalist' : b.alignment,
     Name: b.name,
     Comment: '',
     PowerSets: [gd.powerset(b.primary).n, gd.powerset(b.secondary).n, '', ...pools.slice(0, 4), epic],

@@ -45,8 +45,6 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   const firstStep = level.step === 0 && level.pickInStep === 0;
   const lvl = steps[level.step]?.level ?? 0;
   const extraButtons = (canPool ? 1 : 0) + (canEpic ? 1 : 0);
-  const poolState = level.pendingSet !== undefined && rules.setKind(gd.powerset(level.pendingSet)) === 'pool' ? 'selected' : 'standard';
-  const epicState = level.pendingSet !== undefined && rules.setKind(gd.powerset(level.pendingSet)) === 'epic' ? 'selected' : 'standard';
 
   const BAR_H = vy(28);
   const desc = <DescBox skin={skin} iconSrc={shown ? icon('powers', shown.icon || 'power_missing') : undefined} text={shown ? shown.lh || shown.sh : ''} />;
@@ -56,10 +54,12 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
       <NextButton skin={skin} dir="right" text="Finish" locked={level.pendingPower === undefined} onClick={finishLevel} />
     </>
   );
-  const newSetBars = (x: number, y: number, w: number) => (
+  // uiLevelPower.c: drawMenuBar centered on the third panel at y 85 (55 and 85 when both show),
+  // FRAME_WIDTH wide, over the panel's top edge; the panel's contents do not move
+  const newSetBars = (cx: number, y0: number, step: number, wd: number) => (
     <>
-      {canPool ? <MenuBar skin={skin} x={x} y={y} w={w} h={BAR_H} text="Choose from new pool power set" selected={poolState === 'selected'} onClick={() => openSetPicker('pool')} /> : null}
-      {canEpic ? <MenuBar skin={skin} x={x} y={y + (canPool ? BAR_H + 6 : 0)} w={w} h={BAR_H} text="Choose new epic pool" selected={epicState === 'selected'} onClick={() => openSetPicker('epic')} /> : null}
+      {canPool ? <MenuBar skin={skin} x={cx} y={y0} wd={wd} text="Choose from new pool power set" onClick={() => openSetPicker('pool')} /> : null}
+      {canEpic ? <MenuBar skin={skin} x={cx} y={y0 + (canPool ? step : 0)} wd={wd} text="Choose from new Epic power set" onClick={() => openSetPicker('epic')} /> : null}
     </>
   );
   const levelLabel = (x: number, y: number) => <GameText font="title_14" scale={S} x={x} y={y} align="right" colors={skin.heading} text={`LEVEL ${lvl + 1}`} />;
@@ -75,7 +75,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
         {levelLabel(980, 118)}
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', extraButtons || extra.length ? 'Pools' : 'Other']} active={tab} onChange={setTab} />
         <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h} skin={skin} />
-        {tab === 2 ? newSetBars(P.x + 6, P.y + 6, P.w - 12) : null}
+        {tab === 2 ? newSetBars(P.x + P.w / 2, P.y + 6 + BAR_H / 2, BAR_H + 6, P.w - 12) : null}
         <PowerColumn skin={skin} g={g} sets={lists[tab] ?? []} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
         {desc}
         {buttons}
@@ -83,7 +83,6 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
     );
   }
 
-  const extraTop = extraButtons * (BAR_H + 6);
   return (
     <>
       <TitleBar skin={skin} text="CHOOSE A NEW POWER" />
@@ -95,8 +94,8 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
       <InfoButton skin={skin} x={vx(352 + 160)} y={vy(70)} text="Show Detailed Info Here" />
       <PowerColumn skin={skin} g={desktopColumn(0)} sets={primary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
       <PowerColumn skin={skin} g={desktopColumn(1)} sets={secondary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
-      {newSetBars(vx(688) + 4, vy(70) + 4, vx(320) - 8)}
-      <PowerColumn skin={skin} g={desktopColumn(2, extraTop)} sets={extra} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
+      {newSetBars(vx(1024 - 16 - 160), vy(canPool && canEpic ? 55 : 85), vy(30), vx(320))}
+      <PowerColumn skin={skin} g={desktopColumn(2)} sets={extra} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
       {desc}
       {buttons}
     </>

@@ -21,11 +21,19 @@ function pick(): StageDims {
   return window.innerWidth < PHONE_BREAKPOINT ? PHONE : DESKTOP;
 }
 
-/** @return Current layout dims and the scale that fits them into the window. */
-export function useStageScale(): { dims: StageDims; scale: number } {
+/**
+ * @return Current layout dims, the scale that fits them into the window, and the stage's
+ *   top-left corner in CSS px, rounded to a device pixel so snapped stage coordinates land on
+ *   whole device pixels.
+ */
+export function useStageScale(): { dims: StageDims; scale: number; left: number; top: number } {
   const calc = () => {
     const dims = pick();
-    return { dims, scale: Math.min(window.innerWidth / dims.w, window.innerHeight / dims.h) };
+    const scale = Math.min(window.innerWidth / dims.w, window.innerHeight / dims.h);
+    const dpr = window.devicePixelRatio || 1;
+    const left = Math.round(((window.innerWidth - dims.w * scale) / 2) * dpr) / dpr;
+    const top = Math.round(((window.innerHeight - dims.h * scale) / 2) * dpr) / dpr;
+    return { dims, scale, left, top };
   };
   const [s, setS] = useState(calc);
   useEffect(() => {
@@ -42,7 +50,7 @@ export function useStageScale(): { dims: StageDims; scale: number } {
  * phone canvas instead.
  */
 export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
-  const { dims, scale } = useStageScale();
+  const { dims, scale, left, top } = useStageScale();
   const bg = ui(`creation/common/backgrounds/background_skyline_normal`, skin);
   const devPx = 1 / (scale * (window.devicePixelRatio || 1));
   setDevPx(devPx);
@@ -50,14 +58,17 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
   return (
     <StageCtx.Provider value={info}>
       <div className="viewport">
-        <div style={{ width: dims.w * scale, height: dims.h * scale, position: 'relative', overflow: 'hidden', flex: 'none' }}>
+        <div style={{ width: dims.w * scale, height: dims.h * scale, position: 'absolute', left, top, overflow: 'hidden' }}>
           <div
             className={`stage skin-${skin.name}${dims.phone ? ' phone' : ''}`}
             style={{
               width: dims.w,
               height: dims.h,
-              transform: `scale(${scale})`,
-              transformOrigin: '0 0',
+              // zoom, not transform: scale -- zoom lays the stage out at its final size, so the
+              // browser snaps every box to device pixels and pieces that share an edge tile
+              // cleanly (a scale transform snaps in unscaled px and then lands edges on
+              // fractional device pixels, which leaves seams wherever two pieces meet)
+              zoom: scale,
               position: 'absolute',
               left: 0,
               top: 0,
@@ -67,6 +78,7 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
               // the skyline at the bottom
               backgroundPosition: dims.phone ? 'center bottom' : '0 0',
               backgroundSize: dims.phone ? 'cover' : '100% 100%',
+              ['--dev-px' as string]: `${devPx}px`,
               ['--menu-border' as string]: skin.menuBorder,
               ['--title-top' as string]: skin.title[0],
               ['--title-bottom' as string]: skin.title[1],

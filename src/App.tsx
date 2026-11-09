@@ -10,36 +10,54 @@ import { ChoosePoolSet } from './ui/screens/ChoosePoolSet.tsx';
 import { Overview } from './ui/screens/Overview.tsx';
 import { Setup } from './ui/screens/Setup.tsx';
 import { SKINS } from './ui/skin/skin.ts';
+import { setMusicSkin } from './ui/sound.ts';
+import { TitleText } from './ui/components/GameText.tsx';
 
-/** Remembered mute switch in the stage's bottom bar. */
-function SoundToggle({ muted, setMuted }: { muted: boolean; setMuted: (m: boolean) => void }) {
+/** A remembered on/off switch in the stage's bottom bar (sound effects, music). */
+function Toggle({ label, on, set, x }: { label: string; on: boolean; set: (v: boolean) => void; x: number }) {
   const stage = useStage();
   return (
     <div
       className="abs body-text"
-      onClick={() => setMuted(!muted)}
-      title={muted ? 'Sounds are off (click to turn on)' : 'Sounds are on (click to mute)'}
-      style={{ left: stage.w / 2 - 60, top: stage.h - 27, width: 120, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: muted ? '#8fa1b8' : '#cfe8ff', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
+      onClick={() => set(!on)}
+      title={on ? `${label} is on (click to turn off)` : `${label} is off (click to turn on)`}
+      style={{ left: x, top: stage.h - 54, width: 120, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: on ? '#cfe8ff' : '#8fa1b8', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
     >
-      Sound: {muted ? 'off' : 'on'}
+      {label}: {on ? 'on' : 'off'}
     </div>
+  );
+}
+
+/** Sound effects and music switches, side by side at the bottom center. */
+function AudioToggles() {
+  const { muted, setMuted, musicOn, setMusicOn } = useStore();
+  const stage = useStage();
+  return (
+    <>
+      <Toggle label="Sound" on={!muted} set={(v) => setMuted(!v)} x={stage.w / 2 - 126} />
+      <Toggle label="Music" on={musicOn} set={setMusicOn} x={stage.w / 2 + 6} />
+    </>
   );
 }
 
 /** Top-level router: loading, setup, the level-up screens and the build overview. */
 export function App() {
-  const { view, error, build, level, load, menuOpen, setMenu, muted, setMuted } = useStore();
+  const { view, error, build, level, load, menuOpen, setMenu } = useStore();
   useEffect(() => {
     void load();
   }, [load]);
   const skin = SKINS[build ? skinOf(build.alignment) : 'hero'];
+  // the setup screen picks its own track from the alignment being chosen
+  useEffect(() => {
+    if (view !== 'setup') setMusicSkin(view === 'loading' || view === 'error' ? null : skin.name);
+  }, [view, skin.name]);
 
   let screen = null;
   if (view === 'loading') {
     screen = (
-      <div className="title-text abs" style={{ left: 0, right: 0, top: 520, textAlign: 'center', fontSize: 48 }}>
+      <TitleText className="abs" style={{ left: 0, right: 0, top: 520, textAlign: 'center', fontSize: 48 }}>
         LOADING...
-      </div>
+      </TitleText>
     );
   } else if (view === 'error') {
     screen = (
@@ -66,7 +84,7 @@ export function App() {
     <Stage skin={view === 'setup' ? SKINS.hero : skin}>
       {screen}
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
-      <SoundToggle muted={muted} setMuted={setMuted} />
+      <AudioToggles />
       <div className="abs notice" style={{ left: 0, right: 0, bottom: 4, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
         Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.
       </div>

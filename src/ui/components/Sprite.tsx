@@ -1,4 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import { snap } from '../skin/metrics.ts';
+import { useStage } from './Stage.tsx';
 
 /** Split a CSS #rgb / #rrggbb / #rrggbbaa / rgb() / rgba() color into its channels and alpha. */
 function parseTint(c: string): { r: number; g: number; b: number; a: number } | null {
@@ -87,15 +89,21 @@ interface SpriteProps {
 /**
  * One textured quad, optionally tinted (texture x color, alpha from the texture and the tint),
  * which is how the client draws its UI pieces (display_sprite with a color).
+ *
+ * Its edges are snapped to device pixels (relative to its positioned parent, which callers keep
+ * device-aligned), so pieces that share an edge tile without anti-aliased seams.
  */
 export function Sprite({ src, x, y, w, h, z, tint, style }: SpriteProps) {
+  useStage(); // re-render when the scale (and so the snapping grid) changes
   const t = tint ? parseTint(tint) : null;
   const baked = useTinted(src, t ?? undefined);
+  const l = snap(x);
+  const tp = snap(y);
   const base: CSSProperties = {
-    left: x,
-    top: y,
-    width: w,
-    height: h,
+    left: l,
+    top: tp,
+    width: Math.max(0, snap(x + w) - l),
+    height: Math.max(0, snap(y + h) - tp),
     zIndex: z,
     backgroundImage: `url(${src})`,
     ...style,

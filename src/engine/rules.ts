@@ -5,7 +5,7 @@
  */
 import { GameData } from '../data/gamedata.ts';
 import type { Archetype, Power, Powerset } from '../data/types.ts';
-import type { Build, Pick, Slot } from './build.ts';
+import { toAlignment, type Build, type Pick, type Slot } from './build.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { countAtLevel, countForLevel } from './schedule.ts';
 
@@ -136,7 +136,7 @@ export class BuildRules {
   ctx(level: number, owned: Set<number>): EvalContext {
     const ownedSets = this.ownedSets(owned);
     const origin = this.gd.core.origins.find((o) => o.id === this.b.origin);
-    const align = this.b.alignment.toLowerCase();
+    const align = toAlignment(this.b.alignment).toLowerCase();
     return {
       ownsPower: (name) => {
         const p = this.gd.powerByName.get(name.toLowerCase());
@@ -157,11 +157,11 @@ export class BuildRules {
           case 'level':
             return level + 1;
           case 'alignment':
-            return align === 'loyalist' || align === 'resistance' ? 'hero' : align;
+            return align === 'villain' ? 'villain' : 'hero';
           case 'type':
-            return align === 'villain' || align === 'rogue' ? 'villain' : 'hero';
+            return align === 'villain' ? 'villain' : 'hero';
           case 'subtype':
-            return align === 'loyalist' || align === 'resistance' ? 'paragon' : 'normal';
+            return align === 'praetorian' ? 'paragon' : 'normal';
           default:
             return 0;
         }

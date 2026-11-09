@@ -3,7 +3,7 @@ import type { Power, Powerset } from '../../data/types.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
+import { FadingText, InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
@@ -156,7 +156,9 @@ function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
 export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel } = useStore();
   const [hover, setHover] = useState<BuildEntry | null>(null);
-  const [msg, setMsg] = useState<{ key: string; text: string } | null>(null);
+  // fadingText queue: "No slots to assign!" at the bottom, "FULL!" over the clicked bar
+  const [fades, setFades] = useState<{ id: number; key?: string; full: boolean }[]>([]);
+  const fadeId = useRef(0);
   const [tab, setTab] = useState(0);
   const { phone } = useStage();
   const step = level ? steps[level.step] : undefined;
@@ -169,15 +171,27 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const anyPlaceable = entries.some((e) => rules.slotBlock(e, L) === null);
 
   const click = (e: BuildEntry) => {
-    const block = rules.slotBlock(e, L);
+    // specLevel's order: no slots left beats a full power
+    const noSlots = remaining <= 0;
+    const block = noSlots ? 'No Slots' : rules.slotBlock(e, L);
     if (block) {
       play('reject5');
-      setMsg({ key: e.key, text: block });
-      window.setTimeout(() => setMsg(null), 1400);
+      const id = ++fadeId.current;
+      setFades((f) => [...f, { id, key: e.key, full: block !== 'No Slots' }]);
+      window.setTimeout(() => setFades((f) => f.filter((x) => x.id !== id)), 1000);
       return;
     }
     addPendingSlot(e.key); // CheckBar already played powerselect2
   };
+  const noSlotFades = fades
+    .filter((f) => !f.full)
+    .map((f) =>
+      phone ? (
+        <FadingText key={f.id} x={500} y={1493} base={1.5} maxWidth={940} color="#ffffff" text="No slots to assign!" />
+      ) : (
+        <FadingText key={f.id} x={vx(512)} y={vy(SL_FRAME_TOP + FRAME_HEIGHT - 5)} base={1.5} color="#ffffff" text="No slots to assign!" />
+      ),
+    );
   const unclick = (key: string) => {
     play('delete');
     const idx = level.pendingSlots.lastIndexOf(key);
@@ -231,8 +245,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             />,
           );
         });
-        if (msg?.key === e.key) {
-          items.push(<GameText key={`${e.key}:msg`} font="game_12" scale={1.5 * S} x={g.barCX + g.barW / 2} y={y + 15 * u} align="center" colors={['#ff0000', '#ff0000']} text={msg.text} z={20} />);
+        for (const f of fades) {
+          if (f.full && f.key === e.key) items.push(<FadingText key={`full${f.id}`} x={g.barCX + g.barW / 2} y={y + 15 * u} base={1.5} maxWidth={phone ? 900 : undefined} color="#ff0000" text="FULL!" />);
         }
         primY += g.row;
       }
@@ -262,6 +276,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         <MenuFrame x={g.frame.x} y={g.frame.y} w={g.frame.w} h={g.frame.h} skin={skin} />
         {renderPanel(g, groups(rules, entries, tab), 0)}
         <SlotsAvailable n={remaining} x={300} y={1465} w={400} h={56} />
+        {noSlotFades}
         {hovered ? (
           <div className="abs body-text" style={{ left: 40, top: 1545, width: 920, color: '#7fd3ff', fontSize: 24 }}>
             {hovered.dn}: {hovered.sh}
@@ -294,6 +309,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), groups(rules, entries, i), i))}
       <PowInfoBox power={hovered} set={hoveredSet} />
       <SlotsAvailable n={remaining} />
+      {noSlotFades}
       <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
       <NextButton skin={skin} dir="right" text="Finish" locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
     </>

@@ -6,6 +6,7 @@ import { decodeShare, shareLink } from '../../io/share.ts';
 import { useStore } from '../../state/store.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
+import { TitleText } from '../components/GameText.tsx';
 
 const btn = (left: number, top: number) => ({ left, top, position: 'absolute' as const });
 
@@ -72,7 +73,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
         <SetTitle x={L.title[0]!} y={L.title[1]!} size={36} text="Build menu" />
         <div style={L.wrap}>
         <div className={phone ? 'body-text' : 'abs body-text'} style={leftStyle}>
-          <div className="title-text" style={{ fontSize: 22 }}>THIS BUILD</div>
+          <TitleText style={{ fontSize: 22 }}>THIS BUILD</TitleText>
           {build ? (
             <>
               <div style={btn(0, 40)}>
@@ -134,7 +135,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           ) : (
             <div style={{ marginTop: 40 }}>No build yet.</div>
           )}
-          <div className="title-text" style={{ ...btn(0, 360), fontSize: 22 }}>IMPORT</div>
+          <TitleText style={{ ...btn(0, 360), fontSize: 22 }}>IMPORT</TitleText>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -155,7 +156,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div className={phone ? '' : 'abs'} style={rightStyle}>
-          <div className="title-text" style={{ fontSize: 22 }}>SAVED IN THIS BROWSER</div>
+          <TitleText style={{ fontSize: 22 }}>SAVED IN THIS BROWSER</TitleText>
           <div className="scroll-y body-text" style={{ height: 470, marginTop: 10, fontSize: 18 }}>
             {saved.length === 0 ? <div style={{ color: '#8fa1b8' }}>Nothing saved yet.</div> : null}
             {saved.map((s) => (

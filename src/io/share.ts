@@ -7,7 +7,7 @@
  * u8 on (0 default, 1 on, 2 off), varint slotCount, slots: u8 level, enh.
  * enh: varint boost (0 none), u8 flags (1 ioLevel, 2 rel, 4 boosters), then the flagged values.
  */
-import { ALIGNMENTS, type Build, type Slot } from '../engine/build.ts';
+import { toAlignment, type Build, type Slot } from '../engine/build.ts';
 import { ByteReader, ByteWriter, fromBase64Url, streamBytes, toBase64Url } from './binary.ts';
 
 const VERSION = 1;
@@ -47,6 +47,9 @@ function readSlots(r: ByteReader): Slot[] {
   return out;
 }
 
+// v1 alignment codes, kept from before Vigilante / Rogue / Loyalist / Resistance were folded in
+const SHARE_ALIGN = ['Hero', 'Vigilante', 'Villain', 'Rogue', 'Praetorian', 'Resistance'];
+
 const onCode = (on: boolean | undefined) => (on === undefined ? 0 : on ? 1 : 2);
 const onValue = (c: number) => (c === 0 ? undefined : c === 1);
 
@@ -56,7 +59,7 @@ export async function encodeShare(b: Build): Promise<string> {
   w.u8(VERSION);
   w.varint(b.at);
   w.varint(b.origin);
-  w.varint(Math.max(0, ALIGNMENTS.indexOf(b.alignment)));
+  w.varint(Math.max(0, SHARE_ALIGN.indexOf(b.alignment)));
   w.varint(b.primary);
   w.varint(b.secondary);
   w.netString(b.name);
@@ -86,7 +89,7 @@ export async function decodeShare(payload: string, dataVersion: string): Promise
   if (v !== VERSION) throw new Error(`unsupported share version ${v}`);
   const at = r.varint();
   const origin = r.varint();
-  const alignment = ALIGNMENTS[r.varint()] ?? 'Hero';
+  const alignment = toAlignment(SHARE_ALIGN[r.varint()]);
   const primary = r.varint();
   const secondary = r.varint();
   const name = r.netString();

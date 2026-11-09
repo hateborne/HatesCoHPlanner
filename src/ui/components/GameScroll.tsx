@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { S, SY } from '../skin/metrics.ts';
+import { S, snap, SY } from '../skin/metrics.ts';
 import { ui, type Skin } from '../skin/skin.ts';
 import { Sprite } from './Sprite.tsx';
 
@@ -76,21 +76,21 @@ export function GameScroll({ skin, left, top, width, height, barX, barTop = top,
 
   return (
     <>
-      <div ref={ref} className="abs noscrollbar" onScroll={update} style={{ left, top, width, height, overflowY: 'auto', overflowX: 'hidden' }}>
+      <div ref={ref} className="abs noscrollbar" onScroll={update} style={{ left: snap(left), top: snap(top), width: snap(left + width) - snap(left), height: snap(top + height) - snap(top), overflowY: 'auto', overflowX: 'hidden' }}>
         {children}
       </div>
       {show ? (
         <>
-          <div className="abs" style={{ left: barX - 9 * s, top: barTop - 12 * s, width: 13.2 * s, height: 13.2 * s, cursor: 'pointer', zIndex: 15 }} onClick={() => step(-15)}>
+          <div className="abs" style={{ left: snap(barX - 9 * s), top: snap(barTop - 12 * s), width: 13.2 * s, height: 13.2 * s, cursor: 'pointer', zIndex: 15 }} onClick={() => step(-15)}>
             <Sprite src={ui('hud/map/map_zoom_uparrow')} x={0} y={0} w={13.2 * s} h={13.2 * s} tint={color} />
           </div>
-          <div className="abs" style={{ left: barX - 9 * s, top: barTop + barHeight, width: 13.2 * s, height: 13.2 * s, cursor: 'pointer', zIndex: 15 }} onClick={() => step(15)}>
+          <div className="abs" style={{ left: snap(barX - 9 * s), top: snap(barTop + barHeight), width: 13.2 * s, height: 13.2 * s, cursor: 'pointer', zIndex: 15 }} onClick={() => step(15)}>
             <Sprite src={ui('hud/map/map_zoom_downarrow')} x={0} y={0} w={13.2 * s} h={13.2 * s} tint={color} />
           </div>
-          <div className="abs" onPointerDown={drag} style={{ left: barX - 11 * s, top: thumbY - 9 * s, width: 18 * s, height: 4 * buttonScale * SY + 18 * s, cursor: 'grab', zIndex: 15, touchAction: 'none' }}>
+          <div className="abs" onPointerDown={drag} style={{ left: snap(barX - 11 * s), top: snap(thumbY - 9 * s), width: 18 * s, height: 4 * buttonScale * SY + 18 * s, cursor: 'grab', zIndex: 15, touchAction: 'none' }}>
             <Sprite src={ui('hud/common/scroll_bar/scrollbar_top')} x={0} y={0} w={18 * s} h={9 * s} tint={color} />
             <Sprite src={ui('hud/common/scroll_bar/scrollbar_mid_plain')} x={0} y={9 * s} w={18 * s} h={4 * buttonScale * SY} tint={color} />
-            <Sprite src={ui('hud/common/scroll_bar/scrollbar_btm')} x={0} y={9 * s + 4 * buttonScale * SY - 1} w={18 * s} h={9 * s} tint={color} />
+            <Sprite src={ui('hud/common/scroll_bar/scrollbar_btm')} x={0} y={9 * s + 4 * buttonScale * SY} w={18 * s} h={9 * s} tint={color} />
           </div>
         </>
       ) : null}

@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { addSlot, setPick } from '../engine/actions.ts';
-import { cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
+import { cloneBuild, newBuild, toAlignment, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { levelSteps, type LevelStep } from '../engine/schedule.ts';
 import { decodeShare } from '../io/share.ts';
@@ -34,6 +34,7 @@ interface Store {
   build?: Build;
   level?: LevelCtx;
   muted: boolean;
+  musicOn: boolean; // the login-screen music switch (remembered per browser, on by default)
   load(): Promise<void>;
   startBuild(args: { name: string; at: number; origin: number; alignment: Alignment; primary: number; secondary: number }): void;
   setBuild(b: Build): void;
@@ -50,6 +51,7 @@ interface Store {
   editPick(pickIndex: number): void;
   editSlots(level: number): void;
   setMuted(m: boolean): void;
+  setMusicOn(on: boolean): void;
   menuOpen: boolean;
   setMenu(open: boolean): void;
   loadBuild(b: Build): void;
@@ -68,7 +70,9 @@ function persist(b: Build | undefined): void {
 function restore(): Build | undefined {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Build) : undefined;
+    if (!raw) return undefined;
+    const b = JSON.parse(raw) as Build;
+    return { ...b, alignment: toAlignment(b.alignment) };
   } catch {
     return undefined;
   }
@@ -128,6 +132,13 @@ export const useStore = create<Store>((set, get) => ({
       return false;
     }
   })(),
+  musicOn: (() => {
+    try {
+      return localStorage.getItem('hcp.music') !== '0';
+    } catch {
+      return true;
+    }
+  })(),
 
   menuOpen: false,
 
@@ -138,7 +149,7 @@ export const useStore = create<Store>((set, get) => ({
   loadBuild(b) {
     const { gd } = get();
     if (!gd) return;
-    const nb = { ...b, dataVersion: gd.core.manifest.dataVersion };
+    const nb = { ...b, alignment: toAlignment(b.alignment), dataVersion: gd.core.manifest.dataVersion };
     persist(nb);
     set({ build: nb, view: 'overview', level: undefined, menuOpen: false });
   },
@@ -350,6 +361,15 @@ export const useStore = create<Store>((set, get) => ({
       /* ignore */
     }
     set({ muted: m });
+  },
+
+  setMusicOn(on) {
+    try {
+      localStorage.setItem('hcp.music', on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    set({ musicOn: on });
   },
 }));
 

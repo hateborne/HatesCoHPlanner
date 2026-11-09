@@ -4,8 +4,8 @@
  * text at the uniform screen scale S.
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { FONTS, S, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
-import { icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
+import { FONTS, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
+import { CLR_HIGH, CLR_SHADOW, icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { GameText, useFontsReady } from './GameText.tsx';
 import { PHONE_DESC, PHONE_NEXT_Y } from './Phone.tsx';
@@ -66,7 +66,12 @@ export function TitleBar({ skin, text, scale: scaleIn }: { skin: Skin; text: str
  * drawMenuFrame: 16px corner pieces and 4px pipes, which the client never upscales, over a
  * 0x00000088 fill. Hero frames use the blue textures; villain/Praetorian use their V_/P_ sets.
  */
-export function MenuFrame({ x, y, w, h, r25, outer, children, style, skin }: { x: number; y: number; w: number; h: number; r25?: boolean; outer?: boolean; children?: ReactNode; style?: CSSProperties; skin?: Skin }) {
+export function MenuFrame({ x: x0, y: y0, w: w0, h: h0, r25, outer, children, style, skin }: { x: number; y: number; w: number; h: number; r25?: boolean; outer?: boolean; children?: ReactNode; style?: CSSProperties; skin?: Skin }) {
+  // device-aligned box so the corner and pipe pieces tile cleanly
+  const x = snap(x0);
+  const y = snap(y0);
+  const w = snap(x0 + w0) - x;
+  const h = snap(y0 + h0) - y;
   const c = r25 ? 29 : 16;
   const dir = 'creation/common/frame/frame_blue_4px';
   const r = r25 ? '25r' : '12r';
@@ -116,7 +121,7 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
   const arrowSc = lit ? 1.1 * s : s;
   const arrow = 64 * arrowSc;
   const boxL = dir === 'left' ? x - 32 * s : x - 216 * s;
-  const glowTint = skin.name === 'hero' ? 'rgba(122,255,116,0.67)' : 'rgba(255,255,122,0.67)';
+  const glowTint = skin.name === 'hero' ? 'rgb(122,255,116)' : 'rgb(255,255,122)';
   return (
     <div
       className="abs"
@@ -143,11 +148,13 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
             <Sprite src={ui(`${nb}/next_${l}fade_tail_r`, skin)} x={x - 216 * s} y={y - 18 * s} w={216 * s} h={36 * s} z={0} />
             <Sprite src={ui(`${nb}/next_${l}fade_afterimage_r`, skin)} x={x - 64 * s} y={y - 18 * s} w={64 * s} h={36 * s} z={1} />
             {glow && !locked ? (
-              <>
-                <Sprite src={ui(`${nb}/next_glowkit_l`)} x={x - (wdText + (20 + 32) * s)} y={y - 28 * s} w={35 * s} h={56 * s} z={1} tint={glowTint} style={{ animation: 'dotpulse 2.09s ease-in-out infinite' }} />
-                <Sprite src={ui(`${nb}/next_glowkit_mid`)} x={x + 35 * s - (wdText + (20 + 32) * s)} y={y - 28 * s} w={Math.max(0, wdText - 20 * s)} h={56 * s} z={1} tint={glowTint} style={{ animation: 'dotpulse 2.09s ease-in-out infinite' }} />
-                <Sprite src={ui(`${nb}/next_glowkit_r`)} x={x + 35 * s - (32 + 40) * s} y={y - 28 * s} w={35 * s} h={56 * s} z={1} tint={glowTint} style={{ animation: 'dotpulse 2.09s ease-in-out infinite' }} />
-              </>
+              // one group whose alpha pulses 170 +/- 30 (timer += TIMESTEP * .1, a 2.09s sine);
+              // the three pieces only fade, they never scale, so their joins stay closed
+              <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 1, animation: 'glowpulse 2.094s linear infinite' }}>
+                <Sprite src={ui(`${nb}/next_glowkit_l`)} x={x - (wdText + (20 + 32) * s)} y={y - 28 * s} w={35 * s} h={56 * s} tint={glowTint} />
+                <Sprite src={ui(`${nb}/next_glowkit_mid`)} x={x + 35 * s - (wdText + (20 + 32) * s)} y={y - 28 * s} w={Math.max(0, wdText - 20 * s)} h={56 * s} tint={glowTint} />
+                <Sprite src={ui(`${nb}/next_glowkit_r`)} x={x + 35 * s - (32 + 40) * s} y={y - 28 * s} w={35 * s} h={56 * s} tint={glowTint} />
+              </div>
             ) : null}
           </>
         )}
@@ -162,37 +169,89 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
   );
 }
 
+/** brightenColor (uiUtilMenu.c) on an rgba() string. */
+function brightenRgba(c: string, amt: number): string {
+  return c.replace(/rgba?\((\d+),(\d+),(\d+)/, (_, r, g, b) => `rgba(${Math.min(255, +r + amt)},${Math.min(255, +g + amt)},${Math.min(255, +b + amt)}`);
+}
+
 /**
- * drawMenuBar: the full-width rounded bar at the top of the pool column ("Choose from new pool
- * power set"), skin base color (selected = green), game_12 x 1.1 white text centered at y + 6s.
+ * drawMenuBar -> drawMenuBarSquished (uiUtilMenu.c:859): the full-width pill at the top of the
+ * third panel ("Choose from new pool power set", isOn = TRUE so always in the selected colors).
+ * L / MID / R frame (white border) and meat pieces over a wd-wide box centered on (x, y);
+ * brightened by 45 under the mouse and drawn at 0.9 scale while pressed; game_12 x 1.1 text
+ * centered with its baseline at y + 6sc, colored white -> selected.text.
+ *
+ * @param props.x Center x (stage px).
+ * @param props.y Center y (stage px).
+ * @param props.wd Width (stage px; the client's FRAME_WIDTH * sx).
+ * @param props.sc Draw scale (screenScale).
  */
-export function MenuBar({ skin, x, y, w, h, text, selected, onClick }: { skin: Skin; x: number; y: number; w: number; h: number; text: string; selected?: boolean; onClick?: () => void }) {
+export function MenuBar({ skin, x, y, wd: wdIn, sc: scIn = S, text, onClick, onHover }: { skin: Skin; x: number; y: number; wd: number; sc?: number; text: string; onClick?: () => void; onHover?: (on: boolean) => void }) {
   useFontsReady();
   const [hover, setHover] = useState(false);
-  const c = selected ? skin.selected : skin.standard;
+  const [down, setDown] = useState(false);
+  const pressed = hover && down;
+  const sc = pressed ? scIn * 0.9 : scIn;
+  const wd = pressed ? wdIn * 0.9 : wdIn;
+  const c = skin.selected;
+  const base = hover && !pressed ? brightenRgba(c.base, 45) : c.base;
+  const tt = skin.name === 'hero' ? '' : '_tintable';
+  const dir = 'creation/common/checkbar';
+  const under = skin.name === 'praetorian';
+  // snapped columns: left, end of L meat, start of R meat, right; frames abut at L/R frame edges
+  const left = snap(x - wd / 2);
+  const right = snap(x + wd / 2);
+  const rx = (v: number) => snap(v) - left;
+  const top = snap(y - 15 * sc);
+  const ry = (v: number) => snap(v) - top;
+  const m0 = rx(x - wd / 2 + 20 * sc);
+  const m1 = rx(x + wd / 2 - 20 * sc);
+  const f0 = rx(x - wd / 2 + 22 * sc);
+  const f1 = rx(x + wd / 2 - 22 * sc);
+  const W = right - left;
+  const fH = ry(y + 15 * sc);
+  const meat = (piece: 'l' | 'mid' | 'r', l: number, r: number) => {
+    const h = piece === 'mid' ? 32 * sc : 24 * sc;
+    const t = ry(y - h / 2);
+    const hh = ry(y + h / 2) - t;
+    const uT = piece === 'mid' ? ry(y - 12 * sc) - t : 0;
+    const uH = piece === 'mid' ? ry(y + 12 * sc) - ry(y - 12 * sc) : hh;
+    return (
+      <div className="abs" style={{ left: l, top: t, width: r - l, height: hh, isolation: 'isolate' }}>
+        <Sprite src={ui(`${dir}/checkbar_meat_base_${piece}`, skin)} x={0} y={0} w={r - l} h={hh} z={0} tint={base} />
+        <Sprite src={ui(`${dir}/checkbar_meat_highlight_${piece}`, skin)} x={0} y={0} w={r - l} h={hh} z={1} tint={CLR_HIGH} />
+        <Sprite src={ui(`${dir}/checkbar_meat_shadow_${piece}`, skin)} x={0} y={0} w={r - l} h={hh} z={2} tint={CLR_SHADOW} />
+        {under ? <Sprite src={ui(`${dir}/checkbar_meat_base_underlight_${piece}`, skin)} x={0} y={uT} w={r - l} h={uH} z={3} /> : null}
+      </div>
+    );
+  };
   return (
     <div
       className="abs"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseEnter={() => {
+        setHover(true);
+        onHover?.(true);
+      }}
+      onMouseLeave={() => {
+        setHover(false);
+        setDown(false);
+        onHover?.(false);
+      }}
+      onMouseDown={() => setDown(true)}
+      onMouseUp={() => setDown(false)}
       onClick={() => {
         play('powerselect2');
         onClick?.();
       }}
-      style={{
-        left: x,
-        top: y,
-        width: w,
-        height: h,
-        borderRadius: h / 2,
-        cursor: 'pointer',
-        border: `2px solid ${c.frame}`,
-        background: `linear-gradient(to bottom, rgba(255,255,255,0.45), ${c.base} 45%, ${c.base} 75%, rgba(0,0,0,0.35))`,
-        filter: hover ? 'brightness(1.25)' : undefined,
-        zIndex: 12,
-      }}
+      style={{ left, top, width: W, height: fH, cursor: 'pointer', zIndex: 12 }}
     >
-      <GameText font="game_12" scale={1.1 * S} x={w / 2} y={h / 2 + 6 * S - 2} align="center" colors={['#ffffff', '#ffffff']} text={text} />
+      {meat('l', 0, m0)}
+      {meat('mid', m0, m1)}
+      {meat('r', m1, W)}
+      <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_l${tt}`, skin)} x={0} y={0} w={f0} h={fH} z={5} tint="#ffffff" />
+      <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_mid${tt}`, skin)} x={f0} y={0} w={f1 - f0} h={fH} z={6} tint="#ffffff" />
+      <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_r${tt}`, skin)} x={f1} y={0} w={W - f1} h={fH} z={5} tint="#ffffff" />
+      <GameText font="game_12" scale={sc * 1.1} x={x - left} y={y - top + 6 * sc} align="center" colors={['#ffffff', c.text]} text={text} z={7} />
     </div>
   );
 }
@@ -410,6 +469,53 @@ export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pending, onClic
         </>
       ) : null}
       <Sprite src={ui(pending ? 'creation/enhancements/enhnctray_ring_highlight' : 'creation/enhancements/enhnctray_ring', skin)} x={0} y={0} w={size} h={size} z={3} />
+    </div>
+  );
+}
+
+// game_18 is a dynamic font: each glyph advances by its 18px advance (plus the outline's 1px)
+// times the draw scale, so at this size the letters spread out. Measured on the reference
+// screenshot: about 3.25 base px wider per glyph than the font's own advance.
+const FADE_SPACING = 3.25;
+
+/**
+ * fadingText (uiFx.c): game_18 text centered on x with its baseline at y, fading in and out as
+ * sin(pi t) over its 30-tick (1s) life while its scale grows by 0.01 per tick (+0.3 in all).
+ * Mount it with a fresh key to replay it.
+ *
+ * The caller's scale is base * screenScale, and the client's text pass multiplies it by the
+ * screen scale a second time (only x and y are virtual), so the text grows with the square of
+ * the resolution. It is sized here for the 3840x2160 reference screens, where "No slots to
+ * assign!" is about two thirds of the screen wide and the +0.3 adds about 7%.
+ *
+ * @param props.base The per-call factor before screenScale (1.5 on the slot screen).
+ * @param props.maxWidth Optional cap (stage px) for narrow layouts; the text shrinks to fit.
+ */
+export function FadingText({ x, y, text, color, base, maxWidth }: { x: number; y: number; text: string; color: string; base: number; maxWidth?: number }) {
+  useFontsReady();
+  const ft = base * REF_SCREEN_SCALE; // the client's FadingText.scale at the start
+  const grow = (ft + 0.3) / ft;
+  let scale = ft * S; // drawn at ft * screenScale device px = ft * S stage px
+  if (maxWidth) {
+    const w = textWidth(FONTS.game_18, FONTS.game_18.size * scale * grow, text) + FADE_SPACING * scale * grow * text.length;
+    if (w > maxWidth) scale *= maxWidth / w;
+  }
+  return (
+    <div
+      className="abs"
+      style={{
+        left: x,
+        top: y,
+        width: 0,
+        height: 0,
+        zIndex: 50,
+        pointerEvents: 'none',
+        transformOrigin: '0 0',
+        animation: 'fadingtext 1s linear forwards, fadinggrow 1s linear forwards',
+        ['--grow' as string]: grow,
+      }}
+    >
+      <GameText font="game_18" scale={scale} x={0} y={0} align="center" colors={[color, color]} text={text} spacing={FADE_SPACING * scale} />
     </div>
   );
 }

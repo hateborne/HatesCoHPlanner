@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import zlib
 
 from pipeline import config
 from pipeline.assets.textures import TextureIndex, decode
@@ -22,8 +23,72 @@ FONT_FILES = ["REDCIRCL.ttf", "Paragon City Italic.ttf", "mont_demibold.TTF", "m
 FONT_DIR = config.OURO_DATA / "bin" / "data" / "fonts"
 # Front-end sounds the level-up screens play (sndPlay in uiLevelPower.c / uiLevelSpec.c /
 # uiPowers.c / uiCombineSpec.c).
-SOUND_DIR = config.OURO_DATA / "bin" / "data" / "sound" / "Ogg" / "FrontEnd"
 SOUNDS = ["powerselect2", "next", "back", "reject5", "select5", "grab4", "delete", "tally", "changescreen"]
+# Every sound under N_UI/ (the character creator's set: UI/Hybrid/*.c, uiCostume.c, uiGender.c --
+# N_Select, N_MouseEnter, N_Archetype_<class>, N_Origin_<origin>, N_Playstyle_*, ...) plus the login
+# music. The Homecoming client picks the menu track by UI skin: H_ (hero), V_ (villain), else N_.
+SOUND_DIRS = ("sound/ogg/n_ui/",)
+MUSIC = ["h_menumusic_loop", "v_menumusic_loop", "n_menumusic_loop"]
+SOUND_LOOSE = config.OURO_DATA / "bin" / "data" / "sound"
+
+
+class SoundIndex:
+    """Every .ogg the client can play, by lower-cased bare name and by path.
+
+    Later sources override earlier ones, as the client's pigg layering does: OuroV2 loose files,
+    then the Homecoming issue24 piggs, then the live overlay piggs.
+    """
+
+    def __init__(self):
+        from pipeline.coh import p7reader  # noqa: F401  (puts U:\\ tools on sys.path)
+        import pigg_extract as pex
+
+        self.by_name: dict[str, tuple[str, object]] = {}
+        if SOUND_LOOSE.exists():
+            for f in SOUND_LOOSE.rglob("*.ogg"):
+                rel = "sound/" + f.relative_to(SOUND_LOOSE).as_posix().lower()
+                self.by_name[f.stem.lower()] = (rel, f)
+        for pg in sorted(config.I24_ASSETS.glob("*.pigg")) + sorted(config.LIVE_ASSETS.glob("*.pigg")):
+            with open(pg, "rb") as fh:
+                for e in pex.read_directory(fh):
+                    path = e["path"].replace("\\", "/").lower()
+                    if path.startswith("sound/") and path.endswith(".ogg"):
+                        self.by_name[path.rsplit("/", 1)[-1][:-4]] = (path, (pg, e))
+
+    def read(self, name: str) -> bytes | None:
+        """@return The .ogg bytes for a bare sound name, or None if no source has it."""
+        hit = self.by_name.get(name.lower())
+        if hit is None:
+            return None
+        src = hit[1]
+        if isinstance(src, tuple):
+            pg, e = src
+            with open(pg, "rb") as f:
+                f.seek(e["offset"])
+                raw = f.read(e["packSize"] or e["size"])
+            return zlib.decompress(raw) if e["packSize"] else raw
+        return src.read_bytes()
+
+    def names_under(self, prefixes: tuple[str, ...]) -> list[str]:
+        """@return Bare names of every sound whose path starts with one of `prefixes`."""
+        return sorted(n for n, (rel, _) in self.by_name.items() if rel.startswith(prefixes))
+
+
+def export_sounds() -> tuple[list[str], list[str]]:
+    """Copy the UI sounds and menu music into public/assets/sounds/<lower name>.ogg.
+
+    @return (exported names, missing names).
+    """
+    ix = SoundIndex()
+    got, miss = [], []
+    for name in SOUNDS + ix.names_under(SOUND_DIRS) + MUSIC:
+        data = ix.read(name)
+        if data is None:
+            miss.append(name)
+            continue
+        config.out_path(config.ASSETS_OUT / "sounds" / f"{name.lower()}.ogg").write_bytes(data)
+        got.append(name.lower())
+    return sorted(set(got)), miss
 
 
 def _write(img, rel_out: str, webp: bool = False) -> str:
@@ -109,16 +174,9 @@ def run(data_root) -> dict:
         else:
             missing.setdefault("fonts", []).append(fname)
 
-    manifest["sounds"] = []
-    available = {f.stem.lower(): f for f in SOUND_DIR.glob("*.ogg")} if SOUND_DIR.exists() else {}
-    for name in SOUNDS:
-        src = available.get(name)
-        if src is None:
-            missing.setdefault("sounds", []).append(name)
-            continue
-        dst = config.out_path(config.ASSETS_OUT / "sounds" / f"{name}.ogg")
-        shutil.copyfile(src, dst)
-        manifest["sounds"].append(name)
+    manifest["sounds"], miss_sounds = export_sounds()
+    if miss_sounds:
+        missing["sounds"] = miss_sounds
 
     config.out_path(config.ASSETS_OUT / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")

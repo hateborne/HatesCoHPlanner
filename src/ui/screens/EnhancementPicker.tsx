@@ -8,6 +8,7 @@ import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { icon, type Skin } from '../skin/skin.ts';
+import { TitleText } from '../components/GameText.tsx';
 
 type Tab = 'Training' | 'Origin' | 'Invention' | 'Sets' | 'Special';
 const TABS: Tab[] = ['Training', 'Origin', 'Invention', 'Sets', 'Special'];
@@ -125,9 +126,9 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                 {sets.map((s, i) => (
                   <div key={s.id}>
                     {i === 0 || sets[i - 1]!.grp !== s.grp ? (
-                      <div className="title-text" style={{ fontSize: 18, marginTop: 8 }}>
+                      <TitleText style={{ fontSize: 18, marginTop: 8 }}>
                         {s.grp}
-                      </div>
+                      </TitleText>
                     ) : null}
                     <div
                       onClick={() => setSetId(s.id)}
@@ -153,9 +154,9 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
           {selBoost ? (
             <>
               <EnhIcon b={selBoost} size={80} />
-              <div className="title-text" style={{ fontSize: 20, whiteSpace: 'normal' }}>
+              <TitleText style={{ fontSize: 20, whiteSpace: 'normal' }}>
                 {selBoost.dn}
-              </div>
+              </TitleText>
               <div style={{ margin: '6px 0', color: '#7fd3ff' }}>{gameText(selBoost.sh)}</div>
               {levelRange ? (
                 <label style={{ display: 'block', margin: '8px 0' }}>
@@ -200,9 +201,9 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                   <input type="checkbox" checked={!!selBoost.bup} onChange={() => pickBoost(gd.power(attunedAlt))} /> Attuned
                 </label>
               ) : null}
-              <div className="title-text" style={{ fontSize: 16, marginTop: 10 }}>
+              <TitleText style={{ fontSize: 16, marginTop: 10 }}>
                 Adds to this power (before ED)
-              </div>
+              </TitleText>
               {values.map((v, i) => (
                 <div key={i}>
                   {gd.attribName.get(v.attrib)?.replace(/_/g, ' ')}: +{(v.value * 100).toFixed(2)}%

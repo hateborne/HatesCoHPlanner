@@ -12,6 +12,9 @@ export const STAGE_H = 1125;
 export const SX = STAGE_W / 1024;
 export const SY = STAGE_H / 768;
 export const S = Math.min(SX, SY);
+// The game's screenScale on the 3840x2160 reference screenshots (min(3840/1024, 2160/768)), for
+// the few client draws whose size depends on the real resolution rather than the virtual screen.
+export const REF_SCREEN_SCALE = 2160 / 768;
 
 /** Virtual-x to stage px. */
 export const vx = (v: number) => v * SX;
@@ -65,6 +68,19 @@ export function setDevPx(v: number): void {
 /** @return Stage px per device pixel. */
 export function getDevPx(): number {
   return devPx;
+}
+
+/**
+ * Round a stage coordinate to the nearest device pixel (the stage origin is device-aligned).
+ *
+ * Piece edges snapped this way tile like the client's quads: two pieces that meet on the same
+ * snapped edge cover each pixel exactly once instead of both anti-aliasing it.
+ *
+ * @param v Stage px.
+ * @return Stage px on a device-pixel boundary.
+ */
+export function snap(v: number): number {
+  return Math.round(v / devPx) * devPx;
 }
 
 /**

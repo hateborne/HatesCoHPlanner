@@ -5,15 +5,40 @@
  * Levels are 0-based everywhere (character level 1 = 0), matching the game data.
  */
 
-export type Alignment = 'Hero' | 'Vigilante' | 'Villain' | 'Rogue' | 'Loyalist' | 'Resistance';
+/**
+ * Hero, Villain or Praetorian. The game's finer alignments change nothing a build can take (no
+ * power or set requirement reads them), so Vigilante counts as Hero, Rogue as Villain and
+ * Loyalist / Resistance as Praetorian.
+ */
+export type Alignment = 'Hero' | 'Villain' | 'Praetorian';
 
-export const ALIGNMENTS: Alignment[] = ['Hero', 'Vigilante', 'Villain', 'Rogue', 'Loyalist', 'Resistance'];
+export const ALIGNMENTS: Alignment[] = ['Hero', 'Villain', 'Praetorian'];
+
+/**
+ * Fold any alignment name (ours, a Mids one, or one saved before the alignments were condensed)
+ * into the three the planner uses.
+ *
+ * @param a Alignment name, any case; unknown or missing names count as Hero.
+ * @return Hero, Villain or Praetorian.
+ */
+export function toAlignment(a: string | undefined): Alignment {
+  switch ((a ?? '').toLowerCase()) {
+    case 'villain':
+    case 'rogue':
+      return 'Villain';
+    case 'praetorian':
+    case 'loyalist':
+    case 'resistance':
+      return 'Praetorian';
+    default:
+      return 'Hero';
+  }
+}
 
 /** UI skin implied by an alignment (game: blue hero, red villain, Praetorian). */
-export function skinOf(a: Alignment): 'hero' | 'villain' | 'praetorian' {
-  if (a === 'Villain' || a === 'Rogue') return 'villain';
-  if (a === 'Loyalist' || a === 'Resistance') return 'praetorian';
-  return 'hero';
+export function skinOf(a: string): 'hero' | 'villain' | 'praetorian' {
+  const n = toAlignment(a);
+  return n === 'Villain' ? 'villain' : n === 'Praetorian' ? 'praetorian' : 'hero';
 }
 
 /** An enhancement placed in a slot. */

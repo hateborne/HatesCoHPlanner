@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { newBuild, type Build } from '../src/engine/build.ts';
+import { newBuild, toAlignment, type Build } from '../src/engine/build.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { exportMbd, importMbd, importMidsText, buildToMxDz, type Mbd, type MidsMap } from '../src/io/mids.ts';
@@ -19,7 +19,7 @@ function sample(): Build {
     name: 'Round Trip',
     at: gd.archetypeByName.get('class_blaster')!.id,
     origin: gd.core.origins.find((o) => o.n === 'Magic')!.id,
-    alignment: 'Rogue',
+    alignment: 'Villain',
     primary: sid(gd, 'Blaster_Ranged.Fire_Blast'),
     secondary: sid(gd, 'Blaster_Support.Fire_Manipulation'),
     pickCount: 24,
@@ -31,6 +31,21 @@ function sample(): Build {
   b.granted[pid(gd, 'Inherent.Fitness.Health')] = { slots: [{ level: 0, enh: { boost: pid(gd, 'Boosts.Generic_Heal.Generic_Heal') } }, { level: 2 }] };
   return b;
 }
+
+describe('alignment', () => {
+  it('folds the game and Mids alignments into Hero / Villain / Praetorian', () => {
+    expect(['Hero', 'Vigilante', 'Villain', 'Rogue', 'Loyalist', 'Resistance', 'Praetorian', undefined, 'x'].map(toAlignment)).toEqual([
+      'Hero', 'Hero', 'Villain', 'Villain', 'Praetorian', 'Praetorian', 'Praetorian', 'Hero', 'Hero',
+    ]);
+  });
+
+  it('round-trips a Praetorian build through the share URL and exports it to Mids as Loyalist', async () => {
+    const b = { ...sample(), alignment: 'Praetorian' as const };
+    expect((await decodeShare(await encodeShare(b), b.dataVersion)).alignment).toBe('Praetorian');
+    expect(exportMbd(gd, map, b).mbd.Alignment).toBe('Loyalist');
+    expect(importMbd(gd, map, { ...exportMbd(gd, map, b).mbd, Alignment: 'Resistance' }).build.alignment).toBe('Praetorian');
+  });
+});
 
 describe('share URL', () => {
   it('round-trips a build', async () => {

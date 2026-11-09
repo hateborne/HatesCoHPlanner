@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fitScale, FONTS, S } from '../skin/metrics.ts';
+import { fitScale, FONTS, S, snap } from '../skin/metrics.ts';
 import { CLR_CBLOW, CLR_CRDS, CLR_SHADOW, ui, type ElemColors, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { GameText, useFontsReady } from './GameText.tsx';
@@ -19,14 +19,15 @@ interface CheckBarProps {
   icon?: string; // power icon in a power ring instead of the check box
   halfText?: boolean; // title_9 label, no fit, no hover growth (uiLevelSpec)
   isPower?: boolean; // drawCheckBarEx isPower: a power ring (and hole) in place of the check box
+  noBox?: boolean; // no check box: drawMenuBar's rounded left cap, label centered
+  clickSounds?: string[]; // played on a click (default: the level-up screens' powerselect2)
+  hoverSounds?: boolean; // the character creator's N_MouseEnter / N_MouseExit (drawHybridBar)
   onClick?: () => void;
   onHover?: (on: boolean) => void;
   title?: string;
 }
 
 const CHECKBOX_WD = 38;
-// How far the stretched 2px mid strips run under the right caps, so no hairline shows at the join.
-const OVERLAP = 3;
 
 /** brightenColor(c, 60) from uiUtilMenu.c. */
 function brighten(c: string, amt: number): string {
@@ -39,82 +40,124 @@ function brighten(c: string, amt: number): string {
  * The in-game check bar, a direct port of drawCheckBarEx (uiUtilMenu.c:694-850): tinted frame
  * and meat strips, the round check box (or a power ring with an icon), and the title_12 label
  * at x + 24s with its baseline at y + 5s, shrunk to fit wd - 33s.
+ *
+ * Every piece edge is snapped to a device pixel and neighbours share the same snapped edge, the
+ * way the client's quads tile: abutting pieces at a fractional position would be anti-aliased
+ * twice by the browser and leave a light or dark 1px seam where they meet.
+ *
+ * With `noBox` the bar is drawMenuBarSquished's instead (uiUtilMenu.c:859): L / MID / R frame and
+ * meat over the same box, no check box, the label centered.
  */
-export function CheckBar({ skin, x, y, wd, scale = S, text, state, down, icon, halfText, isPower, onClick, onHover, title }: CheckBarProps) {
+export function CheckBar(props: CheckBarProps) {
+  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, isPower, noBox, clickSounds, hoverSounds, onClick, onHover, title } = props;
   useFontsReady();
   const [hover, setHover] = useState(false);
   const selectable = state !== 'unselectable' && !!onClick;
-  const colors: ElemColors =
-    state === 'unselectable' ? skin.unselectable : down || state === 'selected' ? skin.selected : skin.standard;
+  const chosen = down || state === 'selected';
+  const colors: ElemColors = state === 'unselectable' ? skin.unselectable : chosen ? skin.selected : skin.standard;
   const lit = hover && selectable;
   const base = lit ? brighten(colors.base, 60) : colors.base;
   const textTop = lit ? brighten(colors.text, 60) : colors.text;
   const s = lit && !halfText ? scale + 0.1 : scale; // the client adds an absolute 0.1
-  const sel = (down || state === 'selected') && state !== 'unselectable' ? 'selected_' : '';
+  const sel = chosen && state !== 'unselectable' ? 'selected_' : '';
   // drawCheckBarEx: the hero skin uses the colored frame textures, the others the _tintable ones
   const tt = skin.name === 'hero' ? '' : '_tintable';
   // the Praetorian skin lays a gold underlight over the meat of every non-gray bar
   const under = skin.name === 'praetorian' && state !== 'unselectable';
   const dir = 'creation/common/checkbar';
-  const midW = wd - 22 * s;
+
+  // The hover/click box (BuildCBox(x, y - frameL.h*s/2, wd, frameL.h*s)) widened to include the
+  // bulb; everything else is placed relative to its snapped corner.
+  const boxLeft = snap(x - 22 * s);
+  const boxTop = snap(y - 19 * s);
+  const rx = (v: number) => snap(v) - boxLeft;
+  const ry = (v: number) => snap(v) - boxTop;
+
+  // shared snapped column edges: [left end, end of the left cap, start of the right cap, right end]
+  const capW = noBox ? 20 * s : 0;
+  const xL = noBox ? x - 22 * s : x;
+  const xMid0 = rx(xL + capW);
+  const xMid1 = rx(noBox ? x + wd - 20 * s : x + wd - 22 * s);
+  const xEnd = rx(noBox ? x + wd : x + wd - 2 * s);
+  const frameR0 = rx(x + wd - 22 * s);
+  // drawMenuBarSquished lays its frame MID 2px over the L and R frames; abutting them instead
+  // keeps the partly transparent border rows from doubling up in those 2px
+  const frameMid0 = noBox ? rx(xL + 22 * s) : rx(x);
+  const frameMid1 = frameR0;
 
   let label = null;
-  if (halfText) {
+  if (noBox) {
+    const fit = Math.min(s, fitScale(FONTS.title_12, text, wd - 2 * 22 * s));
+    label = <GameText font="title_12" scale={fit} x={(x - 22 * s + x + wd) / 2} y={y + 5 * s} align="center" colors={[textTop, colors.text2]} text={text} z={9} />;
+  } else if (halfText) {
     label = <GameText font="title_9" scale={s} x={x + (CHECKBOX_WD / 2) * s} y={y} colors={[textTop, colors.text2]} text={text} z={9} />;
   } else {
     const fit = Math.min(s, fitScale(FONTS.title_12, text, wd - 1.5 * 22 * s));
     label = <GameText font="title_12" scale={fit} x={x + (CHECKBOX_WD / 2 + 5) * s} y={y + 5 * s} colors={[textTop, colors.text2]} text={text} z={9} />;
   }
 
-  // Everything is placed relative to the bar's (x, y); the outer div is the hover/click box
-  // (BuildCBox(x, y - frameL.h*s/2, wd, frameL.h*s)) widened to include the bulb.
-  const boxLeft = x - 22 * s;
-  const boxTop = y - 19 * s;
-  const rx = (v: number) => v - boxLeft;
-  const ry = (v: number) => v - boxTop;
+  // a meat group (base, highlight, shadow, Praetorian underlight) between two snapped columns
+  const meat = (piece: 'l' | 'mid' | 'r', l: number, r: number) => {
+    const h = piece === 'mid' ? 32 * s : 24 * s;
+    const t = ry(y - h / 2);
+    const hh = ry(y + h / 2) - t;
+    const w = r - l;
+    if (w <= 0) return null;
+    const uT = piece === 'mid' ? ry(y - 12 * s) - t : 0;
+    const uH = piece === 'mid' ? ry(y + 12 * s) - ry(y - 12 * s) : hh;
+    return (
+      <div className="layer" style={{ left: l, top: t, width: w, height: hh, zIndex: 0, isolation: 'isolate' }}>
+        <Sprite src={ui(`${dir}/checkbar_meat_base_${piece}`, skin)} x={0} y={0} w={w} h={hh} z={0} tint={base} />
+        <Sprite src={ui(`${dir}/checkbar_meat_highlight_${piece}`, skin)} x={0} y={0} w={w} h={hh} z={1} tint={colors.highlight} />
+        <Sprite src={ui(`${dir}/checkbar_meat_shadow_${piece}`, skin)} x={0} y={0} w={w} h={hh} z={2} tint={CLR_SHADOW} />
+        {under ? <Sprite src={ui(`${dir}/checkbar_meat_base_underlight_${piece}`, skin)} x={0} y={uT} w={w} h={uH} z={3} /> : null}
+      </div>
+    );
+  };
+  const fTop = ry(y - 15 * s);
+  const fH = ry(y + 15 * s) - fTop;
+
   return (
     <div
       className={`checkbar${selectable ? '' : ' gray'}`}
-      style={{ left: boxLeft, top: boxTop, width: wd + 22 * s, height: 38 * s }}
+      style={{ left: boxLeft, top: boxTop, width: snap(x + wd) - boxLeft, height: snap(y + 19 * s) - boxTop }}
       onMouseEnter={() => {
         setHover(true);
+        if (hoverSounds && selectable && !chosen) play('n_mouseenter');
         onHover?.(true);
       }}
       onMouseLeave={() => {
         setHover(false);
+        if (hoverSounds && selectable && !chosen) play('n_mouseexit', { noInterrupt: true });
         onHover?.(false);
       }}
       onClick={
         selectable
           ? () => {
-              play('powerselect2');
+              for (const snd of clickSounds ?? ['powerselect2']) play(snd);
               onClick?.();
             }
           : undefined
       }
       title={title}
     >
-      <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}l_bulb${tt}`, skin)} x={rx(x - 19 * s - 3 * s)} y={ry(y - 19 * s)} w={38 * s} h={38 * s} z={5} tint={colors.frame} />
-      <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}mid${tt}`, skin)} x={rx(x)} y={ry(y - 15 * s)} w={midW + OVERLAP} h={30 * s} z={3} tint={colors.frame} />
-      <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}r${tt}`, skin)} x={rx(x + midW)} y={ry(y - 15 * s)} w={22 * s} h={30 * s} z={4} tint={colors.frame} />
-      {/* meat: the mid strips (base, highlight, shadow) run OVERLAP under the right cap, and the cap
-          is composited as one isolated group -- opaque thanks to its base -- so the join neither
-          double-applies the translucent strips nor leaves an anti-aliasing hairline */}
-      <div className="layer" style={{ left: rx(x), top: ry(y - 16 * s), width: midW + OVERLAP, height: 32 * s, zIndex: 0, isolation: 'isolate' }}>
-        <Sprite src={ui(`${dir}/checkbar_meat_base_mid`, skin)} x={0} y={0} w={midW + OVERLAP} h={32 * s} z={0} tint={base} />
-        <Sprite src={ui(`${dir}/checkbar_meat_highlight_mid`, skin)} x={0} y={0} w={midW + OVERLAP} h={32 * s} z={1} tint={colors.highlight} />
-        <Sprite src={ui(`${dir}/checkbar_meat_shadow_mid`, skin)} x={0} y={0} w={midW + OVERLAP} h={32 * s} z={2} tint={CLR_SHADOW} />
-        {under ? <Sprite src={ui(`${dir}/checkbar_meat_base_underlight_mid`, skin)} x={0} y={4 * s} w={midW + OVERLAP} h={24 * s} z={3} /> : null}
-      </div>
-      <div className="layer" style={{ left: rx(x + midW), top: ry(y - 12 * s), width: 20 * s, height: 24 * s, zIndex: 0, isolation: 'isolate' }}>
-        <Sprite src={ui(`${dir}/checkbar_meat_base_r`, skin)} x={0} y={0} w={20 * s} h={24 * s} z={0} tint={base} />
-        <Sprite src={ui(`${dir}/checkbar_meat_highlight_r`, skin)} x={0} y={0} w={20 * s} h={24 * s} z={1} tint={colors.highlight} />
-        <Sprite src={ui(`${dir}/checkbar_meat_shadow_r`, skin)} x={0} y={0} w={20 * s} h={24 * s} z={2} tint={CLR_SHADOW} />
-        {under ? <Sprite src={ui(`${dir}/checkbar_meat_base_underlight_r`, skin)} x={0} y={0} w={20 * s} h={24 * s} z={3} /> : null}
-      </div>
-      <div className="layer" style={{ left: rx(x), top: ry(y), width: 0, height: 0 }}>
-        <CheckBox skin={skin} isPower={isPower} colors={colors} base={base} sc={lit && !icon ? s : scale} down={!!down} gray={state === 'unselectable'} icon={icon} />
-      </div>
+      {noBox ? (
+        <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}l${tt}`, skin)} x={rx(xL)} y={fTop} w={rx(xL + 22 * s) - rx(xL)} h={fH} z={5} tint={colors.frame} />
+      ) : (
+        <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}l_bulb${tt}`, skin)} x={rx(x - 22 * s)} y={ry(y - 19 * s)} w={rx(x + 16 * s) - rx(x - 22 * s)} h={ry(y + 19 * s) - ry(y - 19 * s)} z={5} tint={colors.frame} />
+      )}
+      <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}mid${tt}`, skin)} x={frameMid0} y={fTop} w={frameMid1 - frameMid0} h={fH} z={3} tint={colors.frame} />
+      <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}r${tt}`, skin)} x={frameR0} y={fTop} w={rx(x + wd) - frameR0} h={fH} z={4} tint={colors.frame} />
+      {/* meat: the mid strips and each cap are composited as isolated groups that meet on one
+          snapped column, so the translucent highlight/shadow strips never double up */}
+      {noBox ? meat('l', rx(xL), xMid0) : null}
+      {meat('mid', noBox ? xMid0 : rx(x), xMid1)}
+      {meat('r', xMid1, xEnd)}
+      {noBox ? null : (
+        <div className="layer" style={{ left: rx(x), top: ry(y), width: 0, height: 0 }}>
+          <CheckBox skin={skin} isPower={isPower} colors={colors} base={base} sc={lit && !icon ? s : scale} down={!!down} gray={state === 'unselectable'} icon={icon} />
+        </div>
+      )}
       <div className="layer" style={{ left: -boxLeft, top: -boxTop, width: 0, height: 0 }}>
         {label}
       </div>
