@@ -57,7 +57,8 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
               left: 0,
               top: 0,
               backgroundImage: `url(${bg})`,
-              backgroundPosition: 'center bottom',
+              // desktop: the game's centered skyline; phone: keep the skyline at the bottom
+              backgroundPosition: dims.phone ? 'center bottom' : 'center',
               ['--menu-border' as string]: skin.menuBorder,
               ['--title-top' as string]: skin.title[0],
               ['--title-bottom' as string]: skin.title[1],
