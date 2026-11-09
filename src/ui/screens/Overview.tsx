@@ -65,25 +65,30 @@ function geom(width: number, unit: number): Geom {
   return { barCX, barW, ringX: barCX - 2 * SX, boxW: barW - 10 * SX, start: -19 * unit, row: POWER_SPEC_HT * unit, unit };
 }
 
-/** A soft halo drawn only while the level orb `level` is hovered (subscribes to that one fact). */
-function OrbGlow({ level, style }: { level: number; style: CSSProperties }) {
+/**
+ * A steady half-white cover over a power bar or slot ring, drawn only while the level orb `level`
+ * is hovered (subscribes to that one fact). Same placement as the red LockFlash, without the blink.
+ */
+function OrbLight({ level, style }: { level: number; style: CSSProperties }) {
   const lit = useHover((h) => h.orb === level);
-  return lit ? <div className="abs hover-glow" style={style} /> : null;
+  return lit ? <div className="abs hover-light" style={style} /> : null;
 }
 
-/** One level orb; it glows while the power picked at its level is hovered. */
-function LevelOrb({ level, isPick, className, style, title, onClick, children }: { level: number; isPick: boolean; className: string; style: CSSProperties; title: string; onClick: () => void; children: ReactNode }) {
-  const lit = useHover((h) => isPick && h.pick === level);
+/** One level orb; it blinks once a second while a power or slot taken at its level is hovered. */
+function LevelOrb({ level, className, style, title, onClick, children }: { level: number; className: string; style: CSSProperties; title: string; onClick: () => void; children: ReactNode }) {
+  const blinking = useHover((h) => h.blink === level);
   return (
     <div
       onClick={onClick}
       onMouseEnter={() => useHover.setState({ orb: level })}
       onMouseLeave={() => useHover.setState((h) => (h.orb === level ? { orb: null } : h))}
       title={title}
-      className={`${className}${lit ? ' hover-glow' : ''}`}
+      className={className}
       style={style}
     >
-      {children}
+      {/* under the number, so the number stays readable while the orb lights */}
+      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: 0 }} /> : null}
+      <span style={{ position: 'relative', zIndex: 1 }}>{children}</span>
     </div>
   );
 }
@@ -161,7 +166,7 @@ export function Overview({ skin }: { skin: Skin }) {
   const hoverOn = (e: BuildEntry, on: boolean) => {
     if (phone) return;
     useHover.setState((h) => ({
-      pick: e.source !== 'pick' ? h.pick : on ? e.level : h.pick === e.level ? null : h.pick,
+      blink: e.source !== 'pick' ? h.blink : on ? e.level : h.blink === e.level ? null : h.blink,
       tip: on ? { entry: e, x: mouse.current.x, y: mouse.current.y } : h.tip?.entry.key === e.key ? null : h.tip,
     }));
   };
@@ -185,8 +190,8 @@ export function Overview({ skin }: { skin: Skin }) {
         const SELECT_W = 150;
         const barW = members ? g.barW + SWITCH + 4 - SELECT_W - 8 : g.barW;
         if (e.source === 'pick') {
-          // picked at the hovered orb's level: a soft halo behind the bar
-          items.push(<OrbGlow key={`${e.key}:glow`} level={e.level} style={{ left: g.barCX - 19 * S, top: y - 17 * S, width: barW + 17 * S, height: 34 * S, borderRadius: 17 * S }} />);
+          // picked at the hovered orb's level: the bar lit half-white (LockFlash's shape)
+          items.push(<OrbLight key={`${e.key}:light`} level={e.level} style={{ left: g.barCX - 19 * S, top: y - 16 * S, width: barW + 17 * S, height: 32 * S, borderRadius: 16 * S, zIndex: 20 }} />);
         }
         items.push(
           <CheckBar
@@ -247,9 +252,11 @@ export function Overview({ skin }: { skin: Skin }) {
         }
         e.slots.forEach((s, i) => {
           const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+          // a slot placed at a level (or a pick's own first slot) belongs to that level's orb
+          const orbLevel = i > 0 || e.source === 'pick' ? s.level : null;
           if (i > 0) {
-            // placed at the hovered orb's level
-            items.push(<OrbGlow key={`${e.key}:${i}:glow`} level={s.level} style={{ left: g.ringX + (i + 1) * RING_STEP - RING / 2, top: y + 20 * S - RING / 2, width: RING, height: RING, borderRadius: RING / 2 }} />);
+            // placed at the hovered orb's level: the ring lit half-white
+            items.push(<OrbLight key={`${e.key}:${i}:light`} level={s.level} style={{ left: g.ringX + (i + 1) * RING_STEP - RING / 2, top: y + 20 * S - RING / 2, width: RING, height: RING, borderRadius: RING / 2, zIndex: 10 }} />);
           }
           items.push(
             <SlotRing
@@ -263,12 +270,14 @@ export function Overview({ skin }: { skin: Skin }) {
               pog={boost ? boostPog(gd, boost) : undefined}
               title={boost ? undefined : `Empty slot (level ${s.level + 1})`}
               onHover={
-                boost && !phone
-                  ? (h) =>
+                phone
+                  ? undefined
+                  : (h) =>
                       useHover.setState((st) => ({
-                        ringTip: h ? { entry: e, slot: i, x: mouse.current.x, y: mouse.current.y } : st.ringTip?.entry.key === e.key && st.ringTip.slot === i ? null : st.ringTip,
+                        // the enhancement's tooltip (filled slots), and the orb of the slot's level blinks
+                        ringTip: h && boost ? { entry: e, slot: i, x: mouse.current.x, y: mouse.current.y } : st.ringTip?.entry.key === e.key && st.ringTip.slot === i ? null : st.ringTip,
+                        blink: h ? orbLevel : st.blink === orbLevel ? null : st.blink,
                       }))
-                  : undefined
               }
               onClick={() => setPicker({ entry: e, slot: i })}
               onRightClick={
@@ -325,7 +334,6 @@ export function Overview({ skin }: { skin: Skin }) {
         <LevelOrb
           key={s.level}
           level={s.level}
-          isPick={isPick}
           onClick={() => (isPick ? editPick(s.picks[0]!) : editSlots(s.level))}
           title={orbTitle(s)}
           className="abs body-text"

@@ -635,6 +635,18 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// The Sound, Music and Tooltips switches belong to the browser, not the tab, and the last change
+// made in any tab wins: every new or reloaded tab reads it from localStorage at start-up, and tabs
+// already open follow it at once (the storage event fires in every other tab of the site).
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'hcp.muted') useStore.setState({ muted: e.newValue === '1' });
+    else if (e.key === 'hcp.music') useStore.setState({ musicOn: e.newValue !== '0' });
+    else if (e.key === 'hcp.tooltips') useStore.setState({ tips: TIP_MODES.includes(e.newValue as TipMode) ? (e.newValue as TipMode) : 'enabled' });
+    else if (e.key === null) useStore.setState({ muted: false, musicOn: true, tips: 'enabled' }); // site data cleared: defaults
+  });
+}
+
 // Shift held anywhere switches Enabled tooltips to their Advanced view
 if (typeof window !== 'undefined') {
   const onKey = (e: KeyboardEvent) => {
