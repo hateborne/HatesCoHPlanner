@@ -3,7 +3,7 @@ import type { Power, Powerset } from '../../data/types.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { gameText, InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
+import { InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
@@ -12,6 +12,7 @@ import { useStage } from '../components/Stage.tsx';
 import { fitScale, FONTS, S, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
+import { smf } from '../smf.tsx';
 
 // uiLevelSpec.c / uiCombineSpec.h (virtual units)
 const FRAME_SPACE = 16;
@@ -126,7 +127,7 @@ function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
   const ty = 617 - ht / 2;
   const width = wd - (2 * 3 + 10 + 80);
   const px = 14 * S;
-  const textStyle = { fontFamily: "'Montreal'", fontSize: px, lineHeight: `${Math.round(1.255 * px)}px`, whiteSpace: 'pre-line' as const };
+  const textStyle = { fontFamily: "'Montreal'", fontSize: px, lineHeight: `${Math.round(1.255 * px)}px` };
   const name = power?.dn.toUpperCase() ?? '';
   const nameSc = Math.min(1, fitScale(FONTS.title_14, name, vx(width)));
   const headerHt = Math.max(75, 30 + h1 + Math.round(1.255 * px) + 5);
@@ -137,7 +138,7 @@ function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
         <>
           <GameText font="title_14" scale={nameSc} x={vx(tx) + 80 * S} y={vy(ty) + 28 * S} colors={['#ffffff', '#ffffff']} text={name} />
           <div ref={ref} className="abs" style={{ ...textStyle, left: vx(tx) + 80 * S, top: vy(ty + 30), width: vx(width), color: '#aadeff' }}>
-            {gameText(power.sh)}
+            {smf(power.sh)}
           </div>
           <div className="abs" style={{ ...textStyle, left: vx(tx) + 80 * S, top: vy(ty + 30) + h1 * SY, width: vx(width), color: '#099cde' }}>
             {set?.dn}
@@ -289,7 +290,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       <InfoButton skin={skin} x={vx(FRAME_SPACE + FRAME_WIDTH / 2)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" disabled />
       <InfoButton skin={skin} x={vx(512)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" disabled />
       {/* drawMenuHeader: gamebold_18 white -> 88b6ff centered on (848, 72), a dot 5s outside each end */}
-      <GameText font="gamebold_18" scale={S} x={headX} y={headY + (FONTS.gamebold_18.size * S * FONTS.gamebold_18.cap) / 2} align="center" colors={['#ffffff', skin.poolHeader]} text="POOL POWERS" />
+      <GameText font="gamebold_18" scale={S} x={headX} y={headY} centerY align="center" colors={['#ffffff', skin.poolHeader]} text="POOL POWERS" />
       <Sprite src={dot} x={headX - (headW / 2 + 15 * S)} y={headY - 5 * S} w={10 * S} h={10 * S} />
       <Sprite src={dot} x={headX + headW / 2 + 5 * S} y={headY - 5 * S} w={10 * S} h={10 * S} />
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), groups(rules, entries, kinds[i]!), i))}

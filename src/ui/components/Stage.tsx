@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { setDevPx } from '../skin/metrics.ts';
 import { ui, type Skin } from '../skin/skin.ts';
 
 /** Desktop stage: the game's 16:9 screen. Phone stage: a portrait canvas, one panel at a time. */
@@ -7,11 +8,12 @@ export const PHONE = { w: 1000, h: 1780, phone: true };
 export const PHONE_BREAKPOINT = 768;
 
 export type StageDims = typeof DESKTOP;
+export type StageInfo = StageDims & { devPx: number }; // devPx: stage px per device pixel
 
-const StageCtx = createContext<StageDims>(DESKTOP);
+const StageCtx = createContext<StageInfo>({ ...DESKTOP, devPx: 1 });
 
-/** @return The current stage size and whether the phone layout is active. */
-export function useStage(): StageDims {
+/** @return The current stage size, whether the phone layout is active, and stage px per device px. */
+export function useStage(): StageInfo {
   return useContext(StageCtx);
 }
 
@@ -42,8 +44,11 @@ export function useStageScale(): { dims: StageDims; scale: number } {
 export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
   const { dims, scale } = useStageScale();
   const bg = ui(`creation/common/backgrounds/background_skyline_normal`, skin);
+  const devPx = 1 / (scale * (window.devicePixelRatio || 1));
+  setDevPx(devPx);
+  const info = useMemo(() => ({ ...dims, devPx }), [dims, devPx]);
   return (
-    <StageCtx.Provider value={dims}>
+    <StageCtx.Provider value={info}>
       <div className="viewport">
         <div style={{ width: dims.w * scale, height: dims.h * scale, position: 'relative', overflow: 'hidden', flex: 'none' }}>
           <div

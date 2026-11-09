@@ -16,7 +16,8 @@ from pipeline.assets.textures import TextureIndex, decode
 
 UI_PREFIXES = ("gui/creation/common/", "gui/creation/enhancements/", "gui/creation/powers/",
                "gui/hud/tray/tray_ring", "gui/hud/common/scroll_bar/", "gui/hud/map/map_zoom_",
-               "gui/hud/common/select_buttons/genericbutton_")
+               "gui/hud/common/select_buttons/genericbutton_", "gui/hud/common/frame/frame_flat_3px/",
+               "gui/hud/common/frame/frame_gen_backgrounds_3px/frame_3px_10r_background_")
 FONT_FILES = ["REDCIRCL.ttf", "Paragon City Italic.ttf", "mont_demibold.TTF", "mont_hvbold.TTF"]
 FONT_DIR = config.OURO_DATA / "bin" / "data" / "fonts"
 # Front-end sounds the level-up screens play (sndPlay in uiLevelPower.c / uiLevelSpec.c /

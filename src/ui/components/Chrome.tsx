@@ -10,6 +10,7 @@ import { play } from '../sound.ts';
 import { GameText, useFontsReady } from './GameText.tsx';
 import { PHONE_DESC, PHONE_NEXT_Y } from './Phone.tsx';
 import { Sprite } from './Sprite.tsx';
+import { smf } from '../smf.tsx';
 import { useStage } from './Stage.tsx';
 
 const TITLE_SCALE = 1.5;
@@ -224,7 +225,6 @@ export function InfoButton({ x, y, text, onClick, disabled, skin, w = vx(120), h
   const drop = disabled ? 'rgba(0,0,0,0.533)' : lit ? 'rgba(255,255,255,1)' : 'rgba(0,0,0,1)';
   const textA = disabled ? 0x44 / 255 : lit ? 1 : 0xbf / 255;
   const ts = Math.min(S, textWidth(FONTS.game_12, FONTS.game_12.size * S, text) > w - 5 ? (S * (w - 5)) / textWidth(FONTS.game_12, FONTS.game_12.size * S, text) : S) * press;
-  const px = FONTS.game_12.size * ts;
   const dir = 'hud/common/select_buttons/genericbutton';
   const st = lit && down ? 'press' : 'rest';
   const piece = (side: 'l' | 'mid' | 'r', px0: number, pw: number) => (
@@ -252,7 +252,7 @@ export function InfoButton({ x, y, text, onClick, disabled, skin, w = vx(120), h
       {piece('l', 0, cap)}
       {piece('mid', cap, Math.max(0, wd - 2 * cap))}
       {piece('r', wd - cap, cap)}
-      <GameText font="game_12" scale={ts} x={wd / 2} y={ht / 2 + (px * FONTS.game_12.cap) / 2} align="center" colors={[`rgba(255,255,255,${textA})`, `rgba(255,255,255,${textA})`]} text={text} z={3} />
+      <GameText font="game_12" scale={ts} x={wd / 2} y={ht / 2} centerY align="center" colors={[`rgba(255,255,255,${textA})`, `rgba(255,255,255,${textA})`]} text={text} z={3} />
     </div>
   );
 }
@@ -298,10 +298,9 @@ export function DescBox(props: { x?: number; y?: number; w?: number; h?: number;
           fontFamily: "'Montreal'",
           fontSize: px,
           lineHeight: `${Math.round(1.255 * px)}px`,
-          whiteSpace: 'pre-line',
         }}
       >
-        {gameText(text)}
+        {smf(text)}
       </div>
     </>
   );
@@ -340,15 +339,51 @@ export function SetFrame({ x, y, w, h, skin }: { x: number; y: number; w: number
   return <div className="abs" style={{ left: x, top: y, width: w, height: Math.max(0, h), border: `${2 * S}px solid #3a3a3e`, borderTopColor: '#4d4d50', borderRadius: 6 * S, background: fill, boxSizing: 'border-box' }} />;
 }
 
+/**
+ * drawFlatFrame -> drawFrameStyleColor (uiUtilGame.c) for kFrameStyle_Flat with every part: the
+ * (radius + size)-px corner textures and pipes scaled by sc and tinted with `border`, over a
+ * `back` fill. When the box is shorter (or narrower) than two corners,
+ * the corners shrink to fit -- which is what turns small R10 frames into capsules.
+ */
+export function FlatFrame({ x, y, w: wd, h: ht, sc, border, back, size = 3, radius = 10, z }: { x: number; y: number; w: number; h: number; sc: number; border: string; back: string; size?: number; radius?: number; z?: number }) {
+  const w = radius + size;
+  const xsc = wd < w * 2 * sc ? wd / (w * 2) : sc;
+  const ysc = ht < w * 2 * sc ? ht / (w * 2) : sc;
+  const cleft = x + w * xsc;
+  const cright = x + wd - w * xsc;
+  const ctop = y + w * ysc;
+  const cbottom = y + ht - w * ysc;
+  const midW = wd - 2 * w * xsc;
+  const midH = ht - 2 * w * ysc;
+  const dir = `hud/common/frame/frame_flat_${size}px`;
+  const corner = (c: 'ul' | 'ur' | 'll' | 'lr', l: number, t: number) => <Sprite src={ui(`${dir}/frame_flat_${size}px_${radius}r_${c}`)} x={l} y={t} w={w * xsc} h={w * ysc} z={z} tint={border} />;
+  // The client fills the inside with background-corner textures plus four strips and a center
+  // quad; one rounded box under the border pieces gives the same shape without the hairline
+  // seams that abutting pieces leave at fractional positions.
+  const inset = size / 2;
+  return (
+    <>
+      <div className="abs" style={{ left: x + inset * xsc, top: y + inset * ysc, width: wd - 2 * inset * xsc, height: ht - 2 * inset * ysc, background: back, borderRadius: `${(w - inset) * xsc}px / ${(w - inset) * ysc}px`, zIndex: z }} />
+      <Sprite src={ui(`${dir}/frame_flat_${size}px_horiz`)} x={cleft} y={y} w={Math.max(0, midW)} h={4 * ysc} z={z} tint={border} />
+      <Sprite src={ui(`${dir}/frame_flat_${size}px_horiz`)} x={cleft} y={cbottom + (w - size) * ysc} w={Math.max(0, midW)} h={4 * ysc} z={z} tint={border} />
+      <Sprite src={ui(`${dir}/frame_flat_${size}px_vert`)} x={x} y={ctop} w={4 * xsc} h={Math.max(0, midH)} z={z} tint={border} />
+      <Sprite src={ui(`${dir}/frame_flat_${size}px_vert`)} x={cright + (w - size) * xsc} y={ctop} w={4 * xsc} h={Math.max(0, midH)} z={z} tint={border} />
+      {corner('ul', x, y)}
+      {corner('ur', cright, y)}
+      {corner('ll', x, cbottom)}
+      {corner('lr', cright, cbottom)}
+    </>
+  );
+}
+
 /** "Slots Available: N": game_12 at s in red (slots left) or green (done), centered in a flat frame. */
 export function SlotsAvailable({ n, x = vx(412), y = vy(695), w = vx(200), h = vy(30) }: { n: number; x?: number; y?: number; w?: number; h?: number }) {
   useFontsReady();
   const color = n > 0 ? '#ff0000' : '#00ff00';
-  const px = FONTS.game_12.size * S;
   return (
     <>
-      <div className="abs" style={{ left: x, top: y, width: w, height: h, border: `3px solid ${color}`, borderRadius: 10, background: '#000' }} />
-      <GameText font="game_12" scale={S} x={x + w / 2} y={y + h / 2 + (px * 0.721) / 2} align="center" colors={[color, color]} text={`Slots Available: ${Math.max(0, n)}`} z={2} />
+      <FlatFrame x={x} y={y} w={w} h={h} sc={S} border={color} back="#000" />
+      <GameText font="game_12" scale={S} x={x + w / 2} y={y + h / 2} centerY align="center" colors={[color, color]} text={`Slots Available: ${Math.max(0, n)}`} z={2} />
     </>
   );
 }

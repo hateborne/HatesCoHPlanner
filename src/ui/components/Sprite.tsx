@@ -1,7 +1,12 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 
-/** Split a CSS rgb()/rgba() string into its channels and alpha. */
+/** Split a CSS #rgb / #rrggbb / #rrggbbaa / rgb() / rgba() color into its channels and alpha. */
 function parseTint(c: string): { r: number; g: number; b: number; a: number } | null {
+  const h = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(c.trim());
+  if (h) {
+    const x = h[1]!.length === 3 ? h[1]!.replace(/./g, (d) => d + d) : h[1]!;
+    return { r: parseInt(x.slice(0, 2), 16), g: parseInt(x.slice(2, 4), 16), b: parseInt(x.slice(4, 6), 16), a: x.length === 8 ? parseInt(x.slice(6, 8), 16) / 255 : 1 };
+  }
   const m = /^rgba?\((\d+),(\d+),(\d+)(?:,([\d.]+))?\)$/.exec(c.replace(/\s/g, ''));
   if (!m) return null;
   return { r: +m[1]!, g: +m[2]!, b: +m[3]!, a: m[4] === undefined ? 1 : +m[4] };

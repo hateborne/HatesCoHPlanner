@@ -55,16 +55,50 @@ export const ITALIC_DEG = (Math.atan(0.15) * 180) / Math.PI;
 
 let ctx: CanvasRenderingContext2D | null = null;
 
+// Stage px per device pixel. The client's outline (1px), per-glyph advance (+1px) and the small
+// text offsets are native screen pixels, so they shrink in stage units as the stage is scaled up.
+let devPx = 1;
+/** Set by Stage whenever the stage scale or devicePixelRatio changes. */
+export function setDevPx(v: number): void {
+  devPx = v > 0 && Number.isFinite(v) ? v : 1;
+}
+/** @return Stage px per device pixel. */
+export function getDevPx(): number {
+  return devPx;
+}
+
 /**
  * Advance width of a string in a game font at a pixel size (str_wd): canvas advance plus the
- * outline's +1px per glyph and +1px at the end.
+ * outline's +1 device px per glyph and +1 at the end.
  */
 export function textWidth(font: GameFont, px: number, text: string): number {
   ctx ??= document.createElement('canvas').getContext('2d');
   if (!ctx) return text.length * px * 0.7;
   ctx.font = `${px}px ${font.canvas}`;
   const w = ctx.measureText(text).width;
-  return font.outline ? w + text.length + 1 : w;
+  return font.outline ? w + (text.length + 1) * devPx : w;
+}
+
+/**
+ * Height of the tallest glyph bitmap in a string (ttGetStringDimensionsHandler's stringHeight):
+ * the largest per-glyph ink height, plus the outline's pixel on each side for outlined fonts.
+ *
+ * @param font Game font.
+ * @param px Pixel size (em).
+ * @param text The string.
+ * @return Height in stage px.
+ */
+export function tallestGlyph(font: GameFont, px: number, text: string): number {
+  ctx ??= document.createElement('canvas').getContext('2d');
+  if (!ctx) return px * font.cap + (font.outline ? 2 : 0);
+  ctx.font = `${px}px ${font.canvas}`;
+  let h = 0;
+  for (const ch of new Set(text)) {
+    if (ch.trim() === '') continue;
+    const m = ctx.measureText(ch);
+    h = Math.max(h, m.actualBoundingBoxAscent + m.actualBoundingBoxDescent);
+  }
+  return h + (font.outline ? 2 * devPx : 0);
 }
 
 /**
