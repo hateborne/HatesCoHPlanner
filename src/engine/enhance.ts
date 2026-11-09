@@ -45,20 +45,28 @@ export function shortName(p: Power): string {
   return p.n.split('.')[1] ?? p.n;
 }
 
-/** @return The mods of an enhancement that strengthen the power it is slotted in. */
+/**
+ * @return The mods of an enhancement that strengthen the power it is slotted in.
+ *
+ * A "Recharge/Chance for X" piece keeps its recharge value in the same PPM group as its proc
+ * (Attuned_Avalanche_F); the engine applies Boost-flagged Strength mods whatever group holds them
+ * (uiCombineSpec.c ClientCalcBoosts), so in a PPM group only the mods flagged Boost count -- the
+ * proc's own effect (Basilisk's Gaze's -Recharge on its target) is not flagged and stays out.
+ */
 export function boostMods(boost: Power): Mod[] {
   const out: Mod[] = [];
-  const walk = (effs: Power['eff']) => {
+  const walk = (effs: Power['eff'], inProc: boolean) => {
     for (const e of effs ?? []) {
       if (e.ch !== undefined && e.ch < 1) continue;
-      if (e.ppm) continue;
+      const proc = inProc || !!e.ppm;
       for (const m of e.m ?? []) {
-        if (m.asp === 'Strength' && (m.fl?.includes('Boost') ?? true)) out.push(m);
+        const flagged = m.fl?.includes('Boost');
+        if (m.asp === 'Strength' && (proc ? flagged === true : (flagged ?? true))) out.push(m);
       }
-      walk(e.sub);
+      walk(e.sub, proc);
     }
   };
-  walk(boost.eff);
+  walk(boost.eff, false);
   return out;
 }
 
@@ -164,6 +172,112 @@ export function enhValues(
     for (const a of m.a) out.push({ attrib: a, value: v, ignoreED });
   }
   return out;
+}
+
+// The game's enhancement value lines (Game/src/UI/uiCombineSpec.c boostLines): one line per
+// attribute, labelled by the enhancement type -- the second type (resist / debuff / slow) when the
+// enhancement is that kind. Damage shows once, by its first type (Smashing); the other damage and
+// defense types, knockup, placate, ... are enhanced alongside and hidden, as the game hides them.
+// Labels are the client's messages for the type keys ("Damage_Boost" -> "Damage",
+// "Recharge_Boost" -> "Recharge Time", ...).
+const BOOST_LINES: { attrib: string; type1: string; type2?: string; label1: string; label2?: string }[] = [
+  { attrib: 'DamageType00', type1: 'Damage_Boost', type2: 'Res_Damage_Boost', label1: 'Damage', label2: 'Resist Damage' },
+  { attrib: 'DamageType07', type1: 'Heal_Boost', label1: 'Heal' },
+  { attrib: 'Endurance', type1: 'Recovery_Boost', type2: 'Endurance_Drain_Boost', label1: 'Endurance', label2: 'Endurance Drain' },
+  { attrib: 'ToHit', type1: 'Buff_ToHit_Boost', type2: 'Debuff_ToHit_Boost', label1: 'To Hit', label2: 'To Hit' },
+  { attrib: 'Defense', type1: 'Buff_Defense_Boost', type2: 'Debuff_Defense_Boost', label1: 'Defense', label2: 'Defense Debuff' },
+  { attrib: 'SpeedRunning', type1: 'SpeedRunning_Boost', type2: 'Slow_Boost', label1: 'Run Speed', label2: 'Slow Run' },
+  { attrib: 'SpeedFlying', type1: 'SpeedFlying_Boost', type2: 'Slow_Boost', label1: 'Fly Speed', label2: 'Slow Fly' },
+  { attrib: 'SpeedJumping', type1: 'Jump_Boost', type2: 'Slow_Boost', label1: 'Jump Speed', label2: 'Slow Jump' },
+  { attrib: 'Taunt', type1: 'Taunt_Boost', label1: 'Threat Duration' },
+  { attrib: 'Confused', type1: 'Confuse_Boost', label1: 'Confuse Duration' },
+  { attrib: 'Terrorized', type1: 'Fear_Boost', label1: 'Fear Duration' },
+  { attrib: 'Held', type1: 'Hold_Boost', label1: 'Hold Duration' },
+  { attrib: 'Immobilized', type1: 'Immobilized_Boost', label1: 'Immobilize Duration' },
+  { attrib: 'Stunned', type1: 'Stunned_Boost', label1: 'Disorient Duration' },
+  { attrib: 'Sleep', type1: 'Sleep_Boost', label1: 'Sleep Duration' },
+  { attrib: 'Intangible', type1: 'Intangible_Boost', label1: 'Intangible Duration' },
+  { attrib: 'Knock', type1: 'Knockback_Boost', label1: 'KnockBack' },
+  { attrib: 'Accuracy', type1: 'Accuracy_Boost', label1: 'Accuracy' },
+  { attrib: 'Range', type1: 'Range_Boost', label1: 'Range' },
+  { attrib: 'RechargeTime', type1: 'Recharge_Boost', type2: 'Slow_Boost', label1: 'Recharge Time', label2: 'Slow Attack Speed' },
+  { attrib: 'InterruptTime', type1: 'Interrupt_Boost', label1: 'Interrupt Time' },
+  { attrib: 'EnduranceDiscount', type1: 'EnduranceDiscount_Boost', label1: 'Endurance Discount' },
+  { attrib: 'Recovery', type1: 'Recovery_Boost', type2: 'Endurance_Drain_Boost', label1: 'Endurance', label2: 'Endurance Drain' },
+];
+
+/**
+ * An enhancement's values as the game lists them: one labelled line per attribute group
+ * ("Damage", "Recharge Time", ...), instead of one per internal attribute (DamageType00 ... 09).
+ *
+ * @param gd Game data.
+ * @param at The character's archetype (its tables scale the values).
+ * @param power The power the enhancement goes in.
+ * @param e The enhancement as slotted (level, boosters).
+ * @param charLevel 0-based character level (attuned pieces follow it).
+ * @return Lines in the game's order, each label once.
+ */
+export function enhLines(gd: GameData, at: Archetype, power: Power, e: SlottedEnh, charLevel: number): { label: string; value: number }[] {
+  // getEffectiveString: a line shows only when the power accepts one of its types, named by the
+  // type the power accepts (both names when it accepts both)
+  const allowed = new Set((power.ba ?? []).filter((v) => v >= ORIGIN_COUNT).map((v) => gd.core.attribNames.Boost[v - ORIGIN_COUNT]?.n));
+  const byName = new Map<string, number>();
+  for (const c of enhValues(gd, at, power, e, charLevel)) {
+    const n = gd.attribName.get(c.attrib) ?? '';
+    byName.set(n, (byName.get(n) ?? 0) + c.value); // the engine adds every mod on an attribute
+  }
+  const out: { label: string; value: number }[] = [];
+  const add = (label: string, value: number) => {
+    if (!out.some((o) => o.label === label)) out.push({ label, value });
+  };
+  for (const line of BOOST_LINES) {
+    const v = byName.get(line.attrib);
+    if (v === undefined) continue;
+    if (allowed.has(line.type1)) add(line.label1, v);
+    if (line.type2 && line.label2 && allowed.has(line.type2)) add(line.label2, v);
+  }
+  return out;
+}
+
+/**
+ * Whether an enhancement is a legacy copy the picker should not offer.
+ *
+ * Three families: the fixed-level common IOs (Crafted_X_10 ... _50, not set pieces); the legacy
+ * "Cone" range enhancements (Generic_Cone, Magic_Cone, ...), each listed under the same name as
+ * its "Range" twin (ten are exact copies; Mutation_Magic_Cone, "Helmet (Range)", gives twice its
+ * twin's range in the game data and is hidden as well, the owner's call); and the
+ * "_Drain_Endurance" Endurance Modification enhancements, exact copies of their "_Recovery" twin.
+ *
+ * @param gd Game data.
+ * @param b An enhancement (Boost power).
+ * @return True when an identical current enhancement covers it.
+ */
+export function isLegacyDuplicate(gd: GameData, b: Power): boolean {
+  const inner = b.n.split('.')[1] ?? '';
+  if (/^Crafted_[A-Za-z_]+_\d+$/.test(inner) && !gd.boostSetOf.has(b.id)) return true;
+  if (inner.endsWith('_Cone')) {
+    const twin = gd.powerByName.get(b.n.replace(/_Cone/g, '_Range').toLowerCase());
+    return !!twin && twin.dn === b.dn;
+  }
+  if (inner.endsWith('_Drain_Endurance')) {
+    const twin = gd.powerByName.get(b.n.replace(/_Drain_Endurance/g, '_Recovery').toLowerCase());
+    return !!twin && twin.dn === b.dn && JSON.stringify(boostMods(twin)) === JSON.stringify(boostMods(b));
+  }
+  return false;
+}
+
+/**
+ * A set piece's own name, without the set name in front ("Damage/Recharge" for "Decimation:
+ * Damage/Recharge"). Names that don't start with the set's name ("Superior: Brute's Fury: ...")
+ * keep what follows their last ": ".
+ *
+ * @param b The piece.
+ * @param setName Its set's display name.
+ */
+export function pieceName(b: Power, setName: string): string {
+  if (b.dn.startsWith(`${setName}:`)) return b.dn.slice(setName.length + 1).trim();
+  const i = b.dn.lastIndexOf(': ');
+  return i >= 0 ? b.dn.slice(i + 2).trim() : b.dn;
 }
 
 /** One diminishing-returns curve with its precomputed basis values. */
@@ -299,12 +413,15 @@ export function allowedSetCategories(gd: GameData, p: Power): string[] {
 }
 
 // help-text placeholders {Boost.Attrib.<group>.Scale} -> attribute names the group covers
+// (Threat and Intangibility enhancements name their taunt / intangibility "Mez"; End Mod pieces
+// their recovery "Endurance"; Regenerative Tissue its regeneration "Heal")
 const HELP_GROUPS: Record<string, string[]> = {
-  mez: ['held', 'stunned', 'sleep', 'immobilized', 'confused', 'terrorized'],
+  mez: ['held', 'stunned', 'sleep', 'immobilized', 'confused', 'terrorized', 'taunt', 'intangible'],
   movement: ['speed', 'jump', 'fly'],
-  heal: ['heal', 'hitpoints'],
+  heal: ['heal', 'hitpoints', 'regeneration'],
   regen: ['regeneration'],
   knock: ['knock'],
+  endurance: ['endurance', 'recovery'],
 };
 
 /**
@@ -320,16 +437,35 @@ export function boostHelpText(gd: GameData, at: Archetype, e: SlottedEnh, charLe
   if (!boost) return '';
   const eff = Math.max(0, effectiveness(gd, boost, e, charLevel)) || 1;
   const lvl = boostLevel(boost, e, charLevel);
-  const vals: { name: string; v: number }[] = [];
-  for (const m of boostMods(boost)) {
-    const v = gd.table(at, m.tbl, lvl) * m.sc * eff;
-    for (const a of m.a) vals.push({ name: (gd.attribName.get(a) ?? '').toLowerCase(), v });
-  }
+  const value = (m: Mod) => (m.tbl ? gd.table(at, m.tbl, lvl) * m.sc * eff : m.sc);
+  const named = (mods: Mod[]) => mods.flatMap((m) => m.a.map((a) => ({ name: (gd.attribName.get(a) ?? '').toLowerCase(), v: value(m) })));
+  // The game looks the placeholder up by template name among all of the piece's effects
+  // (commonLangUtil.c formatHandlerP, basepower_GetAttribByName). The data keeps no template
+  // names, so: the piece's enhancement values first, then its other effects, then the "Null"
+  // effects that exist only to carry a global unique's number for this text (Steadfast
+  // Protection's 3% defense, Gift of the Ancients' 7.5% run speed), in order.
+  const vals = named(boostMods(boost));
+  const all: Mod[] = [];
+  const walk = (effs: Power['eff']) => {
+    for (const x of effs ?? []) {
+      all.push(...(x.m ?? []));
+      walk(x.sub);
+    }
+  };
+  walk(boost.eff);
+  const isNull = (m: Mod) => m.a.every((a) => gd.attribName.get(a) === 'Null');
+  const others = named(all.filter((m) => !isNull(m)));
+  const holders = all.filter(isNull);
+  let nextHolder = 0;
   return (boost.lh || '').replace(/\{Boost\.Attrib\.([A-Za-z]+)\.Scale\}/g, (_, g: string) => {
     const key = g.toLowerCase();
     const names = HELP_GROUPS[key] ?? [key];
-    const hit = vals.find((x) => names.some((n) => x.name.includes(n))) ?? vals[0];
-    return hit ? (hit.v * 100).toFixed(1) : '?';
+    const match = (list: { name: string; v: number }[]) => list.find((x) => names.some((n) => x.name.includes(n)));
+    const hit = match(vals) ?? match(others);
+    if (hit) return (hit.v * 100).toFixed(1);
+    const holder = holders[nextHolder++];
+    // nothing carries it: say so rather than borrow another effect's number
+    return holder ? (value(holder) * 100).toFixed(1) : '?';
   });
 }
 

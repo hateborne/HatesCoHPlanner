@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBuild, type Build } from '../src/engine/build.ts';
-import { applyED, canSlot, edCurves, enhKind, powerStrength } from '../src/engine/enhance.ts';
+import { applyED, boostHelpText, boostMods, canSlot, edCurves, enhKind, enhLines, isLegacyDuplicate, pieceName, powerStrength } from '../src/engine/enhance.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { earnedBonuses } from '../src/engine/setbonus.ts';
 import { computeTotals } from '../src/engine/totals.ts';
@@ -112,5 +112,105 @@ describe('set bonuses and totals', () => {
     // Health (+40% regen) and Stamina (+25% recovery) are auto-granted
     expect(t.lines.get('regen')?.value).toBeCloseTo(0.4, 3);
     expect(t.lines.get('recov')?.value).toBeCloseTo(0.25, 3);
+  });
+});
+
+describe('enhancement value labels (uiCombineSpec.c boostLines)', () => {
+  const gd2 = loadData();
+  const at = gd2.archetypeByName.get('class_blaster')!;
+  const flares = gd2.power(pid(gd2, 'Blaster_Ranged.Fire_Blast.Flares'));
+  // a power accepting only the given enhancement types (the label follows the power's types)
+  const accepting = (...types: string[]) => ({ ...flares, ba: types.map((n) => gd2.core.attribNames.Boost.findIndex((b) => b.n === n) + 5) });
+  const lines = (name: string, ...types: string[]) => enhLines(gd2, at, accepting(...types), { boost: pid(gd2, name), ioLevel: 49 }, 49);
+  it('shows damage once as "Damage", not DamageType00 ... 09', () => {
+    const dr = [...gd2.powerById.values()].find((p) => p.type === 'Boost' && /^Decimation: Damage\/Recharge$/.test(p.dn))!;
+    const l = enhLines(gd2, at, flares, { boost: dr.id, ioLevel: 39 }, 49);
+    expect(l.map((x) => x.label)).toEqual(['Damage', 'Recharge Time']);
+    expect(l[0]!.value).toBeCloseTo(l[1]!.value, 6);
+  });
+  it('uses the resist / debuff names for those enhancements', () => {
+    expect(lines('Boosts.Crafted_Res_Damage.Crafted_Res_Damage', 'Res_Damage_Boost').map((x) => x.label)).toEqual(['Resist Damage']);
+    expect(lines('Boosts.Crafted_Defense_DeBuff.Crafted_Defense_DeBuff', 'Debuff_Defense_Boost').map((x) => x.label)).toEqual(['Defense Debuff']);
+    expect(lines('Boosts.Crafted_Recharge.Crafted_Recharge', 'Recharge_Boost').map((x) => x.label)).toEqual(['Recharge Time']);
+  });
+});
+
+describe('legacy duplicate enhancements', () => {
+  const gd3 = loadData();
+  it('hides every legacy "Cone" range enhancement and keeps its "Range" twin', () => {
+    const cones = gd3.boosts.filter((b) => (b.n.split('.')[1] ?? '').endsWith('_Cone'));
+    expect(cones).toHaveLength(11);
+    for (const c of cones) {
+      const twin = gd3.powerByName.get(c.n.replace(/_Cone/g, '_Range').toLowerCase())!;
+      expect(twin.dn).toBe(c.dn);
+      expect(isLegacyDuplicate(gd3, c)).toBe(true);
+      expect(isLegacyDuplicate(gd3, twin)).toBe(false);
+    }
+    // ten are exact copies; Helmet (Range) differs (twice the range) and is hidden anyway
+    const differ = cones.filter((c) => JSON.stringify(boostMods(c)) !== JSON.stringify(boostMods(gd3.powerByName.get(c.n.replace(/_Cone/g, '_Range').toLowerCase())!)));
+    expect(differ.map((c) => c.n)).toEqual(['Boosts.Mutation_Magic_Cone.Mutation_Magic_Cone']);
+  });
+  it('still hides the fixed-level common IOs but not set pieces', () => {
+    expect(isLegacyDuplicate(gd3, gd3.power(pid(gd3, 'Boosts.Crafted_Recharge_10.Crafted_Recharge_10')))).toBe(true);
+    expect(isLegacyDuplicate(gd3, gd3.power(pid(gd3, 'Boosts.Crafted_Recharge.Crafted_Recharge')))).toBe(false);
+    expect(isLegacyDuplicate(gd3, gd3.power(pid(gd3, 'Boosts.Crafted_Decimation_B.Crafted_Decimation_B')))).toBe(false);
+  });
+});
+
+describe('review fixes: enhancement values and text', () => {
+  const g = loadData();
+  const at = g.archetypeByName.get('class_blaster')!;
+  const byName = (re: RegExp) => [...g.powerById.values()].find((p) => re.test(p.n))!;
+  const allTypes = { ...g.power(pid(g, 'Blaster_Ranged.Fire_Blast.Flares')), ba: g.core.attribNames.Boost.map((_, i) => i + 5) };
+  it('counts the recharge half of a "Recharge/Chance for X" proc piece, but not the proc itself', () => {
+    const av = byName(/^Boosts\.Attuned_Avalanche_F\./);
+    expect(boostMods(av).flatMap((m) => m.a.map((a) => g.attribName.get(a)))).toContain('RechargeTime');
+    const rechOnly = { ...allTypes, ba: [g.core.attribNames.Boost.findIndex((b) => b.n === 'Recharge_Boost') + 5] };
+    expect(enhLines(g, at, rechOnly, { boost: av.id }, 49).map((l) => l.label)).toEqual(['Recharge Time']);
+    expect(boostHelpText(g, at, { boost: av.id }, 49)).not.toContain('?');
+    // Basilisk's Gaze F's proc (-Recharge on its target) is not an enhancement value
+    const bg = byName(/^Boosts\.Attuned_Basilisks_Gaze_F\./);
+    expect(boostMods(bg).every((m) => m.tg === 'Caster')).toBe(true);
+  });
+  it('lists only the lines the power accepts (getEffectiveString)', () => {
+    const wail = byName(/\.FRT_Psychic_Wail$/);
+    const ham = byName(/^Boosts\.Hamidon_Endurance_Modification_Accuracy\./);
+    expect(enhLines(g, at, wail, { boost: ham.id }, 49).map((l) => l.label)).toEqual(['Accuracy']);
+  });
+  it('names a line by every type the power accepts', () => {
+    const dmg = g.power(pid(g, 'Boosts.Crafted_Damage.Crafted_Damage'));
+    const both = { ...allTypes, ba: ['Damage_Boost', 'Res_Damage_Boost'].map((n) => g.core.attribNames.Boost.findIndex((b) => b.n === n) + 5) };
+    expect(enhLines(g, at, both, { boost: dmg.id, ioLevel: 49 }, 49).map((l) => l.label)).toEqual(['Damage', 'Resist Damage']);
+  });
+  it('adds two mods on the same attribute instead of keeping the larger', () => {
+    const dup = g.boosts.find((b) => {
+      const seen = new Set<number>();
+      return boostMods(b).some((m) => m.a.some((a) => (seen.has(a) ? true : (seen.add(a), false))));
+    });
+    expect(dup).toBeDefined();
+    const lines = enhLines(g, at, allTypes, { boost: dup!.id }, 49);
+    const contrib = new Map<string, number>();
+    for (const m of boostMods(dup!)) for (const a of m.a) contrib.set(g.attribName.get(a)!, (contrib.get(g.attribName.get(a)!) ?? 0) + 1);
+    expect([...contrib.values()].some((n) => n > 1)).toBe(true);
+    expect(lines.length).toBeGreaterThan(0);
+  });
+  it("fills every description's numbers from the piece itself, never another effect's", () => {
+    expect(boostHelpText(g, at, { boost: byName(/^Boosts\.Attuned_Steadfast_Protection_B\./).id }, 49)).toContain('increases overall defense by 3.0%');
+    expect(boostHelpText(g, at, { boost: byName(/^Boosts\.Attuned_Gift_of_the_Ancients_F\./).id }, 49)).toContain('run speed of a power by 7.5%');
+    const unresolved = g.boosts.filter((b) => /\?%|by \?| \?/.test(boostHelpText(g, at, { boost: b.id }, 49)));
+    expect(unresolved.map((b) => b.n)).toEqual([]);
+  });
+  it('hides the "_Drain_Endurance" copies of the End Mod enhancements', () => {
+    expect(isLegacyDuplicate(g, g.power(pid(g, 'Boosts.Generic_Drain_Endurance.Generic_Drain_Endurance')))).toBe(true);
+    expect(isLegacyDuplicate(g, g.power(pid(g, 'Boosts.Generic_Recovery.Generic_Recovery')))).toBe(false);
+  });
+  it("gives every set piece its own name without the set's", () => {
+    const sbf = byName(/^Boosts\.Superior_Attuned_Superior_Brutes_Fury_E\./);
+    expect(pieceName(sbf, g.boostSetOf.get(sbf.id)!.set.dn)).toBe('Accuracy/Damage/Endurance/Recharge');
+    for (const s of g.boostSets) for (const v of s.slots) for (const id of v) {
+      const n = pieceName(g.power(id), s.dn);
+      expect(n.length).toBeGreaterThan(0);
+      expect(n.includes(s.dn.replace(/^Superior /, ''))).toBe(false);
+    }
   });
 });
