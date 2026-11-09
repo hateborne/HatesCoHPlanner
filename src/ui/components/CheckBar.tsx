@@ -23,6 +23,7 @@ interface CheckBarProps {
   clickSounds?: string[]; // played on a click (default: the level-up screens' powerselect2)
   hoverSounds?: boolean; // the character creator's N_MouseEnter / N_MouseExit (drawHybridBar)
   onClick?: () => void;
+  onRightClick?: () => void; // planner extra: right-click undoes (e.g. removes a slot placed at this level)
   onHover?: (on: boolean) => void;
   title?: string;
 }
@@ -49,7 +50,7 @@ function brighten(c: string, amt: number): string {
  * meat over the same box, no check box, the label centered.
  */
 export function CheckBar(props: CheckBarProps) {
-  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, isPower, noBox, clickSounds, hoverSounds, onClick, onHover, title } = props;
+  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, isPower, noBox, clickSounds, hoverSounds, onClick, onRightClick, onHover, title } = props;
   useFontsReady();
   const [hover, setHover] = useState(false);
   const selectable = state !== 'unselectable' && !!onClick;
@@ -136,6 +137,14 @@ export function CheckBar(props: CheckBarProps) {
           ? () => {
               for (const snd of clickSounds ?? ['powerselect2']) play(snd);
               onClick?.();
+            }
+          : undefined
+      }
+      onContextMenu={
+        onRightClick
+          ? (e) => {
+              e.preventDefault();
+              onRightClick();
             }
           : undefined
       }

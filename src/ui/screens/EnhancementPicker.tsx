@@ -14,6 +14,32 @@ type Tab = 'Training' | 'Origin' | 'Invention' | 'Sets' | 'Special';
 const TABS: Tab[] = ['Training', 'Origin', 'Invention', 'Sets', 'Special'];
 const SPECIAL: EnhKind[] = ['Hamidon', 'Hydra', 'Titan', 'DSync', 'Synthetic', 'Talisman'];
 
+// the last enhancement placed (remembered per browser): an empty slot opens on its tab and set,
+// and a newly chosen piece starts at its level (e.g. the next Steadfast Protection piece at 30)
+const LAST_KEY = 'hcp.lastEnh';
+interface LastEnh {
+  tab: Tab;
+  set?: number; // boost set id when placed from the Sets tab
+  ioLevel?: number; // 0-based
+}
+
+function readLast(): LastEnh | null {
+  try {
+    const raw = localStorage.getItem(LAST_KEY);
+    return raw ? (JSON.parse(raw) as LastEnh) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLast(v: LastEnh): void {
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify(v));
+  } catch {
+    /* storage unavailable: nothing is remembered */
+  }
+}
+
 function tabOf(k: EnhKind): Tab | null {
   if (k === 'Training' || k === 'Origin' || k === 'Invention') return k;
   if (k === 'Set') return 'Sets';
@@ -52,11 +78,12 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     }
     return m;
   }, [gd, valid]);
-  const firstTab = (current ? tabOf(enhKind(gd, gd.power(current.boost))) : null) ?? TABS.find((t) => byTab.has(t)) ?? 'Training';
+  const [last] = useState(readLast);
+  const lastTab = !current && last && byTab.has(last.tab) ? last.tab : null;
+  const firstTab = (current ? tabOf(enhKind(gd, gd.power(current.boost))) : lastTab) ?? TABS.find((t) => byTab.has(t)) ?? 'Training';
   const [tab, setTab] = useState<Tab>(firstTab);
   const { phone } = useStage();
   const [sel, setSel] = useState<SlottedEnh | undefined>(current);
-  const [setId, setSetId] = useState<number | undefined>(current ? gd.boostSetOf.get(current.boost)?.set.id : undefined);
   const selBoost = sel ? gd.powerById.get(sel.boost) : undefined;
   const at = gd.archetype(atId);
 
@@ -70,17 +97,35 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     const list = [...ids].map((id) => gd.boostSetById.get(id)!).sort((a, b) => a.grp.localeCompare(b.grp) || a.dn.localeCompare(b.dn));
     return list;
   }, [gd, byTab]);
+  const [setId, setSetId] = useState<number | undefined>(() => {
+    if (current) return gd.boostSetOf.get(current.boost)?.set.id;
+    // the remembered set, when this power takes it
+    return lastTab === 'Sets' && last?.set !== undefined && sets.some((x) => x.id === last.set) ? last.set : undefined;
+  });
   const chosenSet: BoostSet | undefined = setId !== undefined ? gd.boostSetById.get(setId) : undefined;
   const taken = new Set(entry.slots.filter((s, i) => i !== slot && s.enh).map((s) => s.enh!.boost));
 
+  /** @return The piece's level range (0-based) when its level can be chosen, else null. */
+  const rangeOf = (b: Power): [number, number] | null => {
+    if (!b.bie || b.bup) return null;
+    const r = gd.boostSetOf.get(b.id);
+    return r ? setLevelRange(r.set) : [9, Math.min(49, (b.maxBL ?? 50) - 1)];
+  };
   const pickBoost = (b: Power) => {
-    setSel({ boost: b.id, ioLevel: defaultLevel(gd, b), rel: b.bie ? undefined : 0, boosters: 0 });
+    // start at the last placed level, clamped to this piece's range
+    const range = rangeOf(b);
+    const ioLevel = range && last?.ioLevel !== undefined ? Math.max(range[0], Math.min(range[1], last.ioLevel)) : defaultLevel(gd, b);
+    setSel({ boost: b.id, ioLevel, rel: b.bie ? undefined : 0, boosters: 0 });
+  };
+  const place = () => {
+    if (!sel) return;
+    writeLast({ tab, set: tab === 'Sets' ? setId : undefined, ioLevel: sel.ioLevel ?? last?.ioLevel });
+    onPlace(sel);
   };
 
   const values = selBoost && sel ? enhValues(gd, at, entry.power, sel, 49) : [];
   const ref = selBoost ? gd.boostSetOf.get(selBoost.id) : undefined;
-  const levelRange: [number, number] | null =
-    selBoost?.bie && !selBoost.bup ? (ref ? setLevelRange(ref.set) : [9, Math.min(49, (selBoost.maxBL ?? 50) - 1)]) : null;
+  const levelRange = selBoost ? rangeOf(selBoost) : null;
   const attunedAlt = ref ? ref.set.slots[ref.letter]?.[ref.variant === 0 ? 1 : 0] : undefined;
 
   const grid = (list: Power[]) => (
@@ -103,8 +148,8 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
 
   // Desktop: list beside details. Phone: list above details on the portrait canvas.
   const G = phone
-    ? { frame: [20, 90, 960, 1610], title: [40, 105], tab: [50, 195, 188, 140], list: [40, 240, 920, 800], det: [20, 1060, 960, 520], detIn: [40, 1075, 920], btnY: 1625, btnX: [260, 500, 740] }
-    : { frame: [200, 90, 1600, 940], title: [240, 110], tab: [265, 190, 300, 240], list: [230, 230, 1100, 690], det: [1350, 230, 420, 690], detIn: [1370, 245, 380], btnY: 940, btnX: [1390, 1520, 1650] };
+    ? { frame: [20, 90, 960, 1610], title: [40, 105], tab: [50, 195, 188, 140], list: [40, 240, 920, 800], det: [20, 1060, 960, 520], detIn: [40, 1075, 920], btnY: 1625, btnW: 200 }
+    : { frame: [200, 90, 1600, 940], title: [240, 110], tab: [265, 190, 300, 240], list: [230, 230, 1100, 690], det: [1350, 230, 420, 690], detIn: [1370, 245, 380], btnY: 940, btnW: 116 };
   const [fx, fy, fw, fh] = G.frame as [number, number, number, number];
   const [tx0, ty, tstep, twd] = G.tab as [number, number, number, number];
   const [lx, ly, lw, lh] = G.list as [number, number, number, number];
@@ -214,15 +259,20 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
             <div className="desc-text">Choose an enhancement.</div>
           )}
         </div>
-        <button className="info-button" style={{ left: G.btnX[0], top: G.btnY }} onClick={() => onPlace(undefined)} disabled={!current}>
-          Remove
-        </button>
-        <button className="info-button" style={{ left: G.btnX[1], top: G.btnY }} onClick={onClose}>
-          Cancel
-        </button>
-        <button className="info-button" style={{ left: G.btnX[2], top: G.btnY }} onClick={() => onPlace(sel)} disabled={!sel}>
-          Place
-        </button>
+        {/* equal-width buttons with equal gaps, centered under the details frame */}
+        <div className="abs" style={{ left: dx, top: G.btnY, width: dw, display: 'flex', justifyContent: 'center', gap: 14 }}>
+          {(
+            [
+              ['Remove', () => onPlace(undefined), !current],
+              ['Cancel', onClose, false],
+              ['Place', place, !sel],
+            ] as const
+          ).map(([label, act, off]) => (
+            <button key={label} className="info-button" style={{ position: 'static', width: G.btnW, padding: 0 }} onClick={act} disabled={off}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

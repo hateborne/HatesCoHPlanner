@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { skinOf } from './engine/build.ts';
 import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
+import { StopButtons } from './ui/components/StopButtons.tsx';
 import { Stage, useStage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
 import { BuildMenu } from './ui/screens/BuildMenu.tsx';
@@ -74,6 +75,7 @@ export function App() {
     screen = (
       <>
         {screen}
+        <StopButtons skin={skin} />
         <SideTotals />
       </>
     );

@@ -50,6 +50,8 @@ interface Store {
   cancelLevel(): void;
   editPick(pickIndex: number): void;
   editSlots(level: number): void;
+  stopHere(openMenu: boolean): void;
+  continueLeveling(): void;
   setMuted(m: boolean): void;
   setMusicOn(on: boolean): void;
   menuOpen: boolean;
@@ -97,7 +99,9 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
     return b;
   }
   const pick = currentPick(steps, l);
-  return l.pendingPower !== undefined && pick >= 0 ? setPick(gd, l.base, pick, l.pendingPower) : l.base;
+  // editing a level from the overview: the pick's slots and enhancements come from the original
+  const carry = l.mode === 'edit' ? l.orig.picks[pick] : undefined;
+  return l.pendingPower !== undefined && pick >= 0 ? setPick(gd, l.base, pick, l.pendingPower, carry) : l.base;
 }
 
 /** Remove a level's choices so it can be redone: the pick itself, or slots gained at the level. */
@@ -352,6 +356,42 @@ export const useStore = create<Store>((set, get) => ({
     const pending = slotKeysAt(gd, build, lvl);
     const base = withoutLevel(build, steps[step]!, null, false);
     set({ view: 'level', level: { step, pickInStep: 0, mode: 'edit', sub: 'slots', base, orig: build, pendingSlots: pending } });
+  },
+
+  stopHere(openMenu) {
+    // View Build / Save / Share mid-leveling: the build ends at this level (its choices so far
+    // included) and the overview hides the levels after it
+    const { gd, steps, level } = get();
+    if (!gd || !level || level.mode !== 'wizard') return;
+    const step = steps[level.step];
+    if (!step) return;
+    const b = { ...previewBuild(gd, steps, level), endLevel: step.level };
+    persist(b);
+    set({ build: b, view: 'overview', level: undefined, menuOpen: openMenu });
+  },
+
+  continueLeveling() {
+    // reopen the wizard at the first level that isn't finished (the one after the stop level
+    // when everything up to it is done)
+    const { gd, build, steps } = get();
+    if (!gd || !build) return;
+    const rules = new BuildRules(gd, build);
+    const done = (s: LevelStep) => s.picks.every((k) => build.picks[k]) && rules.slotsUsed(s.level) >= s.slots;
+    const step = steps.findIndex((s) => !done(s));
+    if (step < 0) return;
+    const target = steps[step]!;
+    const b = cloneBuild(build);
+    delete b.endLevel;
+    persist(b);
+    const firstPick = target.picks.findIndex((k) => !b.picks[k]);
+    const sub: LevelSub = firstPick >= 0 ? 'power' : 'slots';
+    const pendingSlots = sub === 'slots' ? slotKeysAt(gd, b, target.level) : [];
+    const base = sub === 'slots' ? withoutLevel(b, target, null, false) : b;
+    set({
+      build: base,
+      view: 'level',
+      level: { step, pickInStep: Math.max(0, firstPick), mode: 'wizard', sub, base, orig: base, pendingSlots },
+    });
   },
 
   setMuted(m) {

@@ -61,6 +61,11 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
         <div style={{ width: dims.w * scale, height: dims.h * scale, position: 'absolute', left, top, overflow: 'hidden' }}>
           <div
             className={`stage skin-${skin.name}${dims.phone ? ' phone' : ''}`}
+            // right-click belongs to the planner (slot undo / clear), except in text fields
+            onContextMenu={(e) => {
+              const t = e.target as HTMLElement;
+              if (!t.closest('input, textarea, select')) e.preventDefault();
+            }}
             style={{
               width: dims.w,
               height: dims.h,

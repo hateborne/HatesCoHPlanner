@@ -193,9 +193,10 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       ),
     );
   const unclick = (key: string) => {
-    play('delete');
     const idx = level.pendingSlots.lastIndexOf(key);
-    if (idx >= 0) removePendingSlot(idx);
+    if (idx < 0) return;
+    play('delete');
+    removePendingSlot(idx);
   };
 
   const renderPanel = (g: PanelGeom, list: Group[], key: number) => {
@@ -221,6 +222,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             state="standard"
             icon={icon('powers', e.power.icon || 'power_missing')}
             onClick={() => click(e)}
+            onRightClick={() => unclick(e.key)}
             onHover={(on) => (on ? setHover(e) : undefined)}
           />,
         );
@@ -228,7 +230,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         const pending = e.slots.filter((s, i) => i > 0 && s.level === L).length;
         const owned = e.slots.slice(0, e.slots.length - pending);
         for (let k = 0; k < pending; k++) {
-          items.push(<SlotRing skin={skin} key={`${e.key}:n${k}`} x={g.ringX + (k + 1) * SPEC_WD * S} y={y + 20 * S} size={RING} pending title="Click to remove this slot" onClick={() => unclick(e.key)} />);
+          items.push(<SlotRing skin={skin} key={`${e.key}:n${k}`} x={g.ringX + (k + 1) * SPEC_WD * S} y={y + 20 * S} size={RING} pending title="Click or right-click to remove this slot" onClick={() => unclick(e.key)} onRightClick={() => unclick(e.key)} />);
         }
         owned.forEach((s, i) => {
           const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;

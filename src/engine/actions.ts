@@ -3,7 +3,7 @@
  * and reported by BuildRules.issues() (the build is flagged, never silently repaired).
  */
 import type { GameData } from '../data/gamedata.ts';
-import { cloneBuild, type Build, type Slot, type SlottedEnh } from './build.ts';
+import { cloneBuild, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { canSlot } from './enhance.ts';
 
 function originIndex(gd: GameData, b: Build): number {
@@ -34,11 +34,13 @@ function slotsFor(b: Build, key: string): { slots: Slot[]; set: (s: Slot[]) => v
  * @param b Build.
  * @param i Pick index.
  * @param power Power id.
+ * @param carry The pick being replaced when `b` no longer holds it (reopening a level from the
+ *   overview clears the pick so the screen can offer it again); defaults to b.picks[i].
  */
-export function setPick(gd: GameData, b: Build, i: number, power: number): Build {
+export function setPick(gd: GameData, b: Build, i: number, power: number, carry?: Pick | null): Build {
   const nb = cloneBuild(b);
   const level = gd.core.schedule.power[i] ?? 49;
-  const prev = nb.picks[i];
+  const prev = nb.picks[i] ?? carry;
   const p = gd.power(power);
   const oi = originIndex(gd, nb);
   const slots: Slot[] = (prev?.slots ?? []).map((s) => {
@@ -130,5 +132,22 @@ export function truncateAbove(b: Build, level: number): Build {
   nb.picks = nb.picks.map((p) => (p && p.level > level ? null : p));
   for (const p of nb.picks) if (p) p.slots = p.slots.filter((s, i) => i === 0 || s.level <= level);
   for (const g of Object.values(nb.granted)) g.slots = g.slots.filter((s, i) => i === 0 || s.level <= level);
+  return nb;
+}
+
+/**
+ * Switch on one power of an exclusive toggle group and the rest off (they default to off, so
+ * the others go back to their default).
+ *
+ * @param b Build.
+ * @param members Power ids of the group.
+ * @param chosen The power to switch on, or undefined for none.
+ */
+export function setExclusive(b: Build, members: number[], chosen: number | undefined): Build {
+  const nb = cloneBuild(b);
+  for (const pid of members) {
+    const g = (nb.granted[pid] ??= { slots: [] });
+    g.on = pid === chosen ? true : undefined;
+  }
   return nb;
 }

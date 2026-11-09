@@ -81,6 +81,7 @@ export interface Build {
   picks: (Pick | null)[]; // one entry per schedule.power level, in order
   granted: Record<number, GrantedState>; // keyed by power id
   exemplar?: number; // 0-based exemplar level (undefined = full level)
+  endLevel?: number; // 0-based level a build planned short of 50 stops at (View Build / Save mid-leveling)
 }
 
 /**

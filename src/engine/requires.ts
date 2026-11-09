@@ -13,8 +13,19 @@ export interface EvalContext {
   ownsPower(name: string): boolean;
   /** @return Whether the character owns this powerset (Category.Set, case-insensitive). */
   ownsSet(name: string): boolean;
+  /**
+   * How many owned powers a name covers (ownPowerNum?): 1 or 0 for a power full name, the owned
+   * powers of a set (Category.Set) or of a whole category (Homecoming's epic gates use
+   * `Epic ownPowerNum? 0 >`: owns at least one power from an epic pool).
+   */
+  ownsPowerNum?(name: string): number;
   /** @return A character property: archetype, origin, level (1-based), alignment, type. */
   prop(name: string): string | number;
+  /**
+   * Whether the character is in a power mode (`kDefensiveAdaptation Source.Mode?`), i.e. a
+   * running power sets it with SetMode. The name arrives with the data's `k` prefix.
+   */
+  inMode?(name: string): boolean;
   /** @return How many of the named enhancement are slotted in the power being evaluated. */
   boostsSlotted?(name: string): number;
   /** Entity type of the target for effect requires ('critter' in PvE). */
@@ -170,9 +181,11 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
       case 'enabledpower?':
         st.push(ctx.ownsPower(popStr()) ? 1 : 0);
         continue;
-      case 'ownpowernum?':
-        st.push(ctx.ownsPower(popStr()) ? 1 : 0);
+      case 'ownpowernum?': {
+        const name = popStr();
+        st.push(ctx.ownsPowerNum ? ctx.ownsPowerNum(name) : ctx.ownsPower(name) ? 1 : 0);
         continue;
+      }
       case 'char>':
       case 'auto>':
       case 'ent>':
@@ -189,6 +202,11 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
         st.push(name === 'enttype' ? (ctx.targetEntType ?? 'critter') : 0);
         continue;
       }
+      case 'mode?':
+      case 'source.mode?':
+      case 'target.mode?':
+        st.push(ctx.inMode?.(popStr()) ? 1 : 0);
+        continue;
       case 'powerboostsslotted>':
       case 'boostsslotted>':
         st.push(ctx.boostsSlotted ? ctx.boostsSlotted(popStr()) : 0);

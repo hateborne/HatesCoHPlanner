@@ -169,6 +169,7 @@ export interface Core {
     Boost: NamedEntry[];
     Elusivity: NamedEntry[];
     Group: NamedEntry[];
+    Mode?: NamedEntry[]; // power modes: SetMode's magnitude indexes this list
   };
   categories: Record<string, number[]>;
   schedule: { power: number[]; slot: number[]; pool: number[]; epic: number[]; freeSlots: number[] };

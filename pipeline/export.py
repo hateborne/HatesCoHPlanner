@@ -408,6 +408,9 @@ class Exporter:
         attr_names = {k: [{"n": x["Name"], "dn": self.text(x["DisplayName"]) or x["DisplayName"],
                            "icon": x.get("IconName", "")} for x in an[k]]
                       for k in ("Damage", "Defense", "Boost", "Elusivity", "Group")}
+        # power modes (SetMode's magnitude indexes this list; requires test them as k<Name>,
+        # e.g. Bio Armor's "kDefensiveAdaptation Source.Mode?")
+        attr_names["Mode"] = [{"n": x["Name"], "dn": x["Name"], "icon": ""} for x in an["Mode"]]
         origins = [{"id": self.ids.get("origin", o["Name"]), "n": o["Name"],
                     "dn": self.text(o["DisplayName"]), "sh": self.text(o["DisplayShortHelp"]),
                     "lh": self.text(o["DisplayHelp"]),

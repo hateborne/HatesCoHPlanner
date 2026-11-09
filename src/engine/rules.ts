@@ -8,6 +8,7 @@ import type { Archetype, Power, Powerset } from '../data/types.ts';
 import { toAlignment, type Build, type Pick, type Slot } from './build.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { countAtLevel, countForLevel } from './schedule.ts';
+import { isExclusiveToggle } from './totals.ts';
 
 export const MAX_LEVEL = 49;
 export const MAX_BOUGHT_SLOTS = 5;
@@ -145,6 +146,19 @@ export class BuildRules {
       ownsSet: (name) => {
         const s = this.gd.setByName.get(name.toLowerCase());
         return !!s && ownedSets.has(s.id);
+      },
+      ownsPowerNum: (name) => {
+        const n = name.toLowerCase();
+        const p = this.gd.powerByName.get(n);
+        if (p) return owned.has(p.id) ? 1 : 0;
+        let count = 0;
+        for (const pid of owned) {
+          const ref = this.gd.setOfPower.get(pid);
+          if (!ref) continue;
+          const cat = (this.gd.categoryOfSet.get(ref.set.id) ?? '').toLowerCase();
+          if (cat === n || ref.set.n.toLowerCase() === n) count++;
+        }
+        return count;
       },
       prop: (name) => {
         // engine: anything starting with "arch" or "rank" is the class name ($archtype appears in data)
@@ -312,13 +326,17 @@ export class BuildRules {
     const owned = this.ownedAt(level, pickIndex);
     const ownedSets = this.ownedSets(owned);
     const out: SetOption[] = [];
+    // granted powers (Bio Armor's Adaptations, Jaunt, Kheldian form attacks) can't be bought,
+    // so they are left off the lists
+    const buyable = (set: Powerset) =>
+      set.p.filter((pid, idx) => (set.av[idx] ?? 0) >= 0 && !this.gd.powerById.get(pid)?.auto);
     const add = (set: Powerset) => {
       out.push({
         set,
         kind: this.setKind(set),
         column: this.column(set),
         owned: ownedSets.has(set.id),
-        powers: set.p.map((pid) => this.powerOption(pid, pickIndex)),
+        powers: buyable(set).map((pid) => this.powerOption(pid, pickIndex)),
       });
     };
     for (const [main, cat] of [
@@ -359,6 +377,33 @@ export class BuildRules {
   /** @return Whether another pool (or epic) set can be added at this pick. */
   canAddNewSet(kind: 'pool' | 'epic', pickIndex: number): boolean {
     return this.newSetChoices(kind, pickIndex).some((c) => c.block === null);
+  }
+
+  /**
+   * Exclusive granted toggles (see isExclusiveToggle) the build owns, grouped under the power
+   * that grants them (the power named in their BuyRequires), in set order. Only groups of two or
+   * more are returned.
+   *
+   * @return Map of granting power id to its group members.
+   */
+  toggleGroups(): Map<number, Power[]> {
+    const by = new Map<string, { owner: number; members: Power[] }>();
+    for (const pid of this.granted().keys()) {
+      const p = this.gd.power(pid);
+      if (!isExclusiveToggle(p)) continue;
+      const owner = (p.br ?? []).map((t) => this.gd.powerByName.get(t.toLowerCase())).find((x) => !!x);
+      if (!owner) continue;
+      const key = `${owner.id}:${p.gm!.join(',')}`;
+      const g = by.get(key) ?? { owner: owner.id, members: [] };
+      g.members.push(p);
+      by.set(key, g);
+    }
+    const idx = (p: Power) => this.gd.setOfPower.get(p.id)?.index ?? 0;
+    const out = new Map<number, Power[]>();
+    for (const g of by.values()) {
+      if (g.members.length >= 2) out.set(g.owner, [...(out.get(g.owner) ?? []), ...g.members].sort((a, b) => idx(a) - idx(b)));
+    }
+    return out;
   }
 
   // ---- entries and slots -----------------------------------------------------------------------

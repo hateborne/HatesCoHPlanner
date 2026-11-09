@@ -41,11 +41,22 @@ export interface Totals {
 }
 
 /**
+ * A granted toggle that runs one at a time with its siblings (Bio Armor's Adaptations, Dual
+ * Pistols' ammunition, Staff Fighting's forms): auto-issued, with a GroupMembership the game uses
+ * to switch the others off. These start off; the overview offers one switch per group.
+ */
+export function isExclusiveToggle(p: Power): boolean {
+  return p.type === 'Toggle' && !!p.auto && (p.gm?.length ?? 0) > 0;
+}
+
+/**
  * Whether a power is counted in totals by default: autos and toggles, except the inherent
  * utility toggles (Rest, Walk, Sprint), which would otherwise apply their resting/walking
- * penalties. Every power can still be switched on or off per build.
+ * penalties, and exclusive granted toggles (none of a group runs until one is chosen). Every
+ * power can still be switched on or off per build.
  */
 export function defaultOn(p: Power): boolean {
+  if (isExclusiveToggle(p)) return false;
   if (p.type === 'Auto') return true;
   if (p.type !== 'Toggle') return false;
   return !p.n.startsWith('Inherent.Inherent.');
@@ -79,7 +90,7 @@ const SPEED_BASE = 21; // ft/s for base run/jump speed of 1.0
  * @param b The build (for per-power toggles).
  * @param level 0-based level to compute at (default 49, or the exemplar level).
  */
-export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? 49): Totals {
+export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): Totals {
   const at: Archetype = rules.at;
   const lines = new Map<string, StatLine>();
   const line = (key: string, label: string): StatLine => {
@@ -162,9 +173,32 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
   // Active powers
   let endUse = 0;
   const entries: BuildEntry[] = rules.entries().filter((e) => e.level <= level);
+  const isOn = (e: BuildEntry) => e.on ?? defaultOn(e.power);
+
+  // Power modes the running powers set (SetMode, e.g. Bio Armor's Adaptations): other powers'
+  // effects test them with `k<Mode> Source.Mode?`
+  const setMode = gd.attribByName.get('SetMode') ?? 473;
+  const modeNames = gd.core.attribNames.Mode ?? [];
+  const modes = new Set<string>();
+  for (const e of entries) {
+    if (!isOn(e)) continue;
+    for (const effs of [e.power.eff, e.power.act]) {
+      walkEffects(effs, ctx, (m) => {
+        if (m.a.includes(setMode) && m.mag !== undefined) {
+          const n = modeNames[m.mag]?.n;
+          if (n) modes.add(n.toLowerCase());
+        }
+      });
+    }
+  }
+  ctx.inMode = (name) => {
+    const n = name.toLowerCase();
+    return modes.has(n) || (n.startsWith('k') && modes.has(n.slice(1)));
+  };
+
   for (const e of entries) {
     const p = e.power;
-    if (!(e.on ?? defaultOn(p))) continue;
+    if (!isOn(e)) continue;
     const str = powerStrength(gd, at, p, e.slots.filter((s) => s.level <= level).map((s) => s.enh), level).post;
     walkEffects(p.eff, ctx, (m) => apply(p, m, str, p.dn));
     walkEffects(p.act, ctx, (m) => apply(p, m, str, p.dn));

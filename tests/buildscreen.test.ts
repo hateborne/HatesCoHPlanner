@@ -1,0 +1,99 @@
+import { describe, expect, it } from 'vitest';
+import { setExclusive, setPick } from '../src/engine/actions.ts';
+import { newBuild, type Build } from '../src/engine/build.ts';
+import { canSlot } from '../src/engine/enhance.ts';
+import { BuildRules } from '../src/engine/rules.ts';
+import { computeTotals, defaultOn } from '../src/engine/totals.ts';
+import { decodeShare, encodeShare } from '../src/io/share.ts';
+import { loadData, pid, sid } from './helpers/data.ts';
+
+const gd = loadData();
+const P = gd.core.schedule.power;
+
+/** A Bio Armor / Battle Axe tanker with the given picks (pick index -> power full name). */
+function tanker(picks: Record<number, string>): Build {
+  const at = gd.archetypeByName.get('class_tanker')!;
+  const b = newBuild({
+    dataVersion: gd.core.manifest.dataVersion,
+    at: at.id,
+    origin: gd.core.origins[0]!.id,
+    alignment: 'Hero',
+    primary: sid(gd, 'Tanker_Defense.Bio_Organic_Armor'),
+    secondary: sid(gd, 'Tanker_Melee.Battle_Axe'),
+    pickCount: P.length,
+  });
+  for (const [i, name] of Object.entries(picks)) b.picks[Number(i)] = { power: pid(gd, name), level: P[Number(i)]!, slots: [] };
+  return b;
+}
+
+const BIO = 'Tanker_Defense.Bio_Organic_Armor';
+const PSI = 'Epic.Tank_Psionic_Mastery';
+const base = { 0: `${BIO}.Hardened_Carapace`, 1: 'Tanker_Melee.Battle_Axe.Gash', 4: `${BIO}.Evolution` };
+
+describe('epic pool unlocks (Epic ownPowerNum? N >)', () => {
+  const pickAt = (lvl: number) => P.indexOf(lvl - 1);
+  it('unlocks the third and fourth powers after one epic power', () => {
+    expect(new BuildRules(gd, tanker(base)).powerOption(pid(gd, `${PSI}.Harmonic_Mind`), pickAt(38)).state).toBe('unavailable');
+    const r = new BuildRules(gd, tanker({ ...base, [pickAt(35)]: `${PSI}.Mesmerize` }));
+    expect(r.powerOption(pid(gd, `${PSI}.Harmonic_Mind`), pickAt(38)).state).toBe('available');
+    expect(r.powerOption(pid(gd, `${PSI}.Mental_Blast`), pickAt(41)).state).toBe('available');
+    expect(r.powerOption(pid(gd, `${PSI}.Psionic_Tornado`), pickAt(44)).state).toBe('unavailable');
+  });
+  it('unlocks the fifth power after two epic powers', () => {
+    const r = new BuildRules(gd, tanker({ ...base, [pickAt(35)]: `${PSI}.Mesmerize`, [pickAt(38)]: `${PSI}.Dominate` }));
+    expect(r.powerOption(pid(gd, `${PSI}.Psionic_Tornado`), pickAt(44)).state).toBe('available');
+  });
+});
+
+describe('granted powers', () => {
+  it('leaves granted powers off the choose-a-power lists', () => {
+    const names = new BuildRules(gd, tanker(base)).setOptions(5).flatMap((o) => o.powers.map((p) => p.power.n));
+    expect(names).toContain(`${BIO}.Evolution`);
+    for (const n of ['Efficient', 'Defensive', 'Offensive']) expect(names).not.toContain(`${BIO}.${n}_Adaptation`);
+  });
+  it('groups the Adaptations under Adaptation, all off until one is chosen', () => {
+    const b = tanker(base);
+    const r = new BuildRules(gd, b);
+    const members = r.toggleGroups().get(pid(gd, `${BIO}.Evolution`))!;
+    expect(members.map((m) => m.dn)).toEqual(['Efficient Adaptation', 'Defensive Adaptation', 'Offensive Adaptation']);
+    expect(members.every((m) => !defaultOn(m))).toBe(true);
+    expect(computeTotals(gd, r, b).lines.get('dmg.00')?.sources ?? []).toEqual([]);
+    const defensive = pid(gd, `${BIO}.Defensive_Adaptation`);
+    const b2 = setExclusive(b, members.map((m) => m.id), defensive);
+    const dmg = computeTotals(gd, new BuildRules(gd, b2), b2).lines.get('dmg.00')!;
+    expect(dmg.sources.map((s) => s.name)).toEqual(['Defensive Adaptation']);
+    // the mode it sets turns on Hardened Carapace's Defensive Adaptation bonus (kDefensiveAdaptation Source.Mode?)
+    const res = (x: Build) => computeTotals(gd, new BuildRules(gd, x), x).lines.get('res.00')!.value;
+    expect(res(b2)).toBeGreaterThan(res(b) + 0.05);
+    const offensive = setExclusive(b, members.map((m) => m.id), pid(gd, `${BIO}.Offensive_Adaptation`));
+    expect(computeTotals(gd, new BuildRules(gd, offensive), offensive).lines.get('dmg.00')!.value).toBeGreaterThan(0);
+    const b3 = setExclusive(b2, members.map((m) => m.id), undefined);
+    expect(members.every((m) => b3.granted[m.id]?.on === undefined)).toBe(true);
+  });
+});
+
+describe('reopening a pick level', () => {
+  it('keeps the pick slots and enhancements when the pick was cleared for editing', () => {
+    const b = tanker(base);
+    const hc = gd.power(b.picks[0]!.power);
+    const fits = gd.boosts.find((x) => canSlot(gd, hc, x, 0))!;
+    b.picks[0]!.slots = [{ level: 0, enh: { boost: fits.id } }, { level: 2 }, { level: 26 }];
+    const cleared = { ...b, picks: b.picks.map((p, i) => (i === 0 ? null : p)) };
+    const again = setPick(gd, cleared, 0, b.picks[0]!.power, b.picks[0]);
+    expect(again.picks[0]!.slots).toEqual(b.picks[0]!.slots);
+  });
+});
+
+describe('builds planned short of 50', () => {
+  it('keeps the stop level through a share link', async () => {
+    const b = { ...tanker(base), endLevel: 19 };
+    expect((await decodeShare(await encodeShare(b), b.dataVersion)).endLevel).toBe(19);
+    expect((await decodeShare(await encodeShare(tanker(base)), b.dataVersion)).endLevel).toBeUndefined();
+  });
+  it('computes totals at the stop level', () => {
+    const b = tanker(base);
+    const r = new BuildRules(gd, b);
+    expect(computeTotals(gd, r, { ...b, endLevel: 19 }).level).toBe(19);
+    expect(computeTotals(gd, r, b).level).toBe(49);
+  });
+});

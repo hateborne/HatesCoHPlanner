@@ -448,12 +448,21 @@ export function SlotsAvailable({ n, x = vx(412), y = vy(695), w = vx(200), h = v
 }
 
 /** An enhancement slot ring, empty or holding an enhancement icon (half-scale tray ring). */
-export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pending, onClick, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pending?: boolean; onClick?: () => void; title?: string; skin?: Skin }) {
+export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pending, onClick, onRightClick, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pending?: boolean; onClick?: () => void; onRightClick?: () => void; title?: string; skin?: Skin }) {
   return (
     <div
       className="abs"
       title={title}
       onClick={onClick}
+      onContextMenu={
+        onRightClick
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRightClick();
+            }
+          : undefined
+      }
       style={{ left: x - size / 2, top: y - size / 2, width: size, height: size, cursor: onClick ? 'pointer' : 'default', zIndex: 8, animation: pending ? 'slotflash 0.6s ease-out' : undefined }}
     >
       <Sprite src={ui('creation/enhancements/enhnctray_ringhole', skin)} x={size * 0.04} y={size * 0.04} w={size * 0.92} h={size * 0.92} z={0} />
