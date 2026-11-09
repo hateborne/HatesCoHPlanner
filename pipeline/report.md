@@ -1,6 +1,6 @@
 # Pipeline report -- data 20261017-f94d0e09
 
-Generated 2026-11-08T19:33:32.
+Generated 2026-11-08T19:44:49.
 
 ## Decode health
 
@@ -42,4 +42,8 @@ Generated 2026-11-08T19:33:32.
 | boosts.json | 3611879 |
 
 PvP-only effects dropped: 4113. Unresolved references: 0. New IDs: {'power': 0, 'powerset': 0, 'boostset': 0, 'archetype': 0, 'origin': 0}.
+
+## Mids map
+
+1345 Mids enhancements, 6900 Mids powers mapped, 94 power renames, 287213 bytes. Unmapped enhancements (6): Crafted_Shrapnel_A (Accuracy/Damage), Crafted_Shrapnel_B (Damage/Endurance), Crafted_Shrapnel_C (Damage/Recharge), Crafted_Shrapnel_D (Accuracy/Damage/Recharge), Crafted_Shrapnel_E (Accuracy/Recharge/Range), Crafted_Shrapnel_F (Endurance/Recharge/Range)
 

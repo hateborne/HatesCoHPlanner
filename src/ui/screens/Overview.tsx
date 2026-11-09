@@ -26,7 +26,7 @@ const RING_STEP = 54;
  * (click a ring to pick an enhancement), a totals switch per power, issue flags, and totals.
  */
 export function Overview({ skin }: { skin: Skin }) {
-  const { gd, build, steps, editPick, editSlots, toSetup, setBuild } = useStore();
+  const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu } = useStore();
   const [picker, setPicker] = useState<{ entry: BuildEntry; slot: number } | null>(null);
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
   const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
@@ -147,6 +147,7 @@ export function Overview({ skin }: { skin: Skin }) {
         <TotalsPanel gd={gd} t={totals} width={420} />
       </div>
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
+      <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker ? (
         <EnhancementPicker
           gd={gd}

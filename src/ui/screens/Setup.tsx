@@ -4,7 +4,7 @@ import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
 import { evalRequires } from '../../engine/requires.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { DescBox, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
+import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
 import { icon, SKINS } from '../skin/skin.ts';
 
 const COLS = [
@@ -62,6 +62,7 @@ export function Setup() {
         style={{ right: 50, top: 18, width: 520, height: 46, background: '#000', border: '2px solid #4f94ff', borderRadius: 23, color: '#fff', fontSize: 22, padding: '0 20px' }}
       />
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer />
+      <InfoButton x={1000} y={58} text="Saved builds / Import" onClick={() => useStore.getState().setMenu(true)} />
       {COLS.map((c) => (
         <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} />
       ))}

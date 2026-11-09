@@ -4,6 +4,7 @@ import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { Stage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
+import { BuildMenu } from './ui/screens/BuildMenu.tsx';
 import { ChooseNewPower } from './ui/screens/ChooseNewPower.tsx';
 import { ChoosePoolSet } from './ui/screens/ChoosePoolSet.tsx';
 import { Overview } from './ui/screens/Overview.tsx';
@@ -12,7 +13,7 @@ import { SKINS } from './ui/skin/skin.ts';
 
 /** Top-level router: loading, setup, the level-up screens and the build overview. */
 export function App() {
-  const { view, error, build, level, load } = useStore();
+  const { view, error, build, level, load, menuOpen, setMenu } = useStore();
   useEffect(() => {
     void load();
   }, [load]);
@@ -49,6 +50,7 @@ export function App() {
   return (
     <Stage skin={view === 'setup' ? SKINS.hero : skin}>
       {screen}
+      {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
       <div className="abs notice" style={{ left: 0, right: 0, bottom: 4, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
         Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.
       </div>

@@ -8,6 +8,7 @@ import { addSlot, setPick } from '../engine/actions.ts';
 import { cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { levelSteps, type LevelStep } from '../engine/schedule.ts';
+import { decodeShare } from '../io/share.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
 export type LevelSub = 'power' | 'pool' | 'epic' | 'slots';
@@ -49,6 +50,9 @@ interface Store {
   editPick(pickIndex: number): void;
   editSlots(level: number): void;
   setMuted(m: boolean): void;
+  menuOpen: boolean;
+  setMenu(open: boolean): void;
+  loadBuild(b: Build): void;
 }
 
 const STORAGE_KEY = 'hcp.current';
@@ -125,11 +129,35 @@ export const useStore = create<Store>((set, get) => ({
     }
   })(),
 
+  menuOpen: false,
+
+  setMenu(open) {
+    set({ menuOpen: open });
+  },
+
+  loadBuild(b) {
+    const { gd } = get();
+    if (!gd) return;
+    const nb = { ...b, dataVersion: gd.core.manifest.dataVersion };
+    persist(nb);
+    set({ build: nb, view: 'overview', level: undefined, menuOpen: false });
+  },
+
   async load() {
     try {
       const gd = await loadGameData(import.meta.env.BASE_URL);
       const steps = levelSteps(gd.core);
-      const saved = restore();
+      let saved = restore();
+      // A share link (#b=...) wins over the remembered build.
+      const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
+      if (m) {
+        try {
+          saved = await decodeShare(m[1]!, gd.core.manifest.dataVersion);
+          persist(saved);
+        } catch {
+          /* bad link: fall back to the remembered build */
+        }
+      }
       const ok = saved && gd.archetypeById.has(saved.at) && saved.picks.length === gd.core.schedule.power.length;
       set({ gd, steps, build: ok ? saved : undefined, view: ok ? 'overview' : 'setup' });
     } catch (e) {

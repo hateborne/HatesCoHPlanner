@@ -396,6 +396,7 @@ class Exporter:
         powers_by_name = {}
         for name in self.export_powers:
             powers_by_name[name] = self.conv_power(name)
+        self.exported_names = set(powers_by_name)
         boost_names = {self.power_name(b) for b in self.boost_powers if self.power_name(b)}
         bonus_names = {n for n in self.export_powers if n.lower().startswith("set_bonus.")}
         exported_ids = {p["id"] for p in powers_by_name.values()}
@@ -475,5 +476,8 @@ def write(live: LiveData) -> dict:
         sizes[name] = len(text.encode("utf-8"))
     config.out_path(config.DATA_OUT / "latest.json").write_text(
         json.dumps({"dataVersion": ver}), encoding="utf-8")
+    from pipeline import mids_map
+    mids = mids_map.write(live, ex, root)
     ex.ids.save()
-    return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added}
+    return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added,
+            "mids": mids}

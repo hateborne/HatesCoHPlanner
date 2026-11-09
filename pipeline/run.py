@@ -42,6 +42,12 @@ def render_report(data, exp, assets, val) -> str:
     L.append(f"\nPvP-only effects dropped: {rep['pvp_effects_dropped']}. "
              f"Unresolved references: {sum(rep['unresolved_refs'].values())}. "
              f"New IDs: {exp['ids_added']}.\n")
+    mm = exp.get("mids")
+    if mm:
+        L.append("## Mids map\n")
+        L.append(f"{mm['enh_total']} Mids enhancements, {mm['powers_total']} Mids powers mapped, "
+                 f"{mm['renames_used']} power renames, {mm['bytes']} bytes. Unmapped enhancements "
+                 f"({len(mm['unmapped_enh'])}): {', '.join(mm['unmapped_enh'][:40]) or 'none'}\n")
     if assets:
         L.append("## Assets\n")
         L.append(", ".join(f"{k}: {v}" for k, v in assets["counts"].items()) + "\n")
