@@ -2,27 +2,30 @@ import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Power } from '../../data/types.ts';
 import { BuildRules, type SetOption } from '../../engine/rules.ts';
-import { currentPick, useStore } from '../../state/store.ts';
+import { currentPick, stepsOf, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { hoverPower, useFreshHover, useHover } from '../hover.ts';
-import { DescBox, MenuBar, MenuFrame, NextButton, TitleBar } from '../components/Chrome.tsx';
+import { DescBox, MenuBar, MenuFrame, NextButton, RespecCounter, TitleBar } from '../components/Chrome.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { desktopColumn, PowerColumn, type ColumnGeom } from '../components/PowerColumn.tsx';
 import { useStage } from '../components/Stage.tsx';
-import { S, vx, vy } from '../skin/metrics.ts';
+import { S, SY, TOP_LABEL_RIGHT, vx, vy } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 
-/**
- * "CHOOSE A NEW POWER" (uiLevelPower.c): primary and secondary panels, a third panel for pools,
- * the epic pool and VEAT branches, the green description line, and Back/Cancel + Finish.
- */
 /** The green description box: follows the hovered power (on phones, the chosen one when nothing is hovered). */
 function HoverDesc({ skin, fallback }: { skin: Skin; fallback: Power | null }) {
   const shown = useHover((h) => h.desc?.p) ?? fallback;
   return <DescBox skin={skin} iconSrc={shown ? icon('powers', shown.icon || 'power_missing') : undefined} text={shown ? shown.lh || shown.sh : ''} />;
 }
 
+/**
+ * "CHOOSE A NEW POWER" (uiLevelPower.c): primary and secondary panels, a third panel for pools,
+ * the epic pool and VEAT branches, the green description line, and Back/Cancel + Finish.
+ *
+ * In a Respec (uiReSpec.c respec_powerLevel) the same screen walks every pick first: it reads
+ * "Current Respec Level", counts Powers Bought / Powers Remaining, and steps with Back / Next.
+ */
 export function ChooseNewPower({ skin }: { skin: Skin }) {
   const { gd, steps, level, choosePower, openSetPicker, finishLevel, backLevel, lockFlash, flashLocked } = useStore(
     useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, choosePower: s.choosePower, openSetPicker: s.openSetPicker, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
@@ -63,7 +66,13 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
     // a power from a set chosen on the pool picker keeps that set shown; others drop it
   };
   const firstStep = level.step === 0 && level.pickInStep === 0;
-  const lvl = steps[level.step]?.level ?? 0;
+  const lvl = stepsOf(steps, level)[level.step]?.level ?? 0;
+  const respec = !!level.flow;
+  // respec_powerCounter: picks still to make up to the respec level (this one included)
+  const respecEnd = level.base.respecTo ?? 49;
+  const remaining = level.base.picks.filter((p, i) => !p && (gd.core.schedule.power[i] ?? 99) <= respecEnd).length;
+  const bought = level.base.picks.filter((p) => p).length;
+  const chosen = level.pendingPower !== undefined;
   const extraButtons = (canPool ? 1 : 0) + (canEpic ? 1 : 0);
 
   const BAR_H = vy(28);
@@ -73,8 +82,15 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   const desc = <HoverDesc skin={skin} fallback={fallback} />;
   const buttons = (
     <>
-      <NextButton skin={skin} dir="left" text={level.mode === 'edit' || firstStep ? 'Cancel' : 'Back'} onClick={backLevel} />
-      <NextButton skin={skin} dir="right" text="Finish" locked={level.pendingPower === undefined} onClick={finishLevel} />
+      <NextButton skin={skin} dir="left" text={level.mode === 'edit' || (firstStep && !respec) ? 'Cancel' : 'Back'} onClick={backLevel} />
+      <NextButton skin={skin} dir="right" text={respec ? 'Next' : 'Finish'} locked={level.pendingPower === undefined} onClick={finishLevel} />
+      {respec ? (
+        <RespecCounter
+          done={chosen}
+          lines={chosen ? ["Click 'Next' to Continue", `Powers Remaining: ${remaining - 1}`] : [`Powers Bought: ${bought}`, `Powers Remaining: ${remaining}`]}
+          {...(phone ? { x: 300, y: 1650, w: 400, h: 56 } : {})}
+        />
+      ) : null}
     </>
   );
   // uiLevelPower.c: drawMenuBar centered on the third panel at y 85 (55 and 85 when both show),
@@ -85,7 +101,17 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
       {canEpic ? <MenuBar skin={skin} x={cx} y={y0 + (canPool ? step : 0)} wd={wd} text="Choose from new Epic power set" onClick={() => openSetPicker('epic')} /> : null}
     </>
   );
-  const levelLabel = (x: number, y: number) => <GameText font="title_14" scale={S} x={x} y={y} align="right" colors={skin.heading} text={`LEVEL ${lvl + 1}`} />;
+  const levelLabel = (x: number, y: number) =>
+    respec && phone ? (
+      <GameText font="title_12" scale={S} x={x} y={y} align="right" colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${lvl}`} />
+    ) : respec ? (
+      // uiReSpec.c respec_powerLevel: prnt(450 sx, 30 sy) in title_12, white to grey, with the
+      // character's level as the game holds it (0 for level 1). The live game draws it unstretched
+      // at the screen's height scale (about 300 wide at 2000, measured on an in-game screenshot)
+      <GameText font="title_12" scale={SY} x={vx(450)} y={vy(30)} colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${lvl}`} />
+    ) : (
+      <GameText font="title_14" scale={S} x={x} y={y} align="right" colors={skin.heading} text={`LEVEL ${lvl + 1}`} />
+    );
 
   if (phone) {
     const P = PHONE_PANEL;
@@ -109,7 +135,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   return (
     <>
       <TitleBar skin={skin} text="CHOOSE A NEW POWER" />
-      {levelLabel(vx(1010), vy(38))}
+      {levelLabel(TOP_LABEL_RIGHT, vy(38))}
       {[0, 1, 2].map((i) => (
         <MenuFrame key={i} x={vx(16 + 336 * i)} y={vy(70)} w={vx(320)} h={vy(520)} skin={skin} />
       ))}

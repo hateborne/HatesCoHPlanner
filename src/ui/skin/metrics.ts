@@ -15,6 +15,9 @@ export const S = Math.min(SX, SY);
 // The game's screenScale on the 3840x2160 reference screenshots (min(3840/1024, 2160/768)), for
 // the few client draws whose size depends on the real resolution rather than the virtual screen.
 export const REF_SCREEN_SCALE = 2160 / 768;
+// Right end of the planner's top-right labels (archetype, LEVEL N): inside the outer frames, whose
+// right edge is at 1969, before their rounded corners begin, so the text doesn't hang past the edge.
+export const TOP_LABEL_RIGHT = 1930;
 
 /** Virtual-x to stage px. */
 export const vx = (v: number) => v * SX;

@@ -14,5 +14,7 @@ export function StopButtons({ skin }: { skin: Skin }) {
   const { level, stopHere } = useStore();
   const stage = useStage();
   if (stage.phone || level?.mode !== 'wizard') return null;
-  return <InfoButton skin={skin} x={stage.w / 2} y={vy(22)} w={vx(110)} h={vy(26)} text="View Build" onClick={() => stopHere(false)} />;
+  // a respec draws "Current Respec Level" at the top center and a long slot-screen title: sit right of both
+  const x = level.flow ? vx(700) : stage.w / 2;
+  return <InfoButton skin={skin} x={x} y={vy(22)} w={vx(110)} h={vy(26)} text="View Build" onClick={() => stopHere(false)} />;
 }

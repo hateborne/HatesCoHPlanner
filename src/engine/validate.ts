@@ -87,13 +87,15 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
     granted,
     exemplar: isInt(b.exemplar, 0, 49) ? b.exemplar : undefined,
     endLevel: isInt(b.endLevel, 0, 49) ? b.endLevel : undefined,
+    respecTo: isInt(b.respecTo, 0, 49) ? b.respecTo : undefined,
   };
 
   // A build left mid-way through leveling (no stop level, picks missing from some point on) is
   // treated as stopped just before its first missing pick, so it shows Continue Leveling.
   const firstMissing = picks.findIndex((p) => !p);
   if (out.endLevel === undefined && firstMissing >= 0) {
-    if (firstMissing === 0) return { build: null, fixes: [...fixes, 'no powers picked yet'] };
+    // a respec asks level 1's secondary first, so there pick 1 may be made without pick 0
+    if (out.respecTo === undefined ? firstMissing === 0 : !picks.some((p) => p)) return { build: null, fixes: [...fixes, 'no powers picked yet'] };
     out.endLevel = Math.max(0, sched[firstMissing]! - 1);
     fixes.push(`unfinished build: stopped at level ${out.endLevel + 1}`);
   }

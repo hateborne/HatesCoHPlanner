@@ -7,7 +7,7 @@ import { boostPog, canSlot } from '../../engine/enhance.ts';
 import { setEnh, setExclusive, setOn } from '../../engine/actions.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { computeTotals, defaultOn } from '../../engine/totals.ts';
-import { useStore, useTipLevel } from '../../state/store.ts';
+import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -19,7 +19,7 @@ import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
-import { S, SX, SY, vs, vx, vy } from '../skin/metrics.ts';
+import { S, SX, SY, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
@@ -344,7 +344,9 @@ export function Overview({ skin }: { skin: Skin }) {
       );
     });
   // a build stopped short of 50 can pick up where it left off
-  const canContinue = build.endLevel !== undefined && steps.some((s) => s.level > end);
+  // ...and a respec left part-way (powers or slots still to place) picks up where it stopped
+  const respecLeft = respecUnfinished(gd, build, steps);
+  const canContinue = respecLeft || (build.endLevel !== undefined && steps.some((s) => s.level > end));
 
   /**
    * Origin / Alignment (and Continue Leveling for a build stopped short of 50) centered on cx;
@@ -359,7 +361,7 @@ export function Overview({ skin }: { skin: Skin }) {
     return (
       <>
         <InfoButton skin={skin} x={oaX} y={cy} w={w} h={h} text="Origin / Alignment" onClick={() => setOaOpen(!oaOpen)} />
-        {canContinue ? <InfoButton skin={skin} x={cx + w / 2 + 8} y={cy} w={w} h={h} text="Continue Leveling" onClick={continueLeveling} /> : null}
+        {canContinue ? <InfoButton skin={skin} x={cx + w / 2 + 8} y={cy} w={w} h={h} text={respecLeft ? 'Continue Respec' : 'Continue Leveling'} onClick={continueLeveling} /> : null}
         {oaOpen ? (
           <>
             <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOaOpen(false)} />
@@ -458,7 +460,7 @@ export function Overview({ skin }: { skin: Skin }) {
   return (
     <>
       <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
-      <GameText font="title_14" scale={S} x={vx(1010)} y={vy(38)} align="right" colors={skin.heading} text={who} />
+      <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
       {topButtons(stage.w / 2, vy(22), vx(150), vy(26))}
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
       {/* level strip: reopen any level's in-game screen (levels after a stop are left off) */}

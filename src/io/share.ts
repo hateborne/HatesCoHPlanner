@@ -6,7 +6,8 @@
  * varint pickCount, picks, varint grantedCount, granted; each pick/grant: varint power (0 empty),
  * u8 on (0 default, 1 on, 2 off), varint slotCount, slots: u8 level, enh.
  * enh: varint boost (0 none), u8 flags (1 ioLevel, 2 rel, 4 boosters), then the flagged values.
- * Optional trailer: varint endLevel+1 (0: planned to 50), then the game version id as a string.
+ * Optional trailer: varint endLevel+1 (0: planned to 50), then the game version id as a string,
+ * then varint respecTo+1 (0: a leveling build).
  * Links made before the trailer end after the granted list or after endLevel; they open with
  * LEGACY_GAME_VERSION (the only data that existed then).
  */
@@ -85,6 +86,7 @@ export async function encodeShare(b: Build): Promise<string> {
   }
   w.varint(b.endLevel === undefined ? 0 : b.endLevel + 1);
   w.netString(b.dataVersion);
+  w.varint(b.respecTo === undefined ? 0 : b.respecTo + 1);
   return toBase64Url(await streamBytes(w.done(), 'deflate', true));
 }
 
@@ -121,7 +123,8 @@ export async function decodeShare(payload: string): Promise<Build> {
   }
   const end = r.left > 0 ? r.varint() : 0;
   const dataVersion = r.left > 0 ? r.netString() : LEGACY_GAME_VERSION;
-  return { v: 1, dataVersion, name, at, origin, alignment, primary, secondary, picks, granted, exemplar: ex ? ex - 1 : undefined, endLevel: end ? end - 1 : undefined };
+  const rs = r.left > 0 ? r.varint() : 0;
+  return { v: 1, dataVersion, name, at, origin, alignment, primary, secondary, picks, granted, exemplar: ex ? ex - 1 : undefined, endLevel: end ? end - 1 : undefined, ...(rs ? { respecTo: rs - 1 } : {}) };
 }
 
 /** Full share link for the current page. */

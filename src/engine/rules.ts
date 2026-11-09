@@ -305,7 +305,7 @@ export class BuildRules {
     if (av > level) return fail(`Available at level ${av + 1}`);
     const kind = this.setKind(ref.set);
     if (level === this.pickLevel(0) && (pickIndex === 0 || pickIndex === 1)) {
-      if (pickIndex === 0 && kind !== 'primary') return fail('Choose a primary power first');
+      if (pickIndex === 0 && kind !== 'primary') return fail('Choose a primary power now');
       if (pickIndex === 1 && kind !== 'secondary') return fail('Choose a secondary power now');
     }
     const block = this.newSetBlock(ref.set, pickIndex);
@@ -469,15 +469,23 @@ export class BuildRules {
   /**
    * Whether a slot may be added to an entry at a slot level.
    *
+   * @param e The entry.
+   * @param level The slot level (a respec screen: the last of its merged levels).
+   * @param levels Every level the screen places slots at (a respec's merged levels; default `level`).
    * @return Null when allowed, or the in-game refusal ('Full', 'No Slots', ...).
    */
-  slotBlock(e: BuildEntry, level: number): string | null {
+  slotBlock(e: BuildEntry, level: number, levels: number[] = [level]): string | null {
     if (!this.slottable(e.power)) return 'Full';
     if (e.level > level) return 'Not owned yet';
     const bought = Math.max(0, e.slots.length - 1);
     if (bought >= MAX_BOUGHT_SLOTS || e.slots.length >= (e.power.maxB ?? 0)) return 'Full';
-    if (this.slotsUsed(level) >= this.slotsGranted(level)) return 'No Slots';
+    if (this.slotsLeft(levels) <= 0) return 'No Slots';
     return null;
+  }
+
+  /** @return Slots granted at these levels and not yet placed. */
+  slotsLeft(levels: number[]): number {
+    return levels.reduce((n, l) => n + this.slotsGranted(l) - this.slotsUsed(l), 0);
   }
 
   // ---- validation ------------------------------------------------------------------------------
@@ -498,10 +506,12 @@ export class BuildRules {
       }
     });
     const used = new Map<number, number>();
+    // Homecoming's respec puts any of its slots on any power (see respecSteps)
+    const respecFree = (lvl: number) => this.b.respecTo !== undefined && lvl <= this.b.respecTo;
     for (const e of this.entries()) {
       e.slots.forEach((s, si) => {
         if (si === 0) return;
-        if (s.level < e.level) out.push({ key: e.key, slot: si, message: 'Slot is below the power level' });
+        if (s.level < e.level && !respecFree(s.level)) out.push({ key: e.key, slot: si, message: 'Slot is below the power level' });
         used.set(s.level, (used.get(s.level) ?? 0) + 1);
       });
       if (e.slots.length > (e.power.maxB ?? 0) || e.slots.length - 1 > MAX_BOUGHT_SLOTS) {

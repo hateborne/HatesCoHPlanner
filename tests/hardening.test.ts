@@ -74,6 +74,12 @@ describe('checking builds from outside the app', () => {
     expect(c.build!.picks[0]!.slots[1]!.enh).toBeUndefined();
     expect(c.fixes.length).toBeGreaterThanOrEqual(3);
   });
+  it('still refuses a leveling build missing its first pick (only a respec picks pick 1 first)', () => {
+    const b = peacebringer();
+    b.picks[0] = null;
+    expect(checkBuild(gd, b).build).toBeNull();
+    expect(checkBuild(gd, { ...b, respecTo: 49 }).build).not.toBeNull();
+  });
   it('treats an unfinished build as stopped before its first missing pick', () => {
     const b = peacebringer(); // picks 1, 2 and 6: pick 3 (index 2) is the first missing
     const c = checkBuild(gd, b);
@@ -104,6 +110,12 @@ describe('game versions', () => {
     // the user's Blaster link, made before links carried a version
     const OLD = 'eJwdzMtOwkAAQNE71BmeIowUCgq0WCwVW-y6nX_T-Ds-EhUXJkYTF8b_MUaJojI5yV1eIQTSBe_egGKtRVT63mSlRbT1ucmHFpF61yI6L4ClESiBokKFGjXOCgfujERJGjRo0iTjxpRRZVq08FmQcWuqqCo-AQGLf9emjqrTocM-I0acFtvwm-_AW9jGaaPRvIa7sM5dlEuXLh4eIT95D6dHSMyF6aP6DBjYjc9LuAdf-RA1JCSyYi7NmNKYgOd0gppwYCVkPKVT5JRDK-ExnSFnxBxZD-kcOefYSrgyKazyE-APA8cpuQ';
     expect((await decodeShare(OLD)).dataVersion).toBe(LEGACY_GAME_VERSION);
+    expect((await decodeShare(OLD)).respecTo).toBeUndefined(); // a link from before build types: leveling
+  });
+  it('keeps a stop level and no build type through a leveling link', async () => {
+    const b = { ...peacebringer(), endLevel: 19 };
+    const back = await decodeShare(await encodeShare(b));
+    expect([back.endLevel, back.respecTo, back.dataVersion]).toEqual([19, undefined, VERSION]);
   });
 });
 

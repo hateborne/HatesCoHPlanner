@@ -50,8 +50,10 @@ export function TitleBar({ skin, text, scale: scaleIn }: { skin: Skin; text: str
   const colors: [string, string] = praet ? ['#e6daa4', '#e6daa4'] : ['#ffff00', '#ffa500'];
   return (
     <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 30 }}>
-      {/* black background bar with a rounded right end */}
-      <div className="abs" style={{ left: praet ? 0 : x + 24 * s, top: y - 15 * s, width: Math.max(0, (praet ? x : 0) + acwd - 31 * s + 16 * s), height: 30 * s, background: '#000', borderRadius: `0 ${12 * s}px ${12 * s}px 0` }} />
+      {/* drawMenuTitle's black: a white_tex rectangle from the dot (Praetorian: the screen edge) plus
+          the frame_blue_background UR / LR corners stretched over each other (a square end), all
+          ending 7 short of the cap's right edge -- inside the cap, never past it */}
+      <div className="abs" style={{ left: praet ? 0 : x + 24.5 * s, top: y - 15 * s, width: Math.max(0, praet ? x + acwd - 7 * s : acwd - 31.5 * s), height: 30 * s, background: '#000' }} />
       <Sprite src={ui(`${dir}/titlebar_frame_horiz`, skin)} x={x + 23.5 * s} y={y - 19 * s} w={Math.max(0, acwd - 45 * s)} h={4 * s} z={2} />
       <Sprite src={ui(`${dir}/titlebar_frame_horiz`, skin)} x={x + 23.5 * s} y={y + 15 * s} w={Math.max(0, acwd - 45 * s)} h={4 * s} z={2} />
       <Sprite src={ui(`${dir}/titlebar_frame_cap_r`, skin)} x={x + acwd - 22 * s} y={y - 19 * s} w={22 * s} h={38 * s} z={3} />
@@ -450,6 +452,28 @@ export function SlotsAvailable({ n, x = vx(412), y = vy(695), w = vx(200), h = v
     <>
       <FlatFrame x={x} y={y} w={w} h={h} sc={S} border={color} back="#000" />
       <GameText font="game_12" scale={S} x={x + w / 2} y={y + h / 2} centerY align="center" colors={[color, color]} text={`Slots Available: ${Math.max(0, n)}`} z={2} />
+    </>
+  );
+}
+
+/**
+ * A respec screen's counter (uiReSpec.c respec_powerCounter / respec_specCounter): a flat frame,
+ * red with red text until the screen is complete, then green with a white first line. The game
+ * draws it 45 tall at y 705; here it sits just above the planner's bottom switches.
+ *
+ * @param lines The game_12 lines, top first (the slot screen's single line, or the power screen's two).
+ * @param done The screen is complete (green; the top line reads "Click 'Next' to Continue").
+ */
+export function RespecCounter({ lines, done, x = vx(412), y = vy(691), w = vx(200), h = vy(38) }: { lines: string[]; done: boolean; x?: number; y?: number; w?: number; h?: number }) {
+  useFontsReady();
+  const color = done ? '#00ff00' : '#ff0000';
+  const rows = lines.length === 1 ? [0.5] : [0.3, 0.72];
+  return (
+    <>
+      <FlatFrame x={x} y={y} w={w} h={h} sc={S} border={color} back="#000" />
+      {lines.map((t, i) => (
+        <GameText key={i} font="game_12" scale={S} x={x + w / 2} y={y + h * (rows[i] ?? 0.5)} centerY align="center" colors={done && i === 0 ? ['#ffffff', '#ffffff'] : [color, color]} text={t} z={2} />
+      ))}
     </>
   );
 }
