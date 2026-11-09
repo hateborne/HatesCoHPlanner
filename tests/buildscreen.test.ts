@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { setExclusive, setPick } from '../src/engine/actions.ts';
 import { newBuild, type Build } from '../src/engine/build.ts';
-import { canSlot } from '../src/engine/enhance.ts';
+import { allowedSetCategories, allowedTypes, canSlot } from '../src/engine/enhance.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { computeTotals, defaultOn } from '../src/engine/totals.ts';
 import { decodeShare, encodeShare } from '../src/io/share.ts';
@@ -95,5 +95,14 @@ describe('builds planned short of 50', () => {
     const r = new BuildRules(gd, b);
     expect(computeTotals(gd, r, { ...b, endLevel: 19 }).level).toBe(19);
     expect(computeTotals(gd, r, b).level).toBe(49);
+  });
+});
+
+describe('power tooltip slot details', () => {
+  it('lists Crushing Field the way the game tooltip does', () => {
+    const set = gd.setsInCategory('Controller_Control').find((s) => s.dn === 'Gravity Control')!;
+    const p = set.p.map((id) => gd.power(id)).find((x) => x.dn === 'Crushing Field')!;
+    expect(allowedTypes(gd, p)).toEqual(['Enhance Slow Movement', 'Reduce Endurance Cost', 'Enhance Range', 'Enhance Recharge Speed', 'Enhance Immobilization', 'Enhance Damage', 'Enhance Accuracy']);
+    expect(allowedSetCategories(gd, p)).toEqual(['Controller Archetype Sets', 'Universal Damage Sets', 'Slow Movement', 'Immobilize', 'Ranged AoE Damage']);
   });
 });

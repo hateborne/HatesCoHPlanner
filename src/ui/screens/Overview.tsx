@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import type { Power, Powerset } from '../../data/types.ts';
 import { setEnh, setExclusive, setOn } from '../../engine/actions.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { computeTotals, defaultOn } from '../../engine/totals.ts';
-import { useStore } from '../../state/store.ts';
+import { useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
-import { PowerTip } from '../components/PowerTip.tsx';
+import { ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
+import { DescTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
+import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
 import { S, SX, SY, vs, vx, vy } from '../skin/metrics.ts';
@@ -28,7 +30,6 @@ const POWER_SPEC_HT = 65; // uiLevelSpec.c row height (virtual)
 const SPEC_WD = 36; // ring spacing (virtual, x s)
 const RING = vs(35); // EnhncTray_Ring at scale .5
 const SWITCH = 30; // the floating on/off button
-const TIP_W = 900;
 
 interface Group {
   set: Powerset | null;
@@ -48,7 +49,7 @@ interface Geom {
 }
 
 function geom(width: number, unit: number): Geom {
-  const barCX = 62;
+  const barCX = 96; // room for the level tag left of the icon
   const barW = width - barCX - 2 * SWITCH - 6;
   return { barCX, barW, ringX: barCX - 2 * SX, boxW: barW - 10 * SX, start: -19 * unit, row: POWER_SPEC_HT * unit, unit };
 }
@@ -67,7 +68,10 @@ export function Overview({ skin }: { skin: Skin }) {
   const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling } = useStore();
   const [picker, setPicker] = useState<{ entry: BuildEntry; slot: number } | null>(null);
   const [tab, setTab] = useState(0);
-  const [tip, setTip] = useState<{ key: string; power: Power; x: number; y: number } | null>(null);
+  const [tip, setTip] = useState<{ entry: BuildEntry; x: number; y: number } | null>(null);
+  const tipLevel = useTipLevel();
+  const hint = useShiftHint();
+  const [oaOpen, setOaOpen] = useState(false);
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
@@ -76,29 +80,14 @@ export function Overview({ skin }: { skin: Skin }) {
   const groupsOf = useMemo(() => (rules ? rules.toggleGroups() : new Map<number, Power[]>()), [rules]);
 
   // last pointer position in stage px, for placing the hover box
-  const mouse = useRef({ x: 0, y: 0 });
-  useEffect(() => {
-    const on = (e: MouseEvent) => {
-      const wrap = document.querySelector('.stage')?.parentElement;
-      if (!wrap) return;
-      const r = wrap.getBoundingClientRect();
-      mouse.current = { x: ((e.clientX - r.left) / r.width) * stage.w, y: ((e.clientY - r.top) / r.height) * stage.h };
-    };
-    // capture on the window runs before React's hover handlers, so a bar's mouseenter already
-    // sees the pointer's new position
-    window.addEventListener('mousemove', on, true);
-    window.addEventListener('mouseover', on, true);
-    return () => {
-      window.removeEventListener('mousemove', on, true);
-      window.removeEventListener('mouseover', on, true);
-    };
-  }, [stage.w, stage.h]);
+  const mouse = usePointer();
 
   if (!gd || !build || !rules || !totals) return null;
   // every pick (even unslottable ones such as Adaptation), plus granted powers the game lets you slot
   const entries = rules.entries().filter((e) => e.source === 'pick' || (e.power.sm !== 0 && rules.slottable(e.power)));
   const originIndex = gd.core.origins.findIndex((o) => o.id === build.origin);
   const end = build.endLevel ?? 49;
+  const who = `${gd.core.origins.find((o) => o.id === build.origin)?.dn ?? ''} ${gd.archetype(build.at).dn}`.trim().toUpperCase();
 
   /** Entries of one panel grouped by powerset, sets in order of their first power. */
   const groups = (column: number): Group[] => {
@@ -116,8 +105,8 @@ export function Overview({ skin }: { skin: Skin }) {
 
   const hoverOn = (e: BuildEntry, on: boolean) => {
     if (phone) return;
-    if (on) setTip({ key: e.key, power: e.power, x: mouse.current.x, y: mouse.current.y });
-    else setTip((t) => (t?.key === e.key ? null : t));
+    if (on) setTip({ entry: e, x: mouse.current.x, y: mouse.current.y });
+    else setTip((t) => (t?.entry.key === e.key ? null : t));
   };
 
   const renderPanel = (view: { left: number; top: number; width: number; height: number }, bar: { x: number; top: number; height: number }, g: Geom, list: Group[], key: number) => {
@@ -146,7 +135,7 @@ export function Overview({ skin }: { skin: Skin }) {
             y={y}
             wd={barW}
             halfText
-            text={`${e.level + 1}  ${e.power.dn}`}
+            text={e.power.dn}
             state={flagged.length ? 'unselectable' : on ? 'selected' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
@@ -154,6 +143,12 @@ export function Overview({ skin }: { skin: Skin }) {
             onHover={(h) => hoverOn(e, h)}
           />,
         );
+        // the level the power was taken, left of its icon (not for what every character starts with)
+        if (!(e.source === 'grant' && e.level <= 4)) {
+          items.push(
+            <GameText key={`${e.key}:lv`} font="title_9" scale={S} x={g.barCX - 24 * S} y={y} centerY align="right" colors={[skin.standard.text, skin.standard.text2]} text={String(e.level + 1)} />,
+          );
+        }
         if (members) {
           // one switch for the group: Off or the member that runs
           items.push(
@@ -255,6 +250,44 @@ export function Overview({ skin }: { skin: Skin }) {
   // a build stopped short of 50 can pick up where it left off
   const canContinue = build.endLevel !== undefined && steps.some((s) => s.level > end);
 
+  /**
+   * Origin / Alignment (and Continue Leveling for a build stopped short of 50) centered on cx;
+   * the popout drops from the Origin / Alignment button with the New Build screen's pane at
+   * three-quarter scale.
+   */
+  const topButtons = (cx: number, cy: number, w: number, h: number) => {
+    const oaX = canContinue ? cx - w / 2 - 8 : cx;
+    const PW = 470; // the pane at full size, drawn at POP scale
+    const PH = ORIGIN_PANE_H;
+    const POP = 0.75;
+    return (
+      <>
+        <InfoButton skin={skin} x={oaX} y={cy} w={w} h={h} text="Origin / Alignment" onClick={() => setOaOpen(!oaOpen)} />
+        {canContinue ? <InfoButton skin={skin} x={cx + w / 2 + 8} y={cy} w={w} h={h} text="Continue Leveling" onClick={continueLeveling} /> : null}
+        {oaOpen ? (
+          <>
+            <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOaOpen(false)} />
+            <div className="abs" style={{ left: oaX - (PW * POP) / 2, top: cy + h / 2 + 6, width: PW * POP, height: PH * POP, zIndex: 71 }}>
+              <div className="abs" style={{ left: 0, top: 0, width: PW, height: PH, zoom: POP }}>
+                <MenuFrame x={0} y={0} w={PW} h={PH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+                <OriginAlignPane
+                  skin={skin}
+                  x={0}
+                  y={0}
+                  w={PW}
+                  origin={build.origin}
+                  align={build.alignment}
+                  onOrigin={(id) => setBuild({ ...build, origin: id })}
+                  onAlign={(a) => setBuild({ ...build, alignment: a })}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
+      </>
+    );
+  };
+
   const picker_ = picker ? (
     <EnhancementPicker
       gd={gd}
@@ -278,7 +311,7 @@ export function Overview({ skin }: { skin: Skin }) {
     return (
       <>
         <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
-        <GameText font="title_14" scale={S} x={980} y={118} align="right" colors={skin.heading} text={gd.archetype(build.at).dn.toUpperCase()} />
+        <GameText font="title_14" scale={S} x={980} y={118} align="right" colors={skin.heading} text={who} />
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} />
         <MenuFrame x={P.x} y={P.y} w={P.w} h={ph} skin={skin} />
         {tab < 3 ? (
@@ -289,7 +322,7 @@ export function Overview({ skin }: { skin: Skin }) {
           </GameScroll>
         )}
         {levelStrip(30, P.y + P.h - 130, 25, 34)}
-        {canContinue ? <InfoButton skin={skin} x={500} y={P.y + P.h - 20} w={300} h={44} text="Continue Leveling" onClick={continueLeveling} /> : null}
+        {topButtons(500, P.y + P.h - 20, 300, 44)}
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
@@ -297,13 +330,11 @@ export function Overview({ skin }: { skin: Skin }) {
     );
   }
 
-  // the hover box sits under the hovered bar's slot rings, or above the bar near the bottom
-  const tipBelow = tip ? tip.y + 300 < stage.h - 70 : true;
   return (
     <>
       <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
-      <GameText font="title_14" scale={S} x={vx(1010)} y={vy(38)} align="right" colors={skin.heading} text={gd.archetype(build.at).dn.toUpperCase()} />
-      {canContinue ? <InfoButton skin={skin} x={stage.w / 2} y={vy(22)} w={vx(150)} h={vy(26)} text="Continue Leveling" onClick={continueLeveling} /> : null}
+      <GameText font="title_14" scale={S} x={vx(1010)} y={vy(38)} align="right" colors={skin.heading} text={who} />
+      {topButtons(stage.w / 2, vy(22), vx(150), vy(26))}
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
       {/* level strip: reopen any level's in-game screen (levels after a stop are left off) */}
       {levelStrip(50, 92, 50, 34)}
@@ -315,15 +346,9 @@ export function Overview({ skin }: { skin: Skin }) {
       <GameScroll skin={skin} left={1515} top={TOP + 18} width={444} height={H - 36} barX={1503 + 464}>
         <TotalsPanel gd={gd} t={totals} width={420} />
       </GameScroll>
-      {tip ? (
-        <PowerTip
-          skin={skin}
-          power={tip.power}
-          x={Math.max(60, Math.min(stage.w - TIP_W - 30, tip.x - 140))}
-          y={tipBelow ? tip.y + 80 : tip.y - 30}
-          w={TIP_W}
-          above={!tipBelow}
-        />
+      {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} hint={hint} /> : null}
+      {tip && tipLevel === 'advanced' ? (
+        <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
       ) : null}
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />

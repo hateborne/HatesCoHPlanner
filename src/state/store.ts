@@ -11,6 +11,9 @@ import { levelSteps, type LevelStep } from '../engine/schedule.ts';
 import { decodeShare } from '../io/share.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
+/** Hover tooltips: Enabled (description / slot details; Shift shows Advanced), Advanced, Disabled. */
+export type TipMode = 'enabled' | 'advanced' | 'disabled';
+export const TIP_MODES: TipMode[] = ['enabled', 'advanced', 'disabled'];
 export type LevelSub = 'power' | 'pool' | 'epic' | 'slots';
 
 /** Where the level-up flow is and what the user has chosen but not yet confirmed. */
@@ -35,6 +38,10 @@ interface Store {
   level?: LevelCtx;
   muted: boolean;
   musicOn: boolean; // the login-screen music switch (remembered per browser, on by default)
+  setupAlign: Alignment; // the alignment picked on the setup screen (its skin and backdrop)
+  tips: TipMode; // hover tooltip setting (remembered per browser)
+  shift: boolean; // Shift held: Enabled tooltips show the Advanced view
+  setTips(m: TipMode): void;
   load(): Promise<void>;
   startBuild(args: { name: string; at: number; origin: number; alignment: Alignment; primary: number; secondary: number }): void;
   setBuild(b: Build): void;
@@ -145,6 +152,25 @@ export const useStore = create<Store>((set, get) => ({
   })(),
 
   menuOpen: false,
+  setupAlign: 'Hero',
+  tips: (() => {
+    try {
+      const v = localStorage.getItem('hcp.tooltips') as TipMode | null;
+      return v && TIP_MODES.includes(v) ? v : 'enabled';
+    } catch {
+      return 'enabled';
+    }
+  })(),
+  shift: false,
+
+  setTips(m) {
+    try {
+      localStorage.setItem('hcp.tooltips', m);
+    } catch {
+      /* ignore */
+    }
+    set({ tips: m });
+  },
 
   setMenu(open) {
     set({ menuOpen: open });
@@ -412,6 +438,24 @@ export const useStore = create<Store>((set, get) => ({
     set({ musicOn: on });
   },
 }));
+
+// Shift held anywhere switches Enabled tooltips to their Advanced view
+if (typeof window !== 'undefined') {
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Shift' && useStore.getState().shift !== (e.type === 'keydown')) useStore.setState({ shift: e.type === 'keydown' });
+  };
+  window.addEventListener('keydown', onKey);
+  window.addEventListener('keyup', onKey);
+  window.addEventListener('blur', () => useStore.getState().shift && useStore.setState({ shift: false }));
+}
+
+/** @return Which tooltip a hover shows now: none, the normal one, or the advanced one. */
+export function useTipLevel(): 'off' | 'basic' | 'advanced' {
+  const tips = useStore((s) => s.tips);
+  const shift = useStore((s) => s.shift);
+  if (tips === 'disabled') return 'off';
+  return tips === 'advanced' || shift ? 'advanced' : 'basic';
+}
 
 if (import.meta.env.DEV) {
   const w = window as unknown as { __store: typeof useStore; __autoWizard: () => string };

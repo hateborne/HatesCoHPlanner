@@ -275,3 +275,25 @@ export function powerStrength(
   }
   return { pre, post };
 }
+
+/** @return The power's slot-able enhancement types in the game's order (BoostsAllowed). */
+export function allowedTypes(gd: GameData, p: Power): string[] {
+  const out: string[] = [];
+  for (const v of p.ba ?? []) {
+    const n = v >= 5 ? gd.core.attribNames.Boost[v - 5]?.dn : undefined;
+    if (n && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+/**
+ * @return The categories of the enhancement sets the power accepts: archetype sets first, then
+ *   universal sets, then the rest (the order the game's tooltip lists them in).
+ */
+export function allowedSetCategories(gd: GameData, p: Power): string[] {
+  const seen: string[] = [];
+  for (const s of gd.boostSets) if (s.elig.includes(p.id) && !seen.includes(s.grp)) seen.push(s.grp);
+  const rank = (g: string) => (/archetype/i.test(g) ? 0 : /universal/i.test(g) ? 1 : 2);
+  const rest = seen.filter((g) => rank(g) === 2).reverse();
+  return [...seen.filter((g) => rank(g) === 0), ...seen.filter((g) => rank(g) === 1), ...rest];
+}

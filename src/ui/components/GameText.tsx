@@ -1,6 +1,13 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { FONTS, ITALIC_DEG, tallestGlyph, textWidth, vs, type FontKey } from '../skin/metrics.ts';
+import { FONTS, ITALIC_DEG, snap, tallestGlyph, textWidth, vs, type FontKey } from '../skin/metrics.ts';
 import { useStage } from './Stage.tsx';
+
+/** Eight 1-device-pixel black shadows: the glyph dilated in every direction. */
+function ring(d: number): string {
+  const o: string[] = [];
+  for (const [x, y] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]] as const) o.push(`${x * d}px ${y * d}px 0 #000`);
+  return o.join(', ');
+}
 
 let fontsReady = false;
 const waiters = new Set<() => void>();
@@ -46,11 +53,11 @@ interface GameTextProps {
  * extra advance per glyph and sit 2px higher / 1px right, and color is a top-to-bottom gradient
  * over each glyph's quad (cap top - 3px to baseline - 1px). Those pixels are device pixels.
  *
- * The outline is ttFontBitmapAddOutline's 8-neighbour dilation: an even 1px ring on every side.
- * It is drawn as a black copy of the text stroked 2px wide (1px outside the glyph) under the
- * colored text. Offset drop-shadows can't do it: Chrome truncates a 1-device-pixel offset that
- * lands at 0.99999 after the stage scale, so the right/bottom shadows vanish and only the
- * top/left ones show (the "light from below-right" look).
+ * The outline is ttFontBitmapAddOutline's 8-neighbour dilation: an even, opaque 1px ring on
+ * every side (the reference screenshots measure pure black next to the glyph). It is drawn as a
+ * black copy of the text under the colored text, with eight 1-device-pixel text shadows doing the
+ * dilation. (A centered text stroke left only a faint anti-aliased half-pixel ring, and filter
+ * drop-shadows lose their right/bottom copies when Chrome truncates an offset of 0.99999 px.)
  */
 export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align = 'left', text, z, spacing = 0, style }: GameTextProps) {
   useFontsReady();
@@ -71,8 +78,9 @@ export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align =
     <div
       style={{
         position: 'absolute',
-        left: left + (f.outline ? d : 0),
-        top,
+        // the client blits glyph bitmaps on whole pixels: start the run on a device pixel
+        left: snap(left + (f.outline ? d : 0)),
+        top: snap(top),
         height: lh,
         lineHeight: `${lh}px`,
         fontFamily: f.family,
@@ -87,7 +95,7 @@ export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align =
       }}
     >
       {f.outline ? (
-        <span aria-hidden style={{ ...layer, color: '#000', WebkitTextStroke: `${2 * d}px #000`, opacity: 0.8 }}>
+        <span aria-hidden style={{ ...layer, color: '#000', textShadow: ring(d) }}>
           {text}
         </span>
       ) : null}

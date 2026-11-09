@@ -35,6 +35,9 @@ export interface Totals {
   hpBase: number;
   regenPerSec: number;
   recovPerSec: number;
+  regenPerSecRaw: number; // before the archetype's regeneration cap
+  recovPerSecRaw: number; // before the recovery cap
+  hpRaw: number; // max HP before the HP cap
   endMax: number;
   endUsePerSec: number;
   bonuses: EarnedBonus[];
@@ -262,6 +265,9 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     hpBase,
     regenPerSec: Math.min(regenTotal, regenCap) * baseRegen * (1 / 0.6) * (hpMax / 100),
     recovPerSec: Math.min(recovTotal, recovCap) * baseRecov * (1 / 0.6) * (endMax / 100),
+    regenPerSecRaw: regenTotal * baseRegen * (1 / 0.6) * (hpMax / 100),
+    recovPerSecRaw: recovTotal * baseRecov * (1 / 0.6) * (endMax / 100),
+    hpRaw: hpBase + (lines.get('hp')?.value ?? 0),
     endMax,
     endUsePerSec: endUse,
     bonuses,

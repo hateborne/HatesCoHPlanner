@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
-import type { Archetype, Origin, Powerset } from '../../data/types.ts';
+import type { Archetype, Powerset } from '../../data/types.ts';
 import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
 import { evalRequires } from '../../engine/requires.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
+import { OriginAlignPane, originSounds, SELECT } from '../components/OriginAlign.tsx';
 import { icon, SKINS } from '../skin/skin.ts';
 import { setMusicSkin } from '../sound.ts';
 
@@ -22,12 +23,8 @@ const TOP = 103;
 const H = 759;
 const FRAME_TOP = 58; // the outer frame; the name field sits fully above it
 
-// The character creator's sounds (UI/Hybrid): every bar click plays N_Select (drawHybridBar), an
-// archetype also plays N_Archetype_<class> and an origin N_Origin_<origin>; hovering a bar plays
-// N_MouseEnter and leaving it N_MouseExit.
-const SELECT = ['n_select'];
+// an archetype click also plays N_Archetype_<class> (origin sounds live with OriginAlignPane)
 const atSounds = (a: Archetype) => [...SELECT, `n_archetype_${a.n}`];
-const originSounds = (o: Origin) => [...SELECT, `n_origin_${o.n}`];
 
 /** Playable starting sets of a category (VEAT branches and gated sets are not offered). */
 function startingSets(gd: NonNullable<ReturnType<typeof useStore.getState>['gd']>, cat: string, at: Archetype): Powerset[] {
@@ -60,7 +57,10 @@ export function Setup() {
   const archetype = at !== undefined ? gd?.archetypeById.get(at) : undefined;
   const pris = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.pri, archetype) : []), [gd, archetype]);
   const secs = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.sec, archetype) : []), [gd, archetype]);
-  useEffect(() => setMusicSkin(skinOf(align)), [align]);
+  useEffect(() => {
+    setMusicSkin(skinOf(align));
+    useStore.setState({ setupAlign: align });
+  }, [align]);
   if (!gd) return null;
   const skin = SKINS[skinOf(align)];
   const ready = at !== undefined && pri !== undefined && sec !== undefined && origin !== undefined;
@@ -141,45 +141,10 @@ export function Setup() {
       {COLS.map((c) => (
         <MenuFrame key={c.x} x={c.x} y={TOP} w={c.w} h={H} skin={skin} />
       ))}
-      <SetTitle skin={skin} x={cOrigin.x + 20} y={TOP + 18} text="Origin" />
-      <SetTitle skin={skin} x={cOrigin.x + 20} y={TOP + 345} text="Alignment" />
+      <OriginAlignPane skin={skin} x={cOrigin.x} y={TOP} w={cOrigin.w} origin={origin} align={align} onOrigin={setOrigin} onAlign={setAlign} onDesc={setDesc} />
       <SetTitle skin={skin} x={cAt.x + 20} y={TOP + 18} text="Archetype" />
       <SetTitle skin={skin} x={cPri.x + 20} y={TOP + 18} text="Primary Power Set" />
       <SetTitle skin={skin} x={cSec.x + 20} y={TOP + 18} text="Secondary Power Set" />
-      {gd.core.origins.map((o, i) => (
-        <CheckBar
-          key={o.id}
-          skin={skin}
-          x={cOrigin.x + 60}
-          y={TOP + 95 + i * ROW}
-          wd={cOrigin.w - 100}
-          scale={1}
-          text={o.dn}
-          state={o.id === origin ? 'selected' : 'standard'}
-          down={o.id === origin}
-          icon={icon('origin', o.icon)}
-          clickSounds={originSounds(o)}
-          hoverSounds
-          onClick={() => setOrigin(o.id)}
-          onHover={(on) => setDesc(on ? { text: o.lh || o.sh, icon: icon('origin', o.icon) } : null)}
-        />
-      ))}
-      {ALIGNMENTS.map((a, i) => (
-        <CheckBar
-          key={a}
-          skin={skin}
-          x={cOrigin.x + 60}
-          y={TOP + 420 + i * ROW}
-          wd={cOrigin.w - 100}
-          scale={1}
-          text={a}
-          state={a === align ? 'selected' : 'standard'}
-          down={a === align}
-          clickSounds={SELECT}
-          hoverSounds
-          onClick={() => setAlign(a)}
-        />
-      ))}
       <GameScroll skin={skin} left={cAt.x + 2} top={TOP + 62} width={cAt.w - 4} height={H - 80} barX={cAt.x + cAt.w}>
         <div style={{ position: 'relative', height: gd.core.archetypes.length * ROW + 30 }}>
           {gd.core.archetypes.map((a, i) => (

@@ -3,7 +3,7 @@
  * noted) with sizes from the source: positions in virtual 1024x768 units (vx/vy), sprites and
  * text at the uniform screen scale S.
  */
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FONTS, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
 import { CLR_HIGH, CLR_SHADOW, icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
@@ -28,7 +28,14 @@ export function TitleBar({ skin, text, scale: scaleIn }: { skin: Skin; text: str
   const strwd = textWidth(FONTS.title_18, FONTS.title_18.size * TITLE_SCALE * s, text);
   const wd = strwd + 45 * s;
   const [acwd, setAcwd] = useState(45 * s);
+  // the bar slides open for a new title; a resize (which re-measures the title) just resizes it
+  const opened = useRef<string | null>(null);
   useEffect(() => {
+    if (opened.current === text) {
+      setAcwd(wd);
+      return;
+    }
+    opened.current = text;
     setAcwd(45 * s);
     let w = 45 * s;
     const t = window.setInterval(() => {

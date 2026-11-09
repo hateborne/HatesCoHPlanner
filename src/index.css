@@ -88,8 +88,12 @@ button {
   position: absolute;
   inset: 0;
   color: #000;
-  -webkit-text-stroke: calc(2 * var(--dev-px, 1px)) #000;
-  opacity: 0.8;
+  /* ttFontBitmapAddOutline: the glyph dilated by one screen pixel in all 8 directions, opaque */
+  --o: var(--dev-px, 1px);
+  text-shadow:
+    calc(-1 * var(--o)) 0 #000, var(--o) 0 #000, 0 calc(-1 * var(--o)) #000, 0 var(--o) #000,
+    calc(-1 * var(--o)) calc(-1 * var(--o)) #000, var(--o) calc(-1 * var(--o)) #000,
+    calc(-1 * var(--o)) var(--o) #000, var(--o) var(--o) #000;
   pointer-events: none;
 }
 .title-text .title-t {

@@ -164,7 +164,7 @@ export function CheckBar(props: CheckBarProps) {
       {meat('r', xMid1, xEnd)}
       {noBox ? null : (
         <div className="layer" style={{ left: rx(x), top: ry(y), width: 0, height: 0 }}>
-          <CheckBox skin={skin} isPower={isPower} colors={colors} base={base} sc={lit && !icon ? s : scale} down={!!down} gray={state === 'unselectable'} icon={icon} />
+          <CheckBox skin={skin} isPower={isPower} colors={colors} base={base} sc={lit ? scale + 0.1 : scale} down={!!down} gray={state === 'unselectable'} icon={icon} />
         </div>
       )}
       <div className="layer" style={{ left: -boxLeft, top: -boxTop, width: 0, height: 0 }}>
@@ -180,17 +180,21 @@ function CheckBox({ skin, isPower, colors, base, sc, down, gray, icon }: { skin:
   const praet = skin.name === 'praetorian';
   const sz = 32 * sc;
   const o = -sz / 2;
-  if (icon || isPower) {
+  // an icon is drawn on its own (the bar's bulb frame rings it); only isPower adds the power ring
+  // and hole (drawCheckBox, uiUtilMenu.c:612-645 -- the slot screens pass isPower 0)
+  const iconSprite = icon ? <Sprite src={icon} x={-16 * sc} y={-16 * sc} w={32 * sc} h={32 * sc} z={10} /> : null;
+  if (isPower) {
     const ring = 38 * sc;
     const hole = 64 * sc * 0.5;
     return (
       <>
         <Sprite src={ui(!gray ? 'creation/enhancements/enhnctray_ringhole_highlight' : praet ? 'creation/enhancements/p_enhnctray_ringhole_disable' : 'creation/enhancements/enhnctray_ringhole', praet ? undefined : skin)} x={-hole / 2} y={-hole / 2} w={hole} h={hole} z={6} tint={gray ? 'rgba(204,204,204,1)' : undefined} />
-        {icon ? <Sprite src={icon} x={-16 * sc} y={-16 * sc} w={32 * sc} h={32 * sc} z={10} /> : null}
-        <Sprite src={ui('hud/tray/tray_ring_power', skin)} x={-ring / 2} y={-ring / 2} w={ring} h={ring} z={9} tint={praet && !gray ? 'rgba(255,231,0,1)' : colors.frame} />
+        {iconSprite}
+        <Sprite src={ui('hud/tray/tray_ring_power', skin)} x={-ring / 2} y={-ring / 2} w={ring} h={ring} z={9} tint={praet && !gray ? 'rgba(255,231,0,1)' : base} />
       </>
     );
   }
+  if (icon) return iconSprite;
   // CLR_HIGH_SELECT (a4f042bf) when checked, 0xffffffbf on the Praetorian skin
   const high = down && !gray ? (praet ? 'rgba(255,255,255,0.75)' : 'rgba(164,240,66,0.75)') : colors.highlight;
   return (

@@ -1,9 +1,11 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { Power, Powerset } from '../../data/types.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
-import { previewBuild, useStore } from '../../state/store.ts';
+import { previewBuild, useStore, useTipLevel } from '../../state/store.ts';
+import { SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
+import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { FadingText, InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
+import { FadingText, MenuFrame, NextButton, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
@@ -161,6 +163,11 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const fadeId = useRef(0);
   const [tab, setTab] = useState(0);
   const { phone } = useStage();
+  // hover tooltip: the game's slot details, or the Advanced view (setting or Shift)
+  const mouse = usePointer();
+  const [tip, setTip] = useState<{ entry: BuildEntry; x: number; y: number } | null>(null);
+  const tipLevel = useTipLevel();
+  const hint = useShiftHint();
   const step = level ? steps[level.step] : undefined;
   const preview = useMemo(() => (gd && level ? previewBuild(gd, steps, level) : null), [gd, steps, level]);
   const rules = useMemo(() => (gd && preview ? new BuildRules(gd, preview) : null), [gd, preview]);
@@ -223,7 +230,12 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             icon={icon('powers', e.power.icon || 'power_missing')}
             onClick={() => click(e)}
             onRightClick={() => unclick(e.key)}
-            onHover={(on) => (on ? setHover(e) : undefined)}
+            onHover={(on) => {
+              if (on) {
+                setHover(e);
+                if (!phone) setTip({ entry: e, x: mouse.current.x, y: mouse.current.y });
+              } else setTip((t) => (t?.entry.key === e.key ? null : t));
+            }}
           />,
         );
         // pending slots sit next to the bar (positions 1..k); the owned ones slide right by k
@@ -302,14 +314,22 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         const f = desktopPanel(i).frame;
         return <MenuFrame key={i} x={f.x} y={f.y} w={f.w} h={f.h} skin={skin} />;
       })}
-      <InfoButton skin={skin} x={vx(FRAME_SPACE + FRAME_WIDTH / 2)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" />
-      <InfoButton skin={skin} x={vx(512)} y={vy(SL_FRAME_TOP - 22)} text="Show Detailed Info Here" />
       {/* drawMenuHeader: gamebold_18 white -> 88b6ff centered on (848, 72), a dot 5s outside each end */}
       <GameText font="gamebold_18" scale={S} x={headX} y={headY} centerY align="center" colors={['#ffffff', skin.poolHeader]} text="POOL POWERS" />
       <Sprite src={dot} x={headX - (headW / 2 + 15 * S)} y={headY - 5 * S} w={10 * S} h={10 * S} />
       <Sprite src={dot} x={headX + headW / 2 + 5 * S} y={headY - 5 * S} w={10 * S} h={10 * S} />
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), groups(rules, entries, i), i))}
       <PowInfoBox power={hovered} set={hoveredSet} />
+      {tip && tipLevel !== 'off' ? (
+        <SlotTip
+          gd={gd}
+          power={tip.entry.power}
+          x={tip.x}
+          y={tip.y}
+          hint={tipLevel === 'basic' && hint}
+          advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(preview!.at)} entry={tip.entry} level={L} /> : undefined}
+        />
+      ) : null}
       <SlotsAvailable n={remaining} />
       {noSlotFades}
       <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />

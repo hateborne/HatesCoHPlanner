@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Power } from '../../data/types.ts';
 import { BuildRules, type SetOption } from '../../engine/rules.ts';
 import { currentPick, useStore } from '../../state/store.ts';
-import { DescBox, InfoButton, MenuBar, MenuFrame, NextButton, TitleBar } from '../components/Chrome.tsx';
+import { DescBox, MenuBar, MenuFrame, NextButton, TitleBar } from '../components/Chrome.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
 import { desktopColumn, PowerColumn, type ColumnGeom } from '../components/PowerColumn.tsx';
@@ -90,8 +90,6 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
       {[0, 1, 2].map((i) => (
         <MenuFrame key={i} x={vx(16 + 336 * i)} y={vy(70)} w={vx(320)} h={vy(520)} skin={skin} />
       ))}
-      <InfoButton skin={skin} x={vx(16 + 160)} y={vy(70)} text="Show Detailed Info Here" />
-      <InfoButton skin={skin} x={vx(352 + 160)} y={vy(70)} text="Show Detailed Info Here" />
       <PowerColumn skin={skin} g={desktopColumn(0)} sets={primary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
       <PowerColumn skin={skin} g={desktopColumn(1)} sets={secondary} pending={level.pendingPower} onPick={onPick} onHover={setHover} />
       {newSetBars(vx(1024 - 16 - 160), vy(canPool && canEpic ? 55 : 85), vy(30), vx(320))}

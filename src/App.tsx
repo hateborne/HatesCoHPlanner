@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { skinOf } from './engine/build.ts';
-import { useStore } from './state/store.ts';
+import { TIP_MODES, useStore, type TipMode } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
 import { Stage, useStage } from './ui/components/Stage.tsx';
@@ -29,21 +29,37 @@ function Toggle({ label, on, set, x }: { label: string; on: boolean; set: (v: bo
   );
 }
 
-/** Sound effects and music switches, side by side at the bottom center. */
+const TIP_LABEL: Record<TipMode, string> = { enabled: 'Enabled', advanced: 'Advanced', disabled: 'Disabled' };
+const TIP_HELP: Record<TipMode, string> = {
+  enabled: 'Tooltips: Enabled -- hovering a power shows its description (build screen) or what it can slot (slot screens). Hold SHIFT to see the Advanced tooltip instead. Click to switch to Advanced.',
+  advanced: 'Tooltips: Advanced -- hovering a power shows what it can slot plus its full detailed info. Click to switch to Disabled.',
+  disabled: 'Tooltips: Disabled -- hovering shows nothing. Click to switch to Enabled.',
+};
+
+/** Sound effects, music and tooltip switches, side by side at the bottom center. */
 function AudioToggles() {
-  const { muted, setMuted, musicOn, setMusicOn } = useStore();
+  const { muted, setMuted, musicOn, setMusicOn, tips, setTips } = useStore();
   const stage = useStage();
+  const x0 = stage.w / 2 - (120 + 12 + 120 + 12 + 170) / 2;
   return (
     <>
-      <Toggle label="Sound" on={!muted} set={(v) => setMuted(!v)} x={stage.w / 2 - 126} />
-      <Toggle label="Music" on={musicOn} set={setMusicOn} x={stage.w / 2 + 6} />
+      <Toggle label="Sound" on={!muted} set={(v) => setMuted(!v)} x={x0} />
+      <Toggle label="Music" on={musicOn} set={setMusicOn} x={x0 + 132} />
+      <div
+        className="abs body-text"
+        onClick={() => setTips(TIP_MODES[(TIP_MODES.indexOf(tips) + 1) % TIP_MODES.length]!)}
+        title={TIP_HELP[tips]}
+        style={{ left: x0 + 264, top: stage.h - 54, width: 170, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: tips === 'disabled' ? '#8fa1b8' : '#cfe8ff', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
+      >
+        Tooltips: {TIP_LABEL[tips]}
+      </div>
     </>
   );
 }
 
 /** Top-level router: loading, setup, the level-up screens and the build overview. */
 export function App() {
-  const { view, error, build, level, load, menuOpen, setMenu } = useStore();
+  const { view, error, build, level, load, menuOpen, setMenu, setupAlign } = useStore();
   useEffect(() => {
     void load();
   }, [load]);
@@ -83,7 +99,7 @@ export function App() {
     screen = <Overview skin={skin} />;
   }
   return (
-    <Stage skin={view === 'setup' ? SKINS.hero : skin}>
+    <Stage skin={view === 'setup' ? SKINS[skinOf(setupAlign)] : skin}>
       {screen}
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
       <AudioToggles />
