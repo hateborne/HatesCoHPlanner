@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { fitScale, FONTS, S, snap } from '../skin/metrics.ts';
+import { fitScale, FONTS, getDevPx, S, snap } from '../skin/metrics.ts';
 import { CLR_CBLOW, CLR_CRDS, CLR_SHADOW, ui, type ElemColors, type Skin } from '../skin/skin.ts';
+import { longPress, pressKeys, touchPress } from '../press.ts';
 import { play } from '../sound.ts';
 import { GameText, useFontsReady } from './GameText.tsx';
 import { Sprite } from './Sprite.tsx';
+import { useStage } from './Stage.tsx';
 
 export type BarState = 'standard' | 'selected' | 'unselectable';
 
@@ -18,12 +20,14 @@ interface CheckBarProps {
   down?: boolean; // checked (owned / chosen)
   icon?: string; // power icon in a power ring instead of the check box
   halfText?: boolean; // title_9 label, no fit, no hover growth (uiLevelSpec)
+  hitPad?: number; // extra touch room above and below the bar (stage px), not drawn
   isPower?: boolean; // drawCheckBarEx isPower: a power ring (and hole) in place of the check box
   noBox?: boolean; // no check box: drawMenuBar's rounded left cap, label centered
   clickSounds?: string[]; // played on a click (default: the level-up screens' powerselect2)
   hoverSounds?: boolean; // the character creator's N_MouseEnter / N_MouseExit (drawHybridBar)
   onClick?: () => void;
   onRightClick?: () => void; // planner extra: right-click undoes (e.g. removes a slot placed at this level)
+  onLongPress?: (pt: { x: number; y: number }) => void; // phones: press and hold (window px), in place of hovering
   onHover?: (on: boolean) => void;
   title?: string;
 }
@@ -50,8 +54,9 @@ function brighten(c: string, amt: number): string {
  * meat over the same box, no check box, the label centered.
  */
 export function CheckBar(props: CheckBarProps) {
-  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, isPower, noBox, clickSounds, hoverSounds, onClick, onRightClick, onHover, title } = props;
+  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, hitPad = 0, isPower, noBox, clickSounds, hoverSounds, onClick, onRightClick, onLongPress, onHover, title } = props;
   useFontsReady();
+  const { phone } = useStage();
   const [hover, setHover] = useState(false);
   const selectable = state !== 'unselectable' && !!onClick;
   const chosen = down || state === 'selected';
@@ -85,6 +90,21 @@ export function CheckBar(props: CheckBarProps) {
   // keeps the partly transparent border rows from doubling up in those 2px
   const frameMid0 = noBox ? rx(xL + 22 * s) : rx(x);
   const frameMid1 = frameR0;
+  // Phones: at their zooms Chrome can fit a stretched piece's image a device pixel inside its box,
+  // so pieces that merely abut leave a faint dark 1px line at the joint (which bars show it
+  // depends on the phone and the bar's width). There each meat group runs two texels (at this
+  // scale, on whole device pixels) under the group drawn after it. The frames' soft inner edge
+  // would darken where two frame pieces overlap, so only the middle frame's solid border rows
+  // (the outer two of its three texels, top and bottom) run under the end frames.
+  const ov = phone ? Math.max(2 * getDevPx(), snap(2 * s)) : 0;
+  const band = snap(2 * s);
+  /** The middle frame's top and bottom border rows over [l, r) (a bridge under an end frame). */
+  const frameBridge = (key: string, l: number, r: number) =>
+    [0, fH - band].map((top) => (
+      <div key={`${key}${top}`} className="layer" style={{ left: l, top: fTop + top, width: r - l, height: band, overflow: 'hidden', zIndex: 3 }}>
+        <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}mid${tt}`, skin)} x={0} y={-top} w={r - l} h={fH} tint={colors.frame} />
+      </div>
+    ));
 
   let label = null;
   if (noBox) {
@@ -100,8 +120,12 @@ export function CheckBar(props: CheckBarProps) {
   // a meat group (base, highlight, shadow, Praetorian underlight) between two snapped columns
   const meat = (piece: 'l' | 'mid' | 'r', l: number, r: number) => {
     const h = piece === 'mid' ? 32 * s : 24 * s;
-    const t = ry(y - h / 2);
-    const hh = ry(y + h / 2) - t;
+    // phones: the end caps' meat runs to its box's top and bottom edge, which the browser draws
+    // part see-through, leaving a black sliver under the frame's border where a cap begins; there
+    // the cap meat grows two device px each way, under the frame's border
+    const grow = phone && piece !== 'mid' ? 2 * getDevPx() : 0;
+    const t = ry(y - h / 2) - grow;
+    const hh = ry(y + h / 2) - ry(y - h / 2) + 2 * grow;
     const w = r - l;
     if (w <= 0) return null;
     const uT = piece === 'mid' ? ry(y - 12 * s) - t : 0;
@@ -117,11 +141,19 @@ export function CheckBar(props: CheckBarProps) {
   };
   const fTop = ry(y - 15 * s);
   const fH = ry(y + 15 * s) - fTop;
+  const press = selectable
+    ? () => {
+        for (const snd of clickSounds ?? ['powerselect2']) play(snd);
+        onClick?.();
+      }
+    : undefined;
 
   return (
     <div
       className={`checkbar${selectable ? '' : ' gray'}`}
-      style={{ left: boxLeft, top: boxTop, width: snap(x + wd) - boxLeft, height: snap(y + 19 * s) - boxTop }}
+      style={{ left: boxLeft, top: boxTop - hitPad, width: snap(x + wd) - boxLeft, height: snap(y + 19 * s) - boxTop + 2 * hitPad }}
+      {...pressKeys(press, onRightClick, text)}
+      {...longPress(onLongPress)}
       onMouseEnter={() => {
         setHover(true);
         if (hoverSounds && selectable && !chosen) play('n_mouseenter');
@@ -132,43 +164,41 @@ export function CheckBar(props: CheckBarProps) {
         if (hoverSounds && selectable && !chosen) play('n_mouseexit', { noInterrupt: true });
         onHover?.(false);
       }}
-      onClick={
-        selectable
-          ? () => {
-              for (const snd of clickSounds ?? ['powerselect2']) play(snd);
-              onClick?.();
-            }
-          : undefined
-      }
+      onClick={press}
       onContextMenu={
         onRightClick
           ? (e) => {
               e.preventDefault();
-              onRightClick();
+              // a long touch on Android arrives as a contextmenu: it is not a right-click
+              if (!touchPress()) onRightClick();
             }
           : undefined
       }
       title={title}
     >
-      {noBox ? (
-        <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}l${tt}`, skin)} x={rx(xL)} y={fTop} w={rx(xL + 22 * s) - rx(xL)} h={fH} z={5} tint={colors.frame} />
-      ) : (
-        <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}l_bulb${tt}`, skin)} x={rx(x - 22 * s)} y={ry(y - 19 * s)} w={rx(x + 16 * s) - rx(x - 22 * s)} h={ry(y + 19 * s) - ry(y - 19 * s)} z={5} tint={colors.frame} />
-      )}
-      <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}mid${tt}`, skin)} x={frameMid0} y={fTop} w={frameMid1 - frameMid0} h={fH} z={3} tint={colors.frame} />
-      <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}r${tt}`, skin)} x={frameR0} y={fTop} w={rx(x + wd) - frameR0} h={fH} z={4} tint={colors.frame} />
-      {/* meat: the mid strips and each cap are composited as isolated groups that meet on one
-          snapped column, so the translucent highlight/shadow strips never double up */}
-      {noBox ? meat('l', rx(xL), xMid0) : null}
-      {meat('mid', noBox ? xMid0 : rx(x), xMid1)}
-      {meat('r', xMid1, xEnd)}
-      {noBox ? null : (
-        <div className="layer" style={{ left: rx(x), top: ry(y), width: 0, height: 0 }}>
-          <CheckBox skin={skin} isPower={isPower} colors={colors} base={base} sc={lit ? scale + 0.1 : scale} down={!!down} gray={state === 'unselectable'} icon={icon} />
+      <div className="layer" style={{ left: 0, top: hitPad, width: 0, height: 0 }}>
+        {noBox ? (
+          <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}l${tt}`, skin)} x={rx(xL)} y={fTop} w={rx(xL + 22 * s) - rx(xL)} h={fH} z={5} tint={colors.frame} />
+        ) : (
+          <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}l_bulb${tt}`, skin)} x={rx(x - 22 * s)} y={ry(y - 19 * s)} w={rx(x + 16 * s) - rx(x - 22 * s)} h={ry(y + 19 * s) - ry(y - 19 * s)} z={5} tint={colors.frame} />
+        )}
+        <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}mid${tt}`, skin)} x={frameMid0} y={fTop} w={frameMid1 - frameMid0} h={fH} z={3} tint={colors.frame} />
+        {ov ? frameBridge('br', frameMid1, frameMid1 + ov) : null}
+        {ov && noBox ? frameBridge('bl', frameMid0 - ov, frameMid0) : null}
+        <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}r${tt}`, skin)} x={frameR0} y={fTop} w={rx(x + wd) - frameR0} h={fH} z={4} tint={colors.frame} />
+        {/* meat: the mid strips and each cap are composited as isolated groups that meet on one
+            snapped column, so the translucent highlight/shadow strips never double up */}
+        {noBox ? meat('l', rx(xL), xMid0 + ov) : null}
+        {meat('mid', noBox ? xMid0 : rx(x), xMid1 + ov)}
+        {meat('r', xMid1, xEnd)}
+        {noBox ? null : (
+          <div className="layer" style={{ left: rx(x), top: ry(y), width: 0, height: 0 }}>
+            <CheckBox skin={skin} isPower={isPower} colors={colors} base={base} sc={lit ? scale + 0.1 : scale} down={!!down} gray={state === 'unselectable'} icon={icon} />
+          </div>
+        )}
+        <div className="layer" style={{ left: -boxLeft, top: -boxTop, width: 0, height: 0 }}>
+          {label}
         </div>
-      )}
-      <div className="layer" style={{ left: -boxLeft, top: -boxTop, width: 0, height: 0 }}>
-        {label}
       </div>
     </div>
   );

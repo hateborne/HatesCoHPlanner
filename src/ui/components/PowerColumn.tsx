@@ -62,11 +62,12 @@ interface PowerColumnProps {
   pending?: number;
   onPick?: (p: Power) => void;
   onHover?: (p: Power | null) => void;
+  onLong?: (o: PowerOption, pt: { x: number; y: number }) => void; // phones: a long press (window px)
   flash?: { id: number; key: string; label: string } | null; // a refused pick: that bar flashes `label`
 }
 
 /** One column of the Choose a New Power screen: yellow set headings and their check bars. */
-export function PowerColumn({ skin, g, sets, pending, onPick, onHover, flash }: PowerColumnProps) {
+export function PowerColumn({ skin, g, sets, pending, onPick, onHover, onLong, flash }: PowerColumnProps) {
   const items: ReactElement[] = [];
   let head = g.firstHead;
   let bottom = 0; // content height: last bar's lower edge (9 bars end at 485 of the 486 view)
@@ -89,6 +90,7 @@ export function PowerColumn({ skin, g, sets, pending, onPick, onHover, flash }: 
           down={down}
           title={o.reason}
           onClick={o.state === 'available' && onPick ? () => onPick(o.power) : undefined}
+          onLongPress={onLong ? (pt) => onLong(o, pt) : undefined}
           onHover={(on) => onHover?.(on ? o.power : null)}
         />,
       );

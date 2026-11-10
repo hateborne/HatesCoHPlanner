@@ -20,9 +20,10 @@ const CHARITIES = [
 export function SupportDialog({ skin, onClose }: { skin: Skin; onClose: () => void }) {
   useEscape(onClose);
   const stage = useStage();
-  const px = FONTS.smf_12.size * S * (stage.phone ? 1.5 : 1.15);
-  const w = stage.phone ? 900 : 760;
-  const h = Math.round(px * 9.4 + 100); // title, intro and four links, then the Close button
+  const px = stage.phone ? 19 : FONTS.smf_12.size * S * 1.15;
+  const w = stage.phone ? stage.w - 24 : 760;
+  // title, intro and four links, then the Close button
+  const h = Math.round(px * 9.4 + (stage.phone ? 120 : 100));
   const x = (stage.w - w) / 2;
   const y = (stage.h - h) / 2;
   return (
@@ -43,7 +44,7 @@ export function SupportDialog({ skin, onClose }: { skin: Skin; onClose: () => vo
             ))}
           </ul>
         </div>
-        <button className="info-button" style={{ left: w / 2, top: h - 40, transform: 'translate(-50%, -50%)', zIndex: 6 }} onClick={onClose}>
+        <button className="info-button" style={{ left: w / 2, top: h - (stage.phone ? 48 : 40), transform: 'translate(-50%, -50%)', zIndex: 6 }} onClick={onClose}>
           Close
         </button>
       </div>

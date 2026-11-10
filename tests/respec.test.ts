@@ -182,18 +182,38 @@ describe('the respec wizard', () => {
     expect(new BuildRules(gd, { ...b, respecTo: undefined }).issues().some((i) => i.message === 'Slot is below the power level')).toBe(true);
   });
 
-  it('reopening slots on a finished respec opens its one slot screen', () => {
+  it('reopening a slot level on a finished respec shows just that level, its slots free to go on any power', () => {
     const flow = useStore.getState().level!.flow!;
     const powers = flow.filter((s) => s.picks.length).reduce((n, s) => n + s.picks.length, 0);
     for (let i = 0; i < powers; i++) pickAndNext();
     while (useStore.getState().view === 'level') slotAndNext();
-    useStore.getState().editSlots(gd.core.schedule.slot[0]!);
+    const done = useStore.getState().build!;
+    const lvl = gd.core.schedule.slot[0]!;
+    const atLvl = new BuildRules(gd, done).slotsGranted(lvl);
+    useStore.getState().editSlots(lvl);
     const l = useStore.getState().level!;
     expect(l.mode).toBe('edit');
-    expect(l.flow).toBeDefined();
-    expect(l.pendingSlots).toHaveLength(SLOTS); // every (empty) slot can move
-    useStore.getState().backLevel(); // Cancel restores the build
+    expect(l.flow).toBeUndefined(); // the leveling slot screen for that one level
+    expect(l.pendingSlots).toHaveLength(atLvl); // only the slots booked at that level
+    // move one to the last power, taken long after that level
+    useStore.getState().removePendingSlot(0);
+    const last = gd.core.schedule.power.length - 1;
+    const rules = new BuildRules(gd, previewBuild(gd, steps, useStore.getState().level!));
+    const lastEntry = rules.entries().find((x) => x.key === `pick:${last}`)!;
+    expect(lastEntry.level).toBeGreaterThan(lvl);
+    const before = lastEntry.slots.length;
+    if (before < 6) {
+      expect(rules.slotBlock(lastEntry, lvl)).toBeNull();
+      useStore.getState().addPendingSlot(lastEntry.key);
+    }
+    useStore.getState().finishLevel();
+    const after = useStore.getState().build!;
     expect(useStore.getState().view).toBe('overview');
+    expect(new BuildRules(gd, after).issues()).toEqual([]);
+    const atLvlOnLast = (b: typeof done) => b.picks[last]!.slots.filter((sl, i) => i > 0 && sl.level === lvl).length;
+    if (before < 6) expect(atLvlOnLast(after)).toBe(atLvlOnLast(done) + 1);
+    // a leveling build still can't put a level-3 slot on a power it doesn't own yet
+    expect(new BuildRules(gd, { ...after, respecTo: undefined }).slotBlock(lastEntry, lvl)).toBe('Not owned yet');
   });
 
   it('reopening slots with an enhancement placed keeps every slot level within what it grants', () => {

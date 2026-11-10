@@ -14,9 +14,17 @@ export interface HoverState {
   ringTip: { entry: BuildEntry; slot: number; x: number; y: number } | null; // filled slot ring under the pointer
   blink: number | null; // 0-based level whose orb blinks (the hovered pick or slot was taken then)
   orb: number | null; // 0-based level of the hovered orb (lights that level's pick / slots)
+  press: PressTip | null; // phones: what a long press is showing (they have no hover)
 }
 
-const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null };
+/**
+ * Phones: the tooltip a long press opened, at the press point (window px). A power shows its
+ * description, slot details and detailed numbers (with any rule it breaks); a filled slot its
+ * enhancement; anything else its help text.
+ */
+export type PressTip = { x: number; y: number } & ({ kind: 'power'; entry: BuildEntry; notes: string[] } | { kind: 'enh'; entry: BuildEntry; slot: number } | { kind: 'text'; text: string });
+
+const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null, press: null };
 
 export const useHover = create<HoverState>(() => EMPTY);
 

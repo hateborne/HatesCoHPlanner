@@ -389,6 +389,26 @@ button {
   pointer-events: none;
 }
 
+/* phones: a refused change drops in as a toast under the title bar, stays, then fades */
+@keyframes toastdrop {
+  0% {
+    opacity: 0;
+    transform: translateY(-40px);
+  }
+  8%,
+  85% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+.phone-toast {
+  animation: toastdrop 3.2s ease-out forwards;
+}
+
 /* a power bar refusing a change while it holds enhancements: three quick red flashes */
 @keyframes lockflash {
   0%,
@@ -415,4 +435,87 @@ button {
 }
 .support-link:hover {
   color: #d6f0ff;
+}
+
+/* ---- phones --------------------------------------------------------------------------------- */
+
+/* a long press shows a tooltip on phones: no text selection or callout menu in its place */
+.stage.phone {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+/* text fields at 16+ screen px (--input-px), so iOS does not zoom in when one is tapped */
+.stage.phone input,
+.stage.phone textarea,
+.stage.phone select {
+  font-size: max(20px, var(--input-px)) !important;
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* planner buttons big enough for a finger */
+.stage.phone .info-button {
+  height: 56px;
+  border-radius: 28px;
+  font-size: 20px;
+  padding: 0 18px;
+}
+
+/* keyboard focus on the game chrome (mouse clicks show nothing) */
+.stage [tabindex]:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* a phone held sideways: covers the planner until it is turned upright */
+.rotate-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 24px;
+  background: #000;
+  text-align: center;
+}
+.rotate-phone {
+  width: 34px;
+  height: 58px;
+  border: 3px solid #4f94ff;
+  border-radius: 7px;
+  box-shadow: 0 0 10px #1f6dff;
+  animation: rotatephone 2.4s ease-in-out infinite;
+}
+@keyframes rotatephone {
+  0%,
+  30% {
+    transform: rotate(-90deg);
+  }
+  60%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+.rotate-title {
+  font-family: 'ParagonCity', sans-serif;
+  font-style: italic;
+  font-size: 22px;
+  color: #ffd200;
+  text-shadow: 1px 1px 0 #000;
+}
+.rotate-text {
+  font-family: 'Montreal', Verdana, sans-serif;
+  font-size: 16px;
+  color: #cfe8ff;
+}
+
+/* phones: a tab that just became available (the first pool pick) blinks green twice */
+.unlock-flash {
+  animation: lockflash 0.45s ease-in-out 2 forwards;
+  background: rgba(60, 255, 90, 0.45);
+  box-shadow: 0 0 10px 3px rgba(60, 255, 90, 0.75);
+  pointer-events: none;
 }

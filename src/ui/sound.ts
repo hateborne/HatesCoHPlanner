@@ -69,7 +69,9 @@ function syncMusic(): void {
       a.volume = MUSIC_VOLUME;
       tracks.set(wanted, a);
     }
-    void a.play().catch(() => undefined);
+    void a.play().catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === 'NotAllowedError') relock();
+    });
   } catch {
     /* audio unavailable */
   }
@@ -85,17 +87,34 @@ export function setMusicSkin(skin: SkinName | null): void {
   syncMusic();
 }
 
-// Browsers only start audio after a user gesture, so the music begins on the first click / key.
+// Browsers only start audio inside a user gesture, so the music begins on the first one. Phones
+// do not count a touch's pointerdown as one (only its pointerup / touchend / click), so starting
+// on pointerdown left them silent until the Music switch was flipped.
+const GESTURES = ['pointerup', 'touchend', 'click', 'keydown'] as const;
+
+function listenForGesture(on: boolean): void {
+  for (const g of GESTURES) {
+    if (on) window.addEventListener(g, unlock, true);
+    else window.removeEventListener(g, unlock, true);
+  }
+}
+
+function unlock(): void {
+  if (unlocked) return;
+  unlocked = true;
+  listenForGesture(false);
+  syncMusic();
+}
+
+/** The browser refused to start the music (no gesture yet): wait for the next one. */
+function relock(): void {
+  if (!unlocked) return;
+  unlocked = false;
+  listenForGesture(true);
+}
+
 if (typeof window !== 'undefined') {
-  const unlock = () => {
-    if (unlocked) return;
-    unlocked = true;
-    window.removeEventListener('pointerdown', unlock, true);
-    window.removeEventListener('keydown', unlock, true);
-    syncMusic();
-  };
-  window.addEventListener('pointerdown', unlock, true);
-  window.addEventListener('keydown', unlock, true);
+  listenForGesture(true);
   useStore.subscribe((s, prev) => {
     if (s.musicOn !== prev.musicOn) syncMusic();
   });

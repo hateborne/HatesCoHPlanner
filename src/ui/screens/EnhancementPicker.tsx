@@ -6,7 +6,9 @@ import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, isLe
 import type { BuildEntry } from '../../engine/rules.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
+import { PHONE_TAB_ROW, phoneTabRows, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
+import { pressKeys } from '../press.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { TitleText } from '../components/GameText.tsx';
 import { TotalsRow } from '../components/TotalsPanel.tsx';
@@ -86,7 +88,8 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
   const lastTab = !current && last && byTab.has(last.tab) ? last.tab : null;
   const firstTab = (current ? tabOf(enhKind(gd, gd.power(current.boost))) : lastTab) ?? TABS.find((t) => byTab.has(t)) ?? 'Training';
   const [tab, setTab] = useState<Tab>(firstTab);
-  const { phone } = useStage();
+  const stage = useStage();
+  const { phone } = stage;
   const [sel, setSel] = useState<SlottedEnh | undefined>(current);
   const selBoost = sel ? gd.powerById.get(sel.boost) : undefined;
   const at = gd.archetype(atId);
@@ -171,14 +174,15 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
           <div
             key={b.id}
             onClick={() => pickBoost(b)}
+            {...pressKeys(() => pickBoost(b), undefined, own || b.dn)}
             title={gameText(b.sh)}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '4px 10px', borderRadius: 10, border: `2px solid ${on ? '#00d919' : 'transparent'}`, background: on ? 'rgba(0,217,25,0.15)' : 'transparent' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: phone ? '6px 8px' : '4px 10px', borderRadius: 10, border: `2px solid ${on ? '#00d919' : 'transparent'}`, background: on ? 'rgba(0,217,25,0.15)' : 'transparent' }}
           >
             {/* its own box: EnhIcon centers itself with auto margins, which a flex row would stretch */}
             <div style={{ flexShrink: 0 }}>
-              <EnhIcon gd={gd} b={b} size={phone ? 64 : 52} />
+              <EnhIcon gd={gd} b={b} size={52} />
             </div>
-            <div className="body-text" style={{ fontSize: phone ? 22 : 16, color: '#cfe8ff', lineHeight: 1.2 }}>
+            <div className="body-text" style={{ fontSize: phone ? 19 : 16, color: '#cfe8ff', lineHeight: 1.2 }}>
               {own || b.dn}
             </div>
           </div>
@@ -187,9 +191,22 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     </div>
   );
 
-  // Desktop: list beside details. Phone: list above details on the portrait canvas.
+  // Desktop: list beside details. Phone: the whole screen, tabs in rows, the list above the details.
+  const tabList = TABS.filter((t) => byTab.has(t));
+  const phoneG = () => {
+    const W = stage.w;
+    const bottom = stage.h - 36; // clear of the not-affiliated line
+    const tabsY = 82;
+    const listY = tabsY + (phoneTabRows(tabList.length) - 1) * PHONE_TAB_ROW + PHONE_TAB_ROW / 2 + 8;
+    const btnY = bottom - 14 - 56;
+    const room = btnY - 8 - listY;
+    const listH = Math.round(room * 0.55);
+    const detY = listY + listH + 8;
+    const detH = btnY - 10 - detY;
+    return { frame: [6, 6, W - 12, bottom - 6], title: [18, 18], tab: [0, tabsY, 0, 0], list: [16, listY, W - 32, listH], det: [10, detY, W - 20, detH], detIn: [22, detY + 10, W - 44], btnY, btnW: Math.min(140, (W - 60) / 3) };
+  };
   const G = phone
-    ? { frame: [20, 90, 960, 1610], title: [40, 105], tab: [50, 195, 188, 140], list: [40, 240, 920, 800], det: [20, 1060, 960, 520], detIn: [40, 1075, 920], btnY: 1625, btnW: 200 }
+    ? phoneG()
     : { frame: [200, 90, 1600, 940], title: [240, 110], tab: [265, 190, 300, 240], list: [230, 230, 1100, 690], det: [1350, 230, 420, 690], detIn: [1370, 245, 380], btnY: 940, btnW: 116 };
   const [fx, fy, fw, fh] = G.frame as [number, number, number, number];
   const [tx0, ty, tstep, twd] = G.tab as [number, number, number, number];
@@ -201,15 +218,17 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
         <MenuFrame x={fx} y={fy} w={fw} h={fh} r25 style={{ background: 'rgba(0,0,20,0.94)' }} />
-        <SetTitle x={G.title[0]!} y={G.title[1]!} size={phone ? 28 : 34} width={fw - 60} text={`${entry.power.dn} -- slot ${slot + 1}`} />
-        {TABS.filter((t) => byTab.has(t)).map((t, i) => (
-          <CheckBar key={t} skin={skin} x={tx0 + i * tstep} y={ty} wd={twd} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />
-        ))}
+        <SetTitle x={G.title[0]!} y={G.title[1]!} size={phone ? 24 : 34} width={fw - 60} text={`${entry.power.dn} -- slot ${slot + 1}`} />
+        {phone ? (
+          <PhoneTabs skin={skin} labels={tabList} active={tabList.indexOf(tab)} onChange={(i) => setTab(tabList[i]!)} y={ty} x={16} width={fw - 20} clickSounds={['powerselect2']} />
+        ) : (
+          tabList.map((t, i) => <CheckBar key={t} skin={skin} x={tx0 + i * tstep} y={ty} wd={twd} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />)
+        )}
         <div className={tab === 'Sets' ? 'abs' : 'abs scroll-y'} style={{ left: lx, top: ly, width: lw, height: lh }}>
           {tab === 'Sets' ? (
             // the set names and the chosen set's pieces scroll separately
             <div style={{ display: 'flex', gap: 16, flexDirection: phone ? 'column' : 'row', height: '100%' }}>
-              <div className="scroll-y" style={phone ? { maxHeight: 330, flexShrink: 0 } : { width: 430, height: '100%' }}>
+              <div className="scroll-y" style={phone ? { maxHeight: Math.round(lh * 0.45), flexShrink: 0 } : { width: 430, height: '100%' }}>
                 {sets.map((s, i) => (
                   <div key={s.id}>
                     {i === 0 || sets[i - 1]!.grp !== s.grp ? (
@@ -219,8 +238,9 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                     ) : null}
                     <div
                       onClick={() => setSetId(s.id)}
+                      {...pressKeys(() => setSetId(s.id), undefined, s.dn)}
                       className="body-text"
-                      style={{ cursor: 'pointer', padding: '3px 8px', borderRadius: 8, color: s.id === setId ? '#88ffaa' : '#cfe8ff', background: s.id === setId ? 'rgba(0,217,25,0.18)' : 'transparent', fontSize: 16 }}
+                      style={{ cursor: 'pointer', padding: phone ? '12px 8px' : '3px 8px', borderRadius: 8, color: s.id === setId ? '#88ffaa' : '#cfe8ff', background: s.id === setId ? 'rgba(0,217,25,0.18)' : 'transparent', fontSize: phone ? 19 : 16 }}
                     >
                       {s.dn} <span style={{ color: '#8fa1b8', fontSize: 13 }}>({s.minL}-{s.maxL})</span>
                     </div>
@@ -237,10 +257,10 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
         </div>
         {/* selection details and controls */}
         <MenuFrame x={dx} y={dy} w={dw} h={dh} />
-        <div className="abs body-text scroll-y" style={{ left: ix, top: iy, width: iw, height: dh - 30, fontSize: phone ? 22 : 16, color: '#cfe8ff' }}>
+        <div className="abs body-text scroll-y" style={{ left: ix, top: iy, width: iw, height: dh - (phone ? 20 : 30), fontSize: phone ? 19 : 16, color: '#cfe8ff' }}>
           {selBoost ? (
             <>
-              <EnhIcon gd={gd} b={selBoost} size={80} />
+              <EnhIcon gd={gd} b={selBoost} size={phone ? 64 : 80} />
               <TitleText style={{ fontSize: 20, whiteSpace: 'normal' }}>
                 {selBoost.dn}
               </TitleText>
@@ -267,7 +287,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') commitLevel();
                       }}
-                      style={{ width: 70, background: '#000', color: '#fff', border: '1px solid #4f94ff' }}
+                      style={{ width: phone ? 90 : 70, height: phone ? 44 : undefined, background: '#000', color: '#fff', border: '1px solid #4f94ff' }}
                     />
                   </label>
                 ) : selBoost.bup ? (
@@ -275,7 +295,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                 ) : (
                   <label>
                     Relative level{' '}
-                    <select value={sel?.rel ?? 0} onChange={(e) => setSel({ ...sel!, rel: Number(e.target.value) })} style={{ background: '#000', color: '#fff' }}>
+                    <select value={sel?.rel ?? 0} onChange={(e) => setSel({ ...sel!, rel: Number(e.target.value) })} style={{ height: phone ? 44 : undefined, background: '#000', color: '#fff' }}>
                       {[3, 2, 1, 0, -1, -2, -3].map((r) => (
                         <option key={r} value={r}>
                           {r > 0 ? `+${r}` : r}
@@ -285,14 +305,14 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                   </label>
                 )}
                 {attunedAlt !== undefined ? (
-                  <label>
-                    <input type="checkbox" checked={!!selBoost.bup} onChange={() => pickBoost(gd.power(attunedAlt))} /> Attuned
+                  <label style={phone ? { display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44 } : undefined}>
+                    <input type="checkbox" checked={!!selBoost.bup} onChange={() => pickBoost(gd.power(attunedAlt))} style={phone ? { width: 28, height: 28, margin: 0 } : undefined} /> Attuned
                   </label>
                 ) : null}
                 {selBoost.bb ? (
                   <label>
                     Boosters{' '}
-                    <select value={sel?.boosters ?? 0} onChange={(e) => setSel({ ...sel!, boosters: Number(e.target.value) })} style={{ background: '#000', color: '#fff' }}>
+                    <select value={sel?.boosters ?? 0} onChange={(e) => setSel({ ...sel!, boosters: Number(e.target.value) })} style={{ height: phone ? 44 : undefined, background: '#000', color: '#fff' }}>
                       {[0, 1, 2, 3, 4, 5].map((r) => (
                         <option key={r} value={r}>
                           +{r}

@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { skinOf } from './engine/build.ts';
-import { TIP_MODES, useStore, type TipMode } from './state/store.ts';
+import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
 import { ConfirmDialog } from './ui/components/ConfirmDialog.tsx';
-import { SupportDialog } from './ui/components/SupportDialog.tsx';
+import { MenuFrame } from './ui/components/Chrome.tsx';
+import { phoneGeom } from './ui/components/Phone.tsx';
+import { Settings } from './ui/components/Settings.tsx';
 import { Stage, useStage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
 import { BuildMenu } from './ui/screens/BuildMenu.tsx';
@@ -16,71 +19,55 @@ import { SKINS, type Skin } from './ui/skin/skin.ts';
 import { setMusicSkin } from './ui/sound.ts';
 import { TitleText } from './ui/components/GameText.tsx';
 
-/** A remembered on/off switch in the stage's bottom bar (sound effects, music). */
-function Toggle({ label, on, set, x }: { label: string; on: boolean; set: (v: boolean) => void; x: number }) {
+/**
+ * A refused change ("Remove enhancements first"). Desktop: small red text at the bottom center
+ * that fades after ~2s, kept clear of each screen's own bottom elements (Slots Available, the help
+ * box). Phones: a toast that drops in under the title bar (PhoneToast).
+ */
+function Notice({ skin }: { skin: Skin }) {
+  const { notice, view, level, dismissNotice } = useStore(useShallow((s) => ({ notice: s.notice, view: s.view, level: s.level, dismissNotice: s.dismissNotice })));
   const stage = useStage();
+  if (!notice) return null;
+  if (stage.phone) return <PhoneToast key={notice.id} skin={skin} text={notice.text} onClose={dismissNotice} />;
+  const y = view === 'level' && level?.sub === 'slots' ? 985 : 1050;
   return (
-    <div
-      className="abs body-text"
-      onClick={() => set(!on)}
-      title={on ? `${label} is on (click to turn off)` : `${label} is off (click to turn on)`}
-      style={{ left: x, top: stage.h - 54, width: 120, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: on ? '#cfe8ff' : '#8fa1b8', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
-    >
-      {label}: {on ? 'on' : 'off'}
+    <div key={notice.id} className="abs body-text notice-msg" style={{ left: 0, width: stage.w, top: y, textAlign: 'center', fontSize: 15, color: '#ff5a5a', zIndex: 80 }}>
+      {notice.text}
     </div>
   );
 }
 
-const TIP_LABEL: Record<TipMode, string> = { enabled: 'Enabled', advanced: 'Advanced', disabled: 'Disabled' };
-const TIP_HELP: Record<TipMode, string> = {
-  enabled: 'Tooltips: Enabled -- hovering a power shows its description (build screen) or what it can slot (slot screens). Hold SHIFT to see the Advanced tooltip instead. Click to switch to Advanced.',
-  advanced: 'Tooltips: Advanced -- hovering a power shows what it can slot plus its full detailed info. Click to switch to Disabled.',
-  disabled: 'Tooltips: Disabled -- hovering shows nothing. Click to switch to Enabled.',
-};
-
-/** Sound, music and tooltip switches and the Support button, side by side at the bottom center. */
-function BottomBar({ skin }: { skin: Skin }) {
-  const { muted, setMuted, musicOn, setMusicOn, tips, setTips } = useStore();
-  const [support, setSupport] = useState(false);
-  const stage = useStage();
-  const x0 = stage.w / 2 - (120 + 12 + 120 + 12 + 170 + 12 + 200) / 2;
-  return (
-    <>
-      <Toggle label="Sound" on={!muted} set={(v) => setMuted(!v)} x={x0} />
-      <Toggle label="Music" on={musicOn} set={setMusicOn} x={x0 + 132} />
-      <div
-        className="abs body-text"
-        onClick={() => setTips(TIP_MODES[(TIP_MODES.indexOf(tips) + 1) % TIP_MODES.length]!)}
-        title={TIP_HELP[tips]}
-        style={{ left: x0 + 264, top: stage.h - 54, width: 170, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: tips === 'disabled' ? '#8fa1b8' : '#cfe8ff', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
-      >
-        Tooltips: {TIP_LABEL[tips]}
-      </div>
-      <div
-        className="abs body-text"
-        onClick={() => setSupport(true)}
-        title="How to support the planner"
-        style={{ left: x0 + 446, top: stage.h - 54, width: 200, height: 24, borderRadius: 12, border: '1px solid #4f94ff', fontSize: 13, color: '#cfe8ff', textAlign: 'center', lineHeight: '22px', cursor: 'pointer', background: '#000', zIndex: 40 }}
-      >
-        Support HateCoHPlanner
-      </div>
-      {support ? <SupportDialog skin={skin} onClose={() => setSupport(false)} /> : null}
-    </>
-  );
-}
+// the toast's widest (stage px), and its text size: about 16 px on the phone's screen
+const TOAST_MAX_W = 460;
+const TOAST_PX = 20;
 
 /**
- * A refused change ("Remove enhancements first"): small red text at the bottom center that fades
- * after ~2s, kept clear of each screen's own bottom elements (Slots Available, the help box).
+ * Phones: a refused change as a toast at the top center, framed like the power hover box with the
+ * red refusal text. It slides down over the tabs (and any pop-up), stays ~3s and fades; a tap
+ * dismisses it early.
  */
-function Notice() {
-  const { notice, view, level } = useStore();
+function PhoneToast({ skin, text, onClose }: { skin: Skin; text: string; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  // the frame is drawn from sprites at a fixed size: measure the text first
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setBox({ w: el.offsetWidth, h: el.offsetHeight });
+  }, [text]);
   const stage = useStage();
-  if (!notice) return null;
-  const y = stage.phone ? stage.h - 84 : view === 'level' && level?.sub === 'slots' ? 985 : 1050;
+  const px = TOAST_PX;
+  const maxW = Math.min(TOAST_MAX_W, stage.w - 30);
+  const w = box?.w ?? maxW;
   return (
-    <div key={notice.id} className="abs body-text notice-msg" style={{ left: 0, width: stage.w, top: y, textAlign: 'center', fontSize: 15, color: '#ff5a5a', zIndex: 80 }}>
-      {notice.text}
+    <div className="abs phone-toast" role="status" onClick={onClose} style={{ left: (stage.w - w) / 2, top: phoneGeom(stage).line + 8, width: w, height: box?.h ?? 0, zIndex: 110, cursor: 'pointer' }}>
+      {box ? <MenuFrame x={0} y={0} w={box.w} h={box.h} skin={skin} style={{ background: '#000314' }} /> : null}
+      <div
+        ref={ref}
+        className="abs body-text"
+        style={{ left: 0, top: 0, width: 'max-content', maxWidth: maxW, padding: `${Math.round(px * 0.7)}px ${Math.round(px * 1.2)}px`, boxSizing: 'border-box', textAlign: 'center', fontSize: px, lineHeight: `${Math.round(px * 1.25)}px`, color: '#ff5a5a', zIndex: 5, visibility: box ? 'visible' : 'hidden' }}
+      >
+        {text}
+      </div>
     </div>
   );
 }
@@ -97,6 +84,7 @@ export function App() {
     if (view !== 'setup') setMusicSkin(view === 'loading' || view === 'error' ? null : skin.name);
   }, [view, skin.name]);
 
+  const stageSkin = view === 'setup' ? SKINS[skinOf(setupAlign)] : skin;
   let screen = null;
   if (view === 'loading') {
     screen = (
@@ -127,15 +115,23 @@ export function App() {
     screen = <Overview skin={skin} />;
   }
   return (
-    <Stage skin={view === 'setup' ? SKINS[skinOf(setupAlign)] : skin}>
+    <Stage skin={stageSkin}>
       {screen}
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
-      <Notice />
+      <Notice skin={stageSkin} />
       <ConfirmDialog />
-      <BottomBar skin={view === 'setup' ? SKINS[skinOf(setupAlign)] : skin} />
-      <div className="abs notice" style={{ left: 0, right: 0, bottom: 4, textAlign: 'center', fontSize: 12, opacity: 0.6 }}>
-        Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.
-      </div>
+      <Settings skin={stageSkin} />
+      <Footer />
     </Stage>
+  );
+}
+
+/** The not-affiliated line along the bottom edge (two lines on a phone). */
+function Footer() {
+  const { phone } = useStage();
+  return (
+    <div className="abs notice" style={{ left: 10, right: 10, bottom: phone ? 3 : 4, textAlign: 'center', fontSize: phone ? 10.5 : 12, lineHeight: phone ? '12px' : undefined, opacity: 0.6 }}>
+      Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.
+    </div>
   );
 }

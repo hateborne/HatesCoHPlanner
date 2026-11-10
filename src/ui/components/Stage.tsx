@@ -1,39 +1,33 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { setDevPx } from '../skin/metrics.ts';
 import { ui, type Skin } from '../skin/skin.ts';
+import { DESKTOP, stageLayout, type StageDims } from '../stageLayout.ts';
 
-/** Desktop stage: the game's 16:9 screen. Phone stage: a portrait canvas, one panel at a time. */
-export const DESKTOP = { w: 2000, h: 1125, phone: false };
-export const PHONE = { w: 1000, h: 1780, phone: true };
-export const PHONE_BREAKPOINT = 768;
+export { DESKTOP, PHONE_BREAKPOINT, type StageDims } from '../stageLayout.ts';
 
-export type StageDims = typeof DESKTOP;
-export type StageInfo = StageDims & { devPx: number }; // devPx: stage px per device pixel
+// devPx: stage px per device pixel; scale: CSS zoom from stage px to window px
+export type StageInfo = StageDims & { devPx: number; scale: number };
 
-const StageCtx = createContext<StageInfo>({ ...DESKTOP, devPx: 1 });
+const StageCtx = createContext<StageInfo>({ ...DESKTOP, devPx: 1, scale: 1 });
 
-/** @return The current stage size, whether the phone layout is active, and stage px per device px. */
+/** @return The current stage size, whether the phone layout is active, and its scale. */
 export function useStage(): StageInfo {
   return useContext(StageCtx);
 }
 
-function pick(): StageDims {
-  return window.innerWidth < PHONE_BREAKPOINT ? PHONE : DESKTOP;
-}
-
 /**
- * @return Current layout dims, the scale that fits them into the window, and the stage's
- *   top-left corner in CSS px, rounded to a device pixel so snapped stage coordinates land on
- *   whole device pixels.
+ * @return Current layout dims, the scale that fits them into the window, the stage's top-left
+ *   corner in CSS px (rounded to a device pixel so snapped stage coordinates land on whole device
+ *   pixels), and whether a sideways phone should be asked to turn upright.
  */
-export function useStageScale(): { dims: StageDims; scale: number; left: number; top: number } {
+export function useStageScale(): { dims: StageDims; scale: number; left: number; top: number; rotate: boolean } {
   const calc = () => {
-    const dims = pick();
-    const scale = Math.min(window.innerWidth / dims.w, window.innerHeight / dims.h);
+    const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    const { dims, scale, rotate } = stageLayout(window.innerWidth, window.innerHeight, touch);
     const dpr = window.devicePixelRatio || 1;
     const left = Math.round(((window.innerWidth - dims.w * scale) / 2) * dpr) / dpr;
     const top = Math.round(((window.innerHeight - dims.h * scale) / 2) * dpr) / dpr;
-    return { dims, scale, left, top };
+    return { dims, scale, left, top, rotate };
   };
   const [s, setS] = useState(calc);
   useEffect(() => {
@@ -44,17 +38,29 @@ export function useStageScale(): { dims: StageDims; scale: number; left: number;
   return s;
 }
 
+/** A phone held sideways: the planner is laid out for portrait, so ask for the phone to be turned. */
+function RotatePrompt() {
+  return (
+    <div className="rotate-prompt" role="alert">
+      <div className="rotate-phone" aria-hidden="true" />
+      <div className="rotate-title">TURN YOUR PHONE UPRIGHT</div>
+      <div className="rotate-text">The planner is laid out for a phone held upright.</div>
+    </div>
+  );
+}
+
 /**
  * The fixed game screen scaled to the window, with the city skyline backdrop
- * (drawBackground: background_skyline_normal, per skin). Narrow windows get the portrait
- * phone canvas instead.
+ * (drawBackground: background_skyline_normal, per skin). Narrow and portrait windows get the
+ * phone canvas instead (stageLayout), and a phone held sideways is asked to turn upright; the
+ * stage stays mounted under that message, so nothing on it is lost.
  */
 export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
-  const { dims, scale, left, top } = useStageScale();
+  const { dims, scale, left, top, rotate } = useStageScale();
   const bg = ui(`creation/common/backgrounds/background_skyline_normal`, skin);
   const devPx = 1 / (scale * (window.devicePixelRatio || 1));
   setDevPx(devPx);
-  const info = useMemo(() => ({ ...dims, devPx }), [dims, devPx]);
+  const info = useMemo(() => ({ ...dims, devPx, scale }), [dims, devPx, scale]);
   return (
     <StageCtx.Provider value={info}>
       <div className="viewport">
@@ -84,6 +90,8 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
               backgroundPosition: dims.phone ? 'center bottom' : '0 0',
               backgroundSize: dims.phone ? 'cover' : '100% 100%',
               ['--dev-px' as string]: `${devPx}px`,
+              // text fields at 16+ window px, so iOS does not zoom the page when one is tapped
+              ['--input-px' as string]: `${Math.ceil(16.5 / scale)}px`,
               ['--menu-border' as string]: skin.menuBorder,
               ['--title-top' as string]: skin.title[0],
               ['--title-bottom' as string]: skin.title[1],
@@ -93,6 +101,7 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
           </div>
         </div>
       </div>
+      {rotate ? <RotatePrompt /> : null}
     </StageCtx.Provider>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
-import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
+import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
 import type { Archetype, Powerset } from '../../data/types.ts';
 import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
@@ -72,7 +72,8 @@ export function Setup() {
   const [buildType, setBuildType] = useState<BuildType>(build?.respecTo !== undefined ? 'respec' : 'leveling');
   const [respecTo, setRespecTo] = useState(String((build?.respecTo ?? 49) + 1)); // typed text, 1-based
   const [tab, setTab] = useState(0);
-  const { phone } = useStage();
+  const stage = useStage();
+  const { phone } = stage;
   const archetype = at !== undefined ? gd?.archetypeById.get(at) : undefined;
   const pris = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.pri, archetype) : []), [gd, archetype]);
   const secs = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.sec, archetype) : []), [gd, archetype]);
@@ -167,47 +168,76 @@ export function Setup() {
   const nameStyle = { background: '#000', border: '2px solid #4f94ff', borderRadius: 22, color: '#fff', fontSize: 22, padding: '0 20px', boxSizing: 'border-box' as const };
 
   if (phone) {
-    const P = PHONE_PANEL;
+    const pg = phoneGeom(stage, false);
+    const half = (pg.w - 3 * PHONE_PAD) / 2;
+    // under the title: the name, then the version and Saved / Import, two rows of tabs, the panel
+    // and the description
+    const nameY = pg.line + 10;
+    const rowY = nameY + 58;
+    const tabsY = rowY + 56 + 8 + PHONE_TAB_ROW / 2;
+    const descBox = phoneDesc(pg);
+    const top = tabsY + PHONE_TAB_ROW + PHONE_TAB_ROW / 2 + 4;
+    const P = { x: PHONE_PAD, y: top, w: pg.w - 2 * PHONE_PAD, h: descBox.y - 8 - top };
     const R = 64;
+    const BX = 52; // bars' check-box center
+    const BW = P.w - 86;
     const bars: ReactElement[] = [];
+    let end = 0; // content height
     if (tab === 0) {
-      gd.core.origins.forEach((o, i) =>
-        bars.push(<CheckBar key={o.id} skin={skin} x={70} y={50 + i * R} wd={P.w - 130} text={o.dn} state={o.id === origin ? 'selected' : 'standard'} down={o.id === origin} icon={icon('origin', o.icon)} clickSounds={originSounds(o)} hoverSounds onClick={() => { setOrigin(o.id); setDesc({ text: o.lh || o.sh, icon: icon('origin', o.icon) }); }} />),
-      );
-      ALIGNMENTS.forEach((a, i) =>
-        bars.push(<CheckBar key={a} skin={skin} x={70} y={420 + i * R} wd={P.w - 130} text={a} state={a === align ? 'selected' : 'standard'} down={a === align} clickSounds={SELECT} hoverSounds onClick={() => setAlign(a)} />),
-      );
-      bars.push(...typeBars(70, 640, R, P.w - 130));
-      const field = levelField(40, 780, 26);
-      if (field) bars.push(<div key="respec-level">{field}</div>);
+      // Origin, Alignment and Build Type, each under its heading
+      let y = 12;
+      const heading = (text: string) => {
+        bars.push(<SetTitle key={`h-${text}`} skin={skin} x={18} y={y} text={text} />);
+        y += 56;
+      };
+      heading('Origin');
+      gd.core.origins.forEach((o) => {
+        bars.push(<CheckBar key={o.id} skin={skin} x={BX} y={y} wd={BW} text={o.dn} state={o.id === origin ? 'selected' : 'standard'} down={o.id === origin} icon={icon('origin', o.icon)} clickSounds={originSounds(o)} hoverSounds onClick={() => { setOrigin(o.id); setDesc({ text: o.lh || o.sh, icon: icon('origin', o.icon) }); }} />);
+        y += R;
+      });
+      heading('Alignment');
+      ALIGNMENTS.forEach((a) => {
+        bars.push(<CheckBar key={a} skin={skin} x={BX} y={y} wd={BW} text={a} state={a === align ? 'selected' : 'standard'} down={a === align} clickSounds={SELECT} hoverSounds onClick={() => setAlign(a)} />);
+        y += R;
+      });
+      heading('Build Type');
+      bars.push(...typeBars(BX, y, R, BW));
+      y += 2 * R - 10;
+      const field = levelField(24, y, 22);
+      if (field) {
+        bars.push(<div key="respec-level">{field}</div>);
+        y += 50;
+      }
+      end = y;
     } else if (tab === 1) {
       gd.core.archetypes.forEach((a, i) =>
         bars.push(
-          <CheckBar key={a.id} skin={skin} x={70} y={50 + i * R} wd={P.w - 130} text={a.dn} state={a.id === at ? 'selected' : 'standard'} down={a.id === at} icon={icon('at', a.icon)} clickSounds={atSounds(a)} hoverSounds onClick={() => { pickAt(a); setDesc({ text: a.lh || a.sh, icon: icon('at', a.icon) }); }} />,
+          <CheckBar key={a.id} skin={skin} x={BX} y={44 + i * R} wd={BW} text={a.dn} state={a.id === at ? 'selected' : 'standard'} down={a.id === at} icon={icon('at', a.icon)} clickSounds={atSounds(a)} hoverSounds onClick={() => { pickAt(a); setDesc({ text: a.lh || a.sh, icon: icon('at', a.icon) }); }} />,
         ),
       );
+      end = 44 + gd.core.archetypes.length * R;
     } else {
       const list = tab === 2 ? pris : secs;
       const val = tab === 2 ? pri : sec;
       const setv = tab === 2 ? setPri : setSec;
-      if (!list.length) bars.push(<div key="x" className="desc-text abs" style={{ left: 30, top: 30, fontSize: 26 }}>Choose an archetype first.</div>);
+      if (!list.length) bars.push(<div key="x" className="desc-text abs" style={{ left: 20, top: 20, fontSize: 20 }}>Choose an archetype first.</div>);
       list.forEach((s, i) =>
-        bars.push(<CheckBar key={s.id} skin={skin} x={70} y={50 + i * R} wd={P.w - 130} noBox text={s.dn} state={s.id === val ? 'selected' : 'standard'} down={s.id === val} clickSounds={SELECT} hoverSounds onClick={() => { setv(s.id); setDesc({ text: s.lh || s.sh }); }} />),
+        bars.push(<CheckBar key={s.id} skin={skin} x={BX} y={44 + i * R} wd={BW} noBox text={s.dn} state={s.id === val ? 'selected' : 'standard'} down={s.id === val} clickSounds={SELECT} hoverSounds onClick={() => { setv(s.id); setDesc({ text: s.lh || s.sh }); }} />),
       );
+      end = 44 + Math.max(1, list.length) * R;
     }
-    const count = tab === 1 ? gd.core.archetypes.length : tab === 0 ? 13 : Math.max(1, (tab === 2 ? pris : secs).length);
     return (
       <>
         <TitleBar skin={skin} text="CREATE A BUILD" />
-        <input className="abs body-text" value={name} maxLength={40} placeholder="Build name" onChange={(e) => setName(e.target.value)} style={{ ...nameStyle, left: 30, top: 104, width: 380, height: 44 }} />
-        {versionPicker({ left: 425, top: 104, width: 230, height: 44 })}
-        <button className="info-button" style={{ left: 820, top: 126, transform: 'translate(-50%, -50%)' }} onClick={() => useStore.getState().setMenu(true)}>
+        <input className="abs body-text" value={name} maxLength={40} placeholder="Build name" onChange={(e) => setName(e.target.value)} style={{ ...nameStyle, left: PHONE_PAD, top: nameY, width: pg.w - 2 * PHONE_PAD, height: 50 }} />
+        {versionPicker({ left: PHONE_PAD, top: rowY + 3, width: half, height: 50 })}
+        <button className="info-button" style={{ left: 2 * PHONE_PAD + half, top: rowY, width: half }} onClick={() => useStore.getState().setMenu(true)}>
           Saved / Import
         </button>
-        <PhoneTabs skin={skin} labels={['Origin', 'Archetype', 'Primary', 'Secondary']} active={tab} onChange={setTab} y={187} clickSounds={SELECT} />
-        <MenuFrame x={P.x} y={P.y + 30} w={P.w} h={P.h - 30} skin={skin} />
-        <GameScroll skin={skin} left={P.x + 4} top={P.y + 50} width={P.w - 8} height={P.h - 70} barX={P.x + P.w}>
-          <div style={{ position: 'relative', height: count * R + 60 }}>{bars}</div>
+        <PhoneTabs skin={skin} labels={['Origin', 'Archetype', 'Primary', 'Secondary']} active={tab} onChange={setTab} y={tabsY} clickSounds={SELECT} />
+        <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h} skin={skin} />
+        <GameScroll skin={skin} left={P.x + 4} top={P.y + 8} width={P.w - 8} height={P.h - 16} barX={P.x + P.w}>
+          <div style={{ position: 'relative', height: end + 20 }}>{bars}</div>
         </GameScroll>
         <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an origin and alignment, an archetype and its primary and secondary sets, then Finish.'} />
         <NextButton skin={skin} dir="left" text="Back" locked={!build} onClick={toOverview} />
