@@ -196,7 +196,15 @@ read the store with narrow selectors (`useShallow`) and call its actions.
 
 **Stage.** Every screen draws on a fixed stage scaled to the window with CSS zoom:
 
-- Desktop is 2000x1125. Phones (narrower than 768px) get a 1000x1780 one-panel-at-a-time layout.
+- Desktop is 2000x1125, for landscape windows at least 768px wide.
+- Narrower or portrait windows (phones, upright tablets) get a one-panel-at-a-time phone layout.
+  Its stage is 667 wide and shaped like the window, at least 1067 tall (`src/ui/stageLayout.ts`):
+  1.5x the size of the original 1000-wide phone canvas, so the game's bars are about 33px on a
+  phone. Phone screens lay out from
+  `src/ui/components/Phone.tsx` (`phoneGeom`, `phonePanel`, `phoneDesc`, `PhoneTabs`).
+- A touch screen held sideways and shorter than 500px shows a "turn your phone upright" message.
+- Phones have no hover: a long press (`longPress` in `src/ui/press.ts`) shows the tooltip
+  instead. Clickable chrome takes `pressKeys` for keyboard access.
 - Positions come from the client's virtual 1024x768 layout through `vx` / `vy` / `vs` in
   `src/ui/skin/metrics.ts`. Comments cite the client source each number comes from (for example
   `uiLevelPower.c`, `uiLevelSpec.c`, `uiPowers.c`).

@@ -4,27 +4,35 @@
  * text at the uniform screen scale S.
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { FONTS, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
+import { FONTS, getDevPx, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
 import { CLR_HIGH, CLR_SHADOW, icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
+import { longPress, pressKeys, touchPress } from '../press.ts';
 import { play } from '../sound.ts';
 import { GameText, useFontsReady } from './GameText.tsx';
-import { PHONE_DESC, PHONE_NEXT_Y } from './Phone.tsx';
+import { PHONE_NEXT_SCALE, PHONE_NEXT_X, phoneDesc, phoneGeom } from './Phone.tsx';
 import { Sprite } from './Sprite.tsx';
 import { smf } from '../smf.tsx';
 import { useStage } from './Stage.tsx';
 
 const TITLE_SCALE = 1.5;
+// phones: the title bar ends this far from the right edge, clear of the menu button
+const PHONE_TITLE_END = 72;
 
 /**
  * drawMenuTitle(10*sx, 30*sy, s): glowing dot, black bar with pipes and right cap that slides
  * open by 30s per frame, and the title_18 x 1.5 title starting on top of the dot.
+ *
+ * @param props.reserve Phones: stage px kept free at the right besides the menu button (the
+ *   overview's level-log button).
  */
-export function TitleBar({ skin, text, scale: scaleIn }: { skin: Skin; text: string; scale?: number }) {
+export function TitleBar({ skin, text, scale: scaleIn, reserve = 0 }: { skin: Skin; text: string; scale?: number; reserve?: number }) {
   useFontsReady();
   const stage = useStage();
-  const s = scaleIn ?? (stage.phone ? S * 0.8 : S);
-  const x = stage.phone ? 14 : vx(10);
-  const y = stage.phone ? 44 : vy(30);
+  const x = stage.phone ? 10 : vx(10);
+  // phones: shrunk to end before the menu button at the top right (and `reserve` more stage px)
+  const fitPhone = () => (stage.w - PHONE_TITLE_END - reserve - x) / (textWidth(FONTS.title_18, FONTS.title_18.size * TITLE_SCALE, text) + 45);
+  const s = scaleIn ?? (stage.phone ? Math.min(S * 0.8, fitPhone()) : S);
+  const y = stage.phone ? phoneGeom(stage).titleY : vy(30);
   const strwd = textWidth(FONTS.title_18, FONTS.title_18.size * TITLE_SCALE * s, text);
   const wd = strwd + 45 * s;
   const [acwd, setAcwd] = useState(45 * s);
@@ -110,9 +118,9 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
   useFontsReady();
   const [hover, setHover] = useState(false);
   const stage = useStage();
-  const s = scaleIn ?? S;
-  const y = yIn ?? (stage.phone ? PHONE_NEXT_Y : vy(740));
-  const x = dir === 'left' ? (stage.phone ? 60 : vx(40)) : stage.phone ? stage.w - 60 : vx(980);
+  const s = scaleIn ?? (stage.phone ? PHONE_NEXT_SCALE : S);
+  const y = yIn ?? (stage.phone ? phoneGeom(stage).nextY : vy(740));
+  const x = dir === 'left' ? (stage.phone ? PHONE_NEXT_X : vx(40)) : stage.phone ? stage.w - PHONE_NEXT_X : vx(980);
   const d = dir === 'left' ? 'l' : 'r';
   const l = locked ? 'locked_' : '';
   const nb = 'creation/common/nextbuttons';
@@ -131,20 +139,23 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
   const arrow = 64 * arrowSc;
   const boxL = dir === 'left' ? x - 32 * s : x - 216 * s;
   const glowTint = skin.name === 'hero' ? 'rgb(122,255,116)' : 'rgb(255,255,122)';
+  // phones: the glow kit joined into one image, so the pulsing glow has no joints to seam
+  const glowMid = Math.max(0, Math.round((wdText - 20 * s) / s));
+  const strip = useGlowStrip(stage.phone && glow && !locked ? glowMid : -1, skin.name === 'hero' ? [122, 255, 116] : [255, 255, 122]);
+  const press = locked
+    ? undefined
+    : () => {
+        play(dir === 'left' ? 'back' : 'next');
+        onClick?.();
+      };
   return (
     <div
       className="abs"
       style={{ left: boxL, top: y - 32 * s, width: 248 * s, height: 64 * s, cursor: locked ? 'default' : 'pointer', zIndex: 20 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={
-        locked
-          ? undefined
-          : () => {
-              play(dir === 'left' ? 'back' : 'next');
-              onClick?.();
-            }
-      }
+      onClick={press}
+      {...pressKeys(press, undefined, text)}
     >
       <div className="abs" style={{ left: -boxL, top: -(y - 32 * s), width: 0, height: 0 }}>
         {dir === 'left' ? (
@@ -160,9 +171,15 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
               // one group whose alpha pulses 170 +/- 30 (timer += TIMESTEP * .1, a 2.09s sine);
               // the three pieces only fade, they never scale, so their joins stay closed
               <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 1, animation: 'glowpulse 2.094s linear infinite' }}>
+                {strip ? (
+                  <Sprite src={strip} x={x - (wdText + (20 + 32) * s)} y={y - 28 * s} w={(70 + glowMid) * s} h={56 * s} />
+                ) : (
+                  <>
                 <Sprite src={ui(`${nb}/next_glowkit_l`)} x={x - (wdText + (20 + 32) * s)} y={y - 28 * s} w={35 * s} h={56 * s} tint={glowTint} />
                 <Sprite src={ui(`${nb}/next_glowkit_mid`)} x={x + 35 * s - (wdText + (20 + 32) * s)} y={y - 28 * s} w={Math.max(0, wdText - 20 * s)} h={56 * s} tint={glowTint} />
                 <Sprite src={ui(`${nb}/next_glowkit_r`)} x={x + 35 * s - (32 + 40) * s} y={y - 28 * s} w={35 * s} h={56 * s} tint={glowTint} />
+                  </>
+                )}
               </div>
             ) : null}
           </>
@@ -176,6 +193,84 @@ export function NextButton({ skin, dir, text, locked, glow, onClick, y: yIn, sca
       </div>
     </div>
   );
+}
+
+// joined glow strips: (middle texels, tint) -> object URL, or the pending build
+const glowStrips = new Map<string, string>();
+const glowPending = new Map<string, Promise<void>>();
+
+/** @return A UI texture loaded as an image (null when it can't load). */
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/**
+ * Join the Next button's glow kit (35-texel left end, the 2-texel middle stretched to `mid`
+ * texels, 35-texel right end) into one texture, tinted like display_sprite (rgb x tint / 255).
+ *
+ * @param mid The middle's width in texels.
+ * @param tint The glow color.
+ */
+function buildGlowStrip(mid: number, tint: readonly [number, number, number]): Promise<void> {
+  const key = `${mid}|${tint.join(',')}`;
+  let p = glowPending.get(key);
+  if (p) return p;
+  const nb = 'creation/common/nextbuttons';
+  p = Promise.all(['l', 'mid', 'r'].map((part) => loadImage(ui(`${nb}/next_glowkit_${part}`)))).then(([l, m, r]) => {
+    if (!l || !m || !r) return;
+    const c = document.createElement('canvas');
+    c.width = 70 + mid;
+    c.height = 56;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(l, 0, 0, 35, 56);
+    if (mid > 0) ctx.drawImage(m, 35, 0, mid, 56);
+    ctx.drawImage(r, 35 + mid, 0, 35, 56);
+    const d = ctx.getImageData(0, 0, c.width, c.height);
+    for (let i = 0; i < d.data.length; i += 4) {
+      d.data[i] = (d.data[i]! * tint[0]) / 255;
+      d.data[i + 1] = (d.data[i + 1]! * tint[1]) / 255;
+      d.data[i + 2] = (d.data[i + 2]! * tint[2]) / 255;
+    }
+    ctx.putImageData(d, 0, 0);
+    return new Promise<void>((done) =>
+      c.toBlob((blob) => {
+        if (blob) glowStrips.set(key, URL.createObjectURL(blob));
+        done();
+      }),
+    );
+  });
+  glowPending.set(key, p);
+  return p;
+}
+
+/**
+ * @param mid The glow's middle width in texels, or -1 for no joined strip (desktop, no glow).
+ * @param tint The glow color.
+ * @return The joined glow texture once built (the caller re-renders when it arrives).
+ */
+function useGlowStrip(mid: number, tint: readonly [number, number, number]): string | undefined {
+  const key = mid >= 0 ? `${mid}|${tint.join(',')}` : '';
+  const ready = key ? glowStrips.get(key) : undefined;
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!key || ready) return;
+    let alive = true;
+    void buildGlowStrip(mid, tint).then(() => {
+      if (alive) force((n) => n + 1);
+    });
+    return () => {
+      alive = false;
+    };
+    // mid and tint are folded into key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, ready]);
+  return ready;
 }
 
 /** brightenColor (uiUtilMenu.c) on an rgba() string. */
@@ -219,10 +314,27 @@ export function MenuBar({ skin, x, y, wd: wdIn, sc: scIn = S, text, onClick, onH
   const f1 = rx(x + wd / 2 - 22 * sc);
   const W = right - left;
   const fH = ry(y + 15 * sc);
+  const press = () => {
+    play('powerselect2');
+    onClick?.();
+  };
+  // phones, as CheckBar: each meat group runs under the next, the cap meat grows two device px
+  // top and bottom (under the frame's border), and the end frames' border rows run under the
+  // middle frame, so no joint shows a dark line or sliver
+  const phone = useStage().phone;
+  const ov = phone ? Math.max(2 * getDevPx(), snap(2 * sc)) : 0;
+  const band = snap(2 * sc);
+  const frameBridge = (key: string, l: number, r: number) =>
+    [0, fH - band].map((t) => (
+      <div key={`${key}${t}`} className="abs" style={{ left: l, top: t, width: r - l, height: band, overflow: 'hidden', zIndex: 5 }}>
+        <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_mid${tt}`, skin)} x={0} y={-t} w={r - l} h={fH} tint="#ffffff" />
+      </div>
+    ));
   const meat = (piece: 'l' | 'mid' | 'r', l: number, r: number) => {
     const h = piece === 'mid' ? 32 * sc : 24 * sc;
-    const t = ry(y - h / 2);
-    const hh = ry(y + h / 2) - t;
+    const grow = phone && piece !== 'mid' ? 2 * getDevPx() : 0;
+    const t = ry(y - h / 2) - grow;
+    const hh = ry(y + h / 2) - ry(y - h / 2) + 2 * grow;
     const uT = piece === 'mid' ? ry(y - 12 * sc) - t : 0;
     const uH = piece === 'mid' ? ry(y + 12 * sc) - ry(y - 12 * sc) : hh;
     return (
@@ -248,15 +360,15 @@ export function MenuBar({ skin, x, y, wd: wdIn, sc: scIn = S, text, onClick, onH
       }}
       onMouseDown={() => setDown(true)}
       onMouseUp={() => setDown(false)}
-      onClick={() => {
-        play('powerselect2');
-        onClick?.();
-      }}
+      onClick={press}
+      {...pressKeys(press, undefined, text)}
       style={{ left, top, width: W, height: fH, cursor: 'pointer', zIndex: 12 }}
     >
-      {meat('l', 0, m0)}
-      {meat('mid', m0, m1)}
+      {meat('l', 0, m0 + ov)}
+      {meat('mid', m0, m1 + ov)}
       {meat('r', m1, W)}
+      {ov ? frameBridge('bl', f0, f0 + ov) : null}
+      {ov ? frameBridge('br', f1 - ov, f1) : null}
       <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_l${tt}`, skin)} x={0} y={0} w={f0} h={fH} z={5} tint="#ffffff" />
       <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_mid${tt}`, skin)} x={f0} y={0} w={f1 - f0} h={fH} z={6} tint="#ffffff" />
       <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_r${tt}`, skin)} x={f1} y={0} w={W - f1} h={fH} z={5} tint="#ffffff" />
@@ -315,6 +427,7 @@ export function InfoButton({ x, y, text, onClick, disabled, skin, w = vx(120), h
       onMouseDown={() => setDown(true)}
       onMouseUp={() => setDown(false)}
       onClick={disabled ? undefined : onClick}
+      {...pressKeys(disabled ? undefined : onClick, undefined, text)}
       style={{ left: x - wd / 2, top: y - ht / 2, width: wd, height: ht, cursor: disabled || !onClick ? 'default' : 'pointer', zIndex: 12 }}
     >
       {piece('l', 0, cap)}
@@ -345,23 +458,25 @@ export function gameText(s: string | undefined): string {
  */
 export function DescBox(props: { x?: number; y?: number; w?: number; h?: number; iconSrc?: string; text?: string; color?: string; textScale?: number; skin?: Skin }) {
   const stage = useStage();
-  const d = stage.phone ? PHONE_DESC : { x: vx(85), y: vy(600), w: vx(865), h: vy(90) };
+  const d = stage.phone ? phoneDesc(phoneGeom(stage)) : { x: vx(85), y: vy(600), w: vx(865), h: vy(90) };
   const { x = d.x, y = d.y, w = d.w, h = d.h, iconSrc, text, textScale = 1, skin } = props;
   const color = props.color ?? skin?.desc ?? '#48ff48';
   const px = FONTS.smf_12.size * S * textScale;
-  const ring = 72 * S;
+  // phones: a smaller ring, so it fits in the margin it straddles
+  const k = stage.phone ? 0.7 : 1;
+  const ring = 72 * S * k;
   return (
     <>
       <MenuFrame x={x} y={y} w={w} h={h} skin={skin} />
       <Sprite src={ui(`creation/powers/powers_description_iconring`, skin)} x={x - ring / 2} y={y + h / 2 - ring / 2} w={ring} h={ring} z={3} />
-      {iconSrc ? <Sprite src={iconSrc} x={x - 16 * S} y={y + h / 2 - 16 * S} w={32 * S} h={32 * S} z={4} /> : null}
+      {iconSrc ? <Sprite src={iconSrc} x={x - 16 * S * k} y={y + h / 2 - 16 * S * k} w={32 * S * k} h={32 * S * k} z={4} /> : null}
       <div
         className="abs scroll-y"
         style={{
-          left: stage.phone ? x + 60 : vx(125),
-          top: stage.phone ? y + 15 : vy(615) - px * 0.15,
-          width: stage.phone ? w - 75 : vx(815),
-          height: stage.phone ? h - 25 : y + h - vy(615),
+          left: stage.phone ? x + ring / 2 + 8 : vx(125),
+          top: stage.phone ? y + 10 : vy(615) - px * 0.15,
+          width: stage.phone ? w - ring / 2 - 20 : vx(815),
+          height: stage.phone ? h - 20 : y + h - vy(615),
           color,
           fontFamily: "'Montreal'",
           fontSize: px,
@@ -478,8 +593,21 @@ export function RespecCounter({ lines, done, x = vx(412), y = vy(691), w = vx(20
   );
 }
 
-/** An enhancement slot ring, empty or holding an enhancement icon (half-scale tray ring). */
-export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, onClick, onRightClick, onHover, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; onClick?: () => void; onRightClick?: () => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin }) {
+// EnhncTray_Ring is 70 px across; a slotted piece is drawn at 1.1x the ring's scale
+// (drawMenuEnhancement, uiCombineSpec.c)
+const RING_PX = 70;
+const PIECE_SCALE = 1.1;
+
+/**
+ * An enhancement slot: the tray ring over its hole while empty; a slotted piece is drawn in its
+ * place, not inside it.
+ *
+ * As drawMenuEnhancement does: no ring under a piece, and the piece at 1.1x the ring's scale, so
+ * an IO's 64 px frame reaches just past where the ring's edge would be.
+ */
+export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, onClick, onRightClick, onLongPress, onHover, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; onClick?: () => void; onRightClick?: () => void; onLongPress?: (pt: { x: number; y: number }) => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin }) {
+  const k = (size / RING_PX) * PIECE_SCALE; // stage px per texture px of the piece
+  const c = size / 2;
   return (
     <div
       className="abs"
@@ -492,28 +620,29 @@ export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, o
           ? (e) => {
               e.preventDefault();
               e.stopPropagation();
-              onRightClick();
+              // a long touch on Android arrives as a contextmenu: it is not a right-click
+              if (!touchPress()) onRightClick();
             }
           : undefined
       }
+      {...pressKeys(onClick, onRightClick, title ?? 'Enhancement slot')}
+      {...longPress(onLongPress)}
       style={{ left: x - size / 2, top: y - size / 2, width: size, height: size, cursor: onClick ? 'pointer' : 'default', zIndex: 8, animation: pending ? 'slotflash 0.6s ease-out' : undefined }}
     >
-      <Sprite src={ui('creation/enhancements/enhnctray_ringhole', skin)} x={size * 0.04} y={size * 0.04} w={size * 0.92} h={size * 0.92} z={0} />
       {enhIcon ? (
         <>
-          {/* drawEnhancementOriginLevelEx: frame halves, then the type disc (pog), then the icon --
-              origin / training / attuned frames are solid behind their ring */}
-          {frames ? (
-            <>
-              {frames[0] ? <Sprite src={iconUrl('enh', frames[0])} x={0} y={0} w={size / 2} h={size} z={1} /> : null}
-              {frames[1] ? <Sprite src={iconUrl('enh', frames[1])} x={size / 2} y={0} w={size / 2} h={size} z={1} /> : null}
-            </>
-          ) : null}
-          {pog ? <Sprite src={iconUrl('enh', pog)} x={size * (0.5 - 24 / 64)} y={size * (0.5 - 24 / 64)} w={(size * 48) / 64} h={(size * 48) / 64} z={2} /> : null}
-          <Sprite src={enhIcon} x={size * (0.5 - 23 / 64)} y={size * (0.5 - 23 / 64)} w={(size * 46) / 64} h={(size * 46) / 64} z={3} />
+          {/* drawEnhancementOriginLevelEx: frame halves (32 x 64 each), then the type disc (48), then the icon (46) */}
+          {frames?.[0] ? <Sprite src={iconUrl('enh', frames[0])} x={c - 32 * k} y={c - 32 * k} w={32 * k} h={64 * k} z={1} /> : null}
+          {frames?.[1] ? <Sprite src={iconUrl('enh', frames[1])} x={c} y={c - 32 * k} w={32 * k} h={64 * k} z={1} /> : null}
+          {pog ? <Sprite src={iconUrl('enh', pog)} x={c - 24 * k} y={c - 24 * k} w={48 * k} h={48 * k} z={2} /> : null}
+          <Sprite src={enhIcon} x={c - 23 * k} y={c - 23 * k} w={46 * k} h={46 * k} z={3} />
         </>
-      ) : null}
-      <Sprite src={ui(pending ? 'creation/enhancements/enhnctray_ring_highlight' : 'creation/enhancements/enhnctray_ring', skin)} x={0} y={0} w={size} h={size} z={4} />
+      ) : (
+        <>
+          <Sprite src={ui('creation/enhancements/enhnctray_ringhole', skin)} x={size * 0.04} y={size * 0.04} w={size * 0.92} h={size * 0.92} z={0} />
+          <Sprite src={ui(pending ? 'creation/enhancements/enhnctray_ring_highlight' : 'creation/enhancements/enhnctray_ring', skin)} x={0} y={0} w={size} h={size} z={4} />
+        </>
+      )}
     </div>
   );
 }

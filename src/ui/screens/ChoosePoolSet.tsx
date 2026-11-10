@@ -10,7 +10,9 @@ import { DescBox, InfoButton, MenuFrame, NextButton, SetFrame, TitleBar } from '
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { S, vx, vy } from '../skin/metrics.ts';
-import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
+import { PHONE_DESC_H, phoneGeom, phonePanel, PhoneTabs } from '../components/Phone.tsx';
+import { PhoneTipLayer } from '../components/PhoneTip.tsx';
+import { PickTip, pressPickTip } from '../components/PickTip.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { icon, type Skin } from '../skin/skin.ts';
 
@@ -41,7 +43,8 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
   const [setId, setSetId] = useState<number | undefined>(level?.pendingSet);
   const [power, setPower] = useState<number | undefined>(level?.pendingSet !== undefined ? level.pendingPower : undefined);
   const [tab, setTab] = useState(level?.pendingSet !== undefined ? 1 : 0);
-  const { phone } = useStage();
+  const stage = useStage();
+  const { phone } = stage;
   if (!gd || !level || !rules) return null;
 
   const choices = rules.newSetChoices(kind, pick);
@@ -83,24 +86,27 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         icon={o.power.id === power ? icon('powers', o.power.icon || 'power_missing') : undefined}
         title={o.reason}
         onClick={o.state === 'available' ? () => setPower(o.power.id === power ? undefined : o.power.id) : undefined}
+        onLongPress={phone ? (pt) => pressPickTip(rules, o.power, pick, pt, o.state === 'available' ? undefined : o.reason) : undefined}
         onHover={(on) => useHover.setState({ desc: on ? { p: o.power } : null })}
       />
     ));
 
   if (phone) {
-    const P = PHONE_PANEL;
+    const pg = phoneGeom(stage, false);
+    const P = phonePanel(pg, 2, PHONE_DESC_H + 8);
     const n = tab === 0 ? choices.length : powers.length;
     return (
       <>
         <TitleBar skin={skin} text={kind === 'pool' ? 'CHOOSE A POOL POWER SET' : 'CHOOSE AN EPIC POWER SET'} />
-        <PhoneTabs skin={skin} labels={[kind === 'pool' ? '1. Pool set' : '1. Epic set', '2. Power']} active={tab} onChange={setTab} />
+        <PhoneTabs skin={skin} labels={[kind === 'pool' ? '1. Pool set' : '1. Epic set', '2. Power']} active={tab} onChange={setTab} y={pg.tabsY} />
         <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h} skin={skin} />
-        <GameScroll skin={skin} left={P.x + 4} top={P.y + 20} width={P.w - 8} height={P.h - 40} barX={P.x + P.w}>
-          <div style={{ position: 'relative', height: n * ROW + 60 }}>{tab === 0 ? setBars(70, 50, P.w - 130) : powerBars(70, 50, P.w - 130)}</div>
+        <GameScroll skin={skin} left={P.x + 4} top={P.y + 12} width={P.w - 8} height={P.h - 24} barX={P.x + P.w}>
+          <div style={{ position: 'relative', height: n * ROW + 50 }}>{tab === 0 ? setBars(52, 44, P.w - 90) : powerBars(52, 44, P.w - 90)}</div>
         </GameScroll>
         {desc}
         <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
         <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
+        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} />
       </>
     );
   }
@@ -144,6 +150,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
       {desc}
       <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
       <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
+      <PickTip gd={gd} rules={rules} pick={pick} />
     </>
   );
 }

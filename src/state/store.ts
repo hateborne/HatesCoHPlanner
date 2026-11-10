@@ -11,6 +11,7 @@ import { BuildRules } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
+import { stageLayout } from '../ui/stageLayout.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
 /** Hover tooltips: Enabled (description / slot details; Shift shows Advanced), Advanced, Disabled. */
@@ -43,14 +44,17 @@ interface Store {
   build?: Build;
   level?: LevelCtx;
   muted: boolean;
-  musicOn: boolean; // the login-screen music switch (remembered per browser, on by default)
+  musicOn: boolean; // the login-screen music switch (remembered per browser; on by default, off on phones)
   setupAlign: Alignment; // the alignment picked on the setup screen (its skin and backdrop)
   tips: TipMode; // hover tooltip setting (remembered per browser)
   shift: boolean; // Shift held: Enabled tooltips show the Advanced view
   setTips(m: TipMode): void;
   notice: { id: number; text: string } | null; // a short red message (a refused change)
   notify(text: string): void;
+  dismissNotice(): void; // a tap on the phone toast
   lockFlash: { id: number; key: string; label: string } | null; // a power bar flashing a refusal
+  poolsBlinked: boolean; // phones: the Pools tab has blinked for this build's first pool pick
+  epicBlinked: boolean; // phones: ...and for the first pick that can open an epic pool
   flashLocked(key: string, label?: string): void;
   confirm: { title: string; text: string; okLabel?: string; resolve: (ok: boolean) => void } | null;
   /** Ask a yes / no question in the planner's dialog; resolves true on Proceed. */
@@ -236,9 +240,39 @@ function dropsEnhancements(gd: GameData, b: Build, step: LevelStep, pick: number
 
 const LOCKED = 'Remove enhancements first';
 
+/** @return The Music switch when the browser remembers none: off on phones (the phone layout), on elsewhere. */
+function defaultMusic(): boolean {
+  try {
+    const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    return !stageLayout(window.innerWidth, window.innerHeight, touch).dims.phone;
+  } catch {
+    return true;
+  }
+}
+
 /** @return Whether a step's picks are made and its slots (if it grants any) are all placed. */
 function stepDone(rules: BuildRules, b: Build, s: LevelStep): boolean {
   return s.picks.every((k) => b.picks[k]) && (s.slots === 0 || rules.slotsLeft(stepSlotLevels(s)) <= 0);
+}
+
+/**
+ * Where Continue Leveling / Continue Respec picks up: the first level that isn't finished (the one
+ * after the stop level when everything up to it is done); an unfinished respec where it stopped
+ * (powers, then slots), after which leveling goes on.
+ *
+ * @param gd Game data.
+ * @param b The build.
+ * @param steps The leveling steps.
+ * @return The respec flow (undefined when leveling), the step's index in it and the step; null
+ *   when every step is done.
+ */
+export function continueTarget(gd: GameData, b: Build, steps: LevelStep[]): { flow: LevelStep[] | undefined; step: number; target: LevelStep } | null {
+  const rules = new BuildRules(gd, b);
+  const rflow = b.respecTo !== undefined ? respecSteps(steps, b.respecTo) : undefined;
+  const ri = rflow ? rflow.findIndex((s) => !stepDone(rules, b, s)) : -1;
+  const flow = ri >= 0 ? rflow : undefined;
+  const step = flow ? ri : steps.findIndex((s) => !stepDone(rules, b, s));
+  return step < 0 ? null : { flow, step, target: (flow ?? steps)[step]! };
 }
 
 /** @return Whether a Respec build still has powers or slots to place (it offers Continue Respec). */
@@ -260,15 +294,18 @@ export const useStore = create<Store>((set, get) => ({
   })(),
   musicOn: (() => {
     try {
-      return localStorage.getItem('hcp.music') !== '0';
+      const v = localStorage.getItem('hcp.music');
+      return v === null ? defaultMusic() : v !== '0';
     } catch {
-      return true;
+      return defaultMusic();
     }
   })(),
 
   menuOpen: false,
   setupAlign: 'Hero',
   lockFlash: null,
+  poolsBlinked: false,
+  epicBlinked: false,
   confirm: null,
   askConfirm(q) {
     get().confirm?.resolve(false); // a newer question replaces an unanswered one
@@ -295,7 +332,10 @@ export const useStore = create<Store>((set, get) => ({
     set({ notice: { id, text } });
     window.setTimeout(() => {
       if (get().notice?.id === id) set({ notice: null });
-    }, 2200);
+    }, 3200); // the phone toast's stay (index.css .phone-toast); desktop's text fades by 2.2s
+  },
+  dismissNotice() {
+    set({ notice: null });
   },
   tips: (() => {
     try {
@@ -354,7 +394,7 @@ export const useStore = create<Store>((set, get) => ({
     }
     if (fixes.length) console.warn('build repaired:', fixes);
     persist(nb);
-    set({ gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false });
+    set({ gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false, poolsBlinked: false, epicBlinked: false });
     const note = missingNote(missing, version);
     if (note) get().notify(note);
   },
@@ -409,6 +449,8 @@ export const useStore = create<Store>((set, get) => ({
       build: b,
       view: 'level',
       level: { step: 0, pickInStep: 0, mode: 'wizard', sub: 'power', base: b, orig: b, pendingSlots: [], flow },
+      poolsBlinked: false,
+      epicBlinked: false,
     });
   },
 
@@ -594,27 +636,17 @@ export const useStore = create<Store>((set, get) => ({
   editSlots(lvl) {
     const { gd, build, steps } = get();
     if (!gd || !build) return;
-    if (build.respecTo !== undefined && lvl <= build.respecTo) {
-      // a respec places its slots after every power is chosen: until then, Continue Respec
-      const end = build.respecTo;
-      if (build.picks.some((p, i) => !p && (gd.core.schedule.power[i] ?? 99) <= end)) {
-        get().notify('Choose every power first: use Continue Respec');
-        return;
-      }
-      // a respec's slots all came from one screen, on any power: reopen that screen (slots holding
-      // enhancements stay locked; the empty ones can move anywhere)
-      const flow = respecSteps(steps, build.respecTo);
-      const at = flow.findIndex((s) => s.slots > 0);
-      const target = flow[at];
-      if (!target) return;
-      const pendingSlots = slotKeysAt(gd, build, stepSlotLevels(target), true);
-      const base = withoutLevel(build, target, null, false, true);
-      set({ view: 'level', level: { step: at, pickInStep: 0, mode: 'edit', sub: 'slots', base, orig: build, pendingSlots, flow } });
+    // a respec places its slots after every power is chosen: until then, Continue Respec
+    const end = build.respecTo;
+    if (end !== undefined && lvl <= end && build.picks.some((p, i) => !p && (gd.core.schedule.power[i] ?? 99) <= end)) {
+      get().notify('Choose every power first: use Continue Respec');
       return;
     }
+    // the slots booked at that level, as leveling reopens them (a respec's may move to any power:
+    // BuildRules.slotsAnyPower); slots holding enhancements stay where they are (locked), only the
+    // empty ones can move
     const step = steps.findIndex((s) => s.level === lvl && s.slots > 0);
     if (step < 0) return;
-    // slots holding enhancements stay where they are (locked); only the empty ones can move
     const pending = slotKeysAt(gd, build, [lvl], true);
     const base = withoutLevel(build, steps[step]!, null, false, true);
     set({ view: 'level', level: { step, pickInStep: 0, mode: 'edit', sub: 'slots', base, orig: build, pendingSlots: pending } });
@@ -635,18 +667,11 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   continueLeveling() {
-    // reopen the wizard at the first level that isn't finished (the one after the stop level
-    // when everything up to it is done)
     const { gd, build, steps } = get();
     if (!gd || !build) return;
-    const rules = new BuildRules(gd, build);
-    // an unfinished respec picks up where it stopped (powers, then slots); after it, leveling goes on
-    const rflow = build.respecTo !== undefined ? respecSteps(steps, build.respecTo) : undefined;
-    const ri = rflow ? rflow.findIndex((s) => !stepDone(rules, build, s)) : -1;
-    const flow = ri >= 0 ? rflow : undefined;
-    const step = flow ? ri : steps.findIndex((s) => !stepDone(rules, build, s));
-    if (step < 0) return;
-    const target = (flow ?? steps)[step]!;
+    const where = continueTarget(gd, build, steps);
+    if (!where) return;
+    const { flow, step, target } = where;
     const b = cloneBuild(build);
     if (flow) b.endLevel = build.respecTo! < 49 ? build.respecTo : undefined;
     else delete b.endLevel;
@@ -725,7 +750,7 @@ if (typeof window !== 'undefined') {
     if (e.key === 'hcp.muted') useStore.setState({ muted: e.newValue === '1' });
     else if (e.key === 'hcp.music') useStore.setState({ musicOn: e.newValue !== '0' });
     else if (e.key === 'hcp.tooltips') useStore.setState({ tips: TIP_MODES.includes(e.newValue as TipMode) ? (e.newValue as TipMode) : 'enabled' });
-    else if (e.key === null) useStore.setState({ muted: false, musicOn: true, tips: 'enabled' }); // site data cleared: defaults
+    else if (e.key === null) useStore.setState({ muted: false, musicOn: defaultMusic(), tips: 'enabled' }); // site data cleared: defaults
   });
 }
 

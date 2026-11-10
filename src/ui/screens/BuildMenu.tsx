@@ -18,7 +18,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');
   const [status, setStatus] = useState<string[]>([]);
-  const { phone } = useStage();
+  const stage = useStage();
+  const { phone } = stage;
   const refresh = () => listBuilds().then(setSaved).catch(() => setSaved([]));
   useEffect(() => {
     void refresh();
@@ -72,35 +73,44 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     }
   };
 
-  // Desktop: two columns. Phone: the same two sections stacked in one scrolling column.
+  // Desktop: two columns. Phone: the whole screen, the same two sections stacked in one scrolling column.
+  const W = stage.w;
+  const bottom = stage.h - 36; // phones: clear of the not-affiliated line
+  const closeY = bottom - 14 - 56;
   const L = phone
-    ? { frame: [20, 90, 960, 1610], title: [40, 105], wrap: { position: 'absolute' as const, left: 40, top: 165, width: 920, height: 1440, overflowY: 'auto' as const } }
+    ? { frame: [6, 6, W - 12, bottom - 6], title: [18, 18], wrap: { position: 'absolute' as const, left: 18, top: 70, width: W - 36, height: closeY - 10 - 70, overflowY: 'auto' as const } }
     : { frame: [250, 80, 1500, 960], title: [290, 100], wrap: undefined };
+  // the left column's rows (stage px from its top): finger-sized and further apart on phones
+  const row = (i: number) => (phone ? 44 + i * 66 : 40 + i * 60);
+  const IMPORT_Y = phone ? row(5) + 16 : 360;
+  const BOX_Y = IMPORT_Y + 40;
+  const BOX_H = phone ? 190 : 230;
   const leftStyle = phone
-    ? { position: 'relative' as const, width: 640, height: 720, fontSize: 18, color: '#cfe8ff' }
+    ? { position: 'relative' as const, width: W - 40, height: BOX_Y + BOX_H + 90, fontSize: 18, color: '#cfe8ff' }
     : { left: 290, top: 170, width: 640, fontSize: 18, color: '#cfe8ff' };
-  const rightStyle = phone ? { position: 'relative' as const, width: 900, marginTop: 20 } : { left: 980, top: 170, width: 730 };
+  const rightStyle = phone ? { position: 'relative' as const, width: W - 40, marginTop: 10 } : { left: 980, top: 170, width: 730 };
+  const listBtn = { position: 'static' as const, height: phone ? 48 : 32 };
   return (
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
         <MenuFrame x={L.frame[0]!} y={L.frame[1]!} w={L.frame[2]!} h={L.frame[3]!} r25 style={{ background: 'rgba(0,0,20,0.95)' }} />
-        <SetTitle x={L.title[0]!} y={L.title[1]!} size={36} text="Build menu" />
+        <SetTitle x={L.title[0]!} y={L.title[1]!} size={phone ? 28 : 36} text="Build menu" />
         <div style={L.wrap}>
         <div className={phone ? 'body-text' : 'abs body-text'} style={leftStyle}>
           <TitleText style={{ fontSize: 22 }}>THIS BUILD</TitleText>
           {build ? (
             <>
-              <div style={btn(0, 40)}>
+              <div style={btn(0, row(0))}>
                 <button className="info-button" style={{ position: 'static' }} onClick={() => void saveBuild(build).then(() => { void refresh(); say('Saved in this browser.'); })}>
                   Save in this browser
                 </button>
               </div>
-              <div style={btn(0, 100)}>
+              <div style={btn(0, row(1))}>
                 <button className="info-button" style={{ position: 'static' }} onClick={() => void shareLink(build).then((l) => copy(l, 'Share link'))}>
                   Copy share link
                 </button>
               </div>
-              <div style={btn(0, 160)}>
+              <div style={btn(0, row(2))}>
                 <button
                   className="info-button"
                   style={{ position: 'static' }}
@@ -115,7 +125,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   Download Mids .mbd
                 </button>
               </div>
-              <div style={btn(0, 220)}>
+              <div style={btn(0, row(3))}>
                 <button
                   className="info-button"
                   style={{ position: 'static' }}
@@ -130,7 +140,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   Copy Mids share code
                 </button>
               </div>
-              <div style={btn(0, 280)}>
+              <div style={btn(0, row(4))}>
                 <button
                   className="info-button"
                   style={{ position: 'static' }}
@@ -149,14 +159,14 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           ) : (
             <div style={{ marginTop: 40 }}>No build yet.</div>
           )}
-          <TitleText style={{ ...btn(0, 360), fontSize: 22 }}>IMPORT</TitleText>
+          <TitleText style={{ ...btn(0, IMPORT_Y), fontSize: 22 }}>IMPORT</TitleText>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Paste a share link, a Mids share code (|MBD; or |MxDz;), or .mbd JSON"
-            style={{ position: 'absolute', left: 0, top: 400, width: 620, height: 230, background: '#000', color: '#cfe8ff', border: '2px solid #4f94ff', borderRadius: 10, padding: 10, fontSize: 14 }}
+            style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: '#000', color: '#cfe8ff', border: '2px solid #4f94ff', borderRadius: 10, padding: 10, fontSize: 14 }}
           />
-          <div style={btn(0, 650)}>
+          <div style={btn(0, BOX_Y + BOX_H + 20)}>
             <button className="info-button" style={{ position: 'static' }} onClick={() => void doImport(text)} disabled={!text.trim()}>
               Import pasted text
             </button>
@@ -171,28 +181,28 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
         </div>
         <div className={phone ? '' : 'abs'} style={rightStyle}>
           <TitleText style={{ fontSize: 22 }}>SAVED IN THIS BROWSER</TitleText>
-          <div className="scroll-y body-text" style={{ height: 470, marginTop: 10, fontSize: 18 }}>
+          <div className="scroll-y body-text" style={{ height: phone ? 340 : 470, marginTop: 10, fontSize: 18 }}>
             {saved.length === 0 ? <div style={{ color: '#8fa1b8' }}>Nothing saved yet.</div> : null}
             {saved.map((s) => (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid #123' }}>
                 <span style={{ flex: 1, color: '#cfe8ff' }}>
                   {s.name} <span style={{ color: '#8fa1b8', fontSize: 14 }}>({gd.archetypeById.get(s.at)?.dn}, {new Date(s.saved).toLocaleString()})</span>
                 </span>
-                <button className="info-button" style={{ position: 'static', height: 32 }} onClick={() => void replaceOk(s.name).then(async (ok) => { if (ok) { await loadBuild(s.build); say(`Loaded "${s.name}".`); } })}>
+                <button className="info-button" style={listBtn} onClick={() => void replaceOk(s.name).then(async (ok) => { if (ok) { await loadBuild(s.build); say(`Loaded "${s.name}".`); } })}>
                   Load
                 </button>
-                <button className="info-button" style={{ position: 'static', height: 32 }} onClick={() => void deleteBuild(s.id!).then(refresh)}>
+                <button className="info-button" style={listBtn} onClick={() => void deleteBuild(s.id!).then(refresh)}>
                   Delete
                 </button>
               </div>
             ))}
           </div>
-          <div className="scroll-y body-text" style={{ height: 270, marginTop: 20, fontSize: 15, color: '#ffd24a', whiteSpace: 'pre-line' }}>
+          <div className="scroll-y body-text" style={{ height: phone ? 160 : 270, marginTop: 20, fontSize: 15, color: '#ffd24a', whiteSpace: 'pre-line' }}>
             {status.join('\n')}
           </div>
         </div>
         </div>
-        <button className="info-button" style={phone ? { left: 430, top: 1630 } : { left: 1600, top: 985 }} onClick={onClose}>
+        <button className="info-button" style={phone ? { left: (W - 140) / 2, top: closeY, width: 140 } : { left: 1600, top: 985 }} onClick={onClose}>
           Close
         </button>
       </div>

@@ -54,7 +54,8 @@ function Floating({ x, y, w, gap, left = -140, pad = 0, render }: { x: number; y
   const below = y + gap;
   const by = below + h <= stage.h - 64 ? below : Math.max(8, y - 30 - h);
   return (
-    <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 60, pointerEvents: 'none' }}>
+    // over the side Totals tab and pane (60), under the phone menu, notices and dialogs
+    <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 65, pointerEvents: 'none' }}>
       {render({ x: bx, y: by, h }, ref)}
     </div>
   );
@@ -105,25 +106,31 @@ export function DescTip({ skin, power, x, y, hint }: { skin: Skin; power: Power;
 export const TIP_PX = 11 * S;
 const TIP = { name: '#a9dcff', text: '#ffffff', list: '#8fcfff' };
 
-/** The slot details block: name, short help, allowed enhancements and set categories. */
-export function SlotDetails({ gd, power }: { gd: GameData; power: Power }) {
+/**
+ * The slot details block: name, short help, allowed enhancements and set categories. Sizes are
+ * relative to the box's font size.
+ *
+ * @param props.longColor Show the long description in this color instead of the short help
+ *   (the phone's long-press tooltip, which stands in for both desktop tooltips).
+ */
+export function SlotDetails({ gd, power, longColor }: { gd: GameData; power: Power; longColor?: string }) {
   const types = allowedTypes(gd, power);
   const cats = allowedSetCategories(gd, power);
   return (
     <>
-      <div style={{ color: TIP.name, fontWeight: 700, fontSize: TIP_PX * 1.1 }}>{power.dn}</div>
-      <div style={{ color: TIP.text }}>{smf(power.sh)}</div>
+      <div style={{ color: TIP.name, fontWeight: 700, fontSize: '1.1em' }}>{power.dn}</div>
+      {longColor ? <div style={{ color: longColor }}>{smf(power.lh || power.sh)}</div> : <div style={{ color: TIP.text }}>{smf(power.sh)}</div>}
       {types.length ? (
         <>
-          <div style={{ color: TIP.text, marginTop: TIP_PX * 0.9 }}>Allowed Enhancements:</div>
+          <div style={{ color: TIP.text, marginTop: '0.9em' }}>Allowed Enhancements:</div>
           <div style={{ color: TIP.list }}>{types.join(', ')}</div>
         </>
       ) : (
-        <div style={{ color: TIP.list, marginTop: TIP_PX * 0.9 }}>This power cannot be enhanced.</div>
+        <div style={{ color: TIP.list, marginTop: '0.9em' }}>This power cannot be enhanced.</div>
       )}
       {cats.length ? (
         <>
-          <div style={{ color: TIP.text, marginTop: TIP_PX * 0.9 }}>Allowed Enhancements Set Categories:</div>
+          <div style={{ color: TIP.text, marginTop: '0.9em' }}>Allowed Enhancements Set Categories:</div>
           <div style={{ color: TIP.list }}>{cats.join(', ')}</div>
         </>
       ) : null}
@@ -172,30 +179,15 @@ export function useShiftHint(): boolean {
 const SMF = { infoBlue: '#aadeff', paragon: '#00deff', springGreen: '#00ff7f', gray: '#808080', red: '#ff0000', goldenRod: '#daa520' };
 
 /**
- * The game's enhancement tooltip (uiEnhancementFormatText + uiEnhancementGetInfoText): name,
- * short help, the category line for non-set pieces, the help text with its values, the red /
- * paragon notes, and for set pieces the set (n slotted in this power / pieces), its category,
- * every piece (highlighted when slotted here) and the set bonuses (green once earned).
+ * The game's enhancement tooltip (uiEnhancementFormatText + uiEnhancementGetInfoText) as a
+ * floating box under the pointer; the text is EnhDetails.
  *
  * @param props.slots The power's slots (which pieces of the set are in it).
  * @param props.slot Index of the hovered slot.
  * @param props.level 0-based character level (attuned values and help-text numbers).
  */
 export function EnhTip({ gd, at, slots, slot, level, x, y }: { gd: GameData; at: Archetype; slots: Slot[]; slot: number; level: number; x: number; y: number }) {
-  const e = slots[slot]?.enh;
-  const b = e ? gd.powerById.get(e.boost) : undefined;
-  if (!e || !b) return null;
-  const ref = gd.boostSetOf.get(b.id);
-  const set = ref?.set;
-  const inPower = slots.map((s) => s.enh?.boost).filter((id): id is number => id !== undefined);
-  const numSlotted = set ? inPower.filter((id) => gd.boostSetOf.get(id)?.set.id === set.id).length : 0;
-  const notes: { text: string; color: string }[] = [];
-  if (!b.bcm) notes.push({ text: 'You may not combine this Enhancement with any others.', color: SMF.red });
-  if (b.ntr) notes.push({ text: 'You may not trade this Enhancement.', color: SMF.red });
-  if (b.bab) notes.push({ text: 'ACCOUNT BOUND - This enhancement can only traded to other characters on this account via global mail.', color: SMF.goldenRod });
-  if (b.bup) notes.push({ text: "ATTUNED - This enhancement's effective level is always the same as the user's.  In addition, its effectiveness will increase when the user levels up.", color: SMF.goldenRod });
-  if (b.bie) notes.push({ text: 'Effectiveness does not vary as Security Level changes', color: SMF.paragon });
-  const gap = { marginTop: TIP_PX * 0.9 };
+  if (!slots[slot]?.enh) return null;
   return (
     <Floating
       x={x}
@@ -209,7 +201,41 @@ export function EnhTip({ gd, at, slots, slot, level, x, y }: { gd: GameData; at:
           className="abs"
           style={{ left: box.x, top: box.y, width: 620, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: '#ffffff' }}
         >
-          <div style={{ color: SMF.infoBlue, fontWeight: 700, fontSize: TIP_PX * 1.1 }}>{b.dn}</div>
+          <EnhDetails gd={gd} at={at} slots={slots} slot={slot} level={level} />
+        </div>
+      )}
+    />
+  );
+}
+
+/**
+ * The enhancement tooltip's text: name, short help, the category line for non-set pieces, the
+ * help text with its values, the red / paragon notes, and for set pieces the set (n slotted in
+ * this power / pieces), its category, every piece (highlighted when slotted here) and the set
+ * bonuses (green once earned). Sizes are relative to the box's font size.
+ *
+ * @param props.slots The power's slots (which pieces of the set are in it).
+ * @param props.slot Index of the slot.
+ * @param props.level 0-based character level (attuned values and help-text numbers).
+ */
+export function EnhDetails({ gd, at, slots, slot, level }: { gd: GameData; at: Archetype; slots: Slot[]; slot: number; level: number }) {
+  const e = slots[slot]?.enh;
+  const b = e ? gd.powerById.get(e.boost) : undefined;
+  if (!e || !b) return null;
+  const ref = gd.boostSetOf.get(b.id);
+  const set = ref?.set;
+  const inPower = slots.map((s) => s.enh?.boost).filter((id): id is number => id !== undefined);
+  const numSlotted = set ? inPower.filter((id) => gd.boostSetOf.get(id)?.set.id === set.id).length : 0;
+  const notes: { text: string; color: string }[] = [];
+  if (!b.bcm) notes.push({ text: 'You may not combine this Enhancement with any others.', color: SMF.red });
+  if (b.ntr) notes.push({ text: 'You may not trade this Enhancement.', color: SMF.red });
+  if (b.bab) notes.push({ text: 'ACCOUNT BOUND - This enhancement can only traded to other characters on this account via global mail.', color: SMF.goldenRod });
+  if (b.bup) notes.push({ text: "ATTUNED - This enhancement's effective level is always the same as the user's.  In addition, its effectiveness will increase when the user levels up.", color: SMF.goldenRod });
+  if (b.bie) notes.push({ text: 'Effectiveness does not vary as Security Level changes', color: SMF.paragon });
+  const gap = { marginTop: '0.9em' };
+  return (
+    <>
+          <div style={{ color: SMF.infoBlue, fontWeight: 700, fontSize: '1.1em' }}>{b.dn}</div>
           <div style={{ color: SMF.paragon }}>{b.sh}</div>
           {!set && b.cat ? <div style={{ color: SMF.paragon }}>{b.cat}</div> : null}
           <div>{smf(boostHelpText(gd, at, e, level))}</div>
@@ -253,8 +279,6 @@ export function EnhTip({ gd, at, slots, slot, level, x, y }: { gd: GameData; at:
               </div>
             </>
           ) : null}
-        </div>
-      )}
-    />
+    </>
   );
 }

@@ -9,13 +9,14 @@ import { stepSlotLevels } from '../../engine/schedule.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
+import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { FadingText, MenuFrame, NextButton, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
-import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
+import { PHONE_PAD, phoneGeom, phonePanel as phoneFrame, PhoneTabs, type PhoneGeom, type Rect } from '../components/Phone.tsx';
 import { Sprite } from '../components/Sprite.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { fitScale, FONTS, S, STAGE_W, SY, textWidth, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
@@ -34,6 +35,15 @@ const POWER_OFFSET = 50;
 const POWER_WIDTH = 240;
 const SPEC_WD = 36;
 const RING = vs(35); // EnhncTray_Ring (70x70) at scale .5
+// phones: rings a finger can hit, and the rows spaced to hold them
+const PHONE_RING = 56;
+const PHONE_RING_STEP = 58;
+const PHONE_ROW = 104;
+// phones: the rings hang below the bar's center (so its name sits centered in the bar), not over it
+const PHONE_RING_DY = 38;
+// phones: the Slots Available row and the tapped power's line above Back / Next
+const PHONE_COUNTER_H = 52;
+const PHONE_INFO_H = 76;
 
 interface Group {
   set: Powerset | null;
@@ -63,6 +73,9 @@ interface PanelGeom {
   barCX: number; // check-box center x, relative to view.left
   barW: number;
   ringX: number; // x of slot position 0 (the bar's x - 2), relative to view.left
+  ring: number; // slot ring size
+  ringStep: number; // slot ring spacing
+  ringDy: number; // the rings' center below the bar's center
   headCX: number; // set heading center x, relative to view.left
   boxW: number; // inner set frame width
   start: number; // primY before the first set
@@ -86,6 +99,9 @@ function desktopPanel(i: number): PanelGeom {
     barCX: vx(fx + POWER_OFFSET) - left,
     barW: vx(POWER_WIDTH),
     ringX: vx(fx + POWER_OFFSET - 2) - left,
+    ring: RING,
+    ringStep: SPEC_WD * S,
+    ringDy: 20 * S,
     headCX: vx(fx + FRAME_WIDTH / 2) - left,
     boxW: vx(POWER_WIDTH - 10),
     start: vy(SL_FRAME_TOP + 50 - POWER_SPEC_HT - clipTop),
@@ -97,23 +113,31 @@ function desktopPanel(i: number): PanelGeom {
   };
 }
 
-/** The single phone panel: the same row structure scaled by S inside PHONE_PANEL. */
-function phonePanel(): PanelGeom {
-  const P = PHONE_PANEL;
+/** The single phone panel: the same row structure scaled by S, with finger-sized rings. */
+function phonePanel(pg: PhoneGeom): PanelGeom {
+  const P = phoneFrame(pg, 3, PHONE_COUNTER_H + 8 + PHONE_INFO_H + 8);
   return {
     frame: P,
     view: { left: P.x + 2, top: P.y + 6, width: P.w - 4, height: P.h - 12 },
     bar: { x: P.x + P.w, top: P.y + 18, height: P.h - 36 },
-    barCX: 70,
-    barW: P.w - 150,
-    ringX: 67,
+    barCX: 54,
+    barW: P.w - 96,
+    ringX: 50, // the first ring just clear of the bar's icon, as on the desktop
+    ring: PHONE_RING,
+    ringStep: PHONE_RING_STEP,
+    ringDy: PHONE_RING_DY,
     headCX: P.w / 2,
-    boxW: P.w - 160,
-    start: -20 * S,
-    row: POWER_SPEC_HT * S,
-    tail: 40,
+    boxW: P.w - 106,
+    start: -10 * S,
+    row: PHONE_ROW,
+    tail: 50,
     unit: S,
   };
+}
+
+/** @return Phones: the Slots Available counter's box, right above Back / Next. */
+function phoneCounter(pg: PhoneGeom): Rect {
+  return { x: (pg.w - 290) / 2, y: pg.navTop - 8 - PHONE_COUNTER_H, w: 290, h: PHONE_COUNTER_H };
 }
 
 /**
@@ -160,12 +184,13 @@ function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
   );
 }
 
-/** The last hovered power's info box (desktop) or one-line description (phone). */
-function HoveredInfo({ gd, phone }: { gd: GameData; phone: boolean }) {
+/** The last hovered power's info box (desktop) or its name and short help over the counter (phone). */
+function HoveredInfo({ gd, phone }: { gd: GameData; phone?: PhoneGeom }) {
   const hovered = useHover((h) => h.desc?.p);
   if (phone) {
+    const c = phoneCounter(phone);
     return hovered ? (
-      <div className="abs body-text" style={{ left: 40, top: 1545, width: 920, color: '#7fd3ff', fontSize: 24 }}>
+      <div className="abs body-text scroll-y" style={{ left: PHONE_PAD, top: c.y - 8 - PHONE_INFO_H, width: phone.w - 2 * PHONE_PAD, height: PHONE_INFO_H, color: '#7fd3ff', fontSize: 18, lineHeight: 1.25 }}>
         {hovered.dn}: {hovered.sh}
       </div>
     ) : null;
@@ -205,7 +230,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const [fades, setFades] = useState<{ id: number; key?: string; full: boolean }[]>([]);
   const fadeId = useRef(0);
   const [tab, setTab] = useState(0);
-  const { phone } = useStage();
+  const stage = useStage();
+  const { phone } = stage;
+  const pg = phoneGeom(stage);
   // hover tooltip: the game's slot details, or the Advanced view (setting or Shift)
   const mouse = usePointer();
   const flow = level ? stepsOf(steps, level) : steps;
@@ -218,7 +245,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   // a respec (uiReSpec.c respec_assignment) draws every power, greying the ones bought later
   const respec = !!level.flow;
   const later = (e: BuildEntry) => e.level > L;
-  const entries = rules.entries().filter((e) => (respec || !later(e)) && rules.slottable(e.power) && e.power.sm !== 0);
+  // a respec's slot level reopened from the overview: its slots may still go on any power
+  const anyPower = respec || rules.slotsAnyPower(L);
+  const entries = rules.entries().filter((e) => (anyPower || !later(e)) && rules.slottable(e.power) && e.power.sm !== 0);
   const remaining = rules.slotsLeft(levels);
   const anyPlaceable = entries.some((e) => rules.slotBlock(e, L, levels) === null);
 
@@ -239,7 +268,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     .filter((f) => !f.full)
     .map((f) =>
       phone ? (
-        <FadingText key={f.id} x={500} y={1493} base={1.5} maxWidth={940} color="#ffffff" text="No slots to assign!" />
+        <FadingText key={f.id} x={pg.w / 2} y={phoneCounter(pg).y + PHONE_COUNTER_H / 2} base={1.5} maxWidth={pg.w - 20} color="#ffffff" text="No slots to assign!" />
       ) : (
         <FadingText key={f.id} x={vx(512)} y={vy(SL_FRAME_TOP + FRAME_HEIGHT - 5)} base={1.5} color="#ffffff" text="No slots to assign!" />
       ),
@@ -273,12 +302,13 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             x={g.barCX}
             y={y}
             wd={g.barW}
-            halfText
+            halfText={!phone}
             text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
             state={respec && later(e) ? 'unselectable' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
             onClick={respec && later(e) ? undefined : () => click(e)}
             onRightClick={respec && later(e) ? undefined : () => unclick(e.key)}
+            onLongPress={phone ? (pt) => useHover.setState({ press: { kind: 'power', entry: e, notes: [], ...pt } }) : undefined}
             onHover={(on) => {
               // the info box keeps the last hovered power; the tooltip only while over the bar
               if (on) useHover.setState({ desc: { p: e.power }, tip: phone ? null : { entry: e, x: mouse.current.x, y: mouse.current.y } });
@@ -297,7 +327,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
           return !isPending;
         });
         for (let k = 0; k < pending; k++) {
-          items.push(<SlotRing skin={skin} key={`${e.key}:n${k}`} x={g.ringX + (k + 1) * SPEC_WD * S} y={y + 20 * S} size={RING} pending title="Click or right-click to remove this slot" onClick={() => unclick(e.key)} onRightClick={() => unclick(e.key)} />);
+          items.push(<SlotRing skin={skin} key={`${e.key}:n${k}`} x={g.ringX + (k + 1) * g.ringStep} y={y + g.ringDy} size={g.ring} pending title="Click or right-click to remove this slot" onClick={() => unclick(e.key)} onRightClick={() => unclick(e.key)} />);
         }
         owned.forEach((s, i) => {
           const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
@@ -305,9 +335,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             <SlotRing
               skin={skin}
               key={`${e.key}:${i}`}
-              x={g.ringX + (pending + i + 1) * SPEC_WD * S}
-              y={y + 20 * S}
-              size={RING}
+              x={g.ringX + (pending + i + 1) * g.ringStep}
+              y={y + g.ringDy}
+              size={g.ring}
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
               pog={boost ? boostPog(gd, boost) : undefined}
@@ -318,7 +348,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
           );
         });
         for (const f of fades) {
-          if (f.full && f.key === e.key) items.push(<FadingText key={`full${f.id}`} x={g.barCX + g.barW / 2} y={y + 15 * u} base={1.5} maxWidth={phone ? 900 : undefined} color="#ff0000" text="FULL!" />);
+          if (f.full && f.key === e.key) items.push(<FadingText key={`full${f.id}`} x={g.barCX + g.barW / 2} y={y + 15 * u} base={1.5} maxWidth={phone ? pg.w - 40 : undefined} color="#ff0000" text="FULL!" />);
         }
         primY += g.row;
       }
@@ -371,17 +401,18 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     );
 
   if (phone) {
-    const g = phonePanel();
+    const g = phonePanel(pg);
     return (
       <>
         <TitleBar skin={skin} text={title} />
-        {levelLine(980, 118)}
-        <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pool Powers']} active={tab} onChange={setTab} />
+        {levelLine(pg.w - 12, pg.labelY)}
+        <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools']} active={tab} onChange={setTab} />
         <MenuFrame x={g.frame.x} y={g.frame.y} w={g.frame.w} h={g.frame.h} skin={skin} />
         {renderPanel(g, panelGroups(tab), 0)}
-        {counter({ x: 300, y: 1465, w: 400, h: 56 })}
+        {counter(phoneCounter(pg))}
         {noSlotFades}
-        <HoveredInfo gd={gd} phone />
+        <HoveredInfo gd={gd} phone={pg} />
+        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(preview!.at)} level={L} />
         <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
         <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
       </>
@@ -409,7 +440,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         </>
       )}
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), panelGroups(i), i))}
-      <HoveredInfo gd={gd} phone={false} />
+      <HoveredInfo gd={gd} />
       <SlotTipLayer gd={gd} atId={preview!.at} level={L} />
       {counter()}
       {noSlotFades}

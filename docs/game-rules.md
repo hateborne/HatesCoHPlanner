@@ -97,4 +97,6 @@ live game:
   goes to the build overview instead.
 - The respec runs up to the character's level (`maxRespecLevel`); the planner asks for that
   level on New Build (50 by default). In the planner a respec's slots carry levels only for
-  bookkeeping; the "slot below the power level" check skips them.
+  bookkeeping (each takes the lowest free slot level at or after its power's level); the "slot
+  below the power level" check skips them. Reopening a slot level from the overview shows the
+  slots booked at that level, and they may move to any power.

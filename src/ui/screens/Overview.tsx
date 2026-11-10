@@ -3,28 +3,31 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
-import { boostPog, canSlot } from '../../engine/enhance.ts';
-import { setEnh, setExclusive, setOn } from '../../engine/actions.ts';
+import { boostPog } from '../../engine/enhance.ts';
+import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine/actions.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
+import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn } from '../../engine/totals.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { InfoButton, MenuFrame, NextButton, SetFrame, SlotRing, TitleBar } from '../components/Chrome.tsx';
+import { InfoButton, MenuFrame, NextButton, SetFrame, SetTitle, SlotRing, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
-import { PHONE_PANEL, PhoneTabs } from '../components/Phone.tsx';
-import { ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
+import { phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
+import { PhoneTipLayer } from '../components/PhoneTip.tsx';
+import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
 import { DescTip, EnhTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
-import { S, SX, SY, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
+import { S, snap, SX, SY, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
 import { useEscape } from '../escape.ts';
 import { clearHover, useFreshHover, useHover } from '../hover.ts';
+import { longPress, pressKeys } from '../press.ts';
 
 const COLS = [
   { x: 33, w: 480, column: 0 },
@@ -41,6 +44,127 @@ const RING = vs(35) * 0.88;
 // ring spacing shrunk with the rings, so they sit edge to edge like the slot screen's
 const RING_STEP = SPEC_WD * S * 0.88;
 const SWITCH = 30; // the floating on/off button
+// phones: finger-sized rings, switches and level orbs, and the rows spaced to hold them
+const PHONE_RING = 56;
+const PHONE_RING_STEP = 58;
+const PHONE_SWITCH = 48;
+const PHONE_ROW = 104;
+// phones: the rings hang below the bar's center (so its name sits centered in the bar), not over it
+const PHONE_RING_DY = 38;
+
+// phones: the level log's button (left of the menu button): width, draw scale, and the room the
+// title bar leaves for it
+const LOG_BTN_W = 160;
+const LOG_BTN_SCALE = 1.35;
+const LOG_RESERVE = LOG_BTN_W + 22 * LOG_BTN_SCALE + 16;
+// phones: the Totals tab's text, a little larger than the desktop panel's
+const TOTALS_ZOOM = 1.15;
+
+/**
+ * Phones: the level log, in place of the desktop's strip of level orbs. A capsule left of the
+ * menu button ("1 - 50") opens a list of what each level added: the powers picked there (tap one
+ * to swap it, as tapping its orb does: refused while it holds enhancements) and the slots placed
+ * there ("Fire Blast +2"; tap to reopen that level's slot screen). Unfinished levels show in red.
+ * Closes on Escape, the button or a tap outside it.
+ *
+ * @param props.shown The build's level steps (up to its stop level).
+ * @param props.entries The overview's power entries (for the slots placed at each level).
+ */
+function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Skin; build: Build; shown: LevelStep[]; entries: BuildEntry[] }) {
+  const { editPick, editSlots, notify } = useStore(useShallow((s) => ({ editPick: s.editPick, editSlots: s.editSlots, notify: s.notify })));
+  const [open, setOpen] = useState(false);
+  useEscape(() => setOpen(false), open);
+  const stage = useStage();
+  const g = phoneGeom(stage, false);
+  const btn = phoneMenuButton(g);
+  const sc = LOG_BTN_SCALE;
+  const end = build.endLevel ?? 49;
+  const paneTop = g.line + 6;
+  const paneW = stage.w - 16;
+  const swap = (k: number) => {
+    if (pickHoldsEnhancements(gd, build, k)) {
+      notify(`Remove the enhancements from ${gd.power(build.picks[k]!.power).dn} first`);
+      return;
+    }
+    setOpen(false);
+    editPick(k);
+  };
+  const rows: ReactElement[] = [];
+  let y = 14;
+  const ROW = 60;
+  const LINE = 26;
+  for (const st of shown) {
+    rows.push(<SetTitle key={`h${st.level}`} skin={skin} x={16} y={y} size={18} text={`Level ${st.level + 1}`} />);
+    y += 32;
+    for (const k of st.picks) {
+      const pk = build.picks[k];
+      if (pk) {
+        const pw = gd.power(pk.power);
+        rows.push(<CheckBar key={`p${k}`} skin={skin} x={56} y={y + ROW / 2 - 6} wd={paneW - 100} icon={icon('powers', pw.icon || 'power_missing')} text={pw.dn} state="standard" onClick={() => swap(k)} />);
+        y += ROW;
+      } else {
+        rows.push(
+          <div key={`p${k}`} className="abs body-text" onClick={() => swap(k)} {...pressKeys(() => swap(k))} style={{ left: 30, top: y, width: paneW - 60, height: 34, lineHeight: '34px', fontSize: 19, color: '#ff6060', cursor: 'pointer' }}>
+            Choose a power
+          </div>,
+        );
+        y += 38;
+      }
+    }
+    if (st.slots > 0) {
+      const placed = new Map<string, number>();
+      for (const e of entries) for (const sl of e.slots.slice(1)) if (sl.level === st.level) placed.set(e.power.dn, (placed.get(e.power.dn) ?? 0) + 1);
+      const left = st.slots - [...placed.values()].reduce((a, b) => a + b, 0);
+      const lines = [...placed].map(([n, c]) => ({ text: `${n} +${c}`, red: false }));
+      if (left > 0) lines.push({ text: `${left} slot${left > 1 ? 's' : ''} to place`, red: true });
+      const reopen = () => {
+        setOpen(false);
+        editSlots(st.level);
+      };
+      rows.push(
+        <div key={`s${st.level}`} className="abs body-text" onClick={reopen} {...pressKeys(reopen, undefined, `Level ${st.level + 1} slots`)} style={{ left: 30, top: y, width: paneW - 60, fontSize: 19, lineHeight: `${LINE}px`, color: '#cfe8ff', cursor: 'pointer' }}>
+          {lines.map((l, i) => (
+            <div key={i} style={{ color: l.red ? '#ff6060' : undefined }}>
+              {l.text}
+            </div>
+          ))}
+        </div>,
+      );
+      y += lines.length * LINE + 8;
+    }
+    y += 10;
+  }
+  const paneH = Math.min(y + 8, stage.h - paneTop - 50);
+  const toggle = () => setOpen(!open);
+  return (
+    <>
+      <CheckBar
+        skin={skin}
+        x={btn.x - 8 - LOG_BTN_W}
+        // level with the menu button
+        y={phoneTopRowY(g)}
+        wd={LOG_BTN_W}
+        scale={sc}
+        noBox
+        text={`1 - ${end + 1}`}
+        state={open ? 'selected' : 'standard'}
+        onClick={toggle}
+      />
+      {open ? (
+        <>
+          <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
+          {/* on whole device pixels, so the bars inside tile without seams */}
+          <div className="abs" style={{ left: snap(8), top: snap(paneTop), width: paneW, height: paneH, zIndex: 71 }}>
+            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+            <div className="abs scroll-y" style={{ left: 0, top: 0, width: paneW, height: paneH }}>
+              <div style={{ position: 'relative', height: y + 8 }}>{rows}</div>
+            </div>
+          </div>
+        </>
+      ) : null}
+    </>
+  );
+}
 
 interface Group {
   set: Powerset | null;
@@ -53,16 +177,30 @@ interface Geom {
   barCX: number;
   barW: number;
   ringX: number;
+  ring: number; // slot ring size
+  ringStep: number; // slot ring spacing
+  ringDy: number; // the rings' center below the bar's center
+  sw: number; // the on/off switch's size
   boxW: number;
   start: number;
   row: number;
   unit: number;
+  phone: boolean;
 }
 
-function geom(width: number, unit: number): Geom {
+/**
+ * @param width The panel's scroll viewport width.
+ * @param unit Virtual-y to stage px for the in-row offsets.
+ * @param phone Finger-sized rings and switches, with the first ring as clear of the icon as on the desktop.
+ */
+function geom(width: number, unit: number, phone = false): Geom {
   const barCX = 62; // the level tag sits in the margin left of the icon
-  const barW = width - barCX - 2 * SWITCH - 6;
-  return { barCX, barW, ringX: barCX - 2 * SX, boxW: barW - 10 * SX, start: -19 * unit, row: POWER_SPEC_HT * unit, unit };
+  const sw = phone ? PHONE_SWITCH : SWITCH;
+  const barW = width - barCX - 2 * sw - 6;
+  const ring = phone ? PHONE_RING : RING;
+  const ringStep = phone ? PHONE_RING_STEP : RING_STEP;
+  const ringX = phone ? barCX + 48 - ringStep : barCX - 2 * SX;
+  return { barCX, barW, ringX, ring, ringStep, ringDy: phone ? PHONE_RING_DY : 20 * S, sw, boxW: barW - 10 * SX, start: phone ? -10 * unit : -19 * unit, row: phone ? PHONE_ROW : POWER_SPEC_HT * unit, unit, phone };
 }
 
 /**
@@ -80,6 +218,7 @@ function LevelOrb({ level, className, style, title, onClick, children }: { level
   return (
     <div
       onClick={onClick}
+      {...pressKeys(onClick, undefined, `Level ${level + 1}`)}
       onMouseEnter={() => useHover.setState({ orb: level })}
       onMouseLeave={() => useHover.setState((h) => (h.orb === level ? { orb: null } : h))}
       title={title}
@@ -188,7 +327,10 @@ export function Overview({ skin }: { skin: Skin }) {
         const flagged = issues.filter((i) => i.key === e.key);
         // a group's drop-down replaces the switch and takes the bar's right end
         const SELECT_W = 150;
-        const barW = members ? g.barW + SWITCH + 4 - SELECT_W - 8 : g.barW;
+        const barW = members ? g.barW + g.sw + 4 - SELECT_W - 8 : g.barW;
+        // phones: a long press shows the power's tooltip (with the rule it breaks, if any)
+        const longBar = g.phone ? (pt: { x: number; y: number }) => useHover.setState({ press: { kind: 'power', entry: e, notes: flagged.map((f) => f.message), ...pt } }) : undefined;
+        const toggleOn = () => setBuild(setOn(build, e.key, !on === defaultOn(e.power) ? undefined : !on));
         if (e.source === 'pick') {
           // picked at the hovered orb's level: the bar lit half-white (LockFlash's shape)
           items.push(<OrbLight key={`${e.key}:light`} level={e.level} style={{ left: g.barCX - 19 * S, top: y - 16 * S, width: barW + 17 * S, height: 32 * S, borderRadius: 16 * S, zIndex: 20 }} />);
@@ -200,12 +342,13 @@ export function Overview({ skin }: { skin: Skin }) {
             x={g.barCX}
             y={y}
             wd={barW}
-            halfText
+            halfText={!g.phone}
             text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
             state={flagged.length ? 'unselectable' : on ? 'selected' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
             onClick={e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            onLongPress={longBar}
             onHover={(h) => hoverOn(e, h)}
           />,
         );
@@ -229,7 +372,7 @@ export function Overview({ skin }: { skin: Skin }) {
                 play('powerselect2');
                 setBuild(setExclusive(build, members.map((m) => m.id), v ? Number(v) : undefined));
               }}
-              style={{ left: g.barCX + barW + 8, top: y - 16, width: SELECT_W, height: 32, fontFamily: "'Montreal'", fontSize: 15, color: '#fff', background: 'linear-gradient(#0c2a6e, #04102e)', border: '2px solid #4f94ff', borderRadius: 16, padding: '0 6px 0 10px', cursor: 'pointer', zIndex: 9 }}
+              style={{ left: g.barCX + barW + 8, top: y - (g.phone ? 24 : 16), width: SELECT_W, height: g.phone ? 48 : 32, fontFamily: "'Montreal'", fontSize: 15, color: '#fff', background: 'linear-gradient(#0c2a6e, #04102e)', border: '2px solid #4f94ff', borderRadius: 16, padding: '0 6px 0 10px', cursor: 'pointer', zIndex: 9 }}
             >
               <option value="">Off</option>
               {members.map((m) => (
@@ -245,8 +388,10 @@ export function Overview({ skin }: { skin: Skin }) {
               key={`${e.key}:on`}
               className="abs"
               title={on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
-              onClick={() => setBuild(setOn(build, e.key, !on === defaultOn(e.power) ? undefined : !on))}
-              style={{ left: g.barCX + g.barW + SWITCH / 2 + 4, top: y - SWITCH / 2, width: SWITCH, height: SWITCH, borderRadius: SWITCH / 2, cursor: 'pointer', border: '2px solid #4f94ff', background: on ? 'radial-gradient(#7fff7f, #00a020)' : '#111', boxShadow: on ? '0 0 8px #3f3' : 'none', zIndex: 9 }}
+              onClick={toggleOn}
+              {...pressKeys(toggleOn, undefined, on ? 'Counted in totals' : 'Not counted in totals')}
+              {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
+              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: 'pointer', border: '2px solid #4f94ff', background: on ? 'radial-gradient(#7fff7f, #00a020)' : '#111', boxShadow: on ? '0 0 8px #3f3' : 'none', zIndex: 9 }}
             />,
           );
         }
@@ -256,15 +401,15 @@ export function Overview({ skin }: { skin: Skin }) {
           const orbLevel = i > 0 || e.source === 'pick' ? s.level : null;
           if (i > 0) {
             // placed at the hovered orb's level: the ring lit half-white
-            items.push(<OrbLight key={`${e.key}:${i}:light`} level={s.level} style={{ left: g.ringX + (i + 1) * RING_STEP - RING / 2, top: y + 20 * S - RING / 2, width: RING, height: RING, borderRadius: RING / 2, zIndex: 10 }} />);
+            items.push(<OrbLight key={`${e.key}:${i}:light`} level={s.level} style={{ left: g.ringX + (i + 1) * g.ringStep - g.ring / 2, top: y + g.ringDy - g.ring / 2, width: g.ring, height: g.ring, borderRadius: g.ring / 2, zIndex: 10 }} />);
           }
           items.push(
             <SlotRing
               skin={skin}
               key={`${e.key}:${i}`}
-              x={g.ringX + (i + 1) * RING_STEP}
-              y={y + 20 * S}
-              size={RING}
+              x={g.ringX + (i + 1) * g.ringStep}
+              y={y + g.ringDy}
+              size={g.ring}
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
               pog={boost ? boostPog(gd, boost) : undefined}
@@ -280,6 +425,11 @@ export function Overview({ skin }: { skin: Skin }) {
                       }))
               }
               onClick={() => setPicker({ entry: e, slot: i })}
+              onLongPress={
+                g.phone
+                  ? (pt) => useHover.setState({ press: boost ? { kind: 'enh', entry: e, slot: i, ...pt } : { kind: 'text', text: `Empty slot (level ${s.level + 1}).\nTap it to choose an enhancement.`, ...pt } })
+                  : undefined
+              }
               onRightClick={
                 boost
                   ? () => {
@@ -295,11 +445,11 @@ export function Overview({ skin }: { skin: Skin }) {
         primY += g.row;
         if (flagged.length) {
           items.push(
-            <div key={`${e.key}:issue`} className="abs body-text" style={{ left: g.barCX, top: primY - 30 * u + 30 * S, fontSize: 13, color: '#ff6060', whiteSpace: 'nowrap' }}>
+            <div key={`${e.key}:issue`} className="abs body-text" style={{ left: g.barCX, top: g.phone ? y + g.ringDy + g.ring / 2 + 2 : primY - 30 * u + 30 * S, fontSize: g.phone ? 16 : 13, color: '#ff6060', whiteSpace: 'nowrap' }}>
               {flagged[0]!.message}
             </div>,
           );
-          primY += 18;
+          primY += g.phone ? 22 : 18;
         }
       }
       // the set's frame from the bar's x, as specMenu draws it
@@ -386,35 +536,6 @@ export function Overview({ skin }: { skin: Skin }) {
     );
   };
 
-  /**
-   * Switch origin. Enhancements only the old origin can use (its DOs / SOs) are listed in a
-   * confirmation; Proceed switches and empties those slots, Cancel keeps the old origin.
-   */
-  const changeOrigin = async (id: number) => {
-    if (id === build.origin) return;
-    const oi = gd.core.origins.findIndex((o) => o.id === id);
-    const bound: { e: BuildEntry; slot: number }[] = [];
-    for (const e of rules.entries()) {
-      e.slots.forEach((s, i) => {
-        const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
-        if (boost && !canSlot(gd, e.power, boost, oi)) bound.push({ e, slot: i });
-      });
-    }
-    if (bound.length) {
-      const from = gd.core.origins.find((o) => o.id === build.origin)?.dn ?? 'the old origin';
-      const to = gd.core.origins[oi]?.dn ?? 'the new origin';
-      const ok = await useStore.getState().askConfirm({
-        title: 'Change origin?',
-        text: `Changing from ${from} to ${to} will remove ${bound.length} enhancement${bound.length > 1 ? 's' : ''} bound to ${from}.`,
-        okLabel: 'Proceed',
-      });
-      if (!ok) return;
-    }
-    let nb = { ...build, origin: id };
-    for (const { e, slot } of bound) nb = setEnh(nb, e.key, slot, undefined, e.level);
-    setBuild(nb);
-  };
-
   const picker_ = picker ? (
     <EnhancementPicker
       gd={gd}
@@ -433,26 +554,31 @@ export function Overview({ skin }: { skin: Skin }) {
   ) : null;
 
   if (phone) {
-    const P = PHONE_PANEL;
-    const ph = P.h - 150;
+    // no archetype label on a phone (it is in the menu pane): the tabs go right under the title;
+    // the level log replaces the orb strip and Continue sits in the menu, so the panel runs down
+    // to Back / Next
+    const pg = phoneGeom(stage, false);
+    const P = phonePanel(pg, 4, 0);
     return (
       <>
-        <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
-        <GameText font="title_14" scale={S} x={980} y={118} align="right" colors={skin.heading} text={who} />
-        <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} />
-        <MenuFrame x={P.x} y={P.y} w={P.w} h={ph} skin={skin} />
+        <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} reserve={LOG_RESERVE} />
+        <LevelLog gd={gd} skin={skin} build={build} shown={shown} entries={entries} />
+        <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} y={pg.tabsY} />
+        <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h} skin={skin} />
         {tab < 3 ? (
-          renderPanel({ left: P.x + 2, top: P.y + 6, width: P.w - 4, height: ph - 12 }, { x: P.x + P.w, top: P.y + 18, height: ph - 36 }, geom(P.w - 4, S), groups(COLS[tab]!.column), tab)
+          renderPanel({ left: P.x + 2, top: P.y + 6, width: P.w - 4, height: P.h - 12 }, { x: P.x + P.w, top: P.y + 18, height: P.h - 36 }, geom(P.w - 4, S, true), groups(COLS[tab]!.column), tab)
         ) : (
-          <GameScroll skin={skin} left={P.x + 20} top={P.y + 18} width={P.w - 40} height={ph - 36} barX={P.x + P.w}>
-            <TotalsPanel gd={gd} t={totals} width={P.w - 60} />
+          <GameScroll skin={skin} left={P.x + 16} top={P.y + 14} width={P.w - 32} height={P.h - 28} barX={P.x + P.w}>
+            {/* a little larger text than the desktop panel; its spacing keeps it readable */}
+            <div style={{ zoom: TOTALS_ZOOM }}>
+              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} />
+            </div>
           </GameScroll>
         )}
-        {levelStrip(30, P.y + P.h - 130, 25, 34)}
-        {topButtons(500, P.y + P.h - 20, 300, 44)}
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
+        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />
       </>
     );
   }

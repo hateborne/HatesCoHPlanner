@@ -8,7 +8,7 @@ import { useStage } from './Stage.tsx';
  * Planner extra on the desktop level-up screens: View Build at the top center. It ends the build
  * at the current level (for planning a level 20 or 35 character); the overview then hides the
  * later levels and offers Continue Leveling (and Save / Share). Shown while leveling only, not
- * when a level was reopened from the overview.
+ * when a level was reopened from the overview. Phones have it in the menu pane (Settings.tsx).
  */
 export function StopButtons({ skin }: { skin: Skin }) {
   const { level, stopHere } = useStore();
