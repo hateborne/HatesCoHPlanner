@@ -9,8 +9,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { BoostsFile, Core, Power, Powerset } from '../src/data/types.ts';
 import type { GameVersions } from '../src/data/versions.ts';
-import { evalRequires } from '../src/engine/requires.ts';
-import { BuildRules } from '../src/engine/rules.ts';
+import { BuildRules, startingSets } from '../src/engine/rules.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { decodeShare } from '../src/io/share.ts';
 import { loadData } from './helpers/data.ts';
@@ -115,14 +114,11 @@ describe('share links made today', () => {
 
 describe('every power set levels to 50', () => {
   const gd = loadData();
-  // Sets the game hides (SetRequires false, e.g. ones still in development) can't be played, so
-  // they aren't walked.
-  const ctx = { ownsPower: () => false, ownsSet: () => false, prop: () => 0 };
-  const playable = (cat: string) => gd.setsInCategory(cat).filter((s) => !s.spa && s.p.length > 0 && evalRequires(s.sr, ctx));
+  // every set New Build offers (sets the game hides, such as Wind Control, are not offered),
   // each primary and each secondary at least once, paired in turn
   it.each(gd.core.archetypes.map((a) => [a.dn, a] as const))('%s: picking the first choice at every level breaks no rule', (_, at) => {
-    const pri = playable(at.cats.pri);
-    const sec = playable(at.cats.sec);
+    const pri = startingSets(gd, at.cats.pri, at);
+    const sec = startingSets(gd, at.cats.sec, at);
     const bad: string[] = [];
     for (let k = 0; k < Math.max(pri.length, sec.length); k++) {
       const p = pri[k % pri.length]!;

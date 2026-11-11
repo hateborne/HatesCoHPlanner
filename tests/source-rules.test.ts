@@ -8,7 +8,7 @@ import { GameData } from '../src/data/gamedata.ts';
 import { newBuild, type Build, type SlottedEnh } from '../src/engine/build.ts';
 import { effectiveness, enhValues, powerStrength } from '../src/engine/enhance.ts';
 import { evalRequires, type EvalContext } from '../src/engine/requires.ts';
-import { BuildRules } from '../src/engine/rules.ts';
+import { BuildRules, startingSets } from '../src/engine/rules.ts';
 import { earnedBonuses } from '../src/engine/setbonus.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { loadData, pid, sid } from './helpers/data.ts';
@@ -140,7 +140,8 @@ describe('enhancement slot rules (boost.c power_ValidBoostSlotRequired; powers.c
 
   it('flags a unique piece in two powers (BoostsSlotted> counts the whole character)', () => {
     const b = build('Class_Tanker', 'Tanker_Defense.Invulnerability', 'Tanker_Melee.Super_Strength');
-    put(b, 0, 'Tanker_Defense.Invulnerability.Resist_Physical_Damage', [io('Crafted_Steadfast_Protection_B')]);
+    // Steadfast Protection is made at 10 to 30
+    put(b, 0, 'Tanker_Defense.Invulnerability.Resist_Physical_Damage', [{ ...io('Crafted_Steadfast_Protection_B'), ioLevel: 29 }]);
     put(b, 1, 'Tanker_Melee.Super_Strength.Jab');
     put(b, 2, 'Tanker_Defense.Invulnerability.Temp_Invulnerability', [io('Attuned_Steadfast_Protection_B')]);
     const dn = (n: string) => gd.power(pid(gd, n)).dn;
@@ -183,6 +184,80 @@ describe('enhancement slot rules (boost.c power_ValidBoostSlotRequired; powers.c
     const [flares, blast] = ['pick:0', 'pick:2'].map((k) => r.entries().find((e) => e.key === k)!);
     expect(r.slotRefusal(flares!, 0, gd.power(sup.boost))).toBeNull();
     expect(r.slotRefusal(blast!, 0, gd.power(sup.boost))).toBe(`Unique, also slotted in ${flares!.power.dn}`);
+  });
+});
+
+describe('what a slotted enhancement may be (boost.c power_IsValidBoost, boost_IsBoostable, boost_IsValidToSlotAtLevel)', () => {
+  // Combat Jumping takes Defense, Jump and Endurance Reduction; the test builds are Science origin
+  const cj = (pieces: SlottedEnh[], endLevel?: number) => {
+    const b = blaster();
+    put(b, 3, 'Pool.Leaping.Combat_Jumping', pieces);
+    return pieceIssues({ ...b, endLevel }).map((x) => x.message);
+  };
+  const so = (short: string, rel?: number): SlottedEnh => ({ boost: pid(gd, `Boosts.${short}.${short}`), rel });
+
+  it("flags an enhancement the power can't take, and an origin enhancement of another origin", () => {
+    expect(cj([io('Crafted_Damage')])).toEqual(["This power can't take it"]);
+    expect(cj([so('Science_Defense_Buff')])).toEqual([]);
+    expect(cj([so('Magic_Defense_Buff')])).toEqual(['Not for this origin']);
+  });
+
+  it('takes boosters on boostable pieces only, +5 at most (the boosters table has 6 entries)', () => {
+    expect(cj([{ ...io('Crafted_Luck_of_the_Gambler_A'), boosters: 5 }])).toEqual([]);
+    expect(cj([{ ...io('Crafted_Luck_of_the_Gambler_A'), boosters: 6 }])).toEqual(['Boosters go from +0 to +5']);
+    expect(cj([{ boost: io('Attuned_Luck_of_the_Gambler_A').boost, boosters: 2 }])).toEqual(['Attuned pieces take no boosters']);
+    expect(cj([{ ...io('Crafted_Kismet_E'), ioLevel: 29, boosters: 1 }])).toEqual(['Takes no boosters']);
+    expect(cj([{ ...so('Science_Defense_Buff'), boosters: 1 }])).toEqual(['Takes no boosters']);
+  });
+
+  it('keeps a TO/DO/SO within 3 levels of the character: 3 combines reach 50+3 (Homecoming client boost_IsValidCombination)', () => {
+    expect(cj([so('Science_Defense_Buff', 3), so('Science_Defense_Buff', -3)])).toEqual([]);
+    expect(cj([so('Science_Defense_Buff', 4), so('Science_Defense_Buff', -4)])).toEqual([
+      'Relative level goes from -3 to +3',
+      'Relative level goes from -3 to +3',
+    ]);
+  });
+
+  it("keeps an IO to its set's levels (Kismet is made at 10 to 30)", () => {
+    expect(cj([{ ...io('Crafted_Kismet_A'), ioLevel: 29 }])).toEqual([]);
+    expect(cj([io('Crafted_Kismet_A')])).toEqual(['Made at levels 10 to 30']);
+  });
+
+  it('judges a build that stops early at its last level: an IO works from 3 levels below its own', () => {
+    // a level-50 Defense IO works from level 47 (0-based 49 - 3 = 46); a level-43 one from 40
+    expect(cj([io('Crafted_Defense_Buff')], 39)).toEqual(['Usable from level 47']);
+    expect(cj([{ ...io('Crafted_Defense_Buff'), ioLevel: 42 }], 39)).toEqual([]);
+    // attuned pieces work from their MinSlotLevel: Luck of the Gambler (25-50) from level 22
+    expect(cj([io('Attuned_Luck_of_the_Gambler_A')], 20)).toEqual(['Usable from level 22']);
+    expect(cj([io('Attuned_Luck_of_the_Gambler_A')], 21)).toEqual([]);
+  });
+
+  it("refuses a piece in the picker when even its lowest level can't work yet (a common IO from level 7)", () => {
+    const b = blaster();
+    put(b, 3, 'Pool.Leaping.Combat_Jumping');
+    const dbuff = gd.power(io('Crafted_Defense_Buff').boost);
+    const at = (endLevel: number) => {
+      const r = new BuildRules(gd, { ...b, endLevel });
+      return r.slotRefusal(r.entries().find((e) => e.key === 'pick:3')!, 0, dbuff);
+    };
+    // made from level 10 (0-based 9), so it works from 0-based 6
+    expect(at(5)).toBe('Usable from level 7');
+    expect(at(6)).toBeNull();
+  });
+
+  it("refuses the developers' Omni Talisman (accesslevel char> 9 >=)", () => {
+    expect(cj([{ boost: pid(gd, 'Boosts.Yins_Omni.Yins_Omni') }])).toEqual(['Not slottable by this character']);
+  });
+});
+
+describe('New Build', () => {
+  it('offers no set the game hides: Wind Control (SetRequires 0) is not a starting set', () => {
+    for (const n of ['Class_Controller', 'Class_Dominator']) {
+      const at = gd.archetypeByName.get(n.toLowerCase())!;
+      const names = startingSets(gd, at.cats.pri, at).map((s) => s.n.split('.')[1]);
+      expect(names).toContain('Fire_Control');
+      expect(names).not.toContain('Wind_Control');
+    }
   });
 });
 

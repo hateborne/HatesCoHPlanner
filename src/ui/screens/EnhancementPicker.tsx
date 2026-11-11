@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { BoostSet, Power } from '../../data/types.ts';
 import type { SlottedEnh } from '../../engine/build.ts';
-import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, isLegacyDuplicate, pieceName, setLevelRange, type EnhKind } from '../../engine/enhance.ts';
+import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, ioLevelRange, isLegacyDuplicate, levelsAbove, pieceName, type EnhKind } from '../../engine/enhance.ts';
 import type { BuildEntry } from '../../engine/rules.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
@@ -60,6 +60,7 @@ interface Props {
   originIndex: number;
   atId: number;
   refusal: (b: Power) => string | null; // BuildRules.slotRefusal for this slot
+  lastLevel: number; // the build's last level (0-based): an IO works from 3 levels below its own
   onPlace: (e: SlottedEnh | undefined) => void;
   onClose: () => void;
 }
@@ -70,7 +71,7 @@ interface Props {
  * archetype and level-50 pieces), plus level / booster / attuned / relative-level controls and a
  * live preview of what the piece adds to the power.
  */
-export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, refusal, onPlace, onClose }: Props) {
+export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, refusal, lastLevel, onPlace, onClose }: Props) {
   const current = entry.slots[slot]?.enh;
   // the piece already in this slot always shows, whatever the build now says about it
   const allowed = (b: Power) => b.id === current?.boost || !refusal(b);
@@ -115,16 +116,18 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   });
   const chosenSet: BoostSet | undefined = setId !== undefined ? gd.boostSetById.get(setId) : undefined;
 
-  /** @return The piece's level range (0-based) when its level can be chosen, else null. */
+  /**
+   * @return The piece's level range (0-based) when its level can be chosen, else null: the levels
+   *   it is made at, up to 3 above the build's last level (boost_Effectiveness).
+   */
   const rangeOf = (b: Power): [number, number] | null => {
-    if (!b.bie || b.bup) return null;
-    const r = gd.boostSetOf.get(b.id);
-    return r ? setLevelRange(r.set) : [9, Math.min(49, (b.maxBL ?? 50) - 1)];
+    const r = ioLevelRange(gd, b);
+    return r ? [r[0], Math.max(r[0], Math.min(r[1], lastLevel + levelsAbove(gd)))] : null;
   };
   const pickBoost = (b: Power) => {
-    // start at the last placed level, clamped to this piece's range
+    // start at the last placed level (else the highest), clamped to this piece's range
     const range = rangeOf(b);
-    const ioLevel = range && last?.ioLevel !== undefined ? Math.max(range[0], Math.min(range[1], last.ioLevel)) : defaultLevel(gd, b);
+    const ioLevel = range ? Math.max(range[0], Math.min(range[1], last?.ioLevel ?? range[1])) : defaultLevel(gd, b);
     setSel({ boost: b.id, ioLevel, rel: b.bie ? undefined : 0, boosters: 0 });
     setLvlDraft(null);
   };
@@ -147,7 +150,9 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     setLvlDraft(null);
   };
   useEscape(onClose);
-  const attunedAlt = ref ? ref.set.slots[ref.letter]?.[ref.variant === 0 ? 1 : 0] : undefined;
+  // the piece's other version (crafted <-> attuned), when the build allows it here
+  const alt = ref ? ref.set.slots[ref.letter]?.[ref.variant === 0 ? 1 : 0] : undefined;
+  const attunedAlt = alt !== undefined && allowed(gd.power(alt)) ? alt : undefined;
 
   /**
    * Enhancements as a list, one row each: the icon and the name. A set's pieces drop the set name

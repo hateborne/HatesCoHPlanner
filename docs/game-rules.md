@@ -79,9 +79,36 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   - archetype origin pieces: `arch char> Class_X eq`.
   - very rare and superior pieces: `level char> 50 ==` (the character level, `iLevel + 1`; the
     planner tests the build's last level).
+  - the developers' Omni Talisman: `accesslevel char> 9 >=` (players have access level 0).
   - `PowerBoostsSlotted>` counts in the power only (`power_sloteval_powerBoostsSlotted`); set bonus
     requirements use it.
-- The planner flags a piece that breaks these with the reason, and the picker leaves such pieces out.
+- The power must take the piece at all: its origin (TO/DO/SO, HO-style pieces name their origins)
+  and one of its enhancement types in the power's `BoostsAllowed`, and a set piece's set must list
+  the power (`power_IsValidBoost`, boost.c).
+- The piece must work at the character's level as it goes in (`boost_IsValidToSlotAtLevel`):
+  `MinSlotLevel <= level <= MaxSlotLevel` and `boost_Effectiveness > 0`. An IO works from 3 levels
+  below its own (the `BoostEffectivenessAbove` table has 4 entries, +0..+3); an attuned piece from
+  its `MinSlotLevel`. The planner tests the build's last level (its stop level, else 50), and the
+  picker offers IO levels up to that level + 3.
+- An enhancement's own settings:
+  - Enhancement Boosters go on `BoostBoostable` pieces only (crafted set pieces and common IOs, not
+    procs, attuned or superior pieces), at most 5 (`boost_IsBoostable`: the
+    `BoostEffectivenessBoosters` table has 6 entries).
+  - TO/DO/SO-style pieces (`BoostCombinable`) are combined to raise their level. The Ouroboros
+    source allows 2 combines (`BOOST_MAX_COMBINES`, boost.h). Homecoming's client refuses only a
+    4th (`boost_IsValidCombination` compares `iNumCombines` with 3), so a level-50 SO reaches
+    50+3. With the effectiveness tables (+3 above, -3 below) the relative level runs -3..+3.
+  - An IO is made at its set's levels (a common IO from 10 to 50).
+- The planner flags a piece that breaks any of these with the reason, and the picker leaves such
+  pieces out. A value that isn't a whole number can't come from the app or an import, so
+  `checkBuild` drops it.
+
+## Starting sets (New Build)
+
+- A primary or secondary is offered when its `SetRequires` and `SetBuyRequires` pass for a new
+  character of the archetype at level 1, it has powers, and it is not a VEAT branch
+  (`SpecializeAt`). The live data gives Wind Control (Controller and Dominator) `SetRequires 0`,
+  so the game hides it, and so does New Build.
 
 ## Set bonuses
 

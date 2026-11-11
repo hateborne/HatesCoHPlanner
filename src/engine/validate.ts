@@ -5,7 +5,7 @@
  * a new build) only when its archetype, sets or origin are unknown.
  */
 import type { GameData } from '../data/gamedata.ts';
-import { toAlignment, type Build, type Pick, type Slot } from './build.ts';
+import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { BuildRules } from './rules.ts';
 
 export interface Checked {
@@ -33,6 +33,19 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
   if (!isInt(b.origin, 0, 1e9) || !gd.core.origins.some((o) => o.id === b.origin)) return { build: null, fixes: ['unknown origin'] };
 
   const sched = gd.core.schedule.power;
+  // an enhancement's level, relative level and boosters: a value that isn't a whole number can't
+  // come from the app or an import and is dropped; whole numbers out of range are kept, and the
+  // build flags them (BuildRules.enhRefusal)
+  const enhOk = (e: SlottedEnh, where: string): SlottedEnh => {
+    const out: SlottedEnh = { boost: e.boost };
+    for (const k of ['ioLevel', 'rel', 'boosters'] as const) {
+      const v: unknown = e[k];
+      if (v === undefined) continue;
+      if (isInt(v, -1000, 1000)) out[k] = v;
+      else fixes.push(`${where}: dropped a bad enhancement ${k}`);
+    }
+    return out;
+  };
   const slotsOk = (slots: unknown, where: string): Slot[] => {
     if (!Array.isArray(slots)) return [];
     const out: Slot[] = [];
@@ -45,7 +58,7 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
       if (e && (!isInt(e.boost, 1, 1e9) || gd.powerById.get(e.boost)?.type !== 'Boost')) {
         fixes.push(`${where}: removed an unknown enhancement`);
         out.push({ level: s.level });
-      } else out.push(e ? { level: s.level, enh: { ...e } } : { level: s.level });
+      } else out.push(e ? { level: s.level, enh: enhOk(e, where) } : { level: s.level });
     }
     return out.slice(0, 6);
   };
