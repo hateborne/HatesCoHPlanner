@@ -89,6 +89,13 @@ describe('checking builds from outside the app', () => {
   it('ties the checked build to the data it was checked against', () => {
     expect(checkBuild(gd, { ...peacebringer(), dataVersion: '20261017-f94d0e09' }).build!.dataVersion).toBe(VERSION);
   });
+  it("drops an enhancement value that isn't a whole number, and keeps whole numbers for the rules to flag", () => {
+    const b = peacebringer();
+    b.picks[0]!.slots = [{ level: 0, enh: { boost: DMG(), ioLevel: 2.5, boosters: '5' as unknown as number } }, { level: 2, enh: { boost: DMG(), ioLevel: 49, boosters: 9 } }];
+    const c = checkBuild(gd, b);
+    expect(c.build!.picks[0]!.slots.map((s) => s.enh)).toEqual([{ boost: DMG() }, { boost: DMG(), ioLevel: 49, boosters: 9 }]);
+    expect(c.fixes.filter((f) => f.includes('dropped a bad enhancement'))).toHaveLength(2);
+  });
 });
 
 describe('game versions', () => {

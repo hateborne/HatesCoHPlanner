@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
 import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
-import type { Archetype, Powerset } from '../../data/types.ts';
+import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
-import { evalRequires } from '../../engine/requires.ts';
+import { startingSets } from '../../engine/rules.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
@@ -42,19 +42,6 @@ const respecLevel = (raw: string) => {
   const n = Math.round(Number(raw));
   return Number.isFinite(n) && raw.trim() !== '' ? Math.min(50, Math.max(1, n)) : 50;
 };
-
-/** Playable starting sets of a category (VEAT branches and gated sets are not offered). */
-function startingSets(gd: NonNullable<ReturnType<typeof useStore.getState>['gd']>, cat: string, at: Archetype): Powerset[] {
-  const ctx = {
-    ownsPower: () => false,
-    ownsSet: () => false,
-    prop: (n: string) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0),
-  };
-  return gd
-    .setsInCategory(cat)
-    .filter((s) => !s.spa && s.p.length > 0 && evalRequires(s.sbr, ctx))
-    .filter((s) => s.av.some((a) => a === 0));
-}
 
 /**
  * Build setup in the in-game style: origin and alignment, archetype, primary, secondary and a

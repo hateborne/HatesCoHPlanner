@@ -66,6 +66,68 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
 - `MinSlotLevel`/`MaxSlotLevel` are on the enhancement (Boost) power: the character-level range
   in which that enhancement may be slotted.
 
+## Which piece may go where
+
+- A power holds one of each set piece, whichever version (crafted, attuned, superior): a second
+  piece from the same list goes in place of the first (`power_ValidBoostSlotRequired`, boost.c).
+- A piece's `SlotRequires` is tested as it goes in (`power_BoostCheckRequires`, powers.c). In the
+  live data it holds:
+  - unique pieces: `Name BoostsSlotted> 0 <=` for the piece and its other versions.
+    `BoostsSlotted>` counts every power of the character (`chareval_EntityBoostsSlotted`,
+    character_eval.c). So very rare, archetype origin and winter pieces, Steadfast Protection B,
+    Kismet E and the travel sets' stealth pieces (one group) go in once per build.
+  - archetype origin pieces: `arch char> Class_X eq`.
+  - very rare and superior pieces: `level char> 50 ==` (the character level, `iLevel + 1`; the
+    planner tests the build's last level).
+  - the developers' Omni Talisman: `accesslevel char> 9 >=` (players have access level 0).
+  - `PowerBoostsSlotted>` counts in the power only (`power_sloteval_powerBoostsSlotted`); set bonus
+    requirements use it.
+- The power must take the piece at all: its origin (TO/DO/SO, HO-style pieces name their origins)
+  and one of its enhancement types in the power's `BoostsAllowed`, and a set piece's set must list
+  the power (`power_IsValidBoost`, boost.c).
+- The piece must work at the character's level as it goes in (`boost_IsValidToSlotAtLevel`):
+  `MinSlotLevel <= level <= MaxSlotLevel` and `boost_Effectiveness > 0`. An IO works from 3 levels
+  below its own (the `BoostEffectivenessAbove` table has 4 entries, +0..+3); an attuned piece from
+  its `MinSlotLevel`. The planner tests the build's last level (its stop level, else 50), and the
+  picker offers IO levels up to that level + 3.
+- An enhancement's own settings:
+  - Enhancement Boosters go on `BoostBoostable` pieces only (crafted set pieces and common IOs, not
+    procs, attuned or superior pieces), at most 5 (`boost_IsBoostable`: the
+    `BoostEffectivenessBoosters` table has 6 entries).
+  - TO/DO/SO-style pieces (`BoostCombinable`) are combined to raise their level. The Ouroboros
+    source allows 2 combines (`BOOST_MAX_COMBINES`, boost.h). Homecoming's client refuses only a
+    4th (`boost_IsValidCombination` compares `iNumCombines` with 3), so a level-50 SO reaches
+    50+3. With the effectiveness tables (+3 above, -3 below) the relative level runs -3..+3.
+  - An IO is made at its set's levels (a common IO from 10 to 50).
+- The planner flags a piece that breaks any of these with the reason, and the picker leaves such
+  pieces out. A value that isn't a whole number can't come from the app or an import, so
+  `checkBuild` drops it.
+
+## Starting sets (New Build)
+
+- A primary or secondary is offered when its `SetRequires` and `SetBuyRequires` pass for a new
+  character of the archetype at level 1, it has powers, and it is not a VEAT branch
+  (`SpecializeAt`). The live data gives Wind Control (Controller and Dominator) `SetRequires 0`,
+  so the game hides it, and so does New Build.
+
+## Set bonuses
+
+- A set's count in a power is its distinct pieces there that work at the combat level
+  (`boost_Effectiveness > 0`) or always count (`BoostAlwaysCountForSet`, attuned pieces)
+  (`boostset_FindBonuses`, boostset.c). A crafted and an attuned copy of one piece count once.
+- A bonus applies while the count is within its `MinBoosts..MaxBoosts` and its requirement holds.
+  `isPVPMap?` is false, so PvP-only bonuses never apply.
+
+## Current values (totals)
+
+- Speeds, jump height, perception, regeneration and recovery: the class base times the summed
+  mods, `attrCur = base x attrMod` with `attrMod` starting at 1 (`CalcCur`, character_attribs.c).
+  Fly at 50 with Swift: 1.5 x (1 + 1.609 + 0.137) = 4.118.
+- `attrMax` is the class maximum plus every Maximum-aspect mod (Super Speed +1.938 run, Fly +2.0475
+  fly, Long Jump +1.65 jump), held under the class `MaxMax` (`ClampMax`). The current value is held
+  under `attrMax` (`ClampCur`), both in character_mods.c. So a Blaster's regeneration (base 0.25,
+  maximum 5) stops at +1900%, not at 5x.
+
 ## Grants (Kheldian forms etc.)
 
 `kGrantPower`/`kGrantBoostedPower`/`kExecutePower` attribmods carry power names in their

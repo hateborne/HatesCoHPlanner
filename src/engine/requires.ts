@@ -26,8 +26,13 @@ export interface EvalContext {
    * running power sets it with SetMode. The name arrives with the data's `k` prefix.
    */
   inMode?(name: string): boolean;
-  /** @return How many of the named enhancement are slotted in the power being evaluated. */
+  /**
+   * @return How many of the named enhancement (short name, "Crafted_Aegis_F") the whole character
+   *   has slotted: `BoostsSlotted>` (chareval_EntityBoostsSlotted walks every power).
+   */
   boostsSlotted?(name: string): number;
+  /** @return How many of the named enhancement are slotted in the power being evaluated: `PowerBoostsSlotted>`. */
+  powerBoostsSlotted?(name: string): number;
   /** Entity type of the target for effect requires ('critter' in PvE). */
   targetEntType?: string;
 }
@@ -207,10 +212,16 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
       case 'target.mode?':
         st.push(ctx.inMode?.(popStr()) ? 1 : 0);
         continue;
-      case 'powerboostsslotted>':
-      case 'boostsslotted>':
-        st.push(ctx.boostsSlotted ? ctx.boostsSlotted(popStr()) : 0);
+      case 'powerboostsslotted>': {
+        const name = popStr();
+        st.push(ctx.powerBoostsSlotted?.(name) ?? 0);
         continue;
+      }
+      case 'boostsslotted>': {
+        const name = popStr();
+        st.push(ctx.boostsSlotted?.(name) ?? 0);
+        continue;
+      }
       case 'target.eventtimesince>':
       case 'eventtimesince>':
         popRaw();

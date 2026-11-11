@@ -94,6 +94,25 @@ export function setLevelRange(set: { minL: number; maxL: number }): [number, num
   return [Math.max(0, set.minL - 1), Math.max(0, set.maxL - 1)];
 }
 
+/**
+ * The levels an IO is made at (0-based), for enhancements whose level is chosen.
+ *
+ * @param gd Game data.
+ * @param boost Enhancement power.
+ * @return A set piece's set range, a common IO's 10 to its maximum; null for attuned pieces (they
+ *   follow the character) and for enhancements without an IO level (TO/DO/SO, HOs, ...).
+ */
+export function ioLevelRange(gd: GameData, boost: Power): [number, number] | null {
+  if (!boost.bie || boost.bup) return null;
+  const ref = gd.boostSetOf.get(boost.id);
+  return ref ? setLevelRange(ref.set) : [9, Math.min(49, (boost.maxBL ?? 50) - 1)];
+}
+
+/** @return How many levels above the character an enhancement still works: 3 (boost_EffectivenessLevel). */
+export function levelsAbove(gd: GameData): number {
+  return gd.core.boostEffect.above.length - 1;
+}
+
 /** Default enhancement level for a newly placed enhancement (0-based). */
 export function defaultLevel(gd: GameData, boost: Power): number | undefined {
   if (boost.bup) return undefined; // attuned: scales with the character
