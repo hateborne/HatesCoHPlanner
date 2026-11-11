@@ -49,6 +49,7 @@ export function OriginAlignPane(props: {
       {gd.core.origins.map((o, i) => (
         <CheckBar
           key={o.id}
+          testId={`origin:${o.id}`}
           skin={skin}
           x={x + 60 * k}
           y={y + (95 + i * ROW) * k}
@@ -67,6 +68,7 @@ export function OriginAlignPane(props: {
       {ALIGNMENTS.map((a, i) => (
         <CheckBar
           key={a}
+          testId={`align:${a}`}
           skin={skin}
           x={x + 60 * k}
           y={y + (420 + i * ROW) * k}

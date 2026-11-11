@@ -150,6 +150,7 @@ export function PhoneTabs({ skin, labels, active, onChange, y, x = PHONE_PAD, wi
             down={!off && i === active}
             clickSounds={clickSounds}
             onClick={off ? undefined : () => onChange(i)}
+            testId={`tab:${l}`}
           />
         );
       })}

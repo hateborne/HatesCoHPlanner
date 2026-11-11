@@ -30,6 +30,7 @@ interface CheckBarProps {
   onLongPress?: (pt: { x: number; y: number }) => void; // phones: press and hold (window px), in place of hovering
   onHover?: (on: boolean) => void;
   title?: string;
+  testId?: string; // data-testid for the browser tests (e2e/)
 }
 
 const CHECKBOX_WD = 38;
@@ -54,7 +55,7 @@ function brighten(c: string, amt: number): string {
  * meat over the same box, no check box, the label centered.
  */
 export function CheckBar(props: CheckBarProps) {
-  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, hitPad = 0, isPower, noBox, clickSounds, hoverSounds, onClick, onRightClick, onLongPress, onHover, title } = props;
+  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, hitPad = 0, isPower, noBox, clickSounds, hoverSounds, onClick, onRightClick, onLongPress, onHover, title, testId } = props;
   useFontsReady();
   const { phone } = useStage();
   const [hover, setHover] = useState(false);
@@ -175,6 +176,7 @@ export function CheckBar(props: CheckBarProps) {
           : undefined
       }
       title={title}
+      data-testid={testId}
     >
       <div className="layer" style={{ left: 0, top: hitPad, width: 0, height: 0 }}>
         {noBox ? (

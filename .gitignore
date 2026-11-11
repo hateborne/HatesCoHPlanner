@@ -8,6 +8,11 @@ dist/
 .vite/
 coverage/
 
+# Playwright browser tests (npm run e2e): results and reports
+test-results/
+playwright-report/
+blob-report/
+
 # Python pipeline scratch and this machine's input paths
 pipeline/.cache/
 pipeline/paths.local.json

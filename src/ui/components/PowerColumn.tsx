@@ -81,6 +81,7 @@ export function PowerColumn({ skin, g, sets, pending, onPick, onHover, onLong, f
       items.push(
         <CheckBar
           key={`p${o.power.id}`}
+          testId={`power:${o.power.id}`}
           skin={skin}
           x={g.barCX}
           y={y}

@@ -29,12 +29,20 @@ interface GameScrollProps {
 export function GameScroll({ skin, left, top, width, height, barX, barTop = top, barHeight = height, children }: GameScrollProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [st, setSt] = useState({ off: 0, doc: 0 });
+  // the offset and height last handed to setSt
+  const last = useRef(st);
   const update = () => {
     const el = ref.current;
     if (!el) return;
     const off = el.scrollTop;
     const doc = el.scrollHeight;
-    setSt((p) => (p.off === off && p.doc === doc ? p : { off, doc }));
+    // compared with what was last set, not inside a setSt updater: while a scroll event's update
+    // still waits (lower priority), a click's render rebases later updates from the older state,
+    // so an updater kept seeing the old offset and set a new object on every render (a render
+    // loop: scroll a panel, then click in it at once)
+    if (off === last.current.off && doc === last.current.doc) return;
+    last.current = { off, doc };
+    setSt(last.current);
   };
   useLayoutEffect(update);
   const color = scrollColor(skin);
