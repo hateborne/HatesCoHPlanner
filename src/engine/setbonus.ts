@@ -6,7 +6,7 @@ import type { GameData } from '../data/gamedata.ts';
 import type { BoostSet, Power } from '../data/types.ts';
 import type { BuildEntry } from './rules.ts';
 import { evalRequires } from './requires.ts';
-import { shortName } from './enhance.ts';
+import { effectiveness, shortName } from './enhance.ts';
 
 export const RULE_OF_FIVE = 5;
 
@@ -15,12 +15,16 @@ export interface EarnedBonus {
   power: Power; // the Set_Bonus.* power granted
   set: BoostSet;
   entryKey: string; // power entry that earned it
-  slotted: number; // pieces of the set slotted in that power
+  slotted: number; // distinct pieces of the set that count in that power
   suppressed: boolean; // true when over the rule-of-5 limit
 }
 
 /**
  * Every set bonus a build earns, in build order.
+ *
+ * A set counts its distinct pieces (letters) in each power, and a piece counts only while it works
+ * at the level, unless it always counts (attuned pieces): boostset_FindBonuses. So a crafted and
+ * an attuned copy of one piece count once, and a crafted IO too high for an exemplar level drops out.
  *
  * @param gd Game data.
  * @param entries Build entries (from BuildRules.entries()).
@@ -31,22 +35,26 @@ export function earnedBonuses(gd: GameData, entries: BuildEntry[], level = 49): 
   const counts = new Map<number, number>();
   for (const e of entries) {
     if (e.level > level) continue;
-    const bySet = new Map<number, { set: BoostSet; names: string[] }>();
+    const bySet = new Map<number, { set: BoostSet; letters: Set<number> }>();
+    const names: string[] = []; // every enhancement in the power, for PowerBoostsSlotted>
     for (const s of e.slots) {
       if (!s.enh || s.level > level) continue;
-      const ref = gd.boostSetOf.get(s.enh.boost);
+      const boost = gd.power(s.enh.boost);
+      names.push(shortName(boost).toLowerCase());
+      const ref = gd.boostSetOf.get(boost.id);
       if (!ref) continue;
-      const cur = bySet.get(ref.set.id) ?? { set: ref.set, names: [] };
-      cur.names.push(shortName(gd.power(s.enh.boost)).toLowerCase());
+      if (!boost.bac && effectiveness(gd, boost, s.enh, level) <= 0) continue;
+      const cur = bySet.get(ref.set.id) ?? { set: ref.set, letters: new Set<number>() };
+      cur.letters.add(ref.letter);
       bySet.set(ref.set.id, cur);
     }
-    for (const { set, names } of bySet.values()) {
-      const n = names.length;
+    for (const { set, letters } of bySet.values()) {
+      const n = letters.size;
       const ctx = {
         ownsPower: () => false,
         ownsSet: () => false,
         prop: () => 0,
-        boostsSlotted: (nm: string) => names.filter((x) => x === nm.toLowerCase()).length,
+        powerBoostsSlotted: (nm: string) => names.filter((x) => x === nm.toLowerCase()).length,
       };
       for (const b of set.bon) {
         if (n < b.min || n > b.max) continue;

@@ -66,6 +66,41 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
 - `MinSlotLevel`/`MaxSlotLevel` are on the enhancement (Boost) power: the character-level range
   in which that enhancement may be slotted.
 
+## Which piece may go where
+
+- A power holds one of each set piece, whichever version (crafted, attuned, superior): a second
+  piece from the same list goes in place of the first (`power_ValidBoostSlotRequired`, boost.c).
+- A piece's `SlotRequires` is tested as it goes in (`power_BoostCheckRequires`, powers.c). In the
+  live data it holds:
+  - unique pieces: `Name BoostsSlotted> 0 <=` for the piece and its other versions.
+    `BoostsSlotted>` counts every power of the character (`chareval_EntityBoostsSlotted`,
+    character_eval.c). So very rare, archetype origin and winter pieces, Steadfast Protection B,
+    Kismet E and the travel sets' stealth pieces (one group) go in once per build.
+  - archetype origin pieces: `arch char> Class_X eq`.
+  - very rare and superior pieces: `level char> 50 ==` (the character level, `iLevel + 1`; the
+    planner tests the build's last level).
+  - `PowerBoostsSlotted>` counts in the power only (`power_sloteval_powerBoostsSlotted`); set bonus
+    requirements use it.
+- The planner flags a piece that breaks these with the reason, and the picker leaves such pieces out.
+
+## Set bonuses
+
+- A set's count in a power is its distinct pieces there that work at the combat level
+  (`boost_Effectiveness > 0`) or always count (`BoostAlwaysCountForSet`, attuned pieces)
+  (`boostset_FindBonuses`, boostset.c). A crafted and an attuned copy of one piece count once.
+- A bonus applies while the count is within its `MinBoosts..MaxBoosts` and its requirement holds.
+  `isPVPMap?` is false, so PvP-only bonuses never apply.
+
+## Current values (totals)
+
+- Speeds, jump height, perception, regeneration and recovery: the class base times the summed
+  mods, `attrCur = base x attrMod` with `attrMod` starting at 1 (`CalcCur`, character_attribs.c).
+  Fly at 50 with Swift: 1.5 x (1 + 1.609 + 0.137) = 4.118.
+- `attrMax` is the class maximum plus every Maximum-aspect mod (Super Speed +1.938 run, Fly +2.0475
+  fly, Long Jump +1.65 jump), held under the class `MaxMax` (`ClampMax`). The current value is held
+  under `attrMax` (`ClampCur`), both in character_mods.c. So a Blaster's regeneration (base 0.25,
+  maximum 5) stops at +1900%, not at 5x.
+
 ## Grants (Kheldian forms etc.)
 
 `kGrantPower`/`kGrantBoostedPower`/`kExecutePower` attribmods carry power names in their

@@ -101,7 +101,17 @@ function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) 
   }
 }
 
-const SPEED_BASE = 21; // ft/s for base run/jump speed of 1.0
+// Maximum-aspect mods that raise a current value's cap (Super Speed, Fly, Long Jump): attribute
+// name -> the line key the raise is kept under, `max.<key>`
+const CAP_RAISE: Record<string, string> = {
+  SpeedRunning: 'run',
+  SpeedFlying: 'fly',
+  SpeedJumping: 'jumpspd',
+  JumpHeight: 'jumph',
+  Regeneration: 'regen',
+  Recovery: 'recov',
+  PerceptionRadius: 'perc',
+};
 
 // status effects: attribute name -> label (Current aspect: protection, Resistance aspect: resistance)
 export const MEZ: Record<string, string> = {
@@ -197,6 +207,7 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
           if (name === 'HitPoints') add('hp', 'Max HP', mag, srcName);
           else if (name === 'Endurance') add('endmax', 'Max Endurance', mag, srcName);
           else if (name === 'Absorb') add('absorb', 'Absorb', mag, srcName);
+          else if (CAP_RAISE[name]) add(`max.${CAP_RAISE[name]}`, `${name} cap`, mag, srcName);
           break;
         case 'Absolute':
           if (name === 'Absorb') add('absorb', 'Absorb', mag, srcName);
@@ -309,47 +320,41 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
   hpLine.cap = hpCap;
   hpLine.capped = hpMax;
   const endMax = 100 + (lines.get('endmax')?.value ?? 0);
-  const regenTotal = 1 + (lines.get('regen')?.value ?? 0);
-  const recovTotal = 1 + (lines.get('recov')?.value ?? 0);
-  const baseRegen = GameData.attrAt(at.base, 'Regeneration', level, 0.25);
-  // archetype base + bonus, held under the archetype maximum
-  const capAt = (attr: string, base: number, key: string) =>
-    Math.min(GameData.attrAt(at.base, attr, level, base) + (lines.get(key)?.value ?? 0), GameData.attrAt(at.max, attr, level, 1e9));
-  const baseRecov = GameData.attrAt(at.base, 'Recovery', level, 1);
-  const regenCap = GameData.attrAt(at.max, 'Regeneration', level, 20);
-  const recovCap = GameData.attrAt(at.max, 'Recovery', level, 5);
+  // CalcCur: the class base times (1 + the summed mods), e.g. Fly's 1.5 x (1 + 1.61)
+  const cur = (attr: string, dflt: number, key: string) => GameData.attrAt(at.base, attr, level, dflt) * (1 + (lines.get(key)?.value ?? 0));
+  // ClampCur against attrMax: the class maximum plus Maximum-aspect raises, which ClampMax holds
+  // under the class's MaxMax (Super Speed lifts the run cap from 6.46 to 8.398)
+  const capOf = (attr: string, key: string) =>
+    Math.min(GameData.attrAt(at.max, attr, level, 1e9) + (lines.get(`max.${key}`)?.value ?? 0), GameData.attrAt(at.maxMax, attr, level, 1e9));
+  const capped = (attr: string, dflt: number, key: string) => Math.min(cur(attr, dflt, key), capOf(attr, key));
+  const regenRaw = cur('Regeneration', 0.25, 'regen');
+  const recovRaw = cur('Recovery', 1, 'recov');
+  // per second: the regeneration or recovery value as a share of max HP or endurance
+  const perSec = (v: number, max: number) => v * (1 / 0.6) * (max / 100);
   return {
     level,
     lines,
     hpMax,
     hpBase,
-    regenPerSec: Math.min(regenTotal, regenCap) * baseRegen * (1 / 0.6) * (hpMax / 100),
-    recovPerSec: Math.min(recovTotal, recovCap) * baseRecov * (1 / 0.6) * (endMax / 100),
-    regenPerSecRaw: regenTotal * baseRegen * (1 / 0.6) * (hpMax / 100),
-    recovPerSecRaw: recovTotal * baseRecov * (1 / 0.6) * (endMax / 100),
+    regenPerSec: perSec(Math.min(regenRaw, capOf('Regeneration', 'regen')), hpMax),
+    recovPerSec: perSec(Math.min(recovRaw, capOf('Recovery', 'recov')), endMax),
+    regenPerSecRaw: perSec(regenRaw, hpMax),
+    recovPerSecRaw: perSec(recovRaw, endMax),
     hpRaw: hpBase + (lines.get('hp')?.value ?? 0),
     setGroups,
     bonusesOver5,
     speeds: {
-      run: capAt('SpeedRunning', 1, 'run'),
-      fly: capAt('SpeedFlying', 1.5, 'fly'),
-      jump: capAt('SpeedJumping', 1, 'jumpspd'),
-      jumpHeight: capAt('JumpHeight', 1, 'jumph'),
+      run: capped('SpeedRunning', 1, 'run'),
+      fly: capped('SpeedFlying', 1.5, 'fly'),
+      jump: capped('SpeedJumping', 1, 'jumpspd'),
+      jumpHeight: capped('JumpHeight', 1, 'jumph'),
     },
     // perception mods are fractions of the base radius (+0.6 = +60%), unlike stealth's feet
-    perception: Math.min(
-      GameData.attrAt(at.base, 'PerceptionRadius', level, 500) * (1 + (lines.get('perc')?.value ?? 0)),
-      GameData.attrAt(at.max, 'PerceptionRadius', level, 1e9),
-    ),
+    perception: capped('PerceptionRadius', 500, 'perc'),
     endMax,
     endUsePerSec: endUse,
     bonuses,
   };
-}
-
-/** Run speed in ft/s for a line value (base 1.0 = 21 ft/s). */
-export function speedFtPerSec(v: number, base = 1): number {
-  return (base + v) * SPEED_BASE;
 }
 
 /**

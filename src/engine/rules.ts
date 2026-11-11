@@ -6,6 +6,7 @@
 import { GameData } from '../data/gamedata.ts';
 import type { Archetype, Power, Powerset } from '../data/types.ts';
 import { toAlignment, type Build, type Pick, type Slot } from './build.ts';
+import { shortName } from './enhance.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { countAtLevel, countForLevel } from './schedule.ts';
 import { isExclusiveToggle } from './totals.ts';
@@ -56,6 +57,7 @@ export class BuildRules {
   readonly at: Archetype;
   readonly pickLevels: number[];
   private grantedCache: Map<number, number> | null = null;
+  private slottedCache: { counts: Map<string, number>; ctx: EvalContext } | null = null;
 
   constructor(
     readonly gd: GameData,
@@ -529,7 +531,95 @@ export class BuildRules {
         out.push({ key: 'build', message: `Level ${lvl + 1} has ${n} slots placed but grants ${this.slotsGranted(lvl)}` });
       }
     }
+    out.push(...this.pieceIssues());
     return out;
+  }
+
+  // ---- enhancement pieces ----------------------------------------------------------------------
+
+  /** @return Every slotted piece the game would refuse in its slot (see slotRefusal). */
+  private pieceIssues(): Issue[] {
+    const out: Issue[] = [];
+    const last = this.b.endLevel ?? MAX_LEVEL;
+    for (const e of this.entries()) {
+      if (e.level > last) continue;
+      e.slots.forEach((s, si) => {
+        const boost = s.enh && s.level <= last ? this.gd.powerById.get(s.enh.boost) : undefined;
+        const why = boost ? this.slotRefusal(e, si, boost) : null;
+        if (why) out.push({ key: e.key, slot: si, message: why });
+      });
+    }
+    return out;
+  }
+
+  /** @return Pieces slotted in the build by short name (lower case) and the context their requirements read. */
+  private slotted(): { counts: Map<string, number>; ctx: EvalContext } {
+    if (this.slottedCache) return this.slottedCache;
+    const last = this.b.endLevel ?? MAX_LEVEL;
+    const counts = new Map<string, number>();
+    for (const e of this.entries()) {
+      if (e.level > last) continue;
+      for (const s of e.slots) {
+        const b = s.enh && s.level <= last ? this.gd.powerById.get(s.enh.boost) : undefined;
+        if (!b) continue;
+        const k = shortName(b).toLowerCase();
+        counts.set(k, (counts.get(k) ?? 0) + 1);
+      }
+    }
+    this.slottedCache = { counts, ctx: this.ctx(last, this.ownedAt(last)) };
+    return this.slottedCache;
+  }
+
+  /**
+   * Why the game would refuse a piece in a power's slot as the build stands, if it would.
+   *
+   * A power holds one of each set piece, any version of it (power_ValidBoostSlotRequired). Then the
+   * piece's slot requirements (power_BoostCheckRequires): unique pieces may not already be in the
+   * build (`BoostsSlotted>` counts every power), archetype origin pieces need their archetype, and
+   * superior and very rare pieces need level 50 (the build's last level: the game checks the
+   * character's level when the piece goes in). The slot's current piece is left out of the counts,
+   * as it would be replaced.
+   *
+   * @param e The power.
+   * @param slot Index into e.slots.
+   * @param boost The piece to test (the slot's own piece to check the build).
+   * @return Null when allowed, else a short reason.
+   */
+  slotRefusal(e: BuildEntry, slot: number, boost: Power): string | null {
+    const gd = this.gd;
+    const ref = gd.boostSetOf.get(boost.id);
+    const others = e.slots.filter((s, i) => i !== slot && s.enh).map((s) => gd.power(s.enh!.boost));
+    if (ref && others.some((o) => { const r = gd.boostSetOf.get(o.id); return r?.set.id === ref.set.id && r.letter === ref.letter; })) {
+      return 'Set piece slotted twice';
+    }
+    if (!boost.slr?.length) return null;
+    const { counts, ctx: base } = this.slotted();
+    const last = this.b.endLevel ?? MAX_LEVEL;
+    const cur = e.slots[slot];
+    const curName = cur?.enh && cur.level <= last && e.level <= last ? shortName(gd.power(cur.enh.boost)).toLowerCase() : '';
+    const inPower = others.map((o) => shortName(o).toLowerCase());
+    const ctx: EvalContext = {
+      ...base,
+      boostsSlotted: (n) => {
+        const k = n.toLowerCase();
+        return (counts.get(k) ?? 0) - (k === curName ? 1 : 0);
+      },
+      powerBoostsSlotted: (n) => inPower.filter((x) => x === n.toLowerCase()).length,
+    };
+    if (evalRequires(boost.slr, ctx)) return null;
+
+    // which part failed: the same test with nothing else slotted, then also at level 50
+    const alone: EvalContext = { ...ctx, boostsSlotted: () => 0, powerBoostsSlotted: () => 0 };
+    if (evalRequires(boost.slr, alone)) {
+      const named = new Set(boost.slr.map((t) => t.toLowerCase()));
+      const where = this.entries().find((o) =>
+        o.slots.some((s, i) => (o.key !== e.key || i !== slot) && !!s.enh && named.has(shortName(gd.power(s.enh.boost)).toLowerCase())),
+      );
+      return where ? `Unique, also slotted in ${where.power.dn}` : 'Unique piece';
+    }
+    if (evalRequires(boost.slr, { ...alone, prop: (n) => (n === 'level' ? MAX_LEVEL + 1 : base.prop(n)) })) return 'Needs level 50';
+    const classes = boost.slr.filter((t) => /^Class_/i.test(t)).map((t) => gd.archetypeByName.get(t.toLowerCase())?.dn ?? t);
+    return classes.length ? `Only for ${classes.join(' or ')}` : 'Not slottable by this character';
   }
 }
 

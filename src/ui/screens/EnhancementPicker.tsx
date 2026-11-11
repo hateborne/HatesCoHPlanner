@@ -59,23 +59,27 @@ interface Props {
   slot: number;
   originIndex: number;
   atId: number;
+  refusal: (b: Power) => string | null; // BuildRules.slotRefusal for this slot
   onPlace: (e: SlottedEnh | undefined) => void;
   onClose: () => void;
 }
 
 /**
  * Enhancement picker for one slot: only enhancements the game would accept in this power for
- * this origin (power_IsValidBoost), plus level / booster / attuned / relative-level controls
- * and a live preview of what the piece adds to the power.
+ * this origin (power_IsValidBoost) and this build (one of each set piece per power, unique,
+ * archetype and level-50 pieces), plus level / booster / attuned / relative-level controls and a
+ * live preview of what the piece adds to the power.
  */
-export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, onPlace, onClose }: Props) {
+export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, refusal, onPlace, onClose }: Props) {
   const current = entry.slots[slot]?.enh;
+  // the piece already in this slot always shows, whatever the build now says about it
+  const allowed = (b: Power) => b.id === current?.boost || !refusal(b);
   const valid = useMemo(() => {
-    const list = gd.boosts.filter((b) => canSlot(gd, entry.power, b, originIndex));
+    const list = gd.boosts.filter((b) => canSlot(gd, entry.power, b, originIndex) && (b.id === current?.boost || !refusal(b)));
     // hide legacy copies (fixed-level common IOs, the "Cone" range enhancements); one already in
     // this slot still shows
     return list.filter((b) => !isLegacyDuplicate(gd, b) || b.id === current?.boost);
-  }, [gd, entry.power, originIndex, current?.boost]);
+  }, [gd, entry.power, originIndex, current?.boost, refusal]);
   const byTab = useMemo(() => {
     const m = new Map<Tab, Power[]>();
     for (const b of valid) {
@@ -110,17 +114,6 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
     return lastTab === 'Sets' && last?.set !== undefined && sets.some((x) => x.id === last.set) ? last.set : undefined;
   });
   const chosenSet: BoostSet | undefined = setId !== undefined ? gd.boostSetById.get(setId) : undefined;
-  // a power holds each set piece once (any of its crafted / attuned / superior versions); common
-  // IOs, TO/DO/SO and HOs may repeat (diminishing returns does the limiting)
-  const takenPieces = new Set<string>();
-  entry.slots.forEach((s, i) => {
-    const r = i !== slot && s.enh ? gd.boostSetOf.get(s.enh.boost) : undefined;
-    if (r) takenPieces.add(`${r.set.id}:${r.letter}`);
-  });
-  const pieceTaken = (b: Power) => {
-    const r = gd.boostSetOf.get(b.id);
-    return !!r && takenPieces.has(`${r.set.id}:${r.letter}`);
-  };
 
   /** @return The piece's level range (0-based) when its level can be chosen, else null. */
   const rangeOf = (b: Power): [number, number] | null => {
@@ -248,11 +241,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                 ))}
               </div>
               <div className="scroll-y" style={{ flex: 1, minHeight: 0, height: phone ? undefined : '100%' }}>
-                {chosenSet ? enhList(chosenSet.slots.map((v) => gd.power(v[0]!)).filter((b) => canSlot(gd, entry.power, b, originIndex) && !pieceTaken(b)), chosenSet.dn) : <div className="desc-text">Choose a set.</div>}
+                {chosenSet ? enhList(chosenSet.slots.map((v) => gd.power(v[0]!)).filter((b) => canSlot(gd, entry.power, b, originIndex) && allowed(b)), chosenSet.dn) : <div className="desc-text">Choose a set.</div>}
               </div>
             </div>
           ) : (
-            enhList((byTab.get(tab) ?? []).filter((b) => !pieceTaken(b)))
+            enhList(byTab.get(tab) ?? [])
           )}
         </div>
         {/* selection details and controls */}

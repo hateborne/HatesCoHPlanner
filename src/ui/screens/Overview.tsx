@@ -544,6 +544,7 @@ export function Overview({ skin }: { skin: Skin }) {
       slot={picker.slot}
       originIndex={originIndex}
       atId={build.at}
+      refusal={(b) => rules?.slotRefusal(picker.entry, picker.slot, b) ?? null}
       onClose={() => setPicker(null)}
       onPlace={(enh) => {
         play(enh ? 'select5' : 'delete');
