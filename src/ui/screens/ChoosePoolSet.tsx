@@ -55,6 +55,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
     choices.map((c, i) => (
       <CheckBar
         key={c.set.id}
+        testId={`set:${c.set.id}`}
         skin={skin}
         x={x0}
         y={y0 + i * ROW}
@@ -75,6 +76,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
     powers.map((o, i) => (
       <CheckBar
         key={o.power.id}
+        testId={`power:${o.power.id}`}
         skin={skin}
         x={x0}
         y={y0 + i * ROW}

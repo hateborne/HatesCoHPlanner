@@ -66,6 +66,8 @@ class Translator {
   readonly powerBySi = new Map<number, number>();
   readonly siByPower = new Map<number, number>();
   readonly boostByDisplay = new Map<string, number>();
+  // every boost under its display name (a set piece's crafted and attuned versions share one)
+  readonly boostsByDisplay = new Map<string, number[]>();
 
   constructor(
     readonly gd: GameData,
@@ -87,7 +89,10 @@ class Translator {
       this.powerBySi.set(si, pid);
       if (!this.siByPower.has(pid)) this.siByPower.set(pid, si);
     }
-    for (const b of gd.boosts) this.boostByDisplay.set(norm(b.dn), b.id);
+    for (const b of gd.boosts) {
+      this.boostByDisplay.set(norm(b.dn), b.id);
+      this.boostsByDisplay.set(norm(b.dn), [...(this.boostsByDisplay.get(norm(b.dn)) ?? []), b.id]);
+    }
   }
 
   power(name: string): number | undefined {
@@ -104,9 +109,24 @@ class Translator {
   boostFor(entry: MidsMap['enh'][number] | undefined, grade: string, origin: string): number | undefined {
     if (!entry) return undefined;
     if (entry.boost !== undefined) return entry.boost;
-    if (!entry.normal) return undefined;
+    if (!entry.normal) return this.boostByLongName(entry);
     const prefix = grade === 'TrainingO' ? 'Generic' : origin;
     return this.gd.powerByName.get(`boosts.${prefix}_${entry.normal}.${prefix}_${entry.normal}`.toLowerCase())?.id;
+  }
+
+  /**
+   * A set piece the map couldn't link to the game data because Mids keeps another internal name
+   * for it (its Crafted_Shrapnel_A is the game's Crafted_Artillery_A): matched by its full name
+   * ("Artillery: Accuracy/Damage"), the version (crafted, attuned, superior) by the Mids id's prefix.
+   *
+   * @param entry The Mids enhancement record.
+   * @return The game's boost id, or undefined.
+   */
+  boostByLongName(entry: MidsMap['enh'][number]): number | undefined {
+    if (!entry.long) return undefined;
+    const version = (n: string) => /^(Superior_Attuned|Superior|Attuned|Crafted)_/.exec(n)?.[1] ?? '';
+    const want = version(entry.uid);
+    return (this.boostsByDisplay.get(norm(entry.long)) ?? []).find((id) => version(shortName(this.gd.power(id))) === want);
   }
 
   /** Mids record + grade for one of our enhancements. */
@@ -211,6 +231,9 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     const entry = (e.Uid ? t.byUid.get(e.Uid.toLowerCase()) : undefined) ?? (e.Enhancement ? t.byName.get(norm(e.Enhancement)) : undefined);
     let boost = t.boostFor(entry, e.Grade ?? 'None', origin.n);
     if (boost === undefined && e.Enhancement) boost = t.boostByDisplay.get(norm(e.Enhancement));
+    // a set the Mids database the map was built from doesn't have at all: Mids normally names an
+    // IO set piece by the game's own boost name, so look that up in the game data itself
+    if (boost === undefined && e.Uid) boost = gd.powerByName.get(`boosts.${e.Uid}.${e.Uid}`.toLowerCase())?.id;
     if (boost === undefined) {
       warn.push(`${where}: enhancement "${e.Uid ?? e.Enhancement}" not found`);
       return undefined;

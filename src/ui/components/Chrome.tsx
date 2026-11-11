@@ -605,13 +605,14 @@ const PIECE_SCALE = 1.1;
  * As drawMenuEnhancement does: no ring under a piece, and the piece at 1.1x the ring's scale, so
  * an IO's 64 px frame reaches just past where the ring's edge would be.
  */
-export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, onClick, onRightClick, onLongPress, onHover, title, skin }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; onClick?: () => void; onRightClick?: () => void; onLongPress?: (pt: { x: number; y: number }) => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin }) {
+export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, onClick, onRightClick, onLongPress, onHover, title, skin, testId }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; onClick?: () => void; onRightClick?: () => void; onLongPress?: (pt: { x: number; y: number }) => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin; testId?: string }) {
   const k = (size / RING_PX) * PIECE_SCALE; // stage px per texture px of the piece
   const c = size / 2;
   return (
     <div
       className="abs"
       title={title}
+      data-testid={testId}
       onClick={onClick}
       onMouseEnter={onHover ? () => onHover(true) : undefined}
       onMouseLeave={onHover ? () => onHover(false) : undefined}

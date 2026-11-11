@@ -128,6 +128,7 @@ export function Setup() {
     BUILD_TYPES.map((t, i) => (
       <CheckBar
         key={t.id}
+        testId={`buildtype:${t.id}`}
         skin={skin}
         x={x}
         y={y + i * step}
@@ -192,12 +193,12 @@ export function Setup() {
       };
       heading('Origin');
       gd.core.origins.forEach((o) => {
-        bars.push(<CheckBar key={o.id} skin={skin} x={BX} y={y} wd={BW} text={o.dn} state={o.id === origin ? 'selected' : 'standard'} down={o.id === origin} icon={icon('origin', o.icon)} clickSounds={originSounds(o)} hoverSounds onClick={() => { setOrigin(o.id); setDesc({ text: o.lh || o.sh, icon: icon('origin', o.icon) }); }} />);
+        bars.push(<CheckBar key={o.id} testId={`origin:${o.id}`} skin={skin} x={BX} y={y} wd={BW} text={o.dn} state={o.id === origin ? 'selected' : 'standard'} down={o.id === origin} icon={icon('origin', o.icon)} clickSounds={originSounds(o)} hoverSounds onClick={() => { setOrigin(o.id); setDesc({ text: o.lh || o.sh, icon: icon('origin', o.icon) }); }} />);
         y += R;
       });
       heading('Alignment');
       ALIGNMENTS.forEach((a) => {
-        bars.push(<CheckBar key={a} skin={skin} x={BX} y={y} wd={BW} text={a} state={a === align ? 'selected' : 'standard'} down={a === align} clickSounds={SELECT} hoverSounds onClick={() => setAlign(a)} />);
+        bars.push(<CheckBar key={a} testId={`align:${a}`} skin={skin} x={BX} y={y} wd={BW} text={a} state={a === align ? 'selected' : 'standard'} down={a === align} clickSounds={SELECT} hoverSounds onClick={() => setAlign(a)} />);
         y += R;
       });
       heading('Build Type');
@@ -212,7 +213,7 @@ export function Setup() {
     } else if (tab === 1) {
       gd.core.archetypes.forEach((a, i) =>
         bars.push(
-          <CheckBar key={a.id} skin={skin} x={BX} y={44 + i * R} wd={BW} text={a.dn} state={a.id === at ? 'selected' : 'standard'} down={a.id === at} icon={icon('at', a.icon)} clickSounds={atSounds(a)} hoverSounds onClick={() => { pickAt(a); setDesc({ text: a.lh || a.sh, icon: icon('at', a.icon) }); }} />,
+          <CheckBar key={a.id} testId={`at:${a.id}`} skin={skin} x={BX} y={44 + i * R} wd={BW} text={a.dn} state={a.id === at ? 'selected' : 'standard'} down={a.id === at} icon={icon('at', a.icon)} clickSounds={atSounds(a)} hoverSounds onClick={() => { pickAt(a); setDesc({ text: a.lh || a.sh, icon: icon('at', a.icon) }); }} />,
         ),
       );
       end = 44 + gd.core.archetypes.length * R;
@@ -222,7 +223,7 @@ export function Setup() {
       const setv = tab === 2 ? setPri : setSec;
       if (!list.length) bars.push(<div key="x" className="desc-text abs" style={{ left: 20, top: 20, fontSize: 20 }}>Choose an archetype first.</div>);
       list.forEach((s, i) =>
-        bars.push(<CheckBar key={s.id} skin={skin} x={BX} y={44 + i * R} wd={BW} noBox text={s.dn} state={s.id === val ? 'selected' : 'standard'} down={s.id === val} clickSounds={SELECT} hoverSounds onClick={() => { setv(s.id); setDesc({ text: s.lh || s.sh }); }} />),
+        bars.push(<CheckBar key={s.id} testId={`set:${s.id}`} skin={skin} x={BX} y={44 + i * R} wd={BW} noBox text={s.dn} state={s.id === val ? 'selected' : 'standard'} down={s.id === val} clickSounds={SELECT} hoverSounds onClick={() => { setv(s.id); setDesc({ text: s.lh || s.sh }); }} />),
       );
       end = 44 + Math.max(1, list.length) * R;
     }
@@ -277,6 +278,7 @@ export function Setup() {
           {gd.core.archetypes.map((a, i) => (
             <CheckBar
               key={a.id}
+              testId={`at:${a.id}`}
               skin={skin}
               x={60}
               y={28 + i * ROW}
@@ -303,6 +305,7 @@ export function Setup() {
             {sets.map((s, i) => (
               <CheckBar
                 key={s.id}
+                testId={`set:${s.id}`}
                 skin={skin}
                 x={50}
                 y={28 + i * ROW}

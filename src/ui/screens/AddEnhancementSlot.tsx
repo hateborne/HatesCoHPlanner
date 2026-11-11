@@ -298,6 +298,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         items.push(
           <CheckBar
             key={e.key}
+            testId={`slotbar:${e.key}`}
             skin={skin}
             x={g.barCX}
             y={y}

@@ -77,6 +77,7 @@ npm install
 npm run dev
 npm test
 npm run build
+npm run e2e   # browser tests (Playwright, with the installed Google Chrome)
 ```
 
 ## License

@@ -128,6 +128,8 @@ src/
     escape.ts                Escape-key stack (useEscape)
     sound.ts                 game UI sounds and menu music
 tests/                       vitest; tests/helpers/data.ts loads public/data like the site does
+  fixtures/builds/           forum builds (Mids data chunks, .mbd files) the browser tests recreate
+e2e/                         Playwright browser tests (playwright.config.ts; local only)
 public/data/<version>/       exported game data per game version (generated, committed)
 public/data/versions.json    version index {default, versions: [{id, label, hash}]}
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
@@ -227,6 +229,7 @@ npm run dev          # dev server at http://localhost:5173/HatesCoHPlanner/
 npm run lint         # ESLint
 npm run typecheck    # tsc -b
 npm test             # vitest
+npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
 npm run build        # type check + production build into dist/
 python -m pipeline.run --help
 ```
@@ -290,6 +293,17 @@ Pages deploys run from `main` after a merge, one at a time.
   rather than by numeric ids.
 - Share links, Mids formats and `checkBuild` changes need round-trip or backward-compatibility
   tests. Old links must keep decoding.
+- Browser tests (`e2e/`, `npm run e2e`) import forum builds from `tests/fixtures/builds/` (sources
+  in its README), recreate them through the screens (desktop clicks, phone taps) and compare the
+  result with the import:
+  - `recreate.spec.ts`: each level-50 build as a Respec;
+  - `leveling.spec.ts`: a leveling build (`.mbd` file) walked through the level-up wizard from 1
+    to 50, slot levels compared too;
+  - `boosted.spec.ts`: a build with its sets boosted, attuned, or boosted then attuned at random.
+    It prints its seed; `HCP_E2E_SEED=<seed>` repeats a run.
+
+  They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
+  driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.
 
 **Commits and pull requests**
 - Commit messages: a short imperative summary line, a blank line, then bullets on what changed

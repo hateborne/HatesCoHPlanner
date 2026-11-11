@@ -1,0 +1,34 @@
+Archery / Traps Corruptor, as posted (a Mids MBD data chunk) in the Homecoming forum thread
+"Build - Archery/Traps corrupter, looking for a critique":
+https://forums.homecomingservers.com/topic/51860-build-archerytraps-corrupter-looking-for-a-critique
+
+|MBD;22778;1454;1940;BASE64;|
+|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|

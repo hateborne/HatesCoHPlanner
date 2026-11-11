@@ -338,6 +338,7 @@ export function Overview({ skin }: { skin: Skin }) {
         items.push(
           <CheckBar
             key={e.key}
+            testId={`bar:${e.key}`}
             skin={skin}
             x={g.barCX}
             y={y}
@@ -407,6 +408,7 @@ export function Overview({ skin }: { skin: Skin }) {
             <SlotRing
               skin={skin}
               key={`${e.key}:${i}`}
+              testId={`ring:${e.key}:${i}`}
               x={g.ringX + (i + 1) * g.ringStep}
               y={y + g.ringDy}
               size={g.ring}

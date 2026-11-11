@@ -173,6 +173,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
         return (
           <div
             key={b.id}
+            data-testid={`boost:${b.id}`}
             onClick={() => pickBoost(b)}
             {...pressKeys(() => pickBoost(b), undefined, own || b.dn)}
             title={gameText(b.sh)}
@@ -222,7 +223,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
         {phone ? (
           <PhoneTabs skin={skin} labels={tabList} active={tabList.indexOf(tab)} onChange={(i) => setTab(tabList[i]!)} y={ty} x={16} width={fw - 20} clickSounds={['powerselect2']} />
         ) : (
-          tabList.map((t, i) => <CheckBar key={t} skin={skin} x={tx0 + i * tstep} y={ty} wd={twd} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />)
+          tabList.map((t, i) => <CheckBar key={t} testId={`tab:${t}`} skin={skin} x={tx0 + i * tstep} y={ty} wd={twd} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />)
         )}
         <div className={tab === 'Sets' ? 'abs' : 'abs scroll-y'} style={{ left: lx, top: ly, width: lw, height: lh }}>
           {tab === 'Sets' ? (
@@ -237,6 +238,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                       </TitleText>
                     ) : null}
                     <div
+                      data-testid={`pickerset:${s.id}`}
                       onClick={() => setSetId(s.id)}
                       {...pressKeys(() => setSetId(s.id), undefined, s.dn)}
                       className="body-text"
@@ -271,6 +273,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                     Level{' '}
                     <input
                       type="number"
+                      data-testid="picker:level"
                       min={levelRange[0] + 1}
                       max={levelRange[1] + 1}
                       value={lvlDraft ?? String((sel?.ioLevel ?? levelRange[1]) + 1)}
@@ -295,7 +298,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                 ) : (
                   <label>
                     Relative level{' '}
-                    <select value={sel?.rel ?? 0} onChange={(e) => setSel({ ...sel!, rel: Number(e.target.value) })} style={{ height: phone ? 44 : undefined, background: '#000', color: '#fff' }}>
+                    <select data-testid="picker:rel" value={sel?.rel ?? 0} onChange={(e) => setSel({ ...sel!, rel: Number(e.target.value) })} style={{ height: phone ? 44 : undefined, background: '#000', color: '#fff' }}>
                       {[3, 2, 1, 0, -1, -2, -3].map((r) => (
                         <option key={r} value={r}>
                           {r > 0 ? `+${r}` : r}
@@ -306,13 +309,13 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
                 )}
                 {attunedAlt !== undefined ? (
                   <label style={phone ? { display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44 } : undefined}>
-                    <input type="checkbox" checked={!!selBoost.bup} onChange={() => pickBoost(gd.power(attunedAlt))} style={phone ? { width: 28, height: 28, margin: 0 } : undefined} /> Attuned
+                    <input type="checkbox" data-testid="picker:attuned" checked={!!selBoost.bup} onChange={() => pickBoost(gd.power(attunedAlt))} style={phone ? { width: 28, height: 28, margin: 0 } : undefined} /> Attuned
                   </label>
                 ) : null}
                 {selBoost.bb ? (
                   <label>
                     Boosters{' '}
-                    <select value={sel?.boosters ?? 0} onChange={(e) => setSel({ ...sel!, boosters: Number(e.target.value) })} style={{ height: phone ? 44 : undefined, background: '#000', color: '#fff' }}>
+                    <select data-testid="picker:boosters" value={sel?.boosters ?? 0} onChange={(e) => setSel({ ...sel!, boosters: Number(e.target.value) })} style={{ height: phone ? 44 : undefined, background: '#000', color: '#fff' }}>
                       {[0, 1, 2, 3, 4, 5].map((r) => (
                         <option key={r} value={r}>
                           +{r}
@@ -353,7 +356,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, on
               ['Place', place, !sel],
             ] as const
           ).map(([label, act, off]) => (
-            <button key={label} className="info-button" style={{ position: 'static', width: G.btnW, padding: 0 }} onClick={act} disabled={off}>
+            <button key={label} data-testid={`picker:${label.toLowerCase()}`} className="info-button" style={{ position: 'static', width: G.btnW, padding: 0 }} onClick={act} disabled={off}>
               {label}
             </button>
           ))}
