@@ -93,6 +93,13 @@ describe('server from the address', () => {
     expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/Rebirth/#b=eJx', BASE)).toEqual({ unknown: 'Rebirth' });
   });
 
+  it('reads a long paste in linear time (a backtracking regex froze the tab on 2 MB of it)', () => {
+    const t0 = performance.now();
+    expect(serverInLink(`${'a'.repeat(300_000)} https://hateborne.github.io/HatesCoHPlanner/Homecoming/#b=eJx`, BASE)).toEqual({ server: homecoming });
+    expect(serverInLink(`${'a'.repeat(300_000)} #b=eJx`, BASE)).toEqual({});
+    expect(performance.now() - t0).toBeLessThan(2000); // quadratic: well over a minute
+  });
+
   it('names no server for an old link, its index.html, a bare code or another site', () => {
     expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/#b=eJx', BASE)).toEqual({});
     expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/index.html#b=eJx', BASE)).toEqual({});

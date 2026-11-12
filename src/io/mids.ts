@@ -452,9 +452,21 @@ function breakString(s: string): string {
   return lines.join('\n');
 }
 
+/**
+ * The Brotli decoder, loaded on first use (only Mids codes need it).
+ *
+ * @return The decoder.
+ * @raise ImportProblem when it won't load: a page opened before the site was updated asks for a
+ *   file the update replaced, and a reload fixes it.
+ */
 async function brotli() {
-  const mod = await import('brotli-wasm');
-  return mod.default;
+  try {
+    const mod = await import('brotli-wasm');
+    return await mod.default;
+  } catch (e) {
+    console.error("the Mids code reader didn't load", e);
+    throw new ImportProblem("the planner couldn't load its Mids code reader (the site may have been updated since this page was opened)", 'Reload the page, then try again.');
+  }
 }
 
 // The most a Mids build's JSON may hold once decompressed: a real .mbd is tens of KB, the same
@@ -701,7 +713,7 @@ export async function parseMidsText(text: string): Promise<MidsParsed> {
     b64 = trimmed.replace(/\s/g, '');
     if (!/^[A-Za-z0-9+/]{16,}={0,2}$/.test(b64)) throw new ImportProblem("it isn't a build the planner recognizes", READABLE);
   }
-  await brotli(); // outside the try: the decoder failing to load is on our side
+  await brotli(); // outside the try: a decoder that won't load says so itself (reload the page)
   let json: unknown;
   try {
     json = JSON.parse(new TextDecoder().decode(await brotliDecompress(fromBase64(b64), MAX_MBD_JSON)));
