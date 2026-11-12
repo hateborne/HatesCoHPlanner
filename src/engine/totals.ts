@@ -4,12 +4,13 @@
  *
  * Mirrors MidsReborn's totals model on top of the game's own attribute math (mod_Fill):
  * magnitude = class table[level] x scale x (1 + enhancement strength unless IgnoreStrength).
- * Active powers: autos and toggles on, clicks off, each overridable per power.
+ * Active powers: autos and toggles on, clicks off, each overridable per power. A running power
+ * also applies its slotted pieces' own effects (Miracle's +Recovery, Kismet's +ToHit).
  */
 import { GameData } from '../data/gamedata.ts';
 import type { Archetype, BoostSet, Effect, Mod, Power } from '../data/types.ts';
 import type { Build } from './build.ts';
-import { powerStrength } from './enhance.ts';
+import { boostMods, effectiveness, powerStrength } from './enhance.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
 import { earnedBonuses, type EarnedBonus } from './setbonus.ts';
@@ -99,6 +100,18 @@ function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) 
     for (const m of e.m ?? []) fn(m);
     walkEffects(e.sub, ctx, fn);
   }
+}
+
+/**
+ * Whether a mod only carries a number for help text: a unique piece's "Null" attribute effect
+ * (Luck of the Gambler's 7.5% recharge, whose real effect is the set's global bonus power).
+ *
+ * @param gd Game data.
+ * @param m The mod.
+ * @return True when every attribute it touches is Null.
+ */
+function isNullMod(gd: GameData, m: Mod): boolean {
+  return m.a.every((a) => gd.attribName.get(a) === 'Null');
 }
 
 // Maximum-aspect mods that raise a current value's cap (Super Speed, Fly, Long Jump): attribute
@@ -244,12 +257,28 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     return modes.has(n) || (n.startsWith('k') && modes.has(n.slice(1)));
   };
 
+  // A slotted piece's own effects (Miracle's +Recovery, Kismet's +ToHit, the travel sets' stealth)
+  // land on the character each time the power holding it applies, while the piece works at the
+  // character's real level, which exemplaring leaves alone (character_AccrueBoosts tests
+  // boost_Effectiveness at character_CalcExperienceLevel and sets bBonusAttributes;
+  // character_ApplyPower attaches the piece's non-boost templates). They stack by replacement, so
+  // a piece in two running powers counts once.
+  const xpLevel = b.exemplar !== undefined && level === b.exemplar ? (b.endLevel ?? 49) : level;
+  const pieceApplied = new Set<number>();
   for (const e of entries) {
     const p = e.power;
     if (!isOn(e)) continue;
-    const str = powerStrength(gd, at, p, e.slots.filter((s) => s.level <= level).map((s) => s.enh), level).post;
+    const slots = e.slots.filter((s) => s.level <= level);
+    const str = powerStrength(gd, at, p, slots.map((s) => s.enh), level).post;
     walkEffects(p.eff, ctx, (m) => apply(p, m, str, p.dn));
     walkEffects(p.act, ctx, (m) => apply(p, m, str, p.dn));
+    for (const s of slots) {
+      const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+      if (!s.enh || !boost || pieceApplied.has(boost.id) || effectiveness(gd, boost, s.enh, xpLevel) <= 0) continue;
+      pieceApplied.add(boost.id);
+      const enhancing = new Set(boostMods(boost));
+      walkEffects(boost.eff, ctx, (m) => m.tg === 'Caster' && !enhancing.has(m) && !isNullMod(gd, m) && apply(p, m, str, boost.dn));
+    }
     if (p.type === 'Toggle' && p.end && p.ap) {
       const cost = p.end / p.ap / (1 + (str.get(gd.attribByName.get('EnduranceDiscount') ?? 368) ?? 0));
       endUse += cost;
