@@ -4,7 +4,8 @@
  *
  * Mirrors MidsReborn's totals model on top of the game's own attribute math (mod_Fill):
  * magnitude = class table[level] x scale x (1 + enhancement strength unless IgnoreStrength).
- * Active powers: autos and toggles on, clicks off, each overridable per power. A running power
+ * Active powers: autos and toggles on, clicks off, each overridable per power (defaultsOf: no
+ * emergency toggles, one toggle of each exclusive group). A running power
  * also applies its slotted pieces' own effects (Miracle's +Recovery, Kismet's +ToHit).
  */
 import { GameData } from '../data/gamedata.ts';
@@ -91,6 +92,79 @@ export function defaultOn(p: Power): boolean {
   if (p.type === 'Auto') return true;
   if (p.type !== 'Toggle') return false;
   return !p.n.startsWith('Inherent.Inherent.');
+}
+
+// what a last-ditch toggle does to its user while it runs: makes it untouchable, intangible, or
+// able to affect only itself
+const EMERGENCY = new Set(['Untouchable', 'Intangible', 'OnlyAffectsSelf']);
+
+/**
+ * Whether a toggle is an emergency mode (Hibernate, Icy Bastion, Geode, Phase Shift, Personal
+ * Force Field, Nebulous Form): while it runs its user is untouchable, intangible or can affect only
+ * itself. Players switch these on for a moment to survive, so counting one as always running
+ * would swell regeneration, defense and resistance past anything a fight sees.
+ *
+ * @param gd Game data (attribute names).
+ * @param p The power.
+ * @return True for a toggle that gives its user one of those states.
+ */
+export function isEmergencyToggle(gd: GameData, p: Power): boolean {
+  if (p.type !== 'Toggle') return false;
+  const gives = (effs: Effect[] | undefined): boolean =>
+    (effs ?? []).some((e) => (e.m ?? []).some((m) => m.tg === 'Caster' && m.a.some((a) => EMERGENCY.has(gd.attribName.get(a) ?? ''))) || gives(e.sub));
+  return gives(p.eff) || gives(p.act);
+}
+
+/**
+ * The build's toggles that switch each other off, as groups of two or more.
+ *
+ * Switching a toggle on shuts off every running toggle that shares any GroupMembership with it
+ * (character_ShutOffAllTogglePowersInSameGroup, character_combat.c): Kheldian forms, the Rest
+ * group (Phase Shift, Personal Force Field, Nebulous Form), travel toggles. Toggles join one group
+ * through any shared membership. The granted exclusive toggles (isExclusiveToggle) have a switch
+ * of their own and are left out.
+ *
+ * @param entries The build's entries.
+ * @return Each group, earliest picked first.
+ */
+export function exclusiveGroups(entries: BuildEntry[]): BuildEntry[][] {
+  const toggles = entries.filter((e) => e.power.type === 'Toggle' && (e.power.gm?.length ?? 0) > 0 && !isExclusiveToggle(e.power));
+  const parent = toggles.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i]!)));
+  const byGroup = new Map<string, number>(); // membership -> first toggle holding it
+  toggles.forEach((e, i) => {
+    for (const g of e.power.gm!) {
+      const j = byGroup.get(String(g));
+      if (j === undefined) byGroup.set(String(g), i);
+      else parent[root(i)] = root(j);
+    }
+  });
+  const groups = new Map<number, BuildEntry[]>();
+  toggles.forEach((e, i) => groups.set(root(i), [...(groups.get(root(i)) ?? []), e]));
+  const order = (e: BuildEntry) => e.level * 1000 + (e.pickIndex ?? 999);
+  return [...groups.values()].filter((g) => g.length > 1).map((g) => g.sort((a, b) => order(a) - order(b)));
+}
+
+/**
+ * Whether each of a build's powers counts in the totals by default: defaultOn, except emergency
+ * toggles (off), and in each exclusive group only the earliest picked of those still on.
+ *
+ * @param gd Game data.
+ * @param entries The build's entries.
+ * @return Entry key -> on by default.
+ */
+export function defaultsOf(gd: GameData, entries: BuildEntry[]): Map<string, boolean> {
+  const out = new Map<string, boolean>();
+  for (const e of entries) out.set(e.key, defaultOn(e.power) && !isEmergencyToggle(gd, e.power));
+  for (const g of exclusiveGroups(entries)) {
+    let kept = false;
+    for (const e of g) {
+      if (!out.get(e.key)) continue;
+      if (kept) out.set(e.key, false);
+      kept = true;
+    }
+  }
+  return out;
 }
 
 /** @return Whether a mod lands on the caster (self buffs, own auras, PBAoE team buffs). */
@@ -305,8 +379,11 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
   // running toggles' base cost per second and their own slotted End Reduction; the cost needs the
   // character-wide End Discount too, known once set bonuses are in (below)
   const toggles: { name: string; perSec: number; slotted: number }[] = [];
+  // defaults from the whole build, so which form of an exclusive group runs doesn't change with
+  // the level the totals are worked out at
+  const defaults = defaultsOf(gd, rules.entries());
   const entries: BuildEntry[] = rules.entries().filter((e) => e.level <= level);
-  const isOn = (e: BuildEntry) => e.on ?? defaultOn(e.power);
+  const isOn = (e: BuildEntry) => e.on ?? defaults.get(e.key) ?? defaultOn(e.power);
 
   // Power modes the running powers set (SetMode, e.g. Bio Armor's Adaptations): other powers'
   // effects test them with `k<Mode> Source.Mode?`
