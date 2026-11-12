@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { ByteWriter } from '../src/io/binary.ts';
 import { newBuild, toAlignment, type Build } from '../src/engine/build.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
@@ -77,6 +79,55 @@ describe('Mids interop', () => {
     const back = await importMidsText(gd, map, text);
     expect(back.build.picks[0]?.power).toBe(b.picks[0]?.power);
     expect(back.build.picks[3]?.slots[0]?.enh?.boost).toBe(b.picks[3]?.slots[0]?.enh?.boost);
+  });
+
+  it('reports an unknown MxDz power only when the build loses something, as the .mbd import does', async () => {
+    const UNKNOWN = 999_999; // a Mids power index the map doesn't have
+    const lotg = map.enh.find((e) => e.uid === 'Crafted_Luck_of_the_Gambler_F')!;
+    const sets = ['Blaster_Ranged.Fire_Blast', 'Blaster_Support.Fire_Manipulation'];
+    // buildToMxDz's layout: version 3.2, power indexes (not names), old sub-power fields
+    const w = new ByteWriter();
+    w.bytes(new Uint8Array([77, 120, 68, 12]));
+    w.f32(3.2);
+    w.bool(false);
+    w.bool(true);
+    for (const s of ['Class_Blaster', 'Magic']) w.netString(s);
+    w.i32(0);
+    w.netString('Gaps');
+    w.i32(sets.length - 1);
+    for (const s of sets) w.netString(s);
+    w.i32(24); // last power
+    w.i32(26 - 1); // power entries - 1: 24 picks and 2 more
+    /** One power entry: an index (-1 for an empty pick) and the enhancement indexes of its slots. */
+    const entry = (si: number, enh: number[]) => {
+      w.i32(si);
+      if (si >= 0) {
+        w.i8(0); // level 1
+        w.bool(true);
+        w.bool(false);
+        w.i32(0);
+        w.i32(0);
+        w.i8(-1); // no sub powers
+      }
+      w.i8(enh.length - 1);
+      for (const e of enh) {
+        w.i8(0);
+        w.bool(false);
+        w.i32(e);
+        w.i8(49); // IO level 50
+        w.i8(4); // relative level Even
+        w.bool(false); // no flipped enhancement
+      }
+    };
+    entry(UNKNOWN, []); // a pick: always reported
+    for (let i = 1; i < 24; i++) entry(-1, []);
+    entry(UNKNOWN, []); // past the picks, no enhancements: granted or out of scope, left out quietly
+    entry(UNKNOWN, [lotg.si]); // past the picks with an enhancement: reported
+    const raw = w.done();
+    const hex = Buffer.from(deflateSync(raw)).toString('hex').toUpperCase();
+    const text = `|MxDz;${raw.length};${hex.length / 2};${hex.length};HEX;|\n${hex}\n|-------------------------------------------------------------------|`;
+    const { warnings } = await importMidsText(gd, map, text);
+    expect(warnings).toEqual(["A power couldn't be identified, so it was left out", "A power couldn't be identified, so it was left out"]);
   });
 
   // a real Mids .mbd of a Fiery Aura / Fiery Melee Tanker on this machine (set HCP_MIDS_SAMPLE to

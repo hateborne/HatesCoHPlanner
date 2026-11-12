@@ -35,10 +35,11 @@ describe('forum build fixtures import', () => {
     expect(gd.powerset(build.secondary).n).toBe('Dominator_Assault.Dark_Assault');
     expect(build.picks.filter(Boolean)).toHaveLength(24);
     expect(build.picks[22]?.power).toBe(pid(gd, 'Epic.Ice_Mastery_Dominator.Ice_Storm'));
-    // the chunk is from an older Mids database: four of its power indexes (granted powers) are not
-    // in the map the planner ships, and are reported rather than guessed
-    expect(warnings.length).toBeLessThanOrEqual(4);
-    expect(warnings.every((w) => w.startsWith("A power couldn't be identified"))).toBe(true);
+    // four of its powers past the picks aren't in the map the planner ships: Mids' Afterburner (the
+    // planner grants it with Fly, as Pool.Flight.Fly_Boost), its Fast_Snipe (no such power in the
+    // game data) and two Incarnate powers (out of scope). None holds an enhancement, so they are left
+    // out without a warning, as an .mbd's are
+    expect(warnings).toEqual([]);
     expect(new BuildRules(gd, build).issues()).toEqual([]);
   });
 

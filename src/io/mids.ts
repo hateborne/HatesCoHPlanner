@@ -489,15 +489,19 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
   r.i32(); // last power
   const nPowers = r.i32();
   const v310 = version >= 3.1 - 1e-4;
+  const picks = gd.core.schedule.power.length;
+  let held = false; // the current power's slots hold an enhancement (identified or not)
   const readSlot = (): MbdEnh | null => {
     const si = qualified ? -2 : r.i32();
     if (qualified) {
       const uid = r.netString();
       const e = t.byUid.get(uid.toLowerCase());
       if (!uid) return null;
+      held = true;
       return readTail(e);
     }
     if (si < 0) return null;
+    held = true;
     return readTail(t.bySi.get(si));
   };
   const readTail = (e: MidsMap['enh'][number] | undefined): MbdEnh | null => {
@@ -515,12 +519,13 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     let powerName = '';
     let level = -1;
     let stat = false;
+    let unknown = false;
     const si = qualified ? -2 : r.i32();
     const pname = qualified ? r.netString() : '';
     if (si >= 0 || (qualified && pname)) {
       const pid = qualified ? t.power(pname) : t.powerBySi.get(si);
       powerName = pid !== undefined ? gd.power(pid).n : '';
-      if (pid === undefined) warn.push(`A power couldn't be identified${pname ? ` (${readablePower(pname)})` : ''}, so it was left out`);
+      unknown = pid === undefined;
       level = r.i8() + 1;
       stat = r.bool();
       if (v310) r.bool();
@@ -537,6 +542,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     }
     const nSlots = r.i8();
     const slots: MbdSlot[] = [];
+    held = false;
     for (let k = 0; k <= nSlots; k++) {
       const lv = r.i8() + 1;
       if (v310) r.bool();
@@ -544,6 +550,10 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
       if (r.bool()) readSlot();
       slots.push({ Level: lv, Enhancement: enh });
     }
+    // as importMbd does: past the picks, an unknown power with no enhancements is one the game
+    // grants that Mids names its own way (Afterburner) or the data lacks (Fast_Snipe), or one the
+    // planner doesn't plan (Incarnate powers): nothing is lost, so it is left out without a warning
+    if (unknown && (i < picks || held)) warn.push(`A power couldn't be identified${pname ? ` (${readablePower(pname)})` : ''}, so it was left out`);
     entries.push({ PowerName: powerName, Level: level, StatInclude: stat, SlotEntries: slots });
   }
   return { mbd: { Class: cls, Origin: origin, Alignment: align, Name: name, PowerSets: sets, PowerEntries: entries }, warnings: warn };

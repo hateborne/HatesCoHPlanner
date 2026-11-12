@@ -171,9 +171,12 @@ export class Player {
 
   /**
    * Finish an import: accept "Open on <patch>?" when the build was made on a patch the planner
-   * doesn't carry, then wait for the overview of the imported build.
+   * doesn't carry, wait for the overview of the imported build, and close the "Imported, with gaps"
+   * list if the import left any.
    *
-   * A build made on a carried patch (or one that records no patch) opens without the question.
+   * A build made on a carried patch (or one that records no patch) opens without the question. The
+   * gaps list sits over the overview and would block every click after it; which gaps a fixture
+   * may have is tests/buildfixtures.test.ts's to check, so here they are only printed.
    *
    * @return The imported build.
    */
@@ -184,8 +187,16 @@ export class Player {
     const moved = await open.isVisible();
     if (moved) await this.press(open);
     await expect(overview).toBeVisible();
+    const who = `[${this.phone ? 'phone' : 'desktop'}]`;
+    const gaps = this.page.getByText("couldn't be brought over"); // BuildMenu's tell after an import
+    if (await this.present(gaps, 1000)) {
+      const list = this.page.locator('.body-text', { hasText: "couldn't be" }).last();
+      console.log(`${who} import gaps: ${(await list.innerText()).replace(/\s*\n\s*/g, '; ')}`);
+      await this.press(this.button('OK'));
+      await expect(gaps).toHaveCount(0);
+    }
     const b = await this.build();
-    console.log(`[${this.phone ? 'phone' : 'desktop'}] imported "${b.name}" on ${b.dataVersion}${moved ? ' (moved there from an older patch)' : ''}`);
+    console.log(`${who} imported "${b.name}" on ${b.dataVersion}${moved ? ' (moved there from an older patch)' : ''}`);
     return b;
   }
 
