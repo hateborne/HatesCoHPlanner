@@ -5,6 +5,7 @@
  * a new build) only when its archetype, sets or origin are unknown.
  */
 import type { GameData } from '../data/gamedata.ts';
+import { DEFAULT_SERVER } from '../data/servers.ts';
 import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { BuildRules } from './rules.ts';
 
@@ -89,6 +90,7 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
 
   const out: Build = {
     v: 1,
+    ...(gd.server !== DEFAULT_SERVER ? { server: gd.server } : {}), // tied to the data's server, like its version
     dataVersion: gd.core.manifest.dataVersion, // checked against (and from now on tied to) this game version's data
     name: typeof b.name === 'string' ? b.name.slice(0, 40) : '',
     at: b.at,

@@ -17,9 +17,15 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
 - Enhancement picker: Training, origin, invention (with level and boosters), IO sets (attuned
   and superior), Hamidon / Hydra / Titan / D-Sync / Synthetic / Talismans.
 - Totals with expandable sources; a totals side tab during the wizard.
-- Share links (`#b=...`), builds saved in the browser, MidsReborn `.mbd` import/export, Mids share
-  codes (`|MBD;` and legacy `|MxDz;`), and import of a character saved in game with `/build_save`
-  (the `Builds/build.txt` file in the game's account folder).
+- Share links (`.../HatesCoHPlanner/Homecoming/#b=...`: the address names the game server; links
+  from before servers, with no server in the address, open on Homecoming), builds saved in the
+  browser, MidsReborn `.mbd` import/export, Mids share codes (`|MBD;` and legacy `|MxDz;`), and
+  import of a character saved in game with `/build_save` (the `Builds/build.txt` file in the game's
+  account folder).
+- Game servers: Homecoming today. The server's logo shows in the bottom bar (the phone menu on
+  phones); on the New Build screen it opens the server list. Switching there clears the archetype
+  and power sets, and, after a warning, the current build (builds never move between servers). Once a second server is added, a first visit asks which one (Enter or
+  Space takes Homecoming).
 - Hero, villain and Praetorian skins by alignment; the game's UI sounds (with a mute switch);
   a one-panel-at-a-time layout on phones.
 

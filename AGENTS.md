@@ -15,8 +15,8 @@ Who uses it and for what:
 - **Players** plan a character from level 1 to 50 in screens that copy the game ("Choose a New
   Power", "Choose a Pool Power Set", "Add an Enhancement Slot"), then place enhancements on a
   build overview and read totals, set bonuses and detailed power numbers.
-- They **share** builds as links (`#b=...`), keep builds in the browser, and move builds to and
-  from MidsReborn (`.mbd` files and Mids share codes).
+- They **share** builds as links (`/HatesCoHPlanner/Homecoming/#b=...`), keep builds in the
+  browser, and move builds to and from MidsReborn (`.mbd` files and Mids share codes).
 - The **owner** refreshes the game data after each Homecoming patch with the Python pipeline.
 
 Goals, in priority order:
@@ -74,6 +74,15 @@ Breaking any of these is a bug, whatever else the change does.
 - Each game version's data lives in its own folder, `public/data/<id>/` (for example `i28p4` for
   Issue 28, Page 4), listed in `public/data/versions.json`. Never edit or delete a published
   version folder: links made on that patch load it. A new patch gets a new folder.
+- Game servers (`SERVERS` in `src/data/servers.ts`) keep their `id` (stored in builds) and `path`
+  (the address segment, `/HatesCoHPlanner/Homecoming/`) forever. A build, saved build or link that
+  names no server is Homecoming's, and Homecoming's data stays in `public/data/`; another server gets
+  its own data folder (`public/data/<server>/`, with its own `versions.json`). The share code carries
+  no server: the link's address does. An address that names a server the site doesn't carry is
+  refused, never opened as Homecoming. Anything that makes a build from a server's data (imports,
+  `checkBuild`, `newBuild`) stamps that server on it.
+- @TODO before a second server's data goes in: `pipeline/ids.json` is one namespace. Decide with the
+  owner whether the new server shares it (same internal names, same ids) or gets its own.
 - The share-link format (`src/io/share.ts`) may only grow by optional trailing fields, and old
   links must keep decoding. Links without a version open as `LEGACY_GAME_VERSION` (`i28p4`).
 - Builds from outside the app (links, browser storage, saved builds, imports) always pass
@@ -117,6 +126,7 @@ src/
   data/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
+    servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     types.ts                 shapes of the exported JSON
   engine/                    pure TypeScript build rules (no React, no DOM)
     build.ts                 Build / Pick / Slot model, newBuild()
@@ -152,6 +162,7 @@ e2e/                         Playwright browser tests (playwright.config.ts; loc
 public/data/<version>/       exported game data per game version (generated, committed)
 public/data/versions.json    version index {default, versions: [{id, label, hash, patch?, approx?}]}
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
+public/servers/              game server logos (placed by hand, WebP; not pipeline output)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
   run.py                     entry point: python -m pipeline.run
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
@@ -201,9 +212,29 @@ An older patch with no client files left can get an approximate version:
 available level from the configured Mids database (its header names the issue and page). Review
 `pipeline/report-<id>.md`, then commit `public/data` and the report through a pull request.
 
-**Loading.** The app fetches `public/data/versions.json`, then loads the game version the current
-build asks for (the default for a new build), with `?v=<hash>` against stale caches. The New
-Build screen's version picker switches versions; each version is fetched once per page.
+**Loading.** The app fetches its game server's `versions.json` (Homecoming's is
+`public/data/versions.json`), then loads the game version the current build asks for (the default
+for a new build), with `?v=<hash>` against stale caches. The New Build screen's version picker
+switches versions; each version is fetched once per page.
+
+**Servers and the address.** The page address names the game server:
+`/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
+`index.html` to `<path>/index.html` for each server (`serverPages` in `vite.config.ts`) so GitHub
+Pages serves those addresses. On load, a share link opens on the server its address names (none:
+Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
+unless the address names another server. With no build, New
+Build opens on the server the address names; failing that, once `SERVERS` holds more than one, a
+first visit asks in the server list dialog (`askServer`; the default is highlighted, so Enter or
+Space takes it); otherwise on the only server. The address is then rewritten in place to the build's
+server (with no build, the server shown). The server logo (`ServerLogo`, in the desktop bottom bar
+and at the top of the phone menu) shows on every screen, but only New Build makes it the selector: it
+opens the same list there, and picking another server shows that server's data and clears the
+archetype and both power sets (another server's ids mean other archetypes and sets). A build is never
+moved to another server: a switch with a build in the background asks first (`askConfirm`), then
+clears that build (this tab's storage and its share code in the address), and `selectServer` is
+refused outside New Build. Import reads a pasted link's server
+from its address (`serverInLink`); a bare code is Homecoming's. A share code left in the address by
+a link that couldn't open is dropped once the address moves to another server.
 
 **Imports and patches.** A Mids build records only its Mids database version, so
 `midsMadeOn()` (`src/io/midsPatches.ts`) looks it up in the owner-confirmed table. An unlisted
@@ -285,7 +316,7 @@ read the store with narrow selectors (`useShallow`) and call its actions.
 **Pop-ups and hovers.**
 - Every pop-up closes with Escape (`useEscape`).
 - Questions use `askConfirm` (or `askChoices` for rows of options); messages with one OK button
-  use `tell`; refusals use `notify` or `flashLocked`.
+  use `tell`; refusals use `notify` or `flashLocked`. The server list is `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
 

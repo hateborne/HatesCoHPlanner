@@ -65,6 +65,16 @@ export function refusedBuild(fixes: readonly string[]): ImportProblem {
   return new ImportProblem("the build doesn't match the game data the planner has", 'It may come from a newer version of the planner: reload the page and try again.');
 }
 
+/**
+ * The problem to report for a build or link for a game server the site doesn't carry.
+ *
+ * @param name The server as the build or the link's address names it.
+ * @return The problem, worded for the user.
+ */
+export function unknownServer(name: string): ImportProblem {
+  return new ImportProblem(`it was made for a game server the planner doesn't carry ("${name}")`, 'Check the link, or open the build on the site it was made with.');
+}
+
 /** Largest file the import reads: build files are a few KB to a few hundred KB of text. */
 export const MAX_BUILD_FILE = 2_000_000;
 

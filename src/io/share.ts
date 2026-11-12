@@ -10,7 +10,10 @@
  * then varint respecTo+1 (0: a leveling build).
  * Links made before the trailer end after the granted list or after endLevel; they open with
  * LEGACY_GAME_VERSION (the only data that existed then).
+ * The code carries no game server: the link's address does (/HatesCoHPlanner/Homecoming/#b=...),
+ * and a code with none in front of it is Homecoming's (serverInLink, serverFromPath).
  */
+import { defaultServer, serverById, serverHref, serverOf } from '../data/servers.ts';
 import { LEGACY_GAME_VERSION } from '../data/versions.ts';
 import { toAlignment, type Build, type Slot } from '../engine/build.ts';
 import { ByteReader, ByteWriter, fromBase64Url, streamBytes, toBase64Url } from './binary.ts';
@@ -144,8 +147,8 @@ async function readShare(payload: string): Promise<Build> {
   return { v: 1, dataVersion, name, at, origin, alignment, primary, secondary, picks, granted, exemplar: ex ? ex - 1 : undefined, endLevel: end ? end - 1 : undefined, ...(rs ? { respecTo: rs - 1 } : {}) };
 }
 
-/** Full share link for the current page. */
+/** @return The full share link for a build, on its server's address. */
 export async function shareLink(b: Build): Promise<string> {
-  const base = `${location.origin}${location.pathname}`;
-  return `${base}#b=${await encodeShare(b)}`;
+  const server = serverById(serverOf(b)) ?? defaultServer();
+  return `${location.origin}${serverHref(server, import.meta.env.BASE_URL)}#b=${await encodeShare(b)}`;
 }

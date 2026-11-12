@@ -5,6 +5,7 @@
  * silently dropped.
  */
 import type { GameData } from '../data/gamedata.ts';
+import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, SERVERS, type GameServer } from '../data/servers.ts';
 import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
@@ -29,17 +30,22 @@ const MIDS_ALIGN = ['Hero', 'Rogue', 'Vigilante', 'Villain', 'Loyalist', 'Resist
 const RELATIVE = ['None', 'MinusThree', 'MinusTwo', 'MinusOne', 'Even', 'PlusOne', 'PlusTwo', 'PlusThree', 'PlusFour', 'PlusFive'];
 const GRADES = ['None', 'TrainingO', 'DualO', 'SingleO'];
 
-const mapPromises = new Map<string, Promise<MidsMap>>(); // one per game version
+const mapPromises = new Map<string, Promise<MidsMap>>(); // one per server and game version
+
+/** @return The server a data set is for (Homecoming when it names one the site doesn't carry). */
+const serverOfData = (gd: GameData): GameServer => serverById(gd.server) ?? defaultServer();
 
 /**
  * Load mids-map.json for the current data version (once). MidsReborn is an untrusted reference,
  * so a missing or broken map rejects with a readable message and the next call tries again.
  */
 export function loadMidsMap(gd: GameData): Promise<MidsMap> {
+  const server = serverOfData(gd);
   const version = gd.core.manifest.dataVersion;
-  const hit = mapPromises.get(version);
+  const key = `${server.id}/${version}`;
+  const hit = mapPromises.get(key);
   if (hit) return hit;
-  const p = fetch(`${import.meta.env.BASE_URL}data/${version}/mids-map.json?v=${gd.core.manifest.hash ?? ''}`)
+  const p = fetch(`${dataRoot(server, import.meta.env.BASE_URL)}${version}/mids-map.json?v=${gd.core.manifest.hash ?? ''}`)
     .then(async (r) => {
       if (!r.ok) throw new Error(`Mids data is not available for this game version (HTTP ${r.status})`);
       const m = (await r.json()) as MidsMap;
@@ -47,10 +53,10 @@ export function loadMidsMap(gd: GameData): Promise<MidsMap> {
       return m;
     })
     .catch((e: unknown) => {
-      mapPromises.delete(version);
+      mapPromises.delete(key);
       throw e instanceof Error ? e : new Error(String(e));
     });
-  mapPromises.set(version, p);
+  mapPromises.set(key, p);
   return p;
 }
 
@@ -236,7 +242,7 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
   const t = new Translator(gd, map);
   const warn: string[] = [];
   const at = gd.archetypeByName.get(m.Class.toLowerCase());
-  if (!at) throw new ImportProblem(`its archetype (${readable(m.Class.replace(/^Class_/i, ''))}) isn't one the planner has`, notOursHint(m));
+  if (!at) throw new ImportProblem(`its archetype (${readable(m.Class.replace(/^Class_/i, ''))}) isn't one the planner has`, notOursHint(gd, m));
   const origin = gd.core.origins.find((o) => o.n.toLowerCase() === (m.Origin ?? '').toLowerCase()) ?? gd.core.origins[0]!;
   const alignment = toAlignment(m.Alignment);
   const sets = Array.isArray(m.PowerSets) ? m.PowerSets : [];
@@ -244,11 +250,12 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
   const secondary = setIdFor(gd, t, sets[1] ?? '');
   if (primary === undefined || secondary === undefined) {
     const name = (s: string | undefined) => readable((s ?? '').split('.').pop() || 'none');
-    throw new ImportProblem(`its power sets (${name(sets[0])} / ${name(sets[1])}) aren't ones the planner has`, notOursHint(m));
+    throw new ImportProblem(`its power sets (${name(sets[0])} / ${name(sets[1])}) aren't ones the planner has`, notOursHint(gd, m));
   }
   const sched = gd.core.schedule.power;
   const b: Build = {
     v: 1,
+    ...(gd.server !== DEFAULT_SERVER ? { server: gd.server } : {}), // mapped onto this server's data, so it is its build
     dataVersion: gd.core.manifest.dataVersion,
     name: m.Name ?? '',
     at: at.id,
@@ -371,7 +378,7 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     PowerEntries.push(entry(e.power.id, e.level, e.slots, e.on));
   }
   const mbd: Mbd = {
-    BuiltWith: { App: PLANNER_APP, Version: '0.1.0', Database: 'Homecoming', DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
+    BuiltWith: { App: PLANNER_APP, Version: '0.1.0', Database: serverOfData(gd).midsDb, DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
     Level: '49',
     Class: at.n,
     Origin: origin.n,
@@ -660,14 +667,16 @@ function codeBody(text: string, header: RegExpMatchArray, alphabet: RegExp): str
 /**
  * Why a Mids build's archetype or sets may be missing: another server's database, else a newer patch.
  *
+ * @param gd The data it was imported against (its server).
  * @param m The build file.
  * @return A sentence for the user.
  */
-function notOursHint(m: Mbd): string {
+function notOursHint(gd: GameData, m: Mbd): string {
   const db = m.BuiltWith?.Database;
-  return db && !/^homecoming$/i.test(db)
-    ? `It was made with Mids' ${db} database, for another server; the planner covers Homecoming only.`
-    : 'It may come from a newer patch than the planner has.';
+  if (!db || db.toLowerCase() === serverOfData(gd).midsDb.toLowerCase()) return 'It may come from a newer patch than the planner has.';
+  // @TODO open it on its own server when the site carries that server (SERVERS[].midsDb)
+  const ours = SERVERS.map((s) => s.label).join(', ');
+  return `It was made with Mids' ${db} database, for another server; the planner covers ${ours} only.`;
 }
 
 /**

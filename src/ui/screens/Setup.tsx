@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
 import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
+import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
 import { startingSets } from '../../engine/rules.ts';
@@ -49,9 +50,11 @@ const respecLevel = (raw: string) => {
  */
 export function Setup() {
   const { gd, build, startBuild, toOverview, versions, selectVersion } = useStore();
-  const [at, setAt] = useState<number | undefined>(build?.at);
-  const [pri, setPri] = useState<number | undefined>(build?.primary);
-  const [sec, setSec] = useState<number | undefined>(build?.secondary);
+  // the build's archetype and sets start picked only on its own server: another's may not have them
+  const own = build && gd && serverOf(build) === gd.server ? build : undefined;
+  const [at, setAt] = useState<number | undefined>(own?.at);
+  const [pri, setPri] = useState<number | undefined>(own?.primary);
+  const [sec, setSec] = useState<number | undefined>(own?.secondary);
   const [origin, setOrigin] = useState<number | undefined>(build?.origin);
   const [align, setAlign] = useState<Alignment>(build?.alignment ?? 'Hero');
   const [name, setName] = useState(build?.name ?? '');
@@ -59,6 +62,17 @@ export function Setup() {
   const [buildType, setBuildType] = useState<BuildType>(build?.respecTo !== undefined ? 'respec' : 'leveling');
   const [respecTo, setRespecTo] = useState(String((build?.respecTo ?? 49) + 1)); // typed text, 1-based
   const [tab, setTab] = useState(0);
+  // switching servers (the logo) clears the archetype and both power sets; the rest stays, the
+  // origin only while the new server has it
+  const [seenServer, setSeenServer] = useState(gd?.server);
+  if (gd && gd.server !== seenServer) {
+    setSeenServer(gd.server);
+    setAt(undefined);
+    setPri(undefined);
+    setSec(undefined);
+    setDesc(null);
+    if (origin !== undefined && !gd.core.origins.some((o) => o.id === origin)) setOrigin(undefined);
+  }
   const stage = useStage();
   const { phone } = stage;
   const archetype = at !== undefined ? gd?.archetypeById.get(at) : undefined;

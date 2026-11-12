@@ -20,6 +20,7 @@
  * build out when its slots can't have come from leveling. Alignment isn't in the file either.
  */
 import type { GameData } from '../data/gamedata.ts';
+import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Power } from '../data/types.ts';
 import { slotsFor } from '../engine/actions.ts';
 import { cloneBuild, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
@@ -155,6 +156,7 @@ export function readBuildTxt(gd: GameData, text: string): TxtImport {
   const sched = gd.core.schedule.power;
   const b: Build = {
     v: 1,
+    ...(gd.server !== DEFAULT_SERVER ? { server: gd.server } : {}), // read against this server's data, so it is its build
     dataVersion: gd.core.manifest.dataVersion,
     name: txt.name,
     at: at.id,

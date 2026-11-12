@@ -508,3 +508,11 @@ button {
   box-shadow: 0 0 10px 3px rgba(60, 255, 90, 0.75);
   pointer-events: none;
 }
+
+/* the server logo (bottom bar, phone menu): on New Build it opens the server list */
+.server-logo img {
+  transition: filter 0.15s;
+}
+.server-logo.active:hover img {
+  filter: brightness(1.12) drop-shadow(0 0 6px rgba(79, 148, 255, 0.8));
+}
