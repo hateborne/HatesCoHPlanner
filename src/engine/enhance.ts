@@ -211,6 +211,44 @@ export function boostLevel(boost: Power, e: SlottedEnh, charLevel: number): numb
   return charLevel + (e.rel ?? 0);
 }
 
+/**
+ * Color of an enhancement's level number (font_color in drawEnhancementOriginLevelEx):
+ * paragon = an IO (CLR_PARAGON), even = at the character's level (white over light blue),
+ * below / above = weaker (yellow) / stronger (green) for its level, unusable = red.
+ */
+export type EnhLevelTone = 'paragon' | 'even' | 'below' | 'above' | 'unusable';
+
+/** The level number the game prints on a slotted enhancement. */
+export interface EnhLevelLabel {
+  text: string; // "50", or "50+5" with boosters
+  top: boolean; // IOs print it over the piece's top edge, other enhancements at its bottom
+  tone: EnhLevelTone;
+}
+
+/**
+ * The level number the game prints on a slotted enhancement, as drawEnhancementOriginLevelEx
+ * (uiCombineSpec.c) does.
+ *
+ * Attuned pieces print nothing (BoostUsePlayerLevel), nor do Homecoming's BoostHideLevel pieces.
+ * A boostable piece with boosters reads "level+boosters". The planner keeps no combines for
+ * TO/DO/SO-style enhancements, so their "50++" form never comes up: their level is the
+ * character's plus the relative level.
+ *
+ * @param gd Game data (boost effect tables).
+ * @param boost Enhancement power.
+ * @param e Slotted enhancement settings.
+ * @param charLevel 0-based character level (character_CalcExperienceLevel, not an exemplar level).
+ * @return The label, or undefined when the game prints none.
+ */
+export function enhLevelLabel(gd: GameData, boost: Power, e: SlottedEnh, charLevel: number): EnhLevelLabel | undefined {
+  if (boost.bup || boost.bhl) return undefined;
+  const level = boostLevel(boost, e, charLevel) + 1;
+  const boosters = boost.bb ? (e.boosters ?? 0) : 0;
+  const eff = effectiveness(gd, boost, e, charLevel);
+  const tone: EnhLevelTone = eff === 0 ? 'unusable' : boost.bie ? 'paragon' : eff < 1 ? 'below' : eff > 1 ? 'above' : 'even';
+  return { text: boosters > 0 ? `${level}+${boosters}` : String(level), top: !!boost.bie, tone };
+}
+
 /** Per-attribute enhancement strength from one slotted enhancement. */
 export interface EnhContribution {
   attrib: number;

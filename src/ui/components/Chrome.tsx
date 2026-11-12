@@ -6,6 +6,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { FONTS, getDevPx, ITALIC_DEG, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
 import { CLR_HIGH, CLR_SHADOW, icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
+import type { EnhLevelLabel, EnhLevelTone } from '../../engine/enhance.ts';
 import { longPress, pressKeys, touchPress } from '../press.ts';
 import { play } from '../sound.ts';
 import { GameText, useFontsReady } from './GameText.tsx';
@@ -722,6 +723,42 @@ export function RespecCounter({ lines, done, x = vx(412), y = vy(691), w = vx(20
 const RING_PX = 70;
 const PIECE_SCALE = 1.1;
 
+// drawEnhancementOriginLevelEx's level number: game_9 at text scale 1.1 (uiEnhancementDraw's
+// textScale from drawMenuEnhancement), colored by font_color
+const LEVEL_TEXT_SCALE = 1.1;
+const LEVEL_COLORS: Record<EnhLevelTone, [string, string]> = {
+  paragon: ['#00deff', '#00deff'], // CLR_PARAGON
+  even: ['#ffffff', '#88b6ff'], // CLR_WHITE over 0x88b6ff
+  below: ['#ffff00', '#ffff00'], // CLR_YELLOW
+  above: ['#00ff00', '#00ff00'], // CLR_GREEN
+  unusable: ['#ff0000', '#ff0000'], // CLR_RED
+};
+// phones: the level numbers grow with the 56 px finger-sized rings, from the build screen's
+// desktop ring (vs(35) x .88), the same on every screen
+export const PHONE_LEVEL_SCALE = LEVEL_TEXT_SCALE * S * (56 / (vs(35) * 0.88));
+
+/**
+ * A slotted enhancement's level number, placed as drawEnhancementOriginLevelEx places it for a
+ * piece drawn at scale 1 and up, which a ring is at the 3840x2160 reference resolution (its sc
+ * there is 0.55 x 2.8125 real px per texture px).
+ *
+ * An IO's baseline sits 11.5 x text scale below the piece's top edge (frameHeight / 2 = 32
+ * texture px above the center), centered on the piece; any other's 2 texture px above its bottom
+ * edge, 0.2 texture px right of center. The reference screenshot puts an IO's number within 1px of
+ * this. The game would also draw an E_Number_Frame_2digit plate under the number at this scale,
+ * but Homecoming's screens show none, so none is drawn here.
+ *
+ * @param props.label The number, its place and color (enhLevelLabel).
+ * @param props.c The piece's center in the ring's box (stage px).
+ * @param props.k Stage px per texture px of the piece.
+ * @param props.scale The text's draw scale in stage px (1.1 x s on desktop).
+ */
+function EnhLevelText({ label, c, k, scale }: { label: EnhLevelLabel; c: number; k: number; scale: number }) {
+  const y = label.top ? c - 32 * k + 11.5 * scale : c + 30 * k;
+  const x = label.top ? c : c + 0.2 * k;
+  return <GameText font="game_9" scale={scale} x={x} y={y} align="center" colors={LEVEL_COLORS[label.tone]} text={label.text} z={5} />;
+}
+
 // uiLevelSpec.c enhancementAnim_update: a new slot's scale grows by ENHANCE_GROW_SPEED (.1) per
 // tick from 0, so 10 ticks; the slots already there slide by ENHANCE_MOVE_SPEED (10 virtual units)
 // per tick, so one SPEC_WD (36) step takes 3.6 ticks
@@ -757,8 +794,10 @@ function useGrowIn(ref: RefObject<HTMLDivElement | null>, born: number | undefin
  * @param props.born A slot just added on the slot screen: performance.now() of the click; it grows
  *   in as enhancementAnim does.
  * @param props.slide Move to a new x at the slot screen's slide speed instead of jumping.
+ * @param props.level The slotted piece's level number (enhLevelLabel), drawn over the piece.
+ * @param props.levelScale The level number's draw scale in stage px (default 1.1 x s, the game's).
  */
-export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, born, slide, onClick, onRightClick, onLongPress, onHover, title, skin, testId }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; born?: number; slide?: boolean; onClick?: () => void; onRightClick?: () => void; onLongPress?: (pt: { x: number; y: number }) => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin; testId?: string }) {
+export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, level, levelScale = LEVEL_TEXT_SCALE * S, pending, born, slide, onClick, onRightClick, onLongPress, onHover, title, skin, testId }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; level?: EnhLevelLabel; levelScale?: number; pending?: boolean; born?: number; slide?: boolean; onClick?: () => void; onRightClick?: () => void; onLongPress?: (pt: { x: number; y: number }) => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin; testId?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useGrowIn(ref, born);
   const k = (size / RING_PX) * PIECE_SCALE; // stage px per texture px of the piece
@@ -793,6 +832,7 @@ export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, b
           {frames?.[1] ? <Sprite src={iconUrl('enh', frames[1])} x={c} y={c - 32 * k} w={32 * k} h={64 * k} z={1} /> : null}
           {pog ? <Sprite src={iconUrl('enh', pog)} x={c - 24 * k} y={c - 24 * k} w={48 * k} h={48 * k} z={2} /> : null}
           <Sprite src={enhIcon} x={c - 23 * k} y={c - 23 * k} w={46 * k} h={46 * k} z={3} />
+          {level ? <EnhLevelText label={level} c={c} k={k} scale={levelScale} /> : null}
         </>
       ) : (
         <>

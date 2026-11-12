@@ -47,6 +47,7 @@ export const FONTS = {
   title_12: { ...REDCIRCLE, size: 12, italic: true, outline: true },
   title_14: { ...REDCIRCLE, size: 14, italic: true, outline: true },
   title_18: { ...REDCIRCLE, size: 18, italic: true, outline: true },
+  game_9: { ...MONT, size: 9, italic: false, outline: true },
   game_12: { ...MONT, size: 12, italic: false, outline: true },
   game_18: { ...MONT, size: 18, italic: false, outline: true },
   gamebold_18: { ...MONT_HEAVY, size: 18, italic: true, outline: true },

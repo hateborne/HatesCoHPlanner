@@ -3,14 +3,14 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
-import { boostPog } from '../../engine/enhance.ts';
+import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
 import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine/actions.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn } from '../../engine/totals.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { InfoButton, MenuFrame, NextButton, SetFrame, SetTitle, SlotRing, TitleBar, type TitleEdit } from '../components/Chrome.tsx';
+import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleEdit } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PatchNotesBar, PatchNotesBox, patchNotesHeight } from '../components/PatchNotes.tsx';
@@ -430,6 +430,8 @@ export function Overview({ skin }: { skin: Skin }) {
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
               pog={boost ? boostPog(gd, boost) : undefined}
+              level={boost && s.enh ? enhLevelLabel(gd, boost, s.enh, end) : undefined}
+              levelScale={g.phone ? PHONE_LEVEL_SCALE : undefined}
               title={boost ? undefined : `Empty slot (level ${s.level + 1})`}
               onHover={
                 phone

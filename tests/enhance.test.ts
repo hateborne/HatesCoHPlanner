@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBuild, type Build } from '../src/engine/build.ts';
-import { applyED, boostHelpText, boostMods, canSlot, edCurves, enhKind, enhLines, isLegacyDuplicate, pieceName, powerStrength } from '../src/engine/enhance.ts';
+import { applyED, boostHelpText, boostMods, canSlot, edCurves, enhKind, enhLevelLabel, enhLines, isLegacyDuplicate, pieceName, powerStrength } from '../src/engine/enhance.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { earnedBonuses } from '../src/engine/setbonus.ts';
 import { computeTotals } from '../src/engine/totals.ts';
@@ -212,5 +212,39 @@ describe('review fixes: enhancement values and text', () => {
       expect(n.length).toBeGreaterThan(0);
       expect(n.includes(s.dn.replace(/^Superior /, ''))).toBe(false);
     }
+  });
+});
+
+/** The level number printed on a slotted piece (drawEnhancementOriginLevelEx, uiCombineSpec.c). */
+describe('enhancement level labels', () => {
+  const boost = (name: string) => gd.power(pid(gd, `Boosts.${name}.${name}`));
+  const lotg = boost('Crafted_Luck_of_the_Gambler_A');
+  const so = boost('Magic_Damage');
+
+  it('prints an IO level on top in CLR_PARAGON, with its boosters', () => {
+    expect(enhLevelLabel(gd, lotg, { boost: lotg.id, ioLevel: 49 }, 49)).toEqual({ text: '50', top: true, tone: 'paragon' });
+    expect(enhLevelLabel(gd, lotg, { boost: lotg.id, ioLevel: 49, boosters: 5 }, 49)).toEqual({ text: '50+5', top: true, tone: 'paragon' });
+    const common = boost('Crafted_Accuracy');
+    expect(enhLevelLabel(gd, common, { boost: common.id, ioLevel: 34 }, 49)).toEqual({ text: '35', top: true, tone: 'paragon' });
+  });
+
+  it('turns red when the character is too low to use the piece', () => {
+    // a level 50 IO works from 3 levels below (power_MinBoostUseLevel)
+    expect(enhLevelLabel(gd, lotg, { boost: lotg.id, ioLevel: 49 }, 46)?.tone).toBe('paragon');
+    expect(enhLevelLabel(gd, lotg, { boost: lotg.id, ioLevel: 49 }, 29)?.tone).toBe('unusable');
+  });
+
+  it('prints a TO/DO/SO level at the bottom, colored by its effectiveness', () => {
+    expect(enhLevelLabel(gd, so, { boost: so.id, rel: 0 }, 49)).toEqual({ text: '50', top: false, tone: 'even' });
+    expect(enhLevelLabel(gd, so, { boost: so.id, rel: 3 }, 49)).toEqual({ text: '53', top: false, tone: 'above' });
+    expect(enhLevelLabel(gd, so, { boost: so.id, rel: -3 }, 49)).toEqual({ text: '47', top: false, tone: 'below' });
+  });
+
+  it('prints nothing on attuned and BoostHideLevel pieces', () => {
+    const attuned = boost('Attuned_Luck_of_the_Gambler_A');
+    expect(enhLevelLabel(gd, attuned, { boost: attuned.id }, 49)).toBeUndefined();
+    const hidden = boost('Generic_Clockwork_Efficiency');
+    expect(hidden.bhl).toBeTruthy();
+    expect(enhLevelLabel(gd, hidden, { boost: hidden.id }, 49)).toBeUndefined();
   });
 });

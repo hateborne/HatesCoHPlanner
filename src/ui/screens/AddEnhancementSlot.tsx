@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
-import { boostPog } from '../../engine/enhance.ts';
+import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, stepsOf, useStore, useTipLevel } from '../../state/store.ts';
 import { stepSlotLevels } from '../../engine/schedule.ts';
@@ -15,7 +15,7 @@ import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { ElectricFlash } from '../components/ElectricFlash.tsx';
-import { FadingText, MenuFrame, NextButton, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
+import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PAD, phoneGeom, phonePanel as phoneFrame, PhoneTabs, type PhoneGeom, type Rect } from '../components/Phone.tsx';
@@ -252,6 +252,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const rules = useMemo(() => (gd && preview ? new BuildRules(gd, preview) : null), [gd, preview]);
   if (!gd || !level || !step || !rules) return null;
   const L = step.level;
+  // enhancements are the finished build's: their level numbers read as on the build screen
+  const buildEnd = preview!.endLevel ?? 49;
   const levels = stepSlotLevels(step); // a respec screen places the slots of several levels
   // a respec (uiReSpec.c respec_assignment) draws every power, greying the ones bought later
   const respec = !!level.flow;
@@ -369,6 +371,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
               pog={boost ? boostPog(gd, boost) : undefined}
+              level={boost && s.enh ? enhLevelLabel(gd, boost, s.enh, buildEnd) : undefined}
+              levelScale={phone ? PHONE_LEVEL_SCALE : undefined}
               title={boost && levels.includes(s.level) ? 'Holds an enhancement: remove it on the build screen to move this slot' : `Slot gained at level ${s.level + 1}`}
               onClick={boost && levels.includes(s.level) ? () => flashLocked(e.key) : undefined}
               onRightClick={boost && levels.includes(s.level) ? () => flashLocked(e.key) : undefined}
