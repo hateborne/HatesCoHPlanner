@@ -20,6 +20,14 @@ export interface Source {
   value: number;
 }
 
+/** A source that only sometimes applies (a roll each time its power ticks): listed, never summed. */
+export interface ChanceSource {
+  name: string; // display name of the piece or power
+  chance: number; // 0..1, rolled each time the power applies
+  value: number; // what it gives when the roll succeeds, in the line's unit
+  duration?: number; // seconds it lasts once it lands
+}
+
 export interface StatLine {
   key: string; // e.g. 'def.Smashing', 'res.Fire', 'rech'
   label: string;
@@ -27,6 +35,7 @@ export interface StatLine {
   capped: number; // after the archetype cap
   cap?: number;
   sources: Source[];
+  chances?: ChanceSource[]; // chance sources, kept out of value and sources (alphabetical)
 }
 
 /** One aggregated stat of a set's bonuses ("Energy (Res)" 1.5%, "Max HP" 1.13%, "Knockback (Prot)" 4). */
@@ -101,6 +110,39 @@ function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) 
     walkEffects(e.sub, ctx, fn);
   }
 }
+
+/**
+ * Walk the status-effect mods (protection or resistance) of a power's chance effects, with the
+ * chance each lands at: the effects walkEffects leaves out.
+ *
+ * A unique piece's global power is an auto power that rolls its chance every time it ticks, for
+ * an effect lasting until the next tick (Shield Wall's and Gladiator's Armor's 20% chance of
+ * teleport resistance). The game rolls each power's chance on its own, so these are listed beside
+ * the line rather than summed or averaged into it. Chance damage, heals and absorbs are procs, not
+ * standing protection, and are left out.
+ *
+ * @param gd Game data (attribute names).
+ * @param effs The effects.
+ * @param ctx Requirement context.
+ * @param fn Called per status-effect mod with the chance it lands at (0..1).
+ * @param chance The chance of the effect holding these (for sub effects).
+ */
+function walkChanceStatus(gd: GameData, effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod, chance: number) => void, chance = 1): void {
+  for (const e of effs ?? []) {
+    if (e.ppm || !evalRequires(e.req, ctx)) continue;
+    const ch = chance * (e.ch ?? 1);
+    if (ch < 1) {
+      for (const m of e.m ?? []) {
+        const status = m.a.every((a) => MEZ_NAMES.includes(gd.attribName.get(a) ?? ''));
+        if (status && (m.asp === 'Resistance' || m.asp === 'Current')) fn(m, ch);
+      }
+    }
+    walkChanceStatus(gd, e.sub, ctx, fn, ch);
+  }
+}
+
+/** Compare display names alphabetically, ignoring case ("Positron's Blast" before "Preventive Medicine"). */
+const byName = (a: string, b: string): number => a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true });
 
 /**
  * Whether a mod only carries a number for help text: a unique piece's "Null" attribute effect
@@ -230,6 +272,18 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
       }
     }
   };
+  // a chance status effect (walkChanceStatus) on the protection or resistance line it would
+  // raise, listed apart: the line's value counts only what is always there
+  const addChance = (p: Power, m: Mod, chance: number, srcName: string) => {
+    if (!affectsSelf(p, m) || m.t !== 'Magnitude') return;
+    const mag = gd.table(at, m.tbl, level) * m.sc;
+    for (const a of m.a) {
+      const name = gd.attribName.get(a) ?? '';
+      const key = m.asp === 'Resistance' ? 'mezres' : m.asp === 'Current' && mag < 0 ? 'mezprot' : undefined;
+      if (!key || !MEZ[name]) continue;
+      (line(`${key}.${name}`, MEZ[name]).chances ??= []).push({ name: srcName, chance, value: Math.abs(mag), duration: m.dur });
+    }
+  };
 
   // Active powers
   let endUse = 0;
@@ -320,10 +374,14 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     };
     walkEffects(bn.power.eff, ctx, (m) => m.tg === 'Caster' && take(m));
     walkEffects(bn.power.act, ctx, take);
+    // a global's chance of a status effect at each tick is listed beside its line (walkChanceStatus)
+    if (bn.global) walkChanceStatus(gd, bn.power.eff, ctx, (m, ch) => m.tg === 'Caster' && addChance(bn.power, m, ch, label));
   }
+  // every list in alphabetical order, so a source is easy to find: the sets, each set's bonuses
   const setGroups: SetBonusGroup[] = [...groups.values()]
     .filter((g) => g.stats.size > 0)
-    .map((g) => ({ set: g.set, counts: [...g.counts.values()].sort((a, b) => b - a), stats: [...g.stats.values()] }));
+    .map((g) => ({ set: g.set, counts: [...g.counts.values()].sort((a, b) => b - a), stats: [...g.stats.values()].sort((a, b) => byName(a.label, b.label)) }))
+    .sort((a, b) => byName(a.set.dn, b.set.dn));
 
   // Fold the "all types" defense into each typed defense, apply caps.
   const allDef = lines.get('def.base');
@@ -337,6 +395,8 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
   const hpBase = GameData.attrAt(at.max, 'HitPoints', level);
   const hpCap = GameData.attrAt(at.maxMax, 'HitPoints', level);
   for (const l of lines.values()) {
+    l.sources.sort((a, b) => byName(a.name, b.name)); // stable: one name's entries keep their order
+    l.chances?.sort((a, b) => byName(a.name, b.name));
     l.capped = l.value;
     const dm = /^res\.(\d+)$/.exec(l.key);
     if (dm) {
