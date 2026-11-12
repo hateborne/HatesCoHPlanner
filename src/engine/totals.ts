@@ -38,7 +38,7 @@ export interface SetBonusStat {
 /** Every bonus one set gives the build, summed over the powers it is slotted in. */
 export interface SetBonusGroup {
   set: BoostSet;
-  counts: number[]; // pieces slotted per power, largest first: Decimation (6) (3) (2)
+  counts: number[]; // pieces slotted per power that earns a set bonus (2+), largest first: Decimation (6) (3) (2)
   stats: SetBonusStat[];
 }
 
@@ -52,7 +52,7 @@ export interface Totals {
   regenPerSecRaw: number; // before the archetype's regeneration cap
   recovPerSecRaw: number; // before the recovery cap
   hpRaw: number; // max HP before the HP cap
-  setGroups: SetBonusGroup[]; // active set bonuses by set (rule-of-5 copies left out)
+  setGroups: SetBonusGroup[]; // active set bonuses by set (rule-of-5 copies and unique pieces' globals left out)
   bonusesOver5: number; // bonus copies suppressed by the rule of 5
   speeds: { run: number; fly: number; jump: number; jumpHeight: number }; // x 21 ft/s (height: x 4 ft), capped
   perception: number; // feet, capped
@@ -257,23 +257,32 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     }
   }
 
-  // Set bonuses, also summed per set for the breakdown (rule-of-5 copies count for neither)
+  // Set bonuses, also summed per set for the breakdown (rule-of-5 copies count for neither). A
+  // unique piece's global effect (Luck of the Gambler's recharge) counts under the piece's name but
+  // is no set bonus: it adds no piece count or stat to its set's group.
   const hpBase0 = GameData.attrAt(at.max, 'HitPoints', level);
   const bonuses = earnedBonuses(gd, entries, level);
-  const groups = new Map<number, { set: BoostSet; counts: Map<string, number>; stats: Map<string, SetBonusStat> }>();
+  type Group = { set: BoostSet; counts: Map<string, number>; stats: Map<string, SetBonusStat> };
+  const groups = new Map<number, Group>();
+  const groupOf = (set: BoostSet): Group => {
+    let g = groups.get(set.id);
+    if (!g) groups.set(set.id, (g = { set, counts: new Map(), stats: new Map() }));
+    return g;
+  };
   const bonusStats = (p: Power, m: Mod): SetBonusStat[] => describeBonusMod(gd, at, p, m, level, hpBase0, damageName, defenseName);
   let bonusesOver5 = 0;
   for (const bn of bonuses) {
-    const g = groups.get(bn.set.id) ?? { set: bn.set, counts: new Map<string, number>(), stats: new Map<string, SetBonusStat>() };
-    groups.set(bn.set.id, g);
-    g.counts.set(bn.entryKey, bn.slotted);
+    const g = bn.global ? undefined : groupOf(bn.set);
+    g?.counts.set(bn.entryKey, bn.slotted);
     if (bn.suppressed) {
       bonusesOver5++;
       continue;
     }
-    const label = `${bn.set.dn} (${bn.slotted})`;
+    // a set bonus is named by its set and piece count; a piece's global by the piece itself
+    const label = g ? `${bn.set.dn} (${bn.slotted})` : (bn.piece ?? bn.power).dn;
     const take = (m: Mod) => {
       apply(bn.power, m, null, label);
+      if (!g) return;
       for (const st of bonusStats(bn.power, m)) {
         const cur = g.stats.get(st.label);
         if (cur) cur.value += st.value;
