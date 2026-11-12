@@ -1,6 +1,6 @@
 import { memo, useState, type ReactNode } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
-import { MEZ, type SetBonusStat, type StatLine, type Totals } from '../../engine/totals.ts';
+import { MEZ, type ChanceSource, type SetBonusStat, type StatLine, type Totals } from '../../engine/totals.ts';
 import { TitleText } from './GameText.tsx';
 
 const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
@@ -35,6 +35,21 @@ function nice(s: string): string {
 
 /** Source values: absolute numbers (HP) as such, fractions as percentages. */
 const srcDefault = (v: number) => (Math.abs(v) >= 5 ? v.toFixed(1) : pct(v));
+
+/** A number with at most two decimals and no trailing zeros: 100, 10.25, 0.5. */
+const trim = (x: number) => String(Number(x.toFixed(2)));
+
+/**
+ * A chance source's roll, what it gives and for how long: "20% chance for 100% for 10.25s".
+ *
+ * @param c The chance source.
+ * @param percent The line is a percentage (resistance); else a magnitude (protection).
+ * @return The text after the source's name.
+ */
+function chanceText(c: ChanceSource, percent: boolean): string {
+  const amount = percent ? `${trim(c.value * 100)}%` : trim(c.value);
+  return `${trim(c.chance * 100)}% chance for ${amount}${c.duration ? ` for ${trim(c.duration)}s` : ''}`;
+}
 const MARK_W = 20; // the +/- column (a little wider than the + so it never touches the label)
 
 interface RowProps {
@@ -60,7 +75,8 @@ export function TotalsRow(props: RowProps) {
 
 function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, detail, cap, noMark }: RowProps) {
   const [open, setOpen] = useState(false);
-  const has = !!detail || (!!line && line.sources.length > 0);
+  const chances = line?.chances ?? [];
+  const has = !!detail || (!!line && (line.sources.length > 0 || chances.length > 0));
   const plain = cap ? CAPPED : PLAIN;
   return (
     <div>
@@ -76,6 +92,8 @@ function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, deta
         </span>
         <span style={{ color: toneColor(tone, plain) }}>
           {open ? (openValue ?? value) : value}
+          {/* chance sources aren't in the value: they're listed under Chance */}
+          {chances.length ? ' (*)' : null}
           {over ? <span style={{ color: darken(toneColor(tone, plain)) }}> ({over})</span> : null}
         </span>
       </div>
@@ -88,6 +106,20 @@ function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, deta
               <span style={{ color: tone === undefined ? SOURCE : toneColor(s.value, SOURCE) }}>{fmt(s.value)}</span>
             </div>
           ))}
+          {/* always last, whatever the alphabet says: the sources that only sometimes apply */}
+          {chances.length ? (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Chance</span>
+                <span>*</span>
+              </div>
+              {chances.map((c, i) => (
+                <div key={`c${i}`} style={{ paddingLeft: MARK_W }}>
+                  {`${c.name} - ${chanceText(c, !line.key.startsWith('mezprot.'))}`}
+                </div>
+              ))}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -142,8 +174,10 @@ const statText = (s: SetBonusStat) => (s.unit === '%' ? pct(s.value) : s.unit ==
  * a value past its archetype cap reads "cap (actual)", the actual 20% darker. Set Bonuses lists
  * each set with the piece counts of every power where it earns a bonus (two or more pieces) and its
  * summed bonuses (rule-of-5 copies left out). A unique piece's global effect (Luck of the Gambler's
- * recharge) is no set bonus: it shows only in its stat's sources. Section state is remembered per
- * browser.
+ * recharge) is no set bonus: it shows only in its stat's sources. A chance of a status effect
+ * (Shield Wall's 20% chance of teleport resistance) adds nothing to its line's value, which reads
+ * "0.00% (*)"; it is listed under "Chance", after the line's other sources. Section state is
+ * remembered per browser.
  */
 export const TotalsPanel = memo(function TotalsPanel({ gd, t, width }: { gd: GameData; t: Totals; width: number }) {
   const [openSec, setOpenSec] = useState(readOpen);

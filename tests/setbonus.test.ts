@@ -148,3 +148,48 @@ describe('one piece of a set earns no set bonus', () => {
     expect(t.lines.get('regen')?.sources.map((s) => s.name)).toContain('Luck of the Gambler (3)');
   });
 });
+
+describe('chance globals and list order', () => {
+  /** Shield Wall pieces by letter in pick i, at level 50. */
+  const shieldWall = (b: Build, i: number, power: string, letters: string) => {
+    const enh = (l: string): SlottedEnh => ({ boost: pid(gd, `Boosts.Crafted_Shield_Wall_${l}.Crafted_Shield_Wall_${l}`), ioLevel: 49 });
+    b.picks[i] = { power: pid(gd, power), level: P[i]!, slots: letters.split('').map((l) => ({ level: P[i]!, enh: enh(l) })) };
+  };
+
+  it('lists the teleport uniques\' 20% chances apart, adding nothing to the Teleport value', () => {
+    const b = blaster();
+    shieldWall(b, 3, 'Pool.Leaping.Combat_Jumping', 'F');
+    const ga = pid(gd, 'Boosts.Crafted_Gladiators_Armor_F.Crafted_Gladiators_Armor_F');
+    b.picks[4] = { power: pid(gd, 'Pool.Fighting.Weave'), level: P[4]!, slots: [{ level: P[4]!, enh: { boost: ga, ioLevel: 49 } }] };
+    const t = computeTotals(gd, new BuildRules(gd, b), b);
+    // each global rolls its own 20% every 10 s for 100% resistance lasting 10.25 s: no standing value
+    const tp = t.lines.get('mezres.Teleport');
+    expect(tp?.value).toBe(0);
+    expect(tp?.sources).toEqual([]);
+    expect(tp?.chances?.map((c) => [c.name, Number(c.chance.toFixed(6)), c.value, c.duration])).toEqual([
+      ["Gladiator's Armor: Teleportation Protection, +Def(All)", 0.2, 1, 10.25],
+      ['Shield Wall: Teleportation Protection, +Res(All)', 0.2, 1, 10.25],
+    ]);
+    // Shield Wall's standing +5% resistance to all damage still counts in full
+    expect(t.lines.get('res.00')?.sources.find((s) => s.name.startsWith('Shield Wall'))?.value).toBeCloseTo(0.05, 6);
+  });
+
+  it('lists every source, set and set bonus alphabetically', () => {
+    const b = blaster();
+    put(b, 3, 'Pool.Leaping.Combat_Jumping', 'ABCDEF');
+    shieldWall(b, 4, 'Pool.Fighting.Weave', 'ABCDEF');
+    put(b, 5, 'Pool.Leadership.Defense', 'ABF'); // Maneuvers' internal name
+    shieldWall(b, 6, 'Pool.Fighting.Tough', 'AB');
+    const t = computeTotals(gd, new BuildRules(gd, b), b);
+    const sorted = (xs: string[]) => [...xs].sort((x, y) => x.localeCompare(y, 'en', { sensitivity: 'base', numeric: true }));
+    expect(t.setGroups.map((g) => g.set.dn)).toEqual(['Luck of the Gambler', 'Shield Wall']);
+    for (const g of t.setGroups) expect(g.stats.map((s) => s.label), g.set.dn).toEqual(sorted(g.stats.map((s) => s.label)));
+    let multi = 0;
+    for (const l of t.lines.values()) {
+      const names = l.sources.map((s) => s.name);
+      expect(names, l.key).toEqual(sorted(names));
+      if (new Set(names).size > 1) multi++;
+    }
+    expect(multi).toBeGreaterThan(0); // some line really mixes sources
+  });
+});
