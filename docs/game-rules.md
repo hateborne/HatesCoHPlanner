@@ -117,6 +117,12 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   (`boostset_FindBonuses`, boostset.c). A crafted and an attuned copy of one piece count once.
 - A bonus applies while the count is within its `MinBoosts..MaxBoosts` and its requirement holds.
   `isPVPMap?` is false, so PvP-only bonuses never apply.
+- Set bonuses start at two pieces. A unique piece's global effect (Luck of the Gambler's +7.5%
+  recharge, the archetype origin procs) is stored as a bonus with `MinBoosts 1`, gated on that
+  piece being in the power (`PowerBoostsSlotted>`). It applies like the others, rule of 5
+  included, but it is the piece's own effect and not a set bonus. The game's enhancement info
+  lists only the two-piece-and-up bonuses, and the totals panel shows the global in its stat under
+  the piece's name, never as a "(1)" in Set Bonuses (`isPieceGlobal`, setbonus.ts).
 
 ## Current values (totals)
 
