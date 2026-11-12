@@ -130,7 +130,7 @@ def main() -> int:
     head = mids_header()
     patch = PATCH_ID.format(**head)
     vid = args.id or f"{patch}m"
-    if not all(c.isalnum() or c in "-_." for c in vid) or vid == base:
+    if not config.valid_version_id(vid) or vid == base:
         print(f"error: invalid version id {vid!r}")
         return 2
     if (patch_order(patch) or (0, 0)) >= (patch_order(entry.get("patch", base)) or (0, 0)):
@@ -176,7 +176,7 @@ def main() -> int:
          f"## Levels changed ({len(rows)})\n", f"| Set | Power | {base} | Mids |", "|---|---|---|---|"]
     L += [f"| {s} | {p} | {a} | {b} |" for s, p, a, b in rows]
     report = config.REPO / "pipeline" / f"report-{vid}.md"
-    config.atomic_write(report, "\n".join(L) + "\n")
+    config.atomic_write(report, config.scrub("\n".join(L) + "\n"))  # committed: no machine paths
     print(f"wrote public/data/{vid} ({len(rows)} levels changed, hash {m['hash']}) and {report.name}")
     return 0
 

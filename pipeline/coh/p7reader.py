@@ -114,12 +114,23 @@ def param_power_names(params) -> list[str]:
 
 
 def load_member(pigg: Path, member: str) -> bytes:
-    """Inflated bytes of `member` (e.g. 'bin/classes.bin') inside a .pigg."""
+    """Inflated bytes of `member` (e.g. 'bin/classes.bin') inside a .pigg.
+
+    @raise ValueError When the member's bytes aren't the size the pigg directory gives (a short
+        read or a damaged entry): decoding a short bin would silently drop its last records.
+    """
     with open(pigg, "rb") as f:
         e = next(x for x in pex.read_directory(f) if x["path"].replace("\\", "/") == member)
         f.seek(e["offset"])
         raw = f.read(e["packSize"]) if e["packSize"] else f.read(e["size"])
-    return zlib.decompress(raw) if e["packSize"] else raw
+    if e["packSize"]:
+        d = zlib.decompressobj()
+        data = d.decompress(raw, e["size"] + 1)  # never more than the directory says, plus one
+    else:
+        data = raw
+    if len(data) != e["size"]:
+        raise ValueError(f"{member}: {len(data)} bytes, the pigg directory says {e['size']}")
+    return data
 
 
 @dataclass
@@ -168,6 +179,10 @@ def decode_earray(data: bytes, table, inline_links: bool = False, limit: int | N
             res.partial.append((i, str(ex)[:120]))
         res.records.append(rec)
         p = end
+    # the records fill the bin exactly (every Homecoming bin does): anything else means the count
+    # in its header is wrong and records were skipped, which must fail the health gate
+    if limit is None and p != len(data):
+        res.partial.append((-1, f"records end at byte {p}, the bin at {len(data)}"))
     return res
 
 

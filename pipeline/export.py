@@ -517,15 +517,26 @@ def borrow_frames(boosts: list[dict], donor: str) -> int:
     return n
 
 
-def write(live: LiveData, version: str, frames_from: str | None = None) -> dict:
+def write(live: LiveData, version: str, frames_from: str | None = None, *,
+          overwrite_published: bool = False, refresh_mids_map: bool = False) -> dict:
     """Export the data set for game version `version` and return a summary for the report.
 
-    Order: build in memory (Mids map included, failures tolerated), save ids.json, then write the
-    data files atomically. The version index files are written afterwards by write_indexes().
+    Order: build in memory (Mids map included, failures tolerated), check the folder may be
+    written, save ids.json, then write the data files atomically. The version index files are
+    written afterwards by write_indexes().
+
+    A version folder already made from a different client (other exe or pigg hashes) is refused
+    unless `overwrite_published`: share links made on that patch load it, so a run that forgot
+    --game-version after a patch, or that points at another client copy, must not replace it. An
+    existing folder's mids-map.json is kept unless `refresh_mids_map`: old Mids codes depend on it,
+    and its contents aren't part of the version hash that busts browser caches.
 
     @param live The decoded client.
     @param version Game version id (the data folder name).
     @param frames_from Version to borrow enhancement frames from when the client has none.
+    @param overwrite_published Replace a folder made from a different client.
+    @param refresh_mids_map Replace an existing folder's mids-map.json.
+    @raise SystemExit When the folder was made from a different client and overwriting wasn't asked.
     """
     ex = Exporter(live)          # refuses to run if ids.json is gone while data exists
     out = ex.build()
@@ -553,14 +564,30 @@ def write(live: LiveData, version: str, frames_from: str | None = None) -> dict:
     if mids.get("skipped") and not any("Mids map" in w for w in warnings):
         warnings.append(f"WARNING: Mids map skipped ({mids['skipped']})")
 
+    root = config.DATA_OUT / version
+    source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
+              "bin_powers.pigg": sha1(config.POWERS_PIGG)}
+    # nothing is written yet: a folder made from another client stops the run here
+    old = None
+    try:
+        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
+    except (OSError, ValueError, KeyError):
+        pass
+    if old and old.get("source") and old["source"] != source:
+        if not overwrite_published:
+            raise SystemExit(
+                f"error: public/data/{version} was made from a different client (exe or pigg hashes "
+                "differ). A new patch needs a new --game-version; to replace this published folder "
+                "on purpose, pass --overwrite-published. Nothing was written.")
+        warnings.append(f"WARNING: public/data/{version} was made from a different client and was "
+                        "replaced (--overwrite-published)")
+
     ex.ids.save()                # ids first, so a crash later never loses allocations
 
-    root = config.DATA_OUT / version
     manifest = {
         "dataVersion": version,
         "generated": utc_now(),
-        "source": {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
-                   "bin_powers.pigg": sha1(config.POWERS_PIGG)},
+        "source": source,
         "counts": {"archetypes": len(out["core"]["archetypes"]),
                    "powersets": len(out["powersets"]), "powers": len(out["powers"]),
                    "boosts": len(out["boosts"]["boosts"]),
@@ -574,11 +601,6 @@ def write(live: LiveData, version: str, frames_from: str | None = None) -> dict:
     texts = {n: _dump(out[n]) for n in ("powersets", "powers", "boosts")}
     others = [texts["powersets"], texts["powers"], texts["boosts"]]
     # no churn: if the content hash matches what is on disk, keep its generated timestamp
-    old = None
-    try:
-        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
-    except (OSError, ValueError, KeyError):
-        pass
     if old and old.get("generated"):
         manifest["generated"] = old["generated"]
         if old.get("hash") != content_hash(out["core"], others):
@@ -591,7 +613,11 @@ def write(live: LiveData, version: str, frames_from: str | None = None) -> dict:
         sizes[name] = len(texts[name].encode("utf-8"))
 
     mids_path = root / "mids-map.json"
-    if mids_text is not None:
+    if mids_text is not None and mids_path.exists() and not refresh_mids_map:
+        if mids_path.read_text(encoding="utf-8") != mids_text:
+            warnings.append(f"NOTE: kept {version}'s existing mids-map.json (the Mids data gives a "
+                            "different map; pass --refresh-mids-map to replace it)")
+    elif mids_text is not None:
         config.atomic_write(mids_path, mids_text)
     elif not mids_path.exists():
         prev = newest_mids_map(root)

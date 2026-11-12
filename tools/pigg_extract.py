@@ -95,14 +95,18 @@ def read_directory(f):
 
 def extract_entry(f, entry, out_root):
     rel = Path(entry["path"].replace("\\", "/"))
-    if rel.is_absolute() or ".." in rel.parts:
+    # a drive ("C:x" is not "absolute" on Windows yet joins onto C:) or a root ("/x" replaces the
+    # folder it is joined to) would escape out_root just as ".." would: check where it resolves
+    root = Path(out_root).resolve()
+    dest = (root / rel).resolve()
+    if rel.is_absolute() or rel.drive or rel.anchor or ".." in rel.parts or root not in dest.parents:
         raise PiggError(f"Refusing suspicious path {entry['path']!r}")
-    dest = out_root / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     f.seek(entry["offset"])
     if entry["packSize"]:
-        data = zlib.decompress(read_exact(f, entry["packSize"]))
+        # never inflate past what the directory says the file holds (plus one, to notice)
+        data = zlib.decompressobj().decompress(read_exact(f, entry["packSize"]), entry["size"] + 1)
         if len(data) != entry["size"]:
             raise PiggError(
                 f"{entry['path']}: inflated {len(data)} bytes, expected {entry['size']}")

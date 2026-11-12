@@ -524,10 +524,21 @@ export const useStore = create<Store>((set, get) => ({
         }
         if (!raw) continue;
         const { version, missing } = resolveVersion(versions, typeof raw.dataVersion === 'string' ? raw.dataVersion : undefined);
-        const gd = await dataFor(version);
+        let gd: GameData;
+        try {
+          gd = await dataFor(version);
+        } catch (e) {
+          // that version's data won't load (a network hiccup): try the next build, then New Build,
+          // rather than stopping on the error screen
+          console.error(`couldn't load ${version.id} for a remembered build`, e);
+          if (k === 0) linkFailed = e;
+          continue;
+        }
         const c = checkBuild(gd, raw);
         if (!c.build) {
-          if (k === 0) linkFailed = refusedBuild(c.fixes);
+          // a build started but with no power picked yet (the address keeps it from New Build's
+          // first screen) is nothing to open, not a broken link
+          if (k === 0 && c.fixes[c.fixes.length - 1] !== 'no powers picked yet') linkFailed = refusedBuild(c.fixes);
           continue;
         }
         if (c.fixes.length) console.warn('saved build repaired:', c.fixes);
@@ -857,8 +868,26 @@ if (typeof window !== 'undefined') {
     const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
     const { versions, loadBuild } = useStore.getState();
     if (!m || !versions) return;
+    const current = useStore.getState().build;
     void decodeShare(m[1]!).then(
-      (b) => loadBuild(b), // loadBuild loads its game version, checks it first, and says when it can't
+      async (b) => {
+        // as the Build menu does: a build with picks is only replaced once the user agrees (and the
+        // link to the build already open replaces nothing)
+        if (current?.picks.some((p) => p)) {
+          if ((await encodeShare(current)) === m[1]) return;
+          const ok = await useStore.getState().askConfirm({
+            title: 'Replace the current build?',
+            text: `The link opens ${b.name ? `"${b.name}"` : 'another build'}, replacing ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+            okLabel: 'Replace',
+          });
+          if (!ok) {
+            // keep the address on the build that stays open
+            void encodeShare(current).then((code) => history.replaceState(history.state, '', `${location.pathname}${location.search}#b=${code}`));
+            return;
+          }
+        }
+        await loadBuild(b); // loads its game version, checks it first, and says when it can't
+      },
       (e: unknown) => {
         // a bad link leaves the current build alone, and says why
         const f = describeImportFailure(e, "The share link couldn't be opened", "Couldn't open the share link");

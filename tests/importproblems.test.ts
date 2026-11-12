@@ -1,15 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { brotliCompressSync, brotliDecompressSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 
-// brotli-wasm fetches its WebAssembly, which Node's test run can't: Node's own Brotli stands in
-vi.mock('brotli-wasm', () => ({
-  default: {
-    decompress: (b: Uint8Array) => new Uint8Array(brotliDecompressSync(b)),
-    compress: (b: Uint8Array) => new Uint8Array(brotliCompressSync(b)),
-  },
-}));
+// brotli-wasm's default (web) build fetches its .wasm, which Node can't: use its Node build
+vi.mock('brotli-wasm', async () => {
+  const { createRequire } = await import('node:module');
+  const pkg: unknown = createRequire(import.meta.url)('brotli-wasm');
+  return { default: Promise.resolve(pkg) };
+});
 import { newBuild, type Build } from '../src/engine/build.ts';
 import { BuildRules, startingSets } from '../src/engine/rules.ts';
 import { streamBytes, toBase64Url } from '../src/io/binary.ts';

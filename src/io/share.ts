@@ -18,6 +18,28 @@ import { ImportProblem } from './importProblem.ts';
 
 const VERSION = 1;
 
+// Counts no real build comes near (24 picks, 6 slots a power, a few dozen granted powers): a link
+// past them is damaged, refused before it can grow huge arrays
+const MAX_PICKS = 64;
+const MAX_SLOTS = 32;
+const MAX_GRANTED = 512;
+// a full level-50 build's code is under 1,000 characters
+const MAX_PAYLOAD = 64 * 1024;
+
+/**
+ * Read a count from the link, refusing one past `max`.
+ *
+ * @param r The reader.
+ * @param max The largest count a real build could have.
+ * @return The count.
+ * @raise RangeError when it is larger (decodeShare reports it as a damaged link).
+ */
+function count(r: ByteReader, max: number): number {
+  const n = r.varint();
+  if (n > max) throw new RangeError(`count ${n} past ${max}`);
+  return n;
+}
+
 function writeSlots(w: ByteWriter, slots: Slot[]): void {
   w.varint(slots.length);
   for (const s of slots) {
@@ -34,7 +56,7 @@ function writeSlots(w: ByteWriter, slots: Slot[]): void {
 }
 
 function readSlots(r: ByteReader): Slot[] {
-  const n = r.varint();
+  const n = count(r, MAX_SLOTS);
   const out: Slot[] = [];
   for (let i = 0; i < n; i++) {
     const level = r.u8();
@@ -103,12 +125,14 @@ export async function decodeShare(payload: string): Promise<Build> {
     return await readShare(payload);
   } catch (e) {
     if (e instanceof ImportProblem) throw e;
-    // bad Base64, a stream that won't inflate or bytes that run out: all a damaged link
+    // bad Base64, a stream that won't inflate (or inflates past MAX_INFLATED), bytes that run out
+    // or counts no build has: all a damaged link
     throw new ImportProblem('the share link is damaged or cut short', 'Copy the whole link again (it ends with the long code after #b=) and paste it.');
   }
 }
 
 async function readShare(payload: string): Promise<Build> {
+  if (payload.length > MAX_PAYLOAD) throw new RangeError(`link ${payload.length} characters long`);
   const r = new ByteReader(await streamBytes(fromBase64Url(payload), 'deflate', false));
   const v = r.u8();
   if (v !== VERSION) throw new ImportProblem('the share link was made by a newer version of the planner', 'Reload the page to get the newest version, then try again.');
@@ -119,7 +143,7 @@ async function readShare(payload: string): Promise<Build> {
   const secondary = r.varint();
   const name = r.netString();
   const ex = r.varint();
-  const n = r.varint();
+  const n = count(r, MAX_PICKS);
   const picks: Build['picks'] = [];
   for (let i = 0; i < n; i++) {
     const power = r.varint();
@@ -132,7 +156,7 @@ async function readShare(payload: string): Promise<Build> {
     picks.push({ power, level, on, slots: readSlots(r) });
   }
   const granted: Build['granted'] = {};
-  const g = r.varint();
+  const g = count(r, MAX_GRANTED);
   for (let i = 0; i < g; i++) {
     const pid = r.varint();
     const on = onValue(r.u8());
