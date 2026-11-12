@@ -32,6 +32,8 @@ export const PICKER_TAB: Record<EnhKind, string> = {
   Other: 'Special',
 };
 
+// the default version's data; ids and names are the same in every version, so it also drives the
+// screens for a build that opened on another patch (check such a build with loadData(b.dataVersion))
 export const gd = loadData();
 
 /** @return The power set a power belongs to (its full name is Category.Set.Power). */
@@ -152,8 +154,7 @@ export class Player {
     await this.press(this.button(this.phone ? 'Saved / Import' : 'Saved builds / Import'));
     await this.page.getByPlaceholder('Paste a share link').fill(text);
     await this.press(this.button('Import pasted text'));
-    await expect(this.button('New Build')).toBeVisible(); // the overview of the imported build
-    return this.build();
+    return this.imported();
   }
 
   /**
@@ -165,8 +166,27 @@ export class Player {
   async importFile(path: string): Promise<Build> {
     await this.press(this.button(this.phone ? 'Saved / Import' : 'Saved builds / Import'));
     await this.page.locator('input[type=file]').setInputFiles(path);
-    await expect(this.button('New Build')).toBeVisible(); // the overview of the imported build
-    return this.build();
+    return this.imported();
+  }
+
+  /**
+   * Finish an import: accept "Open on <patch>?" when the build was made on a patch the planner
+   * doesn't carry, then wait for the overview of the imported build.
+   *
+   * A build made on a carried patch (or one that records no patch) opens without the question.
+   *
+   * @return The imported build.
+   */
+  private async imported(): Promise<Build> {
+    const overview = this.button('New Build');
+    const open = this.button('Open'); // the confirm dialog's OK (BuildMenu doImport)
+    await expect(overview.or(open).first()).toBeVisible();
+    const moved = await open.isVisible();
+    if (moved) await this.press(open);
+    await expect(overview).toBeVisible();
+    const b = await this.build();
+    console.log(`[${this.phone ? 'phone' : 'desktop'}] imported "${b.name}" on ${b.dataVersion}${moved ? ' (moved there from an older patch)' : ''}`);
+    return b;
   }
 
   /**
