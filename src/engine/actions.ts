@@ -30,7 +30,7 @@ function originIndex(gd: GameData, b: Build): number {
 }
 
 /** @return The slots array an entry key refers to (creating granted state on demand). */
-function slotsFor(b: Build, key: string): { slots: Slot[]; set: (s: Slot[]) => void } | null {
+export function slotsFor(b: Build, key: string): { slots: Slot[]; set: (s: Slot[]) => void } | null {
   const [kind, raw] = key.split(':');
   const n = Number(raw);
   if (kind === 'pick') {

@@ -185,6 +185,10 @@ export interface Core {
     hash?: string; // content hash of this version's data files
     generated: string;
     counts: Record<string, number>;
+    // an approximate version (pipeline/overlay.py): its base version, the patch it stands for and
+    // the Mids database its power levels came from
+    approximate?: { base: string; patch: string; midsDb: string; from: string };
+    framesFrom?: string; // the version whose enhancement frames it borrowed (its client had none)
   };
 }
 

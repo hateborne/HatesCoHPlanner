@@ -10,6 +10,7 @@ import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { defaultOn } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, fromBase64, streamBytes, toBase64 } from './binary.ts';
+import { PLANNER_APP } from './midsPatches.ts';
 
 export interface MidsMap {
   dbVersion: string;
@@ -170,7 +171,8 @@ interface MbdPower {
   SlotEntries: MbdSlot[];
 }
 export interface Mbd {
-  BuiltWith?: { App?: string; Version?: string; Database?: string; DatabaseVersion?: string };
+  // GameVersion: the planner's game version id, in its own exports (Mids ignores unknown fields)
+  BuiltWith?: { App?: string; Version?: string; Database?: string; DatabaseVersion?: string; GameVersion?: string };
   Level?: string;
   Class: string;
   Origin: string;
@@ -337,7 +339,7 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     PowerEntries.push(entry(e.power.id, e.level, e.slots, e.on));
   }
   const mbd: Mbd = {
-    BuiltWith: { App: "Hate's CoH Planner", Version: '0.1.0', Database: 'Homecoming', DatabaseVersion: map.dbVersion },
+    BuiltWith: { App: PLANNER_APP, Version: '0.1.0', Database: 'Homecoming', DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
     Level: '49',
     Class: at.n,
     Origin: origin.n,
@@ -515,26 +517,48 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
   return { mbd: { Class: cls, Origin: origin, Alignment: align, Name: name, PowerSets: sets, PowerEntries: entries }, warnings: warn };
 }
 
+/** Mids text decoded into a build file, before it is matched against a game version's data. */
+export type MidsParsed = { kind: 'mbd'; mbd: Mbd } | { kind: 'mxdz'; raw: Uint8Array };
+
 /**
- * Import any Mids text: a .mbd JSON document, a |MBD; chunk, a raw MBD share string, or a
- * legacy |MxDz; chunk.
+ * Decode any Mids text: a .mbd JSON document, a |MBD; chunk, a raw MBD share string, or a legacy
+ * |MxDz; chunk. Separate from the import so the game version can be chosen from what it says.
+ *
+ * @param text The pasted or loaded text.
+ * @return The decoded build file (a legacy chunk stays raw: reading it needs a version's data).
  */
-export async function importMidsText(gd: GameData, map: MidsMap, text: string): Promise<ImportResult> {
+export async function parseMidsText(text: string): Promise<MidsParsed> {
   const trimmed = text.trim();
-  if (trimmed.startsWith('{')) return importMbd(gd, map, JSON.parse(trimmed) as Mbd);
+  if (trimmed.startsWith('{')) return { kind: 'mbd', mbd: JSON.parse(trimmed) as Mbd };
   const mbdHead = trimmed.match(/\|MBD;(\d+);(\d+);(\d+);BASE64;\|/);
   const mxdHead = trimmed.match(/\|MxDz;(\d+);(\d+);(\d+);HEX;\|/);
   if (mxdHead) {
     const hex = payloadAfterHeader(trimmed, mxdHead).slice(0, Number(mxdHead[3]));
     const comp = new Uint8Array(hex.length / 2);
     for (let i = 0; i < comp.length; i++) comp[i] = parseInt(hex.substr(i * 2, 2), 16);
-    const raw = await streamBytes(comp, 'deflate', false);
-    const { mbd, warnings } = await mxdzToMbd(gd, map, raw);
-    const res = importMbd(gd, map, mbd);
-    return { build: res.build, warnings: [...warnings, ...res.warnings] };
+    return { kind: 'mxdz', raw: await streamBytes(comp, 'deflate', false) };
   }
   const b64 = mbdHead ? payloadAfterHeader(trimmed, mbdHead).slice(0, Number(mbdHead[3])) : trimmed.replace(/\s/g, '');
   const br = await brotli();
-  const json = new TextDecoder().decode(br.decompress(fromBase64(b64)));
-  return importMbd(gd, map, JSON.parse(json) as Mbd);
+  return { kind: 'mbd', mbd: JSON.parse(new TextDecoder().decode(br.decompress(fromBase64(b64)))) as Mbd };
+}
+
+/**
+ * Import a decoded Mids build against one game version's data.
+ *
+ * @param gd That version's data.
+ * @param map That version's mids-map.json.
+ * @param p The decoded build (parseMidsText).
+ * @return The build and the warnings for anything that could not be mapped.
+ */
+export async function importParsed(gd: GameData, map: MidsMap, p: MidsParsed): Promise<ImportResult> {
+  if (p.kind === 'mbd') return importMbd(gd, map, p.mbd);
+  const { mbd, warnings } = await mxdzToMbd(gd, map, p.raw);
+  const res = importMbd(gd, map, mbd);
+  return { build: res.build, warnings: [...warnings, ...res.warnings] };
+}
+
+/** Import any Mids text (parseMidsText, then importParsed) against one game version's data. */
+export async function importMidsText(gd: GameData, map: MidsMap, text: string): Promise<ImportResult> {
+  return importParsed(gd, map, await parseMidsText(text));
 }

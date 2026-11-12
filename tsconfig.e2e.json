@@ -15,7 +15,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-    "types": ["node"]
+    "types": ["node", "vite/client"]
   },
   "include": ["e2e", "playwright.config.ts"]
 }
