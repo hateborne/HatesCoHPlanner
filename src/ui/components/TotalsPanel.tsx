@@ -140,8 +140,10 @@ const statText = (s: SetBonusStat) => (s.unit === '%' ? pct(s.value) : s.unit ==
  * Status Protection, Status Resistance, Set Bonuses), every line expandable into its sources.
  * A value above its stat's neutral value is green, below it red; positive numbers carry no sign;
  * a value past its archetype cap reads "cap (actual)", the actual 20% darker. Set Bonuses lists
- * each set with the piece counts of every power it is in and its summed bonuses (rule-of-5 copies
- * left out). Section state is remembered per browser.
+ * each set with the piece counts of every power where it earns a bonus (two or more pieces) and its
+ * summed bonuses (rule-of-5 copies left out). A unique piece's global effect (Luck of the Gambler's
+ * recharge) is no set bonus: it shows only in its stat's sources. Section state is remembered per
+ * browser.
  */
 export const TotalsPanel = memo(function TotalsPanel({ gd, t, width }: { gd: GameData; t: Totals; width: number }) {
   const [openSec, setOpenSec] = useState(readOpen);

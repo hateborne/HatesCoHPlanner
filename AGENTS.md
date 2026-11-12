@@ -121,7 +121,7 @@ src/
     rules.ts                 BuildRules: availability, picks, auto-granted powers, slots, issues
     requires.ts              the game's RPN requirement evaluator
     schedule.ts              pick / slot / pool / epic level schedules
-    enhance.ts               enhancement values, ED, origin and set validity, help text
+    enhance.ts               enhancement values, ED, origin and set validity, set rarity, help text
     setbonus.ts, totals.ts   set bonuses (rule of 5) and the totals panel
     powerinfo.ts             detailed power numbers (base vs enhanced)
     actions.ts               pure edits (setPick, addSlot, setEnh, ...) and pickHoldsEnhancements

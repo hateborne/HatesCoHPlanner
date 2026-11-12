@@ -4,12 +4,13 @@
  *
  * Mirrors MidsReborn's totals model on top of the game's own attribute math (mod_Fill):
  * magnitude = class table[level] x scale x (1 + enhancement strength unless IgnoreStrength).
- * Active powers: autos and toggles on, clicks off, each overridable per power.
+ * Active powers: autos and toggles on, clicks off, each overridable per power. A running power
+ * also applies its slotted pieces' own effects (Miracle's +Recovery, Kismet's +ToHit).
  */
 import { GameData } from '../data/gamedata.ts';
 import type { Archetype, BoostSet, Effect, Mod, Power } from '../data/types.ts';
 import type { Build } from './build.ts';
-import { powerStrength } from './enhance.ts';
+import { boostMods, effectiveness, powerStrength } from './enhance.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
 import { earnedBonuses, type EarnedBonus } from './setbonus.ts';
@@ -38,7 +39,7 @@ export interface SetBonusStat {
 /** Every bonus one set gives the build, summed over the powers it is slotted in. */
 export interface SetBonusGroup {
   set: BoostSet;
-  counts: number[]; // pieces slotted per power, largest first: Decimation (6) (3) (2)
+  counts: number[]; // pieces slotted per power that earns a set bonus (2+), largest first: Decimation (6) (3) (2)
   stats: SetBonusStat[];
 }
 
@@ -52,7 +53,7 @@ export interface Totals {
   regenPerSecRaw: number; // before the archetype's regeneration cap
   recovPerSecRaw: number; // before the recovery cap
   hpRaw: number; // max HP before the HP cap
-  setGroups: SetBonusGroup[]; // active set bonuses by set (rule-of-5 copies left out)
+  setGroups: SetBonusGroup[]; // active set bonuses by set (rule-of-5 copies and unique pieces' globals left out)
   bonusesOver5: number; // bonus copies suppressed by the rule of 5
   speeds: { run: number; fly: number; jump: number; jumpHeight: number }; // x 21 ft/s (height: x 4 ft), capped
   perception: number; // feet, capped
@@ -99,6 +100,18 @@ function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) 
     for (const m of e.m ?? []) fn(m);
     walkEffects(e.sub, ctx, fn);
   }
+}
+
+/**
+ * Whether a mod only carries a number for help text: a unique piece's "Null" attribute effect
+ * (Luck of the Gambler's 7.5% recharge, whose real effect is the set's global bonus power).
+ *
+ * @param gd Game data.
+ * @param m The mod.
+ * @return True when every attribute it touches is Null.
+ */
+function isNullMod(gd: GameData, m: Mod): boolean {
+  return m.a.every((a) => gd.attribName.get(a) === 'Null');
 }
 
 // Maximum-aspect mods that raise a current value's cap (Super Speed, Fly, Long Jump): attribute
@@ -244,12 +257,28 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     return modes.has(n) || (n.startsWith('k') && modes.has(n.slice(1)));
   };
 
+  // A slotted piece's own effects (Miracle's +Recovery, Kismet's +ToHit, the travel sets' stealth)
+  // land on the character each time the power holding it applies, while the piece works at the
+  // character's real level, which exemplaring leaves alone (character_AccrueBoosts tests
+  // boost_Effectiveness at character_CalcExperienceLevel and sets bBonusAttributes;
+  // character_ApplyPower attaches the piece's non-boost templates). They stack by replacement, so
+  // a piece in two running powers counts once.
+  const xpLevel = b.exemplar !== undefined && level === b.exemplar ? (b.endLevel ?? 49) : level;
+  const pieceApplied = new Set<number>();
   for (const e of entries) {
     const p = e.power;
     if (!isOn(e)) continue;
-    const str = powerStrength(gd, at, p, e.slots.filter((s) => s.level <= level).map((s) => s.enh), level).post;
+    const slots = e.slots.filter((s) => s.level <= level);
+    const str = powerStrength(gd, at, p, slots.map((s) => s.enh), level).post;
     walkEffects(p.eff, ctx, (m) => apply(p, m, str, p.dn));
     walkEffects(p.act, ctx, (m) => apply(p, m, str, p.dn));
+    for (const s of slots) {
+      const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+      if (!s.enh || !boost || pieceApplied.has(boost.id) || effectiveness(gd, boost, s.enh, xpLevel) <= 0) continue;
+      pieceApplied.add(boost.id);
+      const enhancing = new Set(boostMods(boost));
+      walkEffects(boost.eff, ctx, (m) => m.tg === 'Caster' && !enhancing.has(m) && !isNullMod(gd, m) && apply(p, m, str, boost.dn));
+    }
     if (p.type === 'Toggle' && p.end && p.ap) {
       const cost = p.end / p.ap / (1 + (str.get(gd.attribByName.get('EnduranceDiscount') ?? 368) ?? 0));
       endUse += cost;
@@ -257,23 +286,32 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     }
   }
 
-  // Set bonuses, also summed per set for the breakdown (rule-of-5 copies count for neither)
+  // Set bonuses, also summed per set for the breakdown (rule-of-5 copies count for neither). A
+  // unique piece's global effect (Luck of the Gambler's recharge) counts under the piece's name but
+  // is no set bonus: it adds no piece count or stat to its set's group.
   const hpBase0 = GameData.attrAt(at.max, 'HitPoints', level);
   const bonuses = earnedBonuses(gd, entries, level);
-  const groups = new Map<number, { set: BoostSet; counts: Map<string, number>; stats: Map<string, SetBonusStat> }>();
+  type Group = { set: BoostSet; counts: Map<string, number>; stats: Map<string, SetBonusStat> };
+  const groups = new Map<number, Group>();
+  const groupOf = (set: BoostSet): Group => {
+    let g = groups.get(set.id);
+    if (!g) groups.set(set.id, (g = { set, counts: new Map(), stats: new Map() }));
+    return g;
+  };
   const bonusStats = (p: Power, m: Mod): SetBonusStat[] => describeBonusMod(gd, at, p, m, level, hpBase0, damageName, defenseName);
   let bonusesOver5 = 0;
   for (const bn of bonuses) {
-    const g = groups.get(bn.set.id) ?? { set: bn.set, counts: new Map<string, number>(), stats: new Map<string, SetBonusStat>() };
-    groups.set(bn.set.id, g);
-    g.counts.set(bn.entryKey, bn.slotted);
+    const g = bn.global ? undefined : groupOf(bn.set);
+    g?.counts.set(bn.entryKey, bn.slotted);
     if (bn.suppressed) {
       bonusesOver5++;
       continue;
     }
-    const label = `${bn.set.dn} (${bn.slotted})`;
+    // a set bonus is named by its set and piece count; a piece's global by the piece itself
+    const label = g ? `${bn.set.dn} (${bn.slotted})` : (bn.piece ?? bn.power).dn;
     const take = (m: Mod) => {
       apply(bn.power, m, null, label);
+      if (!g) return;
       for (const st of bonusStats(bn.power, m)) {
         const cur = g.stats.get(st.label);
         if (cur) cur.value += st.value;

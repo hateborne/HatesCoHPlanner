@@ -3,7 +3,7 @@
  * noted) with sizes from the source: positions in virtual 1024x768 units (vx/vy), sprites and
  * text at the uniform screen scale S.
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { FONTS, getDevPx, ITALIC_DEG, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
 import { CLR_HIGH, CLR_SHADOW, icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
 import { longPress, pressKeys, touchPress } from '../press.ts';
@@ -722,18 +722,50 @@ export function RespecCounter({ lines, done, x = vx(412), y = vy(691), w = vx(20
 const RING_PX = 70;
 const PIECE_SCALE = 1.1;
 
+// uiLevelSpec.c enhancementAnim_update: a new slot's scale grows by ENHANCE_GROW_SPEED (.1) per
+// tick from 0, so 10 ticks; the slots already there slide by ENHANCE_MOVE_SPEED (10 virtual units)
+// per tick, so one SPEC_WD (36) step takes 3.6 ticks
+const GROW_MS = (1 / 0.1) * (1000 / 30);
+const SLIDE_MS = (36 / 10) * (1000 / 30);
+
+/**
+ * Grow an element from scale 0 to 1, linearly over GROW_MS from `born` (a remount part-way
+ * through carries on from where it was; one after the end does nothing).
+ *
+ * @param ref The element.
+ * @param born performance.now() when it was added, or undefined for no growth.
+ */
+function useGrowIn(ref: RefObject<HTMLDivElement | null>, born: number | undefined): void {
+  // before paint, so a new ring never shows one frame at full size
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (born === undefined || !el?.animate) return;
+    const into = performance.now() - born;
+    if (into >= GROW_MS) return;
+    const anim = el.animate([{ transform: 'scale(0)' }, { transform: 'scale(1)' }], { duration: GROW_MS, delay: -into, easing: 'linear' });
+    return () => anim.cancel();
+  }, [ref, born]);
+}
+
 /**
  * An enhancement slot: the tray ring over its hole while empty; a slotted piece is drawn in its
  * place, not inside it.
  *
  * As drawMenuEnhancement does: no ring under a piece, and the piece at 1.1x the ring's scale, so
  * an IO's 64 px frame reaches just past where the ring's edge would be.
+ *
+ * @param props.born A slot just added on the slot screen: performance.now() of the click; it grows
+ *   in as enhancementAnim does.
+ * @param props.slide Move to a new x at the slot screen's slide speed instead of jumping.
  */
-export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, onClick, onRightClick, onLongPress, onHover, title, skin, testId }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; onClick?: () => void; onRightClick?: () => void; onLongPress?: (pt: { x: number; y: number }) => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin; testId?: string }) {
+export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, born, slide, onClick, onRightClick, onLongPress, onHover, title, skin, testId }: { x: number; y: number; size?: number; enhIcon?: string; frames?: [string, string]; pog?: string; pending?: boolean; born?: number; slide?: boolean; onClick?: () => void; onRightClick?: () => void; onLongPress?: (pt: { x: number; y: number }) => void; onHover?: (on: boolean) => void; title?: string; skin?: Skin; testId?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useGrowIn(ref, born);
   const k = (size / RING_PX) * PIECE_SCALE; // stage px per texture px of the piece
   const c = size / 2;
   return (
     <div
+      ref={ref}
       className="abs"
       title={title}
       data-testid={testId}
@@ -752,7 +784,7 @@ export function SlotRing({ x, y, size = vs(35), enhIcon, frames, pog, pending, o
       }
       {...pressKeys(onClick, onRightClick, title ?? 'Enhancement slot')}
       {...longPress(onLongPress)}
-      style={{ left: x - size / 2, top: y - size / 2, width: size, height: size, cursor: onClick ? 'pointer' : 'default', zIndex: 8, animation: pending ? 'slotflash 0.6s ease-out' : undefined }}
+      style={{ left: x - size / 2, top: y - size / 2, width: size, height: size, cursor: onClick ? 'pointer' : 'default', zIndex: 8, transition: slide ? `left ${SLIDE_MS}ms linear` : undefined }}
     >
       {enhIcon ? (
         <>

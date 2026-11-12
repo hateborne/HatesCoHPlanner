@@ -117,6 +117,12 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   (`boostset_FindBonuses`, boostset.c). A crafted and an attuned copy of one piece count once.
 - A bonus applies while the count is within its `MinBoosts..MaxBoosts` and its requirement holds.
   `isPVPMap?` is false, so PvP-only bonuses never apply.
+- Set bonuses start at two pieces. A unique piece's global effect (Luck of the Gambler's +7.5%
+  recharge, the archetype origin procs) is stored as a bonus with `MinBoosts 1`, gated on that
+  piece being in the power (`PowerBoostsSlotted>`). It applies like the others, rule of 5
+  included, but it is the piece's own effect and not a set bonus. The game's enhancement info
+  lists only the two-piece-and-up bonuses, and the totals panel shows the global in its stat under
+  the piece's name, never as a "(1)" in Set Bonuses (`isPieceGlobal`, setbonus.ts).
 
 ## Current values (totals)
 
@@ -127,6 +133,19 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   fly, Long Jump +1.65 jump), held under the class `MaxMax` (`ClampMax`). The current value is held
   under `attrMax` (`ClampCur`), both in character_mods.c. So a Blaster's regeneration (base 0.25,
   maximum 5) stops at +1900%, not at 5x.
+- A slotted piece's own effects (its templates not flagged `BoostTemplate`) land on the character
+  each time the power holding it applies, while the piece works at the character's real level
+  (`boost_Effectiveness > 0` at `character_CalcExperienceLevel`, so exemplaring below the piece
+  does not switch it off): `character_AccrueBoosts` (character_mods.c) sets `bBonusAttributes`,
+  and `character_ApplyPower` (character_combat.c) attaches them. The Homecoming wiki calls these
+  "Proc120s" and agrees: on in an auto or a running toggle, 120 s after a click, still working
+  when exemplared below their level. So Miracle's
+  +15% recovery, Numina's +20% regeneration / +10% recovery, Regenerative Tissue's and Impervious
+  Skin's +25% regeneration, Kismet's +6% ToHit, Thrust's run speed, Launch's jump height, Warp's
+  perception and the travel sets' stealth count while their power runs (an auto, a toggle that is
+  on, or a click switched on in the totals). Their mods stack by replacement, so one piece in two
+  running powers counts once. Chance and PPM procs are left out, and a "Null" mod only carries a
+  number for help text (Luck of the Gambler's recharge comes from its set's global bonus).
 
 ## Grants (Kheldian forms etc.)
 
