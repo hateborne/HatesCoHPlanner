@@ -10,7 +10,7 @@ import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn } from '../../engine/totals.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { InfoButton, MenuFrame, NextButton, SetFrame, SetTitle, SlotRing, TitleBar } from '../components/Chrome.tsx';
+import { InfoButton, MenuFrame, NextButton, SetFrame, SetTitle, SlotRing, TitleBar, type TitleEdit } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PatchNotesBar, PatchNotesBox, patchNotesHeight } from '../components/PatchNotes.tsx';
@@ -62,6 +62,12 @@ const LOG_RESERVE = LOG_BTN_W + 22 * LOG_BTN_SCALE + 16;
 const TOTALS_ZOOM = 1.15;
 // phones: the patch-move changes bar between the panel and Back / Next
 const NOTES_BAR = 56;
+// width of the Origin / Alignment (and Continue) buttons at the top
+const OA_W = vx(150);
+// desktop: the build's name ends this far short of the Origin / Alignment button
+const TITLE_GAP = 12;
+// the build name's longest length (New Build's field; checkBuild cuts imports to it)
+const NAME_MAX = 40;
 
 /**
  * Phones: the level log, in place of the desktop's strip of level orbs. A capsule left of the
@@ -293,6 +299,9 @@ export function Overview({ skin }: { skin: Skin }) {
   const originIndex = gd.core.origins.findIndex((o) => o.id === build.origin);
   const end = build.endLevel ?? 49;
   const who = `${gd.core.origins.find((o) => o.id === build.origin)?.dn ?? ''} ${gd.archetype(build.at).dn}`.trim().toUpperCase();
+  const title = build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW';
+  // the title bar's dot (or the bar) renames the build in place
+  const rename: TitleEdit = { value: build.name, maxLength: NAME_MAX, label: 'Rename this build', onCommit: (name) => setBuild({ ...build, name }) };
 
   /** Entries of one panel grouped by powerset, sets in order of their first power. */
   const groups = (column: number): Group[] => {
@@ -511,8 +520,9 @@ export function Overview({ skin }: { skin: Skin }) {
    * the popout drops from the Origin / Alignment button with the New Build screen's pane at
    * three-quarter scale.
    */
+  const oaCenter = (cx: number, w: number) => (canContinue ? cx - w / 2 - 8 : cx);
   const topButtons = (cx: number, cy: number, w: number, h: number) => {
-    const oaX = canContinue ? cx - w / 2 - 8 : cx;
+    const oaX = oaCenter(cx, w);
     const PW = 470; // the pane at full size, drawn at POP scale
     const PH = ORIGIN_PANE_H;
     const POP = 0.75;
@@ -571,7 +581,7 @@ export function Overview({ skin }: { skin: Skin }) {
     const P = phonePanel(pg, 4, notes ? NOTES_BAR : 0);
     return (
       <>
-        <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} reserve={LOG_RESERVE} />
+        <TitleBar skin={skin} text={title} reserve={LOG_RESERVE} edit={rename} />
         <LevelLog gd={gd} skin={skin} build={build} shown={shown} entries={entries} />
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} y={pg.tabsY} />
         <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h} skin={skin} />
@@ -596,9 +606,10 @@ export function Overview({ skin }: { skin: Skin }) {
 
   return (
     <>
-      <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} />
+      {/* the name stops just short of the Origin / Alignment button (two half-size lines past it) */}
+      <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} />
       <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
-      {topButtons(stage.w / 2, vy(22), vx(150), vy(26))}
+      {topButtons(stage.w / 2, vy(22), OA_W, vy(26))}
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
       {/* level strip: reopen any level's in-game screen (levels after a stop are left off) */}
       {levelStrip(50, 92, 50, 34)}

@@ -12,6 +12,7 @@ import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
+import { tabTitle } from './tabTitle.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
 
@@ -777,6 +778,18 @@ if (typeof window !== 'undefined') {
         })
         .catch(() => undefined);
     }, 300);
+  });
+}
+
+// The tab's title names the build ("HCP: <name>"), so a bookmark or a copied tab carries the name
+if (typeof document !== 'undefined') {
+  const showTitle = (b: Build | undefined) => {
+    const t = tabTitle(b?.name);
+    if (document.title !== t) document.title = t;
+  };
+  showTitle(useStore.getState().build);
+  useStore.subscribe((s, prev) => {
+    if (s.build !== prev.build) showTitle(s.build);
   });
 }
 
