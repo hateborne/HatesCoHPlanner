@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Archetype, Power } from '../../data/types.ts';
-import { allowedSetCategories, allowedTypes, boostHelpText } from '../../engine/enhance.ts';
+import { allowedSetCategories, allowedTypes, boostHelpText, setRarity, type RarityKind, type SetRarity } from '../../engine/enhance.ts';
 import type { Slot } from '../../engine/build.ts';
 import { useStore } from '../../state/store.ts';
 import { FONTS, S } from '../skin/metrics.ts';
@@ -178,6 +178,57 @@ export function useShiftHint(): boolean {
 // the client's named SMF colors (smf_util.c)
 const SMF = { infoBlue: '#aadeff', paragon: '#00deff', springGreen: '#00ff7f', gray: '#808080', red: '#ff0000', goldenRod: '#daa520' };
 
+/** @return CSS that paints text with a left-to-right gradient. */
+const gradientText = (from: string, to: string): CSSProperties => ({
+  backgroundImage: `linear-gradient(90deg, ${from}, ${to})`,
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  color: 'transparent',
+});
+
+// The Set Rarity line's colours, chosen by the owner from the Homecoming wiki's rarity icons. The
+// game's own tooltip doesn't name the rarity (only the icon border shows it), so none of this is
+// ported from the client.
+const RARITY_STYLE: Record<Exclude<RarityKind, 'event'>, CSSProperties> = {
+  uncommon: { color: '#dcb600' },
+  rare: { color: '#fc7337' },
+  veryRare: { color: '#a85df3' },
+  pvp: gradientText('#6b8cf0', '#f04a32'), // the icon's blue left half to its red right half, lightened
+  archetype: { color: '#f0b480' },
+  // a brighter Archetype Origin colour with a glow in the base colour
+  superiorArchetype: { color: '#ffe2c6', textShadow: '1px 0 #f0b480, -1px 0 #f0b480, 0 1px #f0b480, 0 -1px #f0b480' },
+  winter: gradientText('#d4eafc', '#f0c070'), // snowflake (a little bluer) to the border's gold
+  superiorWinter: gradientText('#d4eafc', '#ca7dde'),
+};
+// event sets: the event's name in its icon's centre-to-outer-ring colours
+const EVENT_STYLE: Record<string, CSSProperties> = {
+  'Summer Blockbuster': gradientText('#fef002', '#e16e64'),
+  'Spring Event Wedding': gradientText('#ffd5d4', '#fa2b29'),
+};
+
+// bold in the game's heavy face (mont_hvbold, the client's bold game font) instead of a
+// browser-synthesised bold of the tooltip's demibold face, which barely shows
+const BOLD: CSSProperties = { fontFamily: "'MontrealHeavy'", fontWeight: 'normal' };
+
+/** The bold rarity name on the tooltip's Set Rarity line, in its tier's colours. */
+function RarityText({ r }: { r: SetRarity }) {
+  if (r.kind === 'event') {
+    return (
+      <span style={BOLD}>
+        {r.name}
+        {r.event ? (
+          <>
+            {' ('}
+            <span style={EVENT_STYLE[r.event]}>{r.event}</span>
+            {')'}
+          </>
+        ) : null}
+      </span>
+    );
+  }
+  return <span style={{ ...BOLD, ...RARITY_STYLE[r.kind] }}>{r.name}</span>;
+}
+
 /**
  * The game's enhancement tooltip (uiEnhancementFormatText + uiEnhancementGetInfoText) as a
  * floating box under the pointer; the text is EnhDetails.
@@ -224,6 +275,7 @@ export function EnhDetails({ gd, at, slots, slot, level }: { gd: GameData; at: A
   if (!e || !b) return null;
   const ref = gd.boostSetOf.get(b.id);
   const set = ref?.set;
+  const rarity = set ? setRarity(set) : undefined;
   const inPower = slots.map((s) => s.enh?.boost).filter((id): id is number => id !== undefined);
   const numSlotted = set ? inPower.filter((id) => gd.boostSetOf.get(id)?.set.id === set.id).length : 0;
   const notes: { text: string; color: string }[] = [];
@@ -255,6 +307,11 @@ export function EnhDetails({ gd, at, slots, slot, level }: { gd: GameData; at: A
                   Set: {set.dn} ({numSlotted}/{set.slots.length})
                 </div>
                 <div>Enhancements Set Category: {set.grp}</div>
+                {rarity ? (
+                  <div>
+                    Set Rarity: <RarityText r={rarity} />
+                  </div>
+                ) : null}
                 {set.slots.map((variants, i) => {
                   const master = variants[0] !== undefined ? gd.powerById.get(variants[0]) : undefined;
                   const here = variants.some((id) => inPower.includes(id));
