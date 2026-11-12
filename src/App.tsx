@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { defaultServer, serverById } from './data/servers.ts';
 import { skinOf } from './engine/build.ts';
 import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
 import { ConfirmDialog } from './ui/components/ConfirmDialog.tsx';
+import { ServerDialog } from './ui/components/Servers.tsx';
 import { MenuFrame } from './ui/components/Chrome.tsx';
 import { phoneGeom } from './ui/components/Phone.tsx';
 import { Settings } from './ui/components/Settings.tsx';
@@ -133,18 +135,20 @@ export function App() {
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
       <Notice skin={stageSkin} />
       <ConfirmDialog />
+      <ServerDialog />
       <Settings skin={stageSkin} />
       <Footer />
     </Stage>
   );
 }
 
-/** The not-affiliated line along the bottom edge (two lines on a phone). */
+/** The not-affiliated line along the bottom edge (two lines on a phone), naming the server shown. */
 function Footer() {
   const { phone } = useStage();
+  const server = useStore((s) => serverById(s.server) ?? defaultServer());
   return (
     <div className="abs notice" style={{ left: 10, right: 10, bottom: phone ? 3 : 4, textAlign: 'center', fontSize: phone ? 10.5 : 12, lineHeight: phone ? '12px' : undefined, opacity: 0.6 }}>
-      Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or Homecoming. City of Heroes data and art belong to their owners.
+      Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or {server.label}. City of Heroes data and art belong to their owners.
     </div>
   );
 }

@@ -4,6 +4,7 @@
  *
  * Levels are 0-based everywhere (character level 1 = 0), matching the game data.
  */
+import { DEFAULT_SERVER } from '../data/servers.ts';
 
 /**
  * Hero, Villain or Praetorian. The game's finer alignments change nothing a build can take (no
@@ -71,6 +72,7 @@ export interface GrantedState {
 
 export interface Build {
   v: 1;
+  server?: string; // the game server it is for (servers.ts); absent: Homecoming (every build before servers)
   dataVersion: string;
   name: string;
   at: number; // archetype id
@@ -88,9 +90,11 @@ export interface Build {
 /**
  * A fresh build with no picks yet.
  *
- * @param pickCount Number of power picks in the schedule (24).
+ * @param args.server The game server's id; Homecoming's (or none) leaves the field out.
+ * @param args.pickCount Number of power picks in the schedule (24).
  */
 export function newBuild(args: {
+  server?: string;
   dataVersion: string;
   name?: string;
   at: number;
@@ -104,6 +108,7 @@ export function newBuild(args: {
   const r = args.respecTo;
   return {
     v: 1,
+    ...(args.server && args.server !== DEFAULT_SERVER ? { server: args.server } : {}),
     dataVersion: args.dataVersion,
     name: args.name ?? '',
     at: args.at,

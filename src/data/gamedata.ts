@@ -1,3 +1,4 @@
+import { dataRoot, DEFAULT_SERVER, type GameServer } from './servers.ts';
 import type { GameVersion } from './versions.ts';
 import type { Archetype, BoostSet, BoostsFile, Core, Power, Powerset } from './types.ts';
 
@@ -25,6 +26,7 @@ export interface RawData {
  */
 export class GameData {
   readonly core: Core;
+  readonly server: string; // the server the data is for (builds checked against it are tied to it)
   readonly powerById = new Map<number, Power>();
   readonly powerByName = new Map<string, Power>();
   readonly setById = new Map<number, Powerset>();
@@ -41,8 +43,15 @@ export class GameData {
   readonly attribName = new Map<number, string>();
   readonly attribByName = new Map<string, number>();
 
-  constructor(raw: RawData) {
+  /**
+   * Index a loaded data set.
+   *
+   * @param raw The exported files.
+   * @param server The server they are for (default: Homecoming).
+   */
+  constructor(raw: RawData, server: string = DEFAULT_SERVER) {
     this.core = raw.core;
+    this.server = server;
     this.boosts = raw.boosts.boosts;
     this.bonusPowers = raw.boosts.bonusPowers;
     this.boostSets = raw.boosts.sets;
@@ -130,12 +139,13 @@ export class GameData {
 /**
  * Fetch one game version's exported data set from the site.
  *
+ * @param server The server the version belongs to.
  * @param base Site base URL (import.meta.env.BASE_URL).
  * @param version The version to load (its hash keeps browsers from mixing in stale cached files).
  * @return Indexed game data.
  */
-export async function loadGameData(base: string, version: GameVersion): Promise<GameData> {
-  const root = `${base}data/${version.id}/`;
+export async function loadGameData(server: GameServer, base: string, version: GameVersion): Promise<GameData> {
+  const root = `${dataRoot(server, base)}${version.id}/`;
   const q = version.hash ? `?v=${version.hash}` : '';
   const get = async <T,>(f: string): Promise<T> => {
     const r = await fetch(root + f + q);
@@ -148,5 +158,5 @@ export async function loadGameData(base: string, version: GameVersion): Promise<
     get<Power[]>('powers.json'),
     get<BoostsFile>('boosts.json'),
   ]);
-  return new GameData({ core, powersets, powers, boosts });
+  return new GameData({ core, powersets, powers, boosts }, server.id);
 }

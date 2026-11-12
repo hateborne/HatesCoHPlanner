@@ -26,13 +26,13 @@ export const LEGACY_GAME_VERSION = 'i28p4';
 const OLD_DATA_ID = /^\d{8}-[0-9a-f]{8}$/;
 
 /**
- * Fetch and check the version index. Revalidated on every visit so a new patch shows up at once.
+ * Fetch and check a server's version index. Revalidated on every visit so a new patch shows up at once.
  *
- * @param base Site base URL (import.meta.env.BASE_URL).
+ * @param root URL of the server's data folder (dataRoot in servers.ts).
  * @return The index; throws a readable error when it is missing or malformed.
  */
-export async function loadVersions(base: string): Promise<GameVersions> {
-  const r = await fetch(`${base}data/versions.json`, { cache: 'no-cache' });
+export async function loadVersions(root: string): Promise<GameVersions> {
+  const r = await fetch(`${root}versions.json`, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`the game version list is missing (HTTP ${r.status})`);
   const v = (await r.json()) as Partial<GameVersions>;
   const list = Array.isArray(v.versions) ? v.versions.filter((x) => x && typeof x.id === 'string' && /^[\w.-]+$/.test(x.id)) : [];

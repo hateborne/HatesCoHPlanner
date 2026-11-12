@@ -4,13 +4,14 @@
  */
 import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
+import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, withServer, type GameServer } from '../data/servers.ts';
 import { loadVersions, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
 import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
 import { cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
-import { describeImportFailure, refusedBuild } from '../io/importProblem.ts';
+import { describeImportFailure, refusedBuild, unknownServer } from '../io/importProblem.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
 import { tabTitle } from './tabTitle.ts';
@@ -48,9 +49,31 @@ export interface LevelCtx {
 }
 
 interface Store {
+  server: string; // the game server whose data is shown (the build's, or the one picked on New Build)
+  /**
+   * Show another game server's data on New Build, on its default game version, and clear the
+   * current build (a build never moves to another server: its archetype and sets may not exist
+   * there; the caller asks first). New Build then clears its archetype and power sets. Refused on
+   * every other screen.
+   *
+   * @param id The server's id.
+   * @return Whether it is shown (the build is cleared only then).
+   */
+  selectServer(id: string): Promise<boolean>;
+  serverAsk: { cancellable: boolean; resolve: (id: string | null) => void } | null; // the server list dialog, while open
+  /**
+   * Ask which game server to use, in the server list dialog.
+   *
+   * @param cancellable Whether it can be closed without a pick (switching servers from the logo); a
+   *   first visit's can't, and Escape there takes the default.
+   * @return The picked server's id, or null when cancelled.
+   */
+  askServer(cancellable: boolean): Promise<string | null>;
+  /** Close the server list dialog with a pick, or with null as cancelled. */
+  closeServerAsk(id: string | null): void;
   gd?: GameData; // the data of the version being shown (the build's, or the one picked on New Build)
   steps: LevelStep[];
-  versions?: GameVersions; // every game version the site has data for
+  versions?: GameVersions; // every game version the site has data for, on the server shown
   /** Show another game version's data (the New Build screen's version picker); false if it failed. */
   selectVersion(id: string): Promise<boolean>;
   error?: string;
@@ -140,7 +163,7 @@ const NOTES_KEY = 'hcp.patchNotes';
 
 /** @return What ties patch notes to one build (they are dropped when another build opens; a rename keeps them). */
 function buildTag(b: Build): string {
-  return [b.dataVersion, b.at, b.primary, b.secondary].join('|');
+  return [...(b.server ? [b.server] : []), b.dataVersion, b.at, b.primary, b.secondary].join('|');
 }
 
 /** Remember (or forget) the current build's patch notes for this tab. */
@@ -164,16 +187,47 @@ function restoreNotes(b: Build): PatchNotes | null {
   }
 }
 
-// one fetch per game version per page: switching back to a version already seen is instant
-const dataCache = new Map<string, Promise<GameData>>();
-function dataFor(v: GameVersion): Promise<GameData> {
-  let p = dataCache.get(v.id);
+// one fetch of each server's version list per page (revalidated on every visit: see loadVersions)
+const versionCache = new Map<string, Promise<GameVersions>>();
+function versionsFor(s: GameServer): Promise<GameVersions> {
+  let p = versionCache.get(s.id);
   if (!p) {
-    p = loadGameData(import.meta.env.BASE_URL, v);
-    p.catch(() => dataCache.delete(v.id)); // a failed fetch may be retried
-    dataCache.set(v.id, p);
+    p = loadVersions(dataRoot(s, import.meta.env.BASE_URL));
+    p.catch(() => versionCache.delete(s.id)); // a failed fetch may be retried
+    versionCache.set(s.id, p);
   }
   return p;
+}
+
+// one fetch per game version per page: switching back to a version already seen is instant
+const dataCache = new Map<string, Promise<GameData>>();
+function dataFor(s: GameServer, v: GameVersion): Promise<GameData> {
+  const key = `${s.id}/${v.id}`;
+  let p = dataCache.get(key);
+  if (!p) {
+    p = loadGameData(s, import.meta.env.BASE_URL, v);
+    p.catch(() => dataCache.delete(key)); // a failed fetch may be retried
+    dataCache.set(key, p);
+  }
+  return p;
+}
+
+/**
+ * The server a build is for.
+ *
+ * @param b The build.
+ * @return Its server.
+ * @raise ImportProblem when the site doesn't carry it.
+ */
+function buildServer(b: Build): GameServer {
+  const s = serverById(serverOf(b));
+  if (!s) throw unknownServer(String(b.server));
+  return s;
+}
+
+/** @return The server whose data is shown. */
+function shownServer(): GameServer {
+  return serverById(useStore.getState().server) ?? defaultServer();
 }
 
 /** Say so when a build asked for a game version this site no longer has. */
@@ -201,20 +255,51 @@ function persist(b: Build | undefined): void {
   }
 }
 
-/** @return This tab's build, else the browser's most recent one (unchecked: see checkBuild). */
-function restore(): Build | undefined {
+/**
+ * Forget a cleared build: this tab's copy, and the browser's most recent one when that is still
+ * this tab's (another tab may have saved its own there since). The tab's saved copy is compared,
+ * not the build in memory: some steps (Back while leveling) change the build without saving it.
+ *
+ * @param b The build being cleared, if any.
+ */
+function forget(b: Build | undefined): void {
+  if (!b) return;
+  let own: string | null = JSON.stringify(b);
+  try {
+    own = sessionStorage.getItem(STORAGE_KEY) ?? own;
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  try {
+    if (localStorage.getItem(STORAGE_KEY) === own) localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/**
+ * @param accept Which remembered builds may open (one for the server the address names).
+ * @return This tab's build, else the browser's most recent one, the first `accept` takes
+ *   (unchecked: see checkBuild).
+ */
+function restore(accept: (b: Build) => boolean = () => true): Build | undefined {
   // even touching window.sessionStorage throws when site data is blocked, so the access itself is
   // inside the try
   const read = (get: () => Storage) => {
     try {
       const raw = get().getItem(STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as Build) : undefined;
+      const b = raw ? (JSON.parse(raw) as Build) : undefined;
+      return b && accept(b) ? b : undefined;
     } catch {
       return undefined;
     }
   };
   return read(() => sessionStorage) ?? read(() => localStorage);
 }
+
+// selectServer calls in flight: only the newest may show its server
+let serverSeq = 0;
 
 /** @return The steps the level-up flow walks: a Respec's own order, else the leveling steps. */
 export function stepsOf(steps: LevelStep[], l: LevelCtx): LevelStep[] {
@@ -353,6 +438,37 @@ export function respecUnfinished(gd: GameData, b: Build, steps: LevelStep[]): bo
 }
 
 export const useStore = create<Store>((set, get) => ({
+  // the address's server from the start, so the logo and footer don't show another one while loading
+  server: (typeof location !== 'undefined' ? serverFromPath(location.pathname, import.meta.env.BASE_URL).server : undefined)?.id ?? defaultServer().id,
+  serverAsk: null,
+  askServer(cancellable) {
+    get().serverAsk?.resolve(null); // a newer question replaces an unanswered one
+    return new Promise<string | null>((resolve) => set({ serverAsk: { cancellable, resolve } }));
+  },
+  closeServerAsk(id) {
+    const a = get().serverAsk;
+    if (!a) return;
+    set({ serverAsk: null });
+    a.resolve(id);
+  },
+  async selectServer(id) {
+    const s = serverById(id);
+    if (!s || get().view !== 'setup') return false;
+    const seq = ++serverSeq;
+    try {
+      const versions = await versionsFor(s);
+      const gd = await dataFor(s, resolveVersion(versions, undefined).version);
+      // left New Build while it loaded, or a newer switch was asked for
+      if (get().view !== 'setup' || seq !== serverSeq) return false;
+      forget(get().build);
+      persistNotes(null, undefined);
+      set({ server: s.id, versions, gd, steps: levelSteps(gd.core), build: undefined, patchNotes: null, menuOpen: false });
+      return true;
+    } catch (e) {
+      get().notify(`Couldn't load ${s.label}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  },
   steps: [],
   view: 'loading',
   muted: (() => {
@@ -384,7 +500,7 @@ export const useStore = create<Store>((set, get) => ({
   async dataForVersion(id) {
     const v = get().versions?.versions.find((x) => x.id === id);
     if (!v) throw new Error(`game version ${id} is not available`);
-    return dataFor(v);
+    return dataFor(shownServer(), v);
   },
   confirm: null,
   askConfirm(q) {
@@ -461,8 +577,10 @@ export const useStore = create<Store>((set, get) => ({
     const v = versions?.versions.find((x) => x.id === id);
     if (!v) return false;
     if (gd?.core.manifest.dataVersion === id) return true;
+    const server = shownServer();
     try {
-      const data = await dataFor(v);
+      const data = await dataFor(server, v);
+      if (get().server !== server.id) return false; // the server changed while it loaded
       set({ gd: data, steps: levelSteps(data.core) });
       return true;
     } catch (e) {
@@ -472,17 +590,17 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async openBuild(b) {
-    const { versions } = get();
-    if (!versions) throw new Error('game versions not loaded yet');
+    const server = buildServer(b);
+    const versions = await versionsFor(server);
     const { version, missing } = resolveVersion(versions, b.dataVersion);
-    const gd = await dataFor(version);
+    const gd = await dataFor(server, version);
     // checked before it replaces anything: an unusable build is refused, a repairable one repaired
     const { build: nb, fixes } = checkBuild(gd, b);
     if (!nb) throw refusedBuild(fixes);
     if (fixes.length) console.warn('build repaired:', fixes);
     persist(nb);
     persistNotes(null, undefined);
-    set({ gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false, poolsBlinked: false, epicBlinked: false, patchNotes: null });
+    set({ server: server.id, versions, gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false, poolsBlinked: false, epicBlinked: false, patchNotes: null });
     const note = missingNote(missing, version);
     if (note) get().notify(note);
   },
@@ -500,13 +618,23 @@ export const useStore = create<Store>((set, get) => ({
 
   async load() {
     try {
-      const versions = await loadVersions(import.meta.env.BASE_URL);
-      set({ versions });
+      // the server the address names (/HatesCoHPlanner/Homecoming/), if any
+      const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
       // every build from outside the app is checked (and repaired where safe) against its own game
       // version's data before it is used or saved again: a share link (#b=...) first, else this
-      // tab's / the browser's remembered build
+      // tab's / the browser's remembered build. A link is for the server its address names (one
+      // naming none is Homecoming's); a remembered build for another server than the address
+      // names is left for that server's address.
       const link = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
-      const candidates: (() => Promise<Build | undefined>)[] = [async () => (link ? decodeShare(link[1]!) : undefined), async () => restore()];
+      const candidates: (() => Promise<Build | undefined>)[] = [
+        async () => {
+          if (!link) return undefined;
+          // an address naming a server the site doesn't carry: never open its link on another's data
+          if (named.unknown) throw unknownServer(named.unknown);
+          return withServer(await decodeShare(link[1]!), named.server?.id);
+        },
+        async () => restore((r) => !named.server || serverOf(r) === named.server.id),
+      ];
       let linkFailed: unknown; // why the address's share link couldn't be opened, if it couldn't
       // a bad link falls back to the remembered build, then says so
       const tellLink = (opened: boolean) => {
@@ -523,14 +651,20 @@ export const useStore = create<Store>((set, get) => ({
           continue;
         }
         if (!raw) continue;
+        const server = serverById(serverOf(raw));
+        if (!server) {
+          if (k === 0) linkFailed = unknownServer(String(raw.server));
+          continue;
+        }
+        const versions = await versionsFor(server);
         const { version, missing } = resolveVersion(versions, typeof raw.dataVersion === 'string' ? raw.dataVersion : undefined);
         let gd: GameData;
         try {
-          gd = await dataFor(version);
+          gd = await dataFor(server, version);
         } catch (e) {
           // that version's data won't load (a network hiccup): try the next build, then New Build,
           // rather than stopping on the error screen
-          console.error(`couldn't load ${version.id} for a remembered build`, e);
+          console.error(`couldn't load ${server.id}/${version.id} for a remembered build`, e);
           if (k === 0) linkFailed = e;
           continue;
         }
@@ -543,14 +677,24 @@ export const useStore = create<Store>((set, get) => ({
         }
         if (c.fixes.length) console.warn('saved build repaired:', c.fixes);
         persist(c.build);
-        set({ gd, steps: levelSteps(gd.core), build: c.build, view: 'overview', patchNotes: restoreNotes(c.build) });
+        set({ server: server.id, versions, gd, steps: levelSteps(gd.core), build: c.build, view: 'overview', patchNotes: restoreNotes(c.build) });
         const note = missingNote(missing, version);
         if (note) get().notify(note);
         tellLink(true);
         return;
       }
-      const gd = await dataFor(resolveVersion(versions, undefined).version);
-      set({ gd, steps: levelSteps(gd.core), build: undefined, view: 'setup' });
+      // no build: New Build on the server the address names; else, once the site carries more than
+      // one, the player picks (the default is one key press away); else the only one
+      let picked = named.server;
+      if (!picked && SERVERS.length > 1) {
+        const id = await get().askServer(/*cancellable=*/ false);
+        if (id === null) return; // a newer load() asked again (React's dev double mount): it carries on
+        picked = serverById(id);
+      }
+      picked ??= defaultServer();
+      const versions = await versionsFor(picked);
+      const gd = await dataFor(picked, resolveVersion(versions, undefined).version);
+      set({ server: picked.id, versions, gd, steps: levelSteps(gd.core), build: undefined, view: 'setup' });
       tellLink(false);
     } catch (e) {
       set({ view: 'error', error: e instanceof Error ? e.message : String(e) });
@@ -560,7 +704,7 @@ export const useStore = create<Store>((set, get) => ({
   startBuild(args) {
     const { gd } = get();
     if (!gd) return;
-    const b = newBuild({ ...args, dataVersion: gd.core.manifest.dataVersion, pickCount: gd.core.schedule.power.length });
+    const b = newBuild({ ...args, server: gd.server, dataVersion: gd.core.manifest.dataVersion, pickCount: gd.core.schedule.power.length });
     persist(b);
     persistNotes(null, undefined);
     const flow = args.respecTo !== undefined ? respecSteps(get().steps, args.respecTo) : undefined;
@@ -584,9 +728,9 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   toOverview() {
-    // the New Build screen may have switched to another game version: show the build's own again
+    // the New Build screen may have switched to another game version or server: show the build's own again
     const { build, gd } = get();
-    if (build && gd && build.dataVersion !== gd.core.manifest.dataVersion) {
+    if (build && gd && (build.dataVersion !== gd.core.manifest.dataVersion || serverOf(build) !== gd.server)) {
       void get().loadBuild(build);
       return;
     }
@@ -826,12 +970,24 @@ export const useStore = create<Store>((set, get) => ({
   },
 }));
 
-// The address bar always carries this tab's build as a share code (#b=...), replaced in place so
-// edits don't pile up Back-button entries: a reload, a bookmark or a copied address brings back
-// exactly this build, and two tabs keep two builds apart.
+/**
+ * The page address for the app's state: the build's server's (its share code opens on that
+ * server's data), or with no build the server the New Build screen shows.
+ *
+ * @param s The store's state.
+ * @return The address path ("/HatesCoHPlanner/Homecoming/").
+ */
+function addressPath(s: { build?: Build; server: string }): string {
+  const server = serverById(s.build ? serverOf(s.build) : s.server) ?? defaultServer();
+  return serverHref(server, import.meta.env.BASE_URL);
+}
+
+// The address bar always carries this tab's build as a share code on its server's address
+// (/HatesCoHPlanner/Homecoming/#b=...), replaced in place so edits don't pile up Back-button
+// entries: a reload, a bookmark or a copied address brings back exactly this build, and two tabs
+// keep two builds apart.
 if (typeof window !== 'undefined') {
   let timer = 0;
-  let written = '';
   useStore.subscribe((s, prev) => {
     if (s.build === prev.build || !s.build) return;
     const b = s.build;
@@ -839,13 +995,28 @@ if (typeof window !== 'undefined') {
     timer = window.setTimeout(() => {
       void encodeShare(b)
         .then((code) => {
-          if (code === written || useStore.getState().build !== b) return;
-          written = code;
+          if (useStore.getState().build !== b) return;
+          const want = `${addressPath(useStore.getState())}${location.search}#b=${code}`;
           // replaceState fires no hashchange, so this doesn't reload the build
-          history.replaceState(history.state, '', `${location.pathname}${location.search}#b=${code}`);
+          if (`${location.pathname}${location.search}${location.hash}` !== want) history.replaceState(history.state, '', want);
         })
         .catch(() => undefined);
     }, 300);
+  });
+  // with no build the address names the server shown (an old or bare address gains it). A share
+  // code left in it (a link that couldn't open) stays only while the address still means the same
+  // server: moved to another one, a reload would open it on the wrong data. A build cleared by a
+  // server switch takes its share code with it, so a reload can't bring it back.
+  useStore.subscribe((s, prev) => {
+    if (s.build || s.view === 'loading') return;
+    const cleared = !!prev.build;
+    if (!cleared && s.server === prev.server && prev.view !== 'loading') return;
+    window.clearTimeout(timer); // a share code still being written for the cleared build
+    const path = addressPath(s);
+    const was = serverFromPath(location.pathname, import.meta.env.BASE_URL);
+    const same = !was.unknown && (was.server?.id ?? DEFAULT_SERVER) === s.server;
+    const hash = cleared || !same ? '' : location.hash;
+    if (location.pathname !== path || location.hash !== hash) history.replaceState(history.state, '', `${path}${location.search}${hash}`);
   });
 }
 
@@ -869,20 +1040,22 @@ if (typeof window !== 'undefined') {
     const { versions, loadBuild } = useStore.getState();
     if (!m || !versions) return;
     const current = useStore.getState().build;
-    void decodeShare(m[1]!).then(
-      async (b) => {
+    const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
+    void (named.unknown ? Promise.reject(unknownServer(named.unknown)) : decodeShare(m[1]!)).then(
+      async (decoded) => {
+        const b = withServer(decoded, named.server?.id); // for the server the address names
         // as the Build menu does: a build with picks is only replaced once the user agrees (and the
         // link to the build already open replaces nothing)
         if (current?.picks.some((p) => p)) {
-          if ((await encodeShare(current)) === m[1]) return;
+          if ((await encodeShare(current)) === m[1] && serverOf(current) === serverOf(b)) return;
           const ok = await useStore.getState().askConfirm({
             title: 'Replace the current build?',
             text: `The link opens ${b.name ? `"${b.name}"` : 'another build'}, replacing ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
             okLabel: 'Replace',
           });
           if (!ok) {
-            // keep the address on the build that stays open
-            void encodeShare(current).then((code) => history.replaceState(history.state, '', `${location.pathname}${location.search}#b=${code}`));
+            // keep the address on the build that stays open (on its own server's address)
+            void encodeShare(current).then((code) => history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}#b=${code}`));
             return;
           }
         }

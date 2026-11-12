@@ -9,6 +9,7 @@ import { MenuFrame } from './Chrome.tsx';
 import { GameText } from './GameText.tsx';
 import { PHONE_MENU_BTN, phoneGeom, phoneMenuButton } from './Phone.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from './OriginAlign.tsx';
+import { ServerLogo } from './Servers.tsx';
 import { useStage } from './Stage.tsx';
 import { SupportDialog } from './SupportDialog.tsx';
 
@@ -37,17 +38,26 @@ const TIP_HELP: Record<TipMode, string> = {
 
 const onOffHelp = (label: string, on: boolean) => (on ? `${label} is on (click to turn off)` : `${label} is off (click to turn on)`);
 
-/** Desktop: sound, music and tooltip switches and the Support button, side by side at the bottom center. */
+// desktop: the server logo left of the switches, between the screens' outer frame (its bottom edge
+// 79 above the stage's: 58 + 988 on the 1125-high stage) and the not-affiliated line (from 20 above)
+const LOGO = { up: 76, w: 120, h: 54, gap: 12 };
+
+/**
+ * Desktop: the server logo (the server selector), then the sound, music and tooltip switches and
+ * the Support button, side by side at the bottom center.
+ */
 function BottomBar({ skin }: { skin: Skin }) {
   const { muted, setMuted, musicOn, setMusicOn, tips, setTips } = useStore(
     useShallow((s) => ({ muted: s.muted, setMuted: s.setMuted, musicOn: s.musicOn, setMusicOn: s.setMusicOn, tips: s.tips, setTips: s.setTips })),
   );
   const [support, setSupport] = useState(false);
   const stage = useStage();
-  const x0 = stage.w / 2 - (120 + 12 + 120 + 12 + 170 + 12 + 200) / 2;
+  const left = stage.w / 2 - (LOGO.w + LOGO.gap + 120 + 12 + 120 + 12 + 170 + 12 + 200) / 2;
+  const x0 = left + LOGO.w + LOGO.gap;
   const y = stage.h - 54;
   return (
     <>
+      <ServerLogo x={left} y={stage.h - LOGO.up} w={LOGO.w} h={LOGO.h} />
       <Pill x={x0} y={y} w={120} h={24} fontSize={13} dim={muted} title={onOffHelp('Sound', !muted)} onClick={() => setMuted(!muted)}>
         Sound: {muted ? 'off' : 'on'}
       </Pill>
@@ -71,12 +81,13 @@ const PANE = { right: 8, maxW: 440, pad: 16 };
 const ROW_H = 56;
 const ROW_GAP = 12;
 const PILL_FONT = 20;
+const LOGO_H = 84; // the server logo row at the top of the pane
 // the Origin / Alignment bars in the pane: bigger than the New Build screen's, to fit a finger
 const OA_SCALE = 1.25;
 
 /**
  * Phone: a menu button at the top right opening a pane with the planner's own controls, which
- * have no room along the phone's bottom edge: View Build (while leveling) or Continue Leveling /
+ * have no room along the phone's bottom edge: the server logo (the server selector), View Build (while leveling) or Continue Leveling /
  * Continue Respec (on the overview of a build that can go on), each with its level; Sound, Music,
  * Support and, on the build overview, the build's origin and archetype and the Origin / Alignment
  * choice. Hover tooltips don't exist on phones, so the Tooltips switch is left out. Closes on
@@ -119,6 +130,8 @@ function PhoneMenu({ skin }: { skin: Skin }) {
   const half = (inner - ROW_GAP) / 2;
   const rows: ReactNode[] = [];
   let y = PANE.pad;
+  rows.push(<ServerLogo key="server" x={PANE.pad} y={y} w={inner} h={LOGO_H} onPick={() => setOpen(false)} />);
+  y += LOGO_H + ROW_GAP;
   if (overview && build && gd) {
     // the build's origin and archetype (the overview has no room for it on a phone)
     const who = `${gd.core.origins.find((o) => o.id === build.origin)?.dn ?? ''} ${gd.archetype(build.at).dn}`.trim().toUpperCase();

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
+import { serverById, serverInLink, serverOf, withServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
 import { ALIGNMENTS, toAlignment, type Build } from '../../engine/build.ts';
 import { fitToPatch } from '../../engine/migrate.ts';
 import type { Issue } from '../../engine/rules.ts';
 import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../../io/buildtxt.ts';
-import { describeImportFailure, readBuildFile } from '../../io/importProblem.ts';
+import { describeImportFailure, readBuildFile, unknownServer } from '../../io/importProblem.ts';
 import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/library.ts';
 import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, parseMidsText } from '../../io/mids.ts';
 import { midsMadeOn } from '../../io/midsPatches.ts';
@@ -146,7 +147,10 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
       const t = src.trim();
       const m = /#b=([A-Za-z0-9_-]+)/.exec(t);
       if (m) {
-        const b = await decodeShare(m[1]!);
+        // a link's address names its server (/HatesCoHPlanner/Homecoming/#b=...); a bare code is Homecoming's
+        const named = serverInLink(t, import.meta.env.BASE_URL);
+        if (named.unknown) throw unknownServer(named.unknown);
+        const b = withServer(await decodeShare(m[1]!), named.server?.id);
         if (!(await replaceOk(b.name))) return;
         await open(b, []);
         return;
@@ -356,7 +360,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
             {saved.map((s) => (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid #123' }}>
                 <span style={{ flex: 1, color: '#cfe8ff' }}>
-                  {s.name} <span style={{ color: '#8fa1b8', fontSize: 14 }}>({gd.archetypeById.get(s.at)?.dn}, {new Date(s.saved).toLocaleString()})</span>
+                  {/* the list holds every server's builds: another server's archetype is named by its server instead */}
+                  {s.name} <span style={{ color: '#8fa1b8', fontSize: 14 }}>({serverOf(s.build) === gd.server ? gd.archetypeById.get(s.at)?.dn : (serverById(serverOf(s.build))?.label ?? serverOf(s.build))}, {new Date(s.saved).toLocaleString()})</span>
                 </span>
                 <button className="info-button" style={listBtn} onClick={() => void replaceOk(s.name).then(async (ok) => { if (ok) { await loadBuild(s.build); say(`Loaded "${s.name}".`); } })}>
                   Load
