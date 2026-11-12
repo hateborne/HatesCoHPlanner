@@ -27,7 +27,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # no install scripts: a compromised dependency can't run code at install time (esbuild,
+      # the only package with one, works without it)
+      - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -63,6 +65,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m compileall -q pipeline tools
+      # share links and saved builds store these ids: none may change or disappear
+      - name: Stable IDs are only appended to
+        env:
+          BASE: ${{ github.base_ref || 'main' }}
+        run: |
+          git fetch --no-tags --depth=1 origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+          python pipeline/check_ids.py "origin/${BASE}"
       - name: JSON files parse
         run: |
           python - <<'EOF'
@@ -90,10 +99,18 @@ jobs:
           if git ls-files --error-unmatch pipeline/paths.local.json >/dev/null 2>&1; then
             echo "pipeline/paths.local.json holds machine paths and must stay untracked"; exit 1
           fi
-      - name: No Windows drive paths in tracked text files
+      - name: No local machine paths in tracked text files
         run: |
-          # drive-letter paths into a user folder or a game install; machine paths belong in
+          # any drive-letter path, network share path or Linux / macOS home folder path (the
+          # three patterns below, in that order); machine paths belong in
           # pipeline/paths.local.json (untracked) or environment variables
-          if git grep -nIE '(^|[^A-Za-z0-9])[A-Za-z]:(\\\\|\\|/)(Users|Games|Program Files|CityOfHeroes)' -- . ':!package-lock.json'; then
+          found=0
+          for pattern in \
+            '(^|[^A-Za-z0-9])[A-Za-z]:(\\\\|\\|/)[A-Za-z0-9._$]' \
+            '(^|[^\\])\\\\[A-Za-z0-9._-]+\\[A-Za-z0-9$._-]+' \
+            '(^|[^A-Za-z0-9.])/(home|Users)/[A-Za-z0-9._-]+/'; do
+            if git grep -nIE "$pattern" -- . ':!package-lock.json'; then found=1; fi
+          done
+          if [ "$found" = 1 ]; then
             echo "Remove the local paths above (use pipeline/paths.local.json or environment variables)"; exit 1
           fi

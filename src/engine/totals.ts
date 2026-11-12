@@ -101,12 +101,26 @@ function affectsSelf(p: Power, m: Mod): boolean {
   return ea.includes('Caster');
 }
 
+/**
+ * Whether an effect group can land on the character while its power runs: not one that reaches
+ * only targets other than the main one (SecondaryTargetsOnly: Group Fly's lift for teammates, a
+ * toggle's slow on nearby foes), since a self power's main target is the character.
+ */
+const onCharacter = (e: Effect) => !e.fl?.includes('SecondaryTargetsOnly');
+
+/**
+ * Whether a mod is a standing effect of a running power: applied as it ticks or activates, not
+ * the burst it gives when switched off or when it runs out (OnDeactivate, OnExpire).
+ */
+const standing = (m: Mod) => m.app !== 'OnDeactivate' && m.app !== 'OnExpire';
+
 function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) => void): void {
   for (const e of effs ?? []) {
     if (e.ch !== undefined && e.ch < 1) continue;
     if (e.ppm) continue;
+    if (!onCharacter(e)) continue;
     if (!evalRequires(e.req, ctx)) continue;
-    for (const m of e.m ?? []) fn(m);
+    for (const m of e.m ?? []) if (standing(m)) fn(m);
     walkEffects(e.sub, ctx, fn);
   }
 }
@@ -129,10 +143,11 @@ function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) 
  */
 function walkChanceStatus(gd: GameData, effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod, chance: number) => void, chance = 1): void {
   for (const e of effs ?? []) {
-    if (e.ppm || !evalRequires(e.req, ctx)) continue;
+    if (e.ppm || !onCharacter(e) || !evalRequires(e.req, ctx)) continue;
     const ch = chance * (e.ch ?? 1);
     if (ch < 1) {
       for (const m of e.m ?? []) {
+        if (!standing(m)) continue;
         const status = m.a.every((a) => MEZ_NAMES.includes(gd.attribName.get(a) ?? ''));
         if (status && (m.asp === 'Resistance' || m.asp === 'Current')) fn(m, ch);
       }
@@ -287,6 +302,9 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
 
   // Active powers
   let endUse = 0;
+  // running toggles' base cost per second and their own slotted End Reduction; the cost needs the
+  // character-wide End Discount too, known once set bonuses are in (below)
+  const toggles: { name: string; perSec: number; slotted: number }[] = [];
   const entries: BuildEntry[] = rules.entries().filter((e) => e.level <= level);
   const isOn = (e: BuildEntry) => e.on ?? defaultOn(e.power);
 
@@ -334,9 +352,7 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
       walkEffects(boost.eff, ctx, (m) => m.tg === 'Caster' && !enhancing.has(m) && !isNullMod(gd, m) && apply(p, m, str, boost.dn));
     }
     if (p.type === 'Toggle' && p.end && p.ap) {
-      const cost = p.end / p.ap / (1 + (str.get(gd.attribByName.get('EnduranceDiscount') ?? 368) ?? 0));
-      endUse += cost;
-      add('enduse', 'End use', -cost, p.dn); // per toggle, negative: what drains the endurance bar
+      toggles.push({ name: p.dn, perSec: p.end / p.ap, slotted: str.get(gd.attribByName.get('EnduranceDiscount') ?? 368) ?? 0 });
     }
   }
 
@@ -382,6 +398,17 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     .filter((g) => g.stats.size > 0)
     .map((g) => ({ set: g.set, counts: [...g.counts.values()].sort((a, b) => b - a), stats: [...g.stats.values()].sort((a, b) => byName(a.label, b.label)) }))
     .sort((a, b) => byName(a.set.dn, b.set.dn));
+
+  // Toggle costs: a power's End Reduction is the character's End Discount (set bonuses, Conserve
+  // Power, ...) plus its own slotted pieces, and its cost per activation is divided by 1 + that
+  // (character_tick.c: fEnduranceCost / pattrStrength->fEnduranceDiscount, where the power's
+  // strength starts from the character's, character_mods.c)
+  const globalDiscount = lines.get('endrdx')?.value ?? 0;
+  for (const t of toggles) {
+    const cost = t.perSec / Math.max(0.01, 1 + globalDiscount + t.slotted);
+    endUse += cost;
+    add('enduse', 'End use', -cost, t.name); // per toggle, negative: what drains the endurance bar
+  }
 
   // Fold the "all types" defense into each typed defense, apply caps.
   const allDef = lines.get('def.base');

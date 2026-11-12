@@ -96,6 +96,19 @@ export function App() {
     screen = (
       <div className="abs body-text" style={{ left: 200, top: 400, width: 1600, fontSize: 28, color: '#ff6060' }}>
         Could not load game data: {error}
+        {/* a failed download isn't cached (dataFor), so trying again really fetches again */}
+        <div style={{ marginTop: 32 }}>
+          <button
+            className="info-button"
+            style={{ position: 'static', fontSize: 24, padding: '6px 28px' }}
+            onClick={() => {
+              useStore.setState({ view: 'loading' });
+              void useStore.getState().load();
+            }}
+          >
+            Try again
+          </button>
+        </div>
       </div>
     );
   } else if (view === 'setup') {

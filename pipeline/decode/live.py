@@ -61,7 +61,9 @@ def sha1(path) -> str:
 def decoder_hash() -> str:
     """@return SHA-1 over the decoder source: tools/*.py, pipeline/coh/*.py, pipeline/decode/*.py."""
     h = hashlib.sha1()
-    for folder in (config.TOOLS_DIR, config.REPO / "pipeline" / "coh", config.REPO / "pipeline" / "decode"):
+    # every module whose output the cache holds (label/ makes LiveData.attribs)
+    for folder in (config.TOOLS_DIR, config.REPO / "pipeline" / "coh", config.REPO / "pipeline" / "decode",
+                   config.REPO / "pipeline" / "label"):
         for f in sorted(folder.glob("*.py")):
             h.update(f"{folder.name}/{f.name}\n".encode())
             h.update(f.read_bytes().replace(b"\r\n", b"\n"))  # line endings must not change the key
