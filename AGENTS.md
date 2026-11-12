@@ -55,6 +55,16 @@ Breaking any of these is a bug, whatever else the change does.
 - Use it to cross-check numbers (`pipeline/report.md`) and to map names for Mids import/export.
 - Never copy game data from it into the planner, and never "fix" our data to match it.
   Disagreements are evidence to investigate; I28 changes are real differences.
+- The one exception, approved by the owner: an **approximate version** for an older patch whose
+  client files are gone (`python -m pipeline.overlay`, for example `i28p3m`, "Issue 28, Page 3
+  (approximate)"). It is a published version's data with only each power's available level (and
+  so each set's order) taken from Mids' database for that patch. Pool sets keep the base's levels.
+  It is never the default, `versions.json` marks it `approx: true` with its `patch`, and the app
+  says so when a build opens on it. If real client files for that patch turn up, they get their
+  own folder beside it, and the approximate one is removed (as `i28p3m` was for `i28p3`).
+- A second exception, also approved: an older client with no enhancement frame data (before the
+  February 10, 2026 update) shows a newer version's frames (`--frames-from`, recorded as
+  `framesFrom` in its manifest). Frames are artwork only; no number comes from the other version.
 - Code that touches Mids data must survive it being missing or malformed: warn and carry on.
 
 **Stable IDs and old builds**
@@ -67,6 +77,9 @@ Breaking any of these is a bug, whatever else the change does.
   links must keep decoding. Links without a version open as `LEGACY_GAME_VERSION` (`i28p4`).
 - Builds from outside the app (links, browser storage, saved builds, imports) always pass
   through `checkBuild` (`src/engine/validate.ts`) against their own version's data before use.
+- A Mids import opens on the patch it was made on (see "Imports and patches" below). The table
+  of Mids database versions (`MIDS_DB_PATCHES` in `src/io/midsPatches.ts`) only gets entries the
+  owner has confirmed.
 
 **Rules are flagged, not silently fixed**
 - A build that breaks a game rule (a missing prerequisite, a slot an enhancement can't go in) is
@@ -113,9 +126,11 @@ src/
     powerinfo.ts             detailed power numbers (base vs enhanced)
     actions.ts               pure edits (setPick, addSlot, setEnh, ...) and pickHoldsEnhancements
     validate.ts              checkBuild(): check and repair builds from outside the app
+    migrate.ts               fitToPatch(): swaps that fit an import moved to another patch
   io/
     share.ts                 #b= share links (bit-packed, deflated, base64url)
     mids.ts                  Mids .mbd and share codes (|MBD; and legacy |MxDz;)
+    midsPatches.ts           which patch a Mids build was made on (Mids database version table)
     library.ts               builds saved in the browser (IndexedDB)
     binary.ts                byte reader / writer helpers
   state/store.ts             zustand store: data, current build, level-up flow, dialogs
@@ -131,15 +146,18 @@ tests/                       vitest; tests/helpers/data.ts loads public/data lik
   fixtures/builds/           forum builds (Mids data chunks, .mbd files) the browser tests recreate
 e2e/                         Playwright browser tests (playwright.config.ts; local only)
 public/data/<version>/       exported game data per game version (generated, committed)
-public/data/versions.json    version index {default, versions: [{id, label, hash}]}
+public/data/versions.json    version index {default, versions: [{id, label, hash, patch?, approx?}]}
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
   run.py                     entry point: python -m pipeline.run
+  overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
   config.py                  inputs, preflight checks, atomic writes
   ids.json                   stable IDs (append-only)
   patch-watch.json           newest patch-notes post seen; game version id and label
   inputs/fonts/              vendored game fonts (never change)
   report.md                  validation report of the last run
+  report-<id>.md             report of a version that is not the default (pipeline.run), or what an
+                             approximate version changed (overlay.py)
 tools/                       standard-library Python decoders for client file formats
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
@@ -167,9 +185,35 @@ Re-running on an unchanged client changes no files. After a patch:
 2. Review `report.md`.
 3. Commit `public/data`, `public/assets` and `pipeline/ids.json` through a pull request.
 
+An older patch whose client survives (a copy of an old install) gets its own version: point
+`COH_CLIENT` at the copy and run `python -m pipeline.run --game-version <id> --game-label
+"<label>" [--frames-from <newer id>]` without `--make-default`. A version that is not the default
+writes `pipeline/report-<id>.md` instead of `report.md`, and its asset export only adds icons
+`public/assets` lacks (it never overwrites, and leaves UI textures, fonts and sounds alone). Never
+run anything from the old install itself: copy the files, read the copy.
+
+An older patch with no client files left can get an approximate version:
+`python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
+available level from the configured Mids database (its header names the issue and page). Review
+`pipeline/report-<id>.md`, then commit `public/data` and the report through a pull request.
+
 **Loading.** The app fetches `public/data/versions.json`, then loads the game version the current
 build asks for (the default for a new build), with `?v=<hash>` against stale caches. The New
 Build screen's version picker switches versions; each version is fetched once per page.
+
+**Imports and patches.** A Mids build records only its Mids database version, so
+`midsMadeOn()` (`src/io/midsPatches.ts`) looks it up in the owner-confirmed table. An unlisted
+version is placed by number: between two listed versions it belongs to the nearest one below it,
+one older than every listed version was made before the oldest listed patch, and one newer than
+every listed version is unknown and opens on the default version (it may be any later patch, so
+today's Mids builds never land on older data). The planner's own exports
+name their game version (`BuiltWith.GameVersion`, which Mids ignores). Old `|MxDz;` codes record
+nothing and open on the default version. `importTarget()` (`src/data/versions.ts`) then opens the
+build on its own patch when the site carries it, exact data before approximate. Otherwise it
+offers the nearest newer patch, or the newest. A move first lists the swaps `fitToPatch()` makes
+in the confirm dialog: picks trade places, slots trade the levels they were gained at, nothing is
+removed. The overview then keeps that list ("Changes for ...", `PatchNotes`) until it is
+dismissed.
 
 **Engine.** `BuildRules` (`src/engine/rules.ts`) answers every question the screens ask: what can
 be picked at a level, what is auto-granted, where slots can go, what is wrong with the build.
@@ -311,7 +355,8 @@ Pages deploys run from `main` after a merge, one at a time.
 - One topic per pull request. Describe the user-visible effect and how it was verified (tests,
   screenshots of the screens touched).
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
-  `pipeline/report.md`, `pipeline/ids.json`) change only through a pipeline run, never by hand.
+  `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/ids.json`) change only through a
+  pipeline run, never by hand.
 
 ## Game-data notes for agents
 

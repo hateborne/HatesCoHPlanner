@@ -26,7 +26,7 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
 
 All game data comes from the live Homecoming client files, decoded by the Python pipeline in
 `pipeline/` with the decoders in `tools/`. MidsReborn's database is a **reference only**, never a
-source of truth: it backs up or questions our numbers in the validation report
+source of truth (the one exception is an approximate older patch, below): it backs up or questions our numbers in the validation report
 (`pipeline/report.md`) and maps names for importing and exporting Mids build files. Without it the
 pipeline carries the newest existing Mids map forward and skips that report section.
 
@@ -47,6 +47,25 @@ Each game version lives in its own folder, `public/data/<id>/` (`core`, `powerse
 `boosts`, `mids-map`). `public/data/versions.json` lists them (`{"default", "versions": [{id,
 label, hash}]}`, where `hash` is `manifest.hash` for cache busting) and `latest.json` names the
 default for older clients. Both are written last.
+
+**Older patches from an old client.** A copy of an older Homecoming install adds that patch as
+its own version beside the current one: point `COH_CLIENT` at the copy (only the game program,
+`bin.pigg`, `bin_powers.pigg` and, for icons, `texture_gui.pigg` / `texture_library.pigg` are read)
+and run `python -m pipeline.run --game-version i28p3 --game-label "Issue 28, Page 3 (Dec 16 update)"
+--frames-from i28p4` without `--make-default`. For a version that is not the default the report
+goes to `pipeline/report-<id>.md` (`report.md` stays the default's) and the asset export only adds
+icons `public/assets` lacks, never overwriting the current ones. Clients from before the February 10,
+2026 update have no enhancement frame data; `--frames-from` shows that version's frames instead
+(cosmetic only, recorded as `framesFrom` in the manifest).
+
+**Approximate older patches.** When a patch's client files are gone, `python -m pipeline.overlay
+[--base i28p4]` makes an approximate version of it: the base version's data with each power's
+available level taken from the configured MidsReborn database (whose header names the issue and
+page), for example `i28p3m`, "Issue 28, Page 3 (approximate)" (since replaced by the real
+`i28p3`). It is the one place Mids data
+reaches the planner, it is never the default, and `versions.json` marks it with `"approx": true`
+and its `"patch"`. Review `pipeline/report-<id>.md`, which lists every changed level. Mids builds
+made on that patch then open on it; see AGENTS.md, "Imports and patches".
 
 Refreshing the data after a game patch:
 

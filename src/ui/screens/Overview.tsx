@@ -13,6 +13,7 @@ import { CheckBar } from '../components/CheckBar.tsx';
 import { InfoButton, MenuFrame, NextButton, SetFrame, SetTitle, SlotRing, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
+import { PatchNotesBar, PatchNotesBox, patchNotesHeight } from '../components/PatchNotes.tsx';
 import { phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
 import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
@@ -59,6 +60,8 @@ const LOG_BTN_SCALE = 1.35;
 const LOG_RESERVE = LOG_BTN_W + 22 * LOG_BTN_SCALE + 16;
 // phones: the Totals tab's text, a little larger than the desktop panel's
 const TOTALS_ZOOM = 1.15;
+// phones: the patch-move changes bar between the panel and Back / Next
+const NOTES_BAR = 56;
 
 /**
  * Phones: the level log, in place of the desktop's strip of level orbs. A capsule left of the
@@ -263,6 +266,9 @@ export function Overview({ skin }: { skin: Skin }) {
   const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling, lockFlash } = useStore(
     useShallow((s) => ({ gd: s.gd, build: s.build, steps: s.steps, editPick: s.editPick, editSlots: s.editSlots, toSetup: s.toSetup, setBuild: s.setBuild, setMenu: s.setMenu, continueLeveling: s.continueLeveling, lockFlash: s.lockFlash })),
   );
+  // for the room it takes: the list itself is drawn by PatchNotesBox / PatchNotesBar
+  const notes = useStore((s) => s.patchNotes);
+  const notesH = notes ? patchNotesHeight(notes.lines) : 0;
   const [picker, setPicker] = useState<{ entry: BuildEntry; slot: number } | null>(null);
   const [tab, setTab] = useState(0);
   const [oaOpen, setOaOpen] = useState(false);
@@ -562,7 +568,7 @@ export function Overview({ skin }: { skin: Skin }) {
     // the level log replaces the orb strip and Continue sits in the menu, so the panel runs down
     // to Back / Next
     const pg = phoneGeom(stage, false);
-    const P = phonePanel(pg, 4, 0);
+    const P = phonePanel(pg, 4, notes ? NOTES_BAR : 0);
     return (
       <>
         <TitleBar skin={skin} text={build.name ? build.name.toUpperCase() : 'BUILD OVERVIEW'} reserve={LOG_RESERVE} />
@@ -579,6 +585,7 @@ export function Overview({ skin }: { skin: Skin }) {
             </div>
           </GameScroll>
         )}
+        <PatchNotesBar skin={skin} y={pg.navTop - 8 - NOTES_BAR / 2} />
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
@@ -600,7 +607,9 @@ export function Overview({ skin }: { skin: Skin }) {
       ))}
       {COLS.map((c) => desktopPanel(c))}
       <MenuFrame x={1503} y={TOP} w={464} h={H} skin={skin} />
-      <GameScroll skin={skin} left={1515} top={TOP + 18} width={444} height={H - 36} barX={1503 + 464}>
+      {/* a patch move's changes sit above the totals until dismissed */}
+      <PatchNotesBox skin={skin} x={1521} y={TOP + 16} w={420} />
+      <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
         <TotalsPanel gd={gd} t={totals} width={420} />
       </GameScroll>
       <OverviewTips gd={gd} skin={skin} build={build} end={end} />

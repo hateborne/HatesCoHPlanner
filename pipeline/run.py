@@ -8,6 +8,13 @@ Usage (from the repo root):
 
 The game version id names the data folder public/data/<id>/. It defaults to "gameVersion" /
 "gameLabel" under "homecoming" in pipeline/patch-watch.json.
+
+An older client (COH_CLIENT pointing at a copy of an older install) adds an older version beside
+the default one. For any version that is not the default, the run writes its report to
+pipeline/report-<id>.md (report.md stays the default version's) and only adds icons that
+public/assets lacks, never overwriting the default version's assets. Clients from before the
+February 10, 2026 update have no enhancement frame data; --frames-from <id> borrows that
+version's frames (cosmetic only, recorded as framesFrom in the manifest).
 """
 from __future__ import annotations
 
@@ -32,6 +39,14 @@ def default_game_version() -> tuple[str | None, str | None]:
     except (OSError, ValueError):
         return None, None
     return h.get("gameVersion"), h.get("gameLabel")
+
+
+def current_default() -> str | None:
+    """@return The default version id in public/data/versions.json (None if absent or unreadable)."""
+    try:
+        return json.loads((config.DATA_OUT / "versions.json").read_text(encoding="utf-8")).get("default") or None
+    except (OSError, ValueError):
+        return None
 
 
 def render_failure(data, reason: str) -> str:
@@ -86,7 +101,18 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
         L.append(f"{mm['enh_total']} Mids enhancements, {mm['powers_total']} Mids powers mapped, "
                  f"{mm['renames_used']} power renames, {mm['bytes']} bytes. Unmapped enhancements "
                  f"({len(mm['unmapped_enh'])}): {', '.join(mm['unmapped_enh'][:40]) or 'none'}\n")
-    if assets:
+    if assets and "added" in assets:
+        L.append("## Assets\n")
+        L.append("Not the default version: only icons public/assets lacked were added; nothing "
+                 "was overwritten.\n")
+        for k, v in assets["added"].items():
+            if v:
+                L.append(f"- Added {k} ({len(v)}): {', '.join(v)}")
+        for k, v in assets["missing"].items():
+            if v:
+                L.append(f"- Missing {k} ({len(v)}): {', '.join(v)}")
+        L.append("")
+    elif assets:
         L.append("## Assets\n")
         L.append(", ".join(f"{k}: {v}" for k, v in assets["counts"].items()) + "\n")
         for k, v in assets["missing"].items():
@@ -137,6 +163,8 @@ def main() -> int:
     ap.add_argument("--game-label", help='label shown in the app, e.g. "Issue 28, Page 4"')
     ap.add_argument("--make-default", action="store_true",
                     help="make this version the default in versions.json")
+    ap.add_argument("--frames-from", metavar="VERSION",
+                    help="borrow enhancement frames from this version when the client has none")
     args = ap.parse_args()
 
     dv, dl = default_game_version()
@@ -151,6 +179,15 @@ def main() -> int:
         return 2
 
     config.preflight()
+    cd = current_default()
+    if cd is None and any((p / "core.json").is_file() for p in config.DATA_OUT.glob("*/")):
+        # without the index this run can't tell the default from an older version, and an older
+        # client taken for the default would overwrite the shared assets
+        print("error: public/data/versions.json is missing or unreadable while version folders exist; "
+              "restore it (git checkout public/data/versions.json) and re-run")
+        return 2
+    is_default = args.make_default or cd is None or cd == version
+    report_path = config.REPORT if is_default else config.REPO / "pipeline" / f"report-{version}.md"
     from pipeline import export
     from pipeline.ids import IdRegistry
     IdRegistry()  # refuses to run when ids.json is missing/empty but public/data holds data
@@ -161,17 +198,17 @@ def main() -> int:
     if partial:
         bad = ", ".join(k for k, v in data.health.items() if v["partial"])
         msg = f"decode health gate FAILED: {partial} partial records ({bad}); nothing was written"
-        config.atomic_write(config.REPORT, render_failure(data, msg))
+        config.atomic_write(report_path, render_failure(data, msg))
         print(f"error: {msg}")
         return 1
 
-    exp = export.write(data, version)
+    exp = export.write(data, version, args.frames_from)
     warnings = list(exp["warnings"])
     root = exp["root"]
     assets = None
     if not args.no_assets:
         from pipeline.assets import export_assets
-        assets = export_assets.run(root)
+        assets = export_assets.run(root) if is_default else export_assets.add_missing_icons(root)
     val = None
     if not args.no_validate:
         if config.mids_available():
@@ -184,8 +221,8 @@ def main() -> int:
             warnings.append(f"WARNING: Mids validation skipped (no MidsReborn data at {config.MIDS_DATA})")
     default = export.write_indexes(version, label, exp["manifest"]["hash"], args.make_default)
     text = render_report(data, exp, assets, val, warnings)
-    config.atomic_write(config.REPORT, text)
-    print(f"wrote {config.REPORT} (version {version}, hash {exp['manifest']['hash']}, default {default})")
+    config.atomic_write(report_path, text)
+    print(f"wrote {report_path} (version {version}, hash {exp['manifest']['hash']}, default {default})")
     for w in warnings:
         print(w)
     return 0

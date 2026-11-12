@@ -54,8 +54,9 @@ class Exporter:
         self.sets_lower = {k.lower(): k for k in self.sets}
         self.cats = {c["Name"].lower(): c for c in live.powercats}
         self.E = live.enums
+        # no_frames: enhancements left without frame art because the client has no frame columns
         self.report: dict = {"missing_text": Counter(), "unresolved_refs": Counter(),
-                             "pvp_effects_dropped": 0}
+                             "pvp_effects_dropped": 0, "no_frames": 0}
         self.used_tables: set[str] = set()
 
     # ---- helpers ------------------------------------------------------------------------------
@@ -277,7 +278,10 @@ class Exporter:
         if act:
             o["act"] = act
         if r["Type"] == 3:  # enhancement
-            o["bf"] = [r["BoostFrameLeft"], r["BoostFrameRight"]]
+            if "BoostFrameLeft" in r:
+                o["bf"] = [r["BoostFrameLeft"], r["BoostFrameRight"]]
+            else:  # older clients (before the February 10, 2026 update) have no frame columns
+                self.report["no_frames"] += 1
             for src, dst in (("BoostPog", "pog"), ("BoostBoostable", "bb"),
                              ("BoostUsePlayerLevel", "bup"), ("BoostIgnoreEffectiveness", "bie"),
                              ("BoostAlwaysCountForSet", "bac"), ("BoostLicenseLevel", "bll"),
@@ -489,15 +493,55 @@ def newest_mids_map(exclude) -> "Path | None":
     return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
 
-def write(live: LiveData, version: str) -> dict:
+def borrow_frames(boosts: list[dict], donor: str) -> int:
+    """Give enhancements without frame art the frames the same enhancement has in another version.
+
+    Older clients have no frame columns; the owner chose to show the donor version's frames
+    there (cosmetic only, recorded in the manifest as framesFrom).
+
+    @param boosts This version's exported enhancements; changed in place.
+    @param donor Game version id whose boosts.json supplies the frames.
+    @return How many enhancements got frames.
+    @raise SystemExit When the donor version has no readable boosts.json.
+    """
+    try:
+        src = json.loads((config.DATA_OUT / donor / "boosts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"error: --frames-from {donor}: no readable public/data/{donor}/boosts.json ({e})")
+    frames = {b["n"]: b["bf"] for b in src.get("boosts", []) if b.get("bf")}
+    n = 0
+    for b in boosts:
+        if "bf" not in b and b["n"] in frames:
+            b["bf"] = frames[b["n"]]
+            n += 1
+    return n
+
+
+def write(live: LiveData, version: str, frames_from: str | None = None) -> dict:
     """Export the data set for game version `version` and return a summary for the report.
 
     Order: build in memory (Mids map included, failures tolerated), save ids.json, then write the
     data files atomically. The version index files are written afterwards by write_indexes().
+
+    @param live The decoded client.
+    @param version Game version id (the data folder name).
+    @param frames_from Version to borrow enhancement frames from when the client has none.
     """
     ex = Exporter(live)          # refuses to run if ids.json is gone while data exists
     out = ex.build()
     warnings: list[str] = []
+    borrowed = 0
+    if ex.report["no_frames"]:
+        if frames_from:
+            borrowed = borrow_frames(out["boosts"]["boosts"], frames_from)
+            left = ex.report["no_frames"] - borrowed
+            warnings.append(f"NOTE: this client has no enhancement frame data; {borrowed} enhancements "
+                            f"show {frames_from}'s frames" + (f", {left} have none" if left else ""))
+        else:
+            warnings.append(f"WARNING: this client has no enhancement frame data; {ex.report['no_frames']} "
+                            "enhancements have no frames (pass --frames-from <version> to borrow them)")
+    elif frames_from:
+        warnings.append(f"NOTE: --frames-from {frames_from} ignored: this client has its own frame data")
     mids_text = None
     try:
         from pipeline import mids_map
@@ -524,6 +568,8 @@ def write(live: LiveData, version: str) -> dict:
                    "boostsets": len(out["boosts"]["sets"])},
         "files": ["core.json", "powersets.json", "powers.json", "boosts.json"],
     }
+    if borrowed:
+        manifest["framesFrom"] = frames_from  # enhancement frame art borrowed from that version
     out["core"]["manifest"] = manifest
     texts = {n: _dump(out[n]) for n in ("powersets", "powers", "boosts")}
     others = [texts["powersets"], texts["powers"], texts["boosts"]]
@@ -561,13 +607,14 @@ def write(live: LiveData, version: str) -> dict:
             "mids": mids, "warnings": warnings, "version": version, "root": root}
 
 
-def write_indexes(version: str, label: str, content_hash_: str, make_default: bool) -> str:
+def write_indexes(version: str, label: str, content_hash_: str, make_default: bool, extra: dict | None = None) -> str:
     """Upsert this version into public/data/versions.json and refresh latest.json (written last).
 
     @param version Game version id (the data folder name).
     @param label Human-readable label.
     @param content_hash_ manifest.hash of this version.
     @param make_default Make this version the default even if versions.json already exists.
+    @param extra More fields for this version's entry (an approximate version's patch and flag).
     @return The default version id.
     """
     vpath = config.DATA_OUT / "versions.json"
@@ -580,7 +627,7 @@ def write_indexes(version: str, label: str, content_hash_: str, make_default: bo
         idx, new_file = {"default": version, "versions": []}, True
     except ValueError as e:
         raise SystemExit(f"error: public/data/versions.json is unreadable ({e}); fix or remove it")
-    entry = {"id": version, "label": label, "hash": content_hash_}
+    entry = {"id": version, "label": label, "hash": content_hash_, **(extra or {})}
     for i, v in enumerate(idx["versions"]):
         if v.get("id") == version:
             idx["versions"][i] = entry

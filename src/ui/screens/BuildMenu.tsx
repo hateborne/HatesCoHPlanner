@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
+import type { GameData } from '../../data/gamedata.ts';
+import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
 import type { Build } from '../../engine/build.ts';
+import { fitToPatch } from '../../engine/migrate.ts';
+import type { Issue } from '../../engine/rules.ts';
 import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/library.ts';
-import { buildToMxDz, exportMbd, importMidsText, loadMidsMap, mbdToChunk } from '../../io/mids.ts';
+import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, parseMidsText } from '../../io/mids.ts';
+import { midsMadeOn } from '../../io/midsPatches.ts';
 import { decodeShare, shareLink } from '../../io/share.ts';
 import { useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
@@ -11,9 +16,23 @@ import { TitleText } from '../components/GameText.tsx';
 
 const btn = (left: number, top: number) => ({ left, top, position: 'absolute' as const });
 
+/** @return An issue as a line for the patch-move dialog ("Knockout Blow: Available at level 24"). */
+function issueLine(gd: GameData, b: Build, i: Issue): string {
+  const [kind, raw] = i.key.split(':');
+  const power = kind === 'pick' ? b.picks[Number(raw)]?.power : kind === 'grant' ? Number(raw) : undefined;
+  return power !== undefined && gd.powerById.has(power) ? `${gd.power(power).dn}: ${i.message}` : i.message;
+}
+
+/** @return How an approximate version is made, for the note shown when a build opens on one. */
+function approxNote(v: GameVersion, gd: GameData, all: GameVersion[]): string {
+  const base = gd.core.manifest.approximate?.base;
+  const baseLabel = all.find((x) => x.id === base)?.label ?? base ?? 'a later patch';
+  return `Opened on ${v.label}: power levels from MidsReborn's database for that patch, everything else from ${baseLabel}.`;
+}
+
 /** Save / load / share / Mids import-export, in the in-game skin. */
 export function BuildMenu({ onClose }: { onClose: () => void }) {
-  const { gd, build, loadBuild } = useStore();
+  const { gd, build, loadBuild, versions } = useStore();
   useEscape(onClose);
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');
@@ -53,21 +72,54 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
       okLabel: 'Replace',
     });
   };
+  /**
+   * Import a share link or any Mids text. A Mids build opens on the game patch it was made on when
+   * the planner carries it; otherwise on the nearest newer patch (else the newest), after the user
+   * agrees to the swaps that fit it there (listed before, and kept on the overview after).
+   */
   const doImport = async (src: string) => {
     try {
       const t = src.trim();
-      let b: Build;
-      let warnings: string[] = [];
       const m = /#b=([A-Za-z0-9_-]+)/.exec(t);
-      if (m) b = await decodeShare(m[1]!);
-      else {
-        const res = await importMidsText(gd, await loadMidsMap(gd), t);
-        b = res.build;
-        warnings = res.warnings;
+      if (m) {
+        const b = await decodeShare(m[1]!);
+        if (!(await replaceOk(b.name))) return;
+        await loadBuild(b);
+        say(`Imported "${b.name || 'build'}".`);
+        return;
+      }
+      const st = useStore.getState();
+      const parsed = await parseMidsText(t);
+      const made = parsed.kind === 'mbd' ? midsMadeOn(parsed.mbd) : undefined;
+      const { version, move } = versions ? importTarget(versions, made) : { version: undefined, move: false };
+      const tgd = version ? await st.dataForVersion(version.id) : gd;
+      const res = await importParsed(tgd, await loadMidsMap(tgd), parsed);
+      let b = res.build;
+      let changes: string[] = [];
+      if (move && made && version) {
+        const fit = fitToPatch(tgd, b);
+        const still = fit.remaining.map((i) => `Still flagged: ${issueLine(tgd, fit.build, i)}`);
+        const ok = await st.askConfirm({
+          title: `Open on ${version.label}?`,
+          text:
+            `This build was made on ${madeOnLabel(made)}, which the planner doesn't carry. It can open on ${version.label}, the nearest patch it has` +
+            (fit.changes.length ? ', with these changes (powers keep their slots and enhancements):' : still.length ? ':' : '. No changes are needed.'),
+          lines: [...fit.changes, ...still],
+          okLabel: 'Open',
+        });
+        if (!ok) {
+          say('Import cancelled.');
+          return;
+        }
+        b = fit.build;
+        changes = fit.changes;
       }
       if (!(await replaceOk(b.name))) return;
       await loadBuild(b);
-      say(`Imported "${b.name || 'build'}".`, ...warnings.map((w) => `Warning: ${w}`));
+      if (changes.length && version) useStore.getState().setPatchNotes({ title: `Changes for ${version.label}`, lines: changes });
+      // loading a build closes this menu, so the note on approximate data goes to the notice line
+      if (version?.approx) useStore.getState().notify(approxNote(version, tgd, versions?.versions ?? []));
+      say(`Imported "${b.name || 'build'}".`, ...res.warnings.map((w) => `Warning: ${w}`));
     } catch (e) {
       say(`Could not import: ${e instanceof Error ? e.message : String(e)}`);
     }

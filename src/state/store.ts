@@ -14,6 +14,12 @@ import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
+
+/** The changes made when an import was moved to another game patch, kept on the overview until dismissed. */
+export interface PatchNotes {
+  title: string; // "Changes for Issue 28, Page 4"
+  lines: string[]; // one change per line, "before -> after"
+}
 /** Hover tooltips: Enabled (description / slot details; Shift shows Advanced), Advanced, Disabled. */
 export type TipMode = 'enabled' | 'advanced' | 'disabled';
 export const TIP_MODES: TipMode[] = ['enabled', 'advanced', 'disabled'];
@@ -56,9 +62,14 @@ interface Store {
   poolsBlinked: boolean; // phones: the Pools tab has blinked for this build's first pool pick
   epicBlinked: boolean; // phones: ...and for the first pick that can open an epic pool
   flashLocked(key: string, label?: string): void;
-  confirm: { title: string; text: string; okLabel?: string; resolve: (ok: boolean) => void } | null;
-  /** Ask a yes / no question in the planner's dialog; resolves true on Proceed. */
-  askConfirm(q: { title: string; text: string; okLabel?: string }): Promise<boolean>;
+  confirm: { title: string; text: string; okLabel?: string; lines?: string[]; resolve: (ok: boolean) => void } | null;
+  /** Ask a yes / no question in the planner's dialog (with an optional list under it); resolves true on Proceed. */
+  askConfirm(q: { title: string; text: string; okLabel?: string; lines?: string[] }): Promise<boolean>;
+  patchNotes: PatchNotes | null; // what a patch move changed in the current build
+  /** Show (or with null, dismiss) the current build's patch-move changes; remembered per tab. */
+  setPatchNotes(n: PatchNotes | null): void;
+  /** @return A game version's data (fetched once per page), for imports that open on another version. */
+  dataForVersion(id: string): Promise<GameData>;
   closeConfirm(ok: boolean): void;
   load(): Promise<void>;
   /** Start a new build's wizard; `respecTo` (0-based) makes it a Respec: every power first, then the slots. */
@@ -87,6 +98,33 @@ interface Store {
 }
 
 const STORAGE_KEY = 'hcp.current';
+const NOTES_KEY = 'hcp.patchNotes';
+
+/** @return What ties patch notes to one build (they are dropped when another build opens; a rename keeps them). */
+function buildTag(b: Build): string {
+  return [b.dataVersion, b.at, b.primary, b.secondary].join('|');
+}
+
+/** Remember (or forget) the current build's patch notes for this tab. */
+function persistNotes(n: PatchNotes | null, b: Build | undefined): void {
+  try {
+    if (n && b) sessionStorage.setItem(NOTES_KEY, JSON.stringify({ ...n, tag: buildTag(b) }));
+    else sessionStorage.removeItem(NOTES_KEY);
+  } catch {
+    /* storage unavailable: the notes last until the page closes */
+  }
+}
+
+/** @return This tab's remembered patch notes, when they belong to this build. */
+function restoreNotes(b: Build): PatchNotes | null {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(NOTES_KEY) ?? 'null') as (PatchNotes & { tag?: string }) | null;
+    if (!raw || raw.tag !== buildTag(b) || typeof raw.title !== 'string' || !Array.isArray(raw.lines)) return null;
+    return { title: raw.title, lines: raw.lines.filter((l): l is string => typeof l === 'string') };
+  } catch {
+    return null;
+  }
+}
 
 // one fetch per game version per page: switching back to a version already seen is instant
 const dataCache = new Map<string, Promise<GameData>>();
@@ -306,6 +344,16 @@ export const useStore = create<Store>((set, get) => ({
   lockFlash: null,
   poolsBlinked: false,
   epicBlinked: false,
+  patchNotes: null,
+  setPatchNotes(n) {
+    persistNotes(n, get().build);
+    set({ patchNotes: n });
+  },
+  async dataForVersion(id) {
+    const v = get().versions?.versions.find((x) => x.id === id);
+    if (!v) throw new Error(`game version ${id} is not available`);
+    return dataFor(v);
+  },
   confirm: null,
   askConfirm(q) {
     get().confirm?.resolve(false); // a newer question replaces an unanswered one
@@ -394,7 +442,8 @@ export const useStore = create<Store>((set, get) => ({
     }
     if (fixes.length) console.warn('build repaired:', fixes);
     persist(nb);
-    set({ gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false, poolsBlinked: false, epicBlinked: false });
+    persistNotes(null, undefined);
+    set({ gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false, poolsBlinked: false, epicBlinked: false, patchNotes: null });
     const note = missingNote(missing, version);
     if (note) get().notify(note);
   },
@@ -427,7 +476,7 @@ export const useStore = create<Store>((set, get) => ({
         if (!c.build) continue;
         if (c.fixes.length) console.warn('saved build repaired:', c.fixes);
         persist(c.build);
-        set({ gd, steps: levelSteps(gd.core), build: c.build, view: 'overview' });
+        set({ gd, steps: levelSteps(gd.core), build: c.build, view: 'overview', patchNotes: restoreNotes(c.build) });
         const note = missingNote(missing, version);
         if (note) get().notify(note);
         return;
@@ -444,6 +493,7 @@ export const useStore = create<Store>((set, get) => ({
     if (!gd) return;
     const b = newBuild({ ...args, dataVersion: gd.core.manifest.dataVersion, pickCount: gd.core.schedule.power.length });
     persist(b);
+    persistNotes(null, undefined);
     const flow = args.respecTo !== undefined ? respecSteps(get().steps, args.respecTo) : undefined;
     set({
       build: b,
@@ -451,6 +501,7 @@ export const useStore = create<Store>((set, get) => ({
       level: { step: 0, pickInStep: 0, mode: 'wizard', sub: 'power', base: b, orig: b, pendingSlots: [], flow },
       poolsBlinked: false,
       epicBlinked: false,
+      patchNotes: null,
     });
   },
 
