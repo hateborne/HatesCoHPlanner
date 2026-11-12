@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { GameData } from '../src/data/gamedata.ts';
-import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverInLink, serverOf, SERVERS, withServer } from '../src/data/servers.ts';
+import { dataRoot, DEFAULT_SERVER, defaultServer, notFoundRedirect, serverById, serverFromPath, serverHref, serverInLink, serverOf, SERVERS, withServer } from '../src/data/servers.ts';
 import { newBuild } from '../src/engine/build.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { finishBuildTxt, readBuildTxt } from '../src/io/buildtxt.ts';
@@ -98,6 +98,31 @@ describe('server from the address', () => {
     expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/index.html#b=eJx', BASE)).toEqual({});
     expect(serverInLink('#b=eJx', BASE)).toEqual({});
     expect(serverInLink('https://example.org/OtherPlanner/Stuff/#b=eJx', BASE)).toEqual({});
+  });
+});
+
+describe('the 404 page redirect', () => {
+  const paths = SERVERS.map((s) => s.path);
+  it('sends a server address in another case, or with more after it, to that server page', () => {
+    expect(notFoundRedirect('/HatesCoHPlanner/homecoming/', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
+    expect(notFoundRedirect('/HatesCoHPlanner/homecoming', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
+    expect(notFoundRedirect('/HatesCoHPlanner/HOMECOMING/x/y.html', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
+    expect(notFoundRedirect('/HatesCoHPlanner/Homecoming/nope', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
+  });
+
+  it("leaves anything else on the 404 page, and never redirects a server's own page to itself", () => {
+    expect(notFoundRedirect('/HatesCoHPlanner/Homecoming/', BASE, paths)).toBeNull();
+    expect(notFoundRedirect('/HatesCoHPlanner/Rebirth/', BASE, paths)).toBeNull();
+    expect(notFoundRedirect('/HatesCoHPlanner/', BASE, paths)).toBeNull();
+    expect(notFoundRedirect('/HatesCoHPlanner/assets/missing.png', BASE, paths)).toBeNull();
+    expect(notFoundRedirect('/Elsewhere/homecoming/', BASE, paths)).toBeNull();
+    expect(notFoundRedirect('/HatesCoHPlanner/%E0%A4%A/', BASE, paths)).toBeNull();
+  });
+
+  it('runs on its own, as the 404 page runs it', () => {
+    const run = new Function(`return (${notFoundRedirect.toString()})`)() as typeof notFoundRedirect;
+    expect(run('/HatesCoHPlanner/homecoming/x', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
+    expect(run('/HatesCoHPlanner/Homecoming/', BASE, paths)).toBeNull();
   });
 });
 

@@ -6,6 +6,7 @@
  * Anything else that goes wrong while importing is a fault on the planner's side; the user gets a
  * calm, generic message and the details go to the browser console for whoever looks into it.
  */
+import { stripHidden } from '../engine/build.ts';
 
 /** Something wrong with what was imported, worded for the user: what is wrong and what to do. */
 export class ImportProblem extends Error {
@@ -97,9 +98,14 @@ export async function readBuildFile(f: Blob): Promise<string> {
   return text;
 }
 
+/** Longest name a message repeats from an imported file (the game's longest names are ~40). */
+const READABLE_MAX = 60;
+
 /** @return "Ice Mastery DefCorr" for a set name part like "Ice_Mastery_DefCorr": internal names made readable. */
 export function readable(name: string): string {
-  return name.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  // names come from the file: plain text, short enough that a crafted one can't fill the message
+  const s = stripHidden(name).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  return s.length > READABLE_MAX ? `${s.slice(0, READABLE_MAX - 3)}...` : s;
 }
 
 /**

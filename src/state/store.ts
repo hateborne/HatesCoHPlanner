@@ -5,9 +5,9 @@
 import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, withServer, type GameServer } from '../data/servers.ts';
-import { loadVersions, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
+import { loadVersions, missingVersionNote, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
 import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
-import { cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
+import { cleanName, cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
@@ -232,7 +232,7 @@ function shownServer(): GameServer {
 
 /** Say so when a build asked for a game version this site no longer has. */
 function missingNote(missing: string | undefined, used: GameVersion): string | undefined {
-  return missing ? `This build was made for game version "${missing}", which is no longer available; it was opened with ${used.label}.` : undefined;
+  return missing ? missingVersionNote(missing, used) : undefined;
 }
 
 /**
@@ -1050,7 +1050,8 @@ if (typeof window !== 'undefined') {
           if ((await encodeShare(current)) === m[1] && serverOf(current) === serverOf(b)) return;
           const ok = await useStore.getState().askConfirm({
             title: 'Replace the current build?',
-            text: `The link opens ${b.name ? `"${b.name}"` : 'another build'}, replacing ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+            // the link's name isn't checked yet: shown as the planner would keep it
+            text: `The link opens ${cleanName(b.name) ? `"${cleanName(b.name)}"` : 'another build'}, replacing ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
             okLabel: 'Replace',
           });
           if (!ok) {

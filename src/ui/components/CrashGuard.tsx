@@ -24,7 +24,11 @@ export class CrashGuard extends Component<{ children: ReactNode }, { error: Erro
         /* storage unavailable */
       }
     }
-    location.replace(location.pathname + location.search);
+    // this page without its share code, as a full URL: a path alone that starts with "//" (Pages
+    // also serves //HatesCoHPlanner/) would be read as another host
+    const here = new URL(location.href);
+    here.hash = '';
+    location.replace(here.href);
   };
 
   render() {

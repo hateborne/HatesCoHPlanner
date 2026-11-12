@@ -99,6 +99,36 @@ export function serverInLink(text: string, base: string): NamedServer {
   return path ? serverFromPath(path, base) : {};
 }
 
+/**
+ * Where the site's 404 page sends an address GitHub Pages has no file for: the page of the server
+ * its first segment names, written in another case or with more after it
+ * ("/HatesCoHPlanner/homecoming/x" -> "/HatesCoHPlanner/Homecoming/"). Anything else stays on the
+ * 404 page: an unknown server's link is never opened as another server's.
+ *
+ * Self-contained (it uses nothing outside itself and plain JavaScript only): the build writes its
+ * source into 404.html (vite.config.ts).
+ *
+ * @param pathname The missing address's path.
+ * @param base Site base URL ("/HatesCoHPlanner/").
+ * @param paths Every server's address segment, as written.
+ * @return The path to go to, or null (no server named, or already that server's own page, which
+ *   must not redirect to itself).
+ */
+export function notFoundRedirect(pathname: string, base: string, paths: readonly string[]): string | null {
+  if (pathname.indexOf(base) !== 0) return null;
+  let seg = pathname.slice(base.length).split('/')[0] || '';
+  try {
+    seg = decodeURIComponent(seg);
+  } catch (e) {
+    void e; // a malformed %-escape: kept as it is
+  }
+  for (let i = 0; i < paths.length; i++) {
+    const to = base + paths[i] + '/';
+    if (String(paths[i]).toLowerCase() === seg.toLowerCase()) return pathname === to ? null : to;
+  }
+  return null;
+}
+
 /** @return The page address for a server ("/HatesCoHPlanner/Homecoming/"). */
 export function serverHref(s: GameServer, base: string): string {
   return `${base}${s.path}/`;

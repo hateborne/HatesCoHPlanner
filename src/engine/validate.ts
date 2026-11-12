@@ -6,7 +6,7 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
-import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
+import { cleanName, toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { BuildRules } from './rules.ts';
 
 export interface Checked {
@@ -92,7 +92,7 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
     v: 1,
     ...(gd.server !== DEFAULT_SERVER ? { server: gd.server } : {}), // tied to the data's server, like its version
     dataVersion: gd.core.manifest.dataVersion, // checked against (and from now on tied to) this game version's data
-    name: typeof b.name === 'string' ? b.name.slice(0, 40) : '',
+    name: cleanName(b.name),
     at: b.at,
     origin: b.origin,
     alignment: toAlignment(b.alignment),

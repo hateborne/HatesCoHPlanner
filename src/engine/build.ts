@@ -36,6 +36,30 @@ export function toAlignment(a: string | undefined): Alignment {
   }
 }
 
+/** Longest build name (the New Build screen's name field allows as many). */
+export const NAME_MAX = 40;
+
+// control characters, and the invisible ones that flip or hide text (bidi overrides and
+// isolates, zero-width spaces and joiners, the byte-order mark): a crafted name or file could
+// use them to make the planner's own messages read differently than they are
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const HIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+
+/** @return Text with control and invisible formatting characters removed. */
+export function stripHidden(text: string): string {
+  return text.replace(HIDDEN_CHARS, '');
+}
+
+/**
+ * A build name as the planner keeps and shows it: plain text, at most NAME_MAX characters.
+ *
+ * @param name The name a build, link or file carries (anything: it comes from outside).
+ * @return The name, or '' when it isn't text.
+ */
+export function cleanName(name: unknown): string {
+  return typeof name === 'string' ? stripHidden(name).slice(0, NAME_MAX) : '';
+}
+
 /** UI skin implied by an alignment (game: blue hero, red villain, Praetorian). */
 export function skinOf(a: string): 'hero' | 'villain' | 'praetorian' {
   const n = toAlignment(a);

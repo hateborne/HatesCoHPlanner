@@ -41,6 +41,19 @@ const onOffHelp = (label: string, on: boolean) => (on ? `${label} is on (click t
 // desktop: the server logo left of the switches, between the screens' outer frame (its bottom edge
 // 79 above the stage's: 58 + 988 on the 1125-high stage) and the not-affiliated line (from 20 above)
 const LOGO = { up: 76, w: 120, h: 54, gap: 12 };
+// the switches and Support button right of it, with their gaps
+const SWITCHES_W = 120 + 12 + 120 + 12 + 170 + 12 + 200;
+
+/**
+ * Desktop: where the server logo sits in the bottom bar (the logo and the switches are centered
+ * as one group). The refusal notice keeps clear of it (App.tsx).
+ *
+ * @param stage The stage size.
+ * @return The logo's box in stage px.
+ */
+export function bottomLogoBox(stage: { w: number; h: number }): { x: number; y: number; w: number; h: number } {
+  return { x: stage.w / 2 - (LOGO.w + LOGO.gap + SWITCHES_W) / 2, y: stage.h - LOGO.up, w: LOGO.w, h: LOGO.h };
+}
 
 /**
  * Desktop: the server logo (the server selector), then the sound, music and tooltip switches and
@@ -52,12 +65,12 @@ function BottomBar({ skin }: { skin: Skin }) {
   );
   const [support, setSupport] = useState(false);
   const stage = useStage();
-  const left = stage.w / 2 - (LOGO.w + LOGO.gap + 120 + 12 + 120 + 12 + 170 + 12 + 200) / 2;
-  const x0 = left + LOGO.w + LOGO.gap;
+  const logo = bottomLogoBox(stage);
+  const x0 = logo.x + logo.w + LOGO.gap;
   const y = stage.h - 54;
   return (
     <>
-      <ServerLogo x={left} y={stage.h - LOGO.up} w={LOGO.w} h={LOGO.h} />
+      <ServerLogo x={logo.x} y={logo.y} w={logo.w} h={logo.h} />
       <Pill x={x0} y={y} w={120} h={24} fontSize={13} dim={muted} title={onOffHelp('Sound', !muted)} onClick={() => setMuted(!muted)}>
         Sound: {muted ? 'off' : 'on'}
       </Pill>

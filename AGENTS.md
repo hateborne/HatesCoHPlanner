@@ -165,6 +165,7 @@ public/data/<version>/       exported game data per game version (generated, com
 public/data/versions.json    version index {default, versions: [{id, label, hash, patch?, approx?}]}
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
+public/favicon.png           the site icon (placed by hand)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
   run.py                     entry point: python -m pipeline.run
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
@@ -231,7 +232,11 @@ switches versions; each version is fetched once per page.
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
 `index.html` to `<path>/index.html` for each server (`serverPages` in `vite.config.ts`) so GitHub
-Pages serves those addresses. On load, a share link opens on the server its address names (none:
+Pages serves those addresses. It also writes `404.html` (`notFoundPage`): a server address in
+another case or with more after it (`/HatesCoHPlanner/homecoming/x`) goes on to that server's page
+with its `#b=` code (`notFoundRedirect`, written into the page and allowed by its hash in the page's
+CSP); anything else gets a "not found" page linking to the planner, so an unknown server's link is
+never opened as Homecoming. On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
 unless the address names another server. With no build, New
 Build opens on the server the address names; failing that, once `SERVERS` holds more than one, a
@@ -273,6 +278,13 @@ MidsReborn names 9 epic pools its own way (`Epic.Ice_Mastery_DefCorr` is the gam
 `Epic.Defender_Ice_Mastery`), and its CrypticPowerNames.mhd doesn't list them, so
 `MIDS_EPIC_POOLS` (`src/io/mids.ts`) maps them both ways; `tests/importproblems.test.ts` checks
 every target exists and that the archetypes each name is for can take it.
+
+**Text from outside** (a link's build name or game version, a file's names) is never repeated as
+it came: build names go through `cleanName` (plain text, at most 40 characters), names from imported
+files through `readable`, and a missing game version is named as its patch or not at all
+(`missingVersionNote`). A crafted link must not make the planner's own notices say what it likes.
+Every navigation goes to a fixed address on this site; none takes its target from a link, a build
+or a file.
 
 **Import failures** are told to the user in the dialog (`tell`), never as raw error text
 (`src/io/importProblem.ts`). Something wrong with what they gave the planner (a code cut short, a

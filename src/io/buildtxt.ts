@@ -23,7 +23,7 @@ import type { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Power } from '../data/types.ts';
 import { slotsFor } from '../engine/actions.ts';
-import { cloneBuild, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
+import { cleanName, cloneBuild, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { leveledSlotShortfall, lowestFreeLevels } from '../engine/schedule.ts';
 import { ImportProblem, READABLE, readable, readablePower } from './importProblem.ts';
@@ -144,7 +144,7 @@ export function readBuildTxt(gd: GameData, text: string): TxtImport {
   const at = gd.archetypeByName.get(txt.archetype.toLowerCase());
   if (!at) throw new ImportProblem(`its archetype (${readable(txt.archetype.replace(/^Class_/i, ''))}) isn't one the planner has`, newer);
   const origin = gd.core.origins.find((o) => o.n.toLowerCase() === txt.origin.toLowerCase());
-  if (!origin) throw new ImportProblem(`its origin (${txt.origin}) isn't one the planner has`, newer);
+  if (!origin) throw new ImportProblem(`its origin (${readable(txt.origin)}) isn't one the planner has`, newer);
   const found = txt.powers.map((p) => ({ p, power: gd.powerByName.get(p.name.toLowerCase()) }));
   // the primary and secondary: the AT's own sets in those categories (a VEAT's branches are others)
   const mainSet = (cat: string) =>
@@ -239,7 +239,7 @@ export function readBuildTxt(gd: GameData, text: string): TxtImport {
       late.length === 1 ? `${late[0]!.power.dn} (taken at level ${late[0]!.level + 1}) has ${short.need} added slots` : `Powers taken at level ${from} or later have ${short.need} added slots`;
     leveledBlock = `${who}, but leveling gives only ${short.have} slots from level ${from} on.`;
   }
-  const summary = `${txt.name}: level ${txt.level} ${origin.dn} ${at.dn}, ${pri.dn} / ${sec.dn}`;
+  const summary = `${cleanName(txt.name) || 'The character'}: level ${txt.level} ${origin.dn} ${at.dn}, ${pri.dn} / ${sec.dn}`;
   return { build: b, level, summary, leveledBlock, warnings: warn };
 }
 
