@@ -1,11 +1,11 @@
-# Build and publish the site after a change lands on main. Deploys run one at a time: a push
-# while one is running waits for it (only the newest waiting run is kept), so an older build can
-# never finish last and overwrite a newer one. Actions are pinned to release commit SHAs.
+# Build and publish the site from main. Started by hand only (Actions -> Deploy to GitHub Pages ->
+# Run workflow, or `gh workflow run pages.yml --ref main`), so a run of merges deploys once, when
+# the owner chooses, instead of once per merge. Deploys run one at a time: a run started while one
+# is running waits for it (only the newest waiting run is kept), so an older build can never finish
+# last and overwrite a newer one. Actions are pinned to release commit SHAs.
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions: {}
@@ -21,6 +21,12 @@ jobs:
     permissions:
       contents: read
     steps:
+      # the Run workflow button lets any branch be picked; only main is ever published
+      - name: Refuse branches other than main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploys run from main only (this run was started on ${GITHUB_REF})."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

@@ -97,7 +97,8 @@ Breaking any of these is a bug, whatever else the change does.
   pull requests need the owner's approval (CODEOWNERS); the owner may approve their own.
 - Never force-push `main`, rewrite its history, or change repository settings, rulesets or
   secrets.
-- Commit, push or open a pull request only when the owner asks for it.
+- Commit, push or open a pull request only when the owner asks for it. The same goes for starting
+  a Pages deploy.
 - Exception, standing permission for this repository: on a pull request you opened, watching its
   CI and committing and pushing fixes to that pull request's branch (failing checks, merge
   conflicts, review comments that ask for a real fix) is always allowed without asking. In Claude
@@ -161,7 +162,7 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
 tools/                       standard-library Python decoders for client file formats
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
-.github/workflows/           ci.yml (pull request checks), pages.yml (deploy on main)
+.github/workflows/           ci.yml (pull request checks), pages.yml (deploy main, started by hand)
 ```
 
 ## How it works
@@ -291,7 +292,9 @@ touches configuration or dependencies.
 | Data pipeline (Python compiles) | `python -m compileall pipeline tools`; every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter paths in tracked files |
 
-Pages deploys run from `main` after a merge, one at a time.
+Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
+Pages" -> Run workflow, or `gh workflow run pages.yml --ref main`); it publishes `main` only and runs
+one at a time.
 
 ## Coding standards
 
