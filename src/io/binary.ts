@@ -55,6 +55,14 @@ export class ByteWriter {
   }
 }
 
+/** Reading ran past the end of the data: what was read was cut short or isn't what it claims to be. */
+export class EndOfData extends Error {
+  constructor() {
+    super('unexpected end of data');
+    this.name = 'EndOfData';
+  }
+}
+
 export class ByteReader {
   private n = 0;
   private dv: DataView;
@@ -68,7 +76,7 @@ export class ByteReader {
     return this.buf.length - this.n;
   }
   u8(): number {
-    if (this.n >= this.buf.length) throw new Error('unexpected end of data');
+    if (this.n >= this.buf.length) throw new EndOfData();
     return this.buf[this.n++]!;
   }
   i8(): number {
@@ -78,17 +86,24 @@ export class ByteReader {
   bool(): boolean {
     return this.u8() !== 0;
   }
+  /** @raise EndOfData when fewer than `k` bytes are left. */
+  private need(k: number): void {
+    if (k < 0 || this.n + k > this.buf.length) throw new EndOfData();
+  }
   i32(): number {
+    this.need(4);
     const v = this.dv.getInt32(this.n, true);
     this.n += 4;
     return v;
   }
   f32(): number {
+    this.need(4);
     const v = this.dv.getFloat32(this.n, true);
     this.n += 4;
     return v;
   }
   bytes(k: number): Uint8Array {
+    this.need(k);
     const b = this.buf.slice(this.n, this.n + k);
     this.n += k;
     return b;

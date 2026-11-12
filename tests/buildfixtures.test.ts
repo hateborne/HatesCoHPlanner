@@ -38,7 +38,7 @@ describe('forum build fixtures import', () => {
     // the chunk is from an older Mids database: four of its power indexes (granted powers) are not
     // in the map the planner ships, and are reported rather than guessed
     expect(warnings.length).toBeLessThanOrEqual(4);
-    expect(warnings.every((w) => w.startsWith('Unknown power index'))).toBe(true);
+    expect(warnings.every((w) => w.startsWith("A power couldn't be identified"))).toBe(true);
     expect(new BuildRules(gd, build).issues()).toEqual([]);
   });
 

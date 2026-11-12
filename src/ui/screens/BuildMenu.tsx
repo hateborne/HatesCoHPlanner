@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
-import type { Build } from '../../engine/build.ts';
+import { ALIGNMENTS, toAlignment, type Build } from '../../engine/build.ts';
 import { fitToPatch } from '../../engine/migrate.ts';
 import type { Issue } from '../../engine/rules.ts';
+import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../../io/buildtxt.ts';
+import { describeImportFailure, readBuildFile } from '../../io/importProblem.ts';
 import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/library.ts';
 import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, parseMidsText } from '../../io/mids.ts';
 import { midsMadeOn } from '../../io/midsPatches.ts';
@@ -36,7 +38,9 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   useEscape(onClose);
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');
+  const [from, setFrom] = useState<string | null>(null); // the file whose text is in the box (a drop), for messages
   const [status, setStatus] = useState<string[]>([]);
+  const [dropping, setDropping] = useState(false); // a file is being dragged over the import box
   const stage = useStage();
   const { phone } = stage;
   const refresh = () => listBuilds().then(setSaved).catch(() => setSaved([]));
@@ -61,6 +65,40 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     a.click();
     URL.revokeObjectURL(a.href);
   };
+  /**
+   * Tell the user why an import failed, in the dialog and on the menu's status line.
+   *
+   * @param e What was thrown (an ImportProblem, or a fault on our side: a generic message).
+   * @param lead How the message starts, naming what was imported.
+   */
+  const fail = async (e: unknown, lead: string) => {
+    const f = describeImportFailure(e, lead);
+    say(...f.text.split('\n'));
+    await useStore.getState().tell({ title: f.title, text: f.text });
+  };
+  /** A file dropped on the import box: its text goes into the box, to check before importing. */
+  const dropFile = (f: File) => {
+    readBuildFile(f).then(
+      (s) => {
+        setText(s);
+        setFrom(f.name);
+        say(`"${f.name}" is in the box. Import pasted text opens it.`);
+      },
+      (e: unknown) => void fail(e, `Couldn't import "${f.name}"`),
+    );
+  };
+  /**
+   * Open an imported build, then say what couldn't be brought over, if anything (the menu closes
+   * when a build opens, so that goes to the dialog).
+   *
+   * @param b The build.
+   * @param gaps What the import couldn't bring over, worded for the user.
+   */
+  const open = async (b: Build, gaps: string[]) => {
+    await useStore.getState().openBuild(b);
+    const name = b.name ? `"${b.name}"` : 'The build';
+    if (gaps.length) void useStore.getState().tell({ title: 'Imported, with gaps', text: `${name} is open, but some of it couldn't be brought over:`, lines: gaps });
+  };
   /** Mids is an untrusted reference: a failed export says so instead of failing silently. */
   const midsFailed = (e: unknown) => say(`Mids export failed: ${e instanceof Error ? e.message : String(e)}`);
   /** Ask before a loaded or imported build replaces the current one (when it has any picks). */
@@ -77,15 +115,18 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
    * the planner carries it; otherwise on the nearest newer patch (else the newest), after the user
    * agrees to the swaps that fit it there (listed before, and kept on the overview after).
    */
-  const doImport = async (src: string) => {
+  const doImport = async (src: string, file?: string) => {
     try {
       const t = src.trim();
       const m = /#b=([A-Za-z0-9_-]+)/.exec(t);
       if (m) {
         const b = await decodeShare(m[1]!);
         if (!(await replaceOk(b.name))) return;
-        await loadBuild(b);
-        say(`Imported "${b.name || 'build'}".`);
+        await open(b, []);
+        return;
+      }
+      if (isBuildTxt(t)) {
+        await importBuildTxt(t);
         return;
       }
       const st = useStore.getState();
@@ -115,14 +156,46 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
         changes = fit.changes;
       }
       if (!(await replaceOk(b.name))) return;
-      await loadBuild(b);
+      await open(b, res.warnings);
       if (changes.length && version) useStore.getState().setPatchNotes({ title: `Changes for ${version.label}`, lines: changes });
       // loading a build closes this menu, so the note on approximate data goes to the notice line
       if (version?.approx) useStore.getState().notify(approxNote(version, tgd, versions?.versions ?? []));
-      say(`Imported "${b.name || 'build'}".`, ...res.warnings.map((w) => `Warning: ${w}`));
     } catch (e) {
-      say(`Could not import: ${e instanceof Error ? e.message : String(e)}`);
+      await fail(e, file ? `Couldn't import "${file}"` : "Couldn't import the pasted text");
     }
+  };
+  /**
+   * Import Homecoming's /build_save file. It is written by the live game, so it opens on the
+   * newest version; the file holds no alignment and no slot levels, so the user picks the
+   * alignment and the build type (Leveling only when the slots could have come from leveling).
+   */
+  const importBuildTxt = async (t: string) => {
+    const st = useStore.getState();
+    const tgd = versions ? await st.dataForVersion(versions.default) : gd;
+    const imp = readBuildTxt(tgd, t);
+    const picked = await st.askChoices({
+      title: 'Import a /build_save file',
+      text: `${imp.summary}.\nThe file doesn't record the alignment, or the level each enhancement slot was added at.`,
+      okLabel: 'Import',
+      choices: [
+        { label: 'Alignment', options: ALIGNMENTS.map((a) => ({ id: a, label: a })), value: 'Hero' },
+        {
+          label: 'Build type',
+          options: [
+            { id: 'respec', label: 'Respec' },
+            { id: 'leveling', label: 'Leveling', ...(imp.leveledBlock ? { block: imp.leveledBlock } : {}) },
+          ],
+          value: 'respec',
+        },
+      ],
+    });
+    if (!picked) {
+      say('Import cancelled.');
+      return;
+    }
+    const b = finishBuildTxt(tgd, imp, { alignment: toAlignment(picked[0]), respec: picked[1] !== 'leveling' });
+    if (!(await replaceOk(b.name))) return;
+    await open(b, imp.warnings);
   };
 
   // Desktop: two columns. Phone: the whole screen, the same two sections stacked in one scrolling column.
@@ -214,19 +287,38 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           <TitleText style={{ ...btn(0, IMPORT_Y), fontSize: 22 }}>IMPORT</TitleText>
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Paste a share link, a Mids share code (|MBD; or |MxDz;), or .mbd JSON"
-            style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: '#000', color: '#cfe8ff', border: '2px solid #4f94ff', borderRadius: 10, padding: 10, fontSize: 14 }}
+            onChange={(e) => {
+              setText(e.target.value);
+              setFrom(null);
+            }}
+            // a dropped file fills the box; dragged text keeps the browser's own handling
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes('Files')) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              setDropping(true);
+            }}
+            onDragLeave={() => setDropping(false)}
+            onDrop={(e) => {
+              setDropping(false);
+              const f = e.dataTransfer.files[0];
+              if (!f) return;
+              e.preventDefault();
+              dropFile(f);
+            }}
+            placeholder="Paste a share link, a Mids share code (|MBD; or |MxDz;), .mbd JSON, or a /build_save file from the game (build.txt). Or drop a file here."
+            style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: dropping ? '#001a3a' : '#000', color: '#cfe8ff', border: `2px ${dropping ? 'dashed #9fd0ff' : 'solid #4f94ff'}`, borderRadius: 10, padding: 10, fontSize: 14 }}
           />
           <div style={btn(0, BOX_Y + BOX_H + 20)}>
-            <button className="info-button" style={{ position: 'static' }} onClick={() => void doImport(text)} disabled={!text.trim()}>
+            <button className="info-button" style={{ position: 'static' }} onClick={() => void doImport(text, from ?? undefined)} disabled={!text.trim()}>
               Import pasted text
             </button>
             <label className="info-button" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 12 }}>
-              Open .mbd file
+              Open .mbd or build.txt
               <input type="file" accept=".mbd,.json,.txt" style={{ display: 'none' }} onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) void f.text().then(doImport);
+                e.target.value = ''; // the same file can be picked again
+                if (f) readBuildFile(f).then((s) => doImport(s, f.name), (err: unknown) => fail(err, `Couldn't import "${f.name}"`));
               }} />
             </label>
           </div>

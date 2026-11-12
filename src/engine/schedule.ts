@@ -73,3 +73,54 @@ export function respecSteps(steps: LevelStep[], end: number): LevelStep[] {
 export function stepSlotLevels(s: LevelStep): number[] {
   return s.slotLevels ? [...new Set(s.slotLevels)] : [s.level];
 }
+
+/**
+ * Give each slot the lowest free slot level at or after the level its power was taken (the
+ * highest free one when none is that high), powers taken earliest first.
+ *
+ * It books a respec's slots, which may go on any power. It also finds a leveled history whenever
+ * one exists (leveledSlotShortfall() is null): a power can use every level above its own, so the
+ * lowest level it can take never strands a power taken later.
+ *
+ * @param free Slot levels on offer, one entry per slot, any order.
+ * @param owned For each slot to place, the 0-based level its power was taken.
+ * @param fallback Level for a slot left over when `free` runs out.
+ * @return One level per slot, in the order of `owned`.
+ */
+export function lowestFreeLevels(free: readonly number[], owned: readonly number[], fallback: number): number[] {
+  const left = [...free].sort((a, b) => a - b);
+  const out: number[] = [];
+  for (const i of owned.map((_, k) => k).sort((a, b) => owned[a]! - owned[b]!)) {
+    let k = left.findIndex((lv) => lv >= owned[i]!);
+    if (k < 0) k = left.length - 1;
+    out[i] = k >= 0 ? left.splice(k, 1)[0]! : fallback;
+  }
+  return out;
+}
+
+/**
+ * Whether a build's bought slots could all have been gained by leveling: each comes from the slot
+ * schedule at or after the level its power was taken.
+ *
+ * Checked from the top level down: the bought slots on powers taken at a level or later have to
+ * fit in the schedule's slots from that level on. The game keeps no level for a slot, so this is
+ * the only way to tell a respec apart, and only one way round: a build that passes may still have
+ * come from a respec.
+ *
+ * @param added Each power's 0-based level and its bought slots (the free first slot not counted).
+ * @param schedule The slot schedule (0-based level of each slot).
+ * @return Null when a leveled history exists; else the highest level that fails, with the bought
+ *   slots from it on (`need`) and the schedule's slots from it on (`have`).
+ */
+export function leveledSlotShortfall(
+  added: readonly { level: number; count: number }[],
+  schedule: readonly number[],
+): { level: number; need: number; have: number } | null {
+  const levels = [...new Set(added.filter((a) => a.count > 0).map((a) => a.level))].sort((a, b) => b - a);
+  for (const t of levels) {
+    const need = added.reduce((n, a) => (a.level >= t ? n + a.count : n), 0);
+    const have = schedule.filter((s) => s >= t).length;
+    if (need > have) return { level: t, need, have };
+  }
+  return null;
+}

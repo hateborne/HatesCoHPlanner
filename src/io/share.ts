@@ -14,6 +14,7 @@
 import { LEGACY_GAME_VERSION } from '../data/versions.ts';
 import { toAlignment, type Build, type Slot } from '../engine/build.ts';
 import { ByteReader, ByteWriter, fromBase64Url, streamBytes, toBase64Url } from './binary.ts';
+import { ImportProblem } from './importProblem.ts';
 
 const VERSION = 1;
 
@@ -90,11 +91,27 @@ export async function encodeShare(b: Build): Promise<string> {
   return toBase64Url(await streamBytes(w.done(), 'deflate', true));
 }
 
-/** Decode a share payload back into a build; dataVersion is the game version the link carries. */
+/**
+ * Decode a share payload back into a build; dataVersion is the game version the link carries.
+ *
+ * @param payload The code after '#b='.
+ * @return The build, not yet checked against its game data (checkBuild).
+ * @raise ImportProblem when the link is damaged, cut short, or from a newer planner.
+ */
 export async function decodeShare(payload: string): Promise<Build> {
+  try {
+    return await readShare(payload);
+  } catch (e) {
+    if (e instanceof ImportProblem) throw e;
+    // bad Base64, a stream that won't inflate or bytes that run out: all a damaged link
+    throw new ImportProblem('the share link is damaged or cut short', 'Copy the whole link again (it ends with the long code after #b=) and paste it.');
+  }
+}
+
+async function readShare(payload: string): Promise<Build> {
   const r = new ByteReader(await streamBytes(fromBase64Url(payload), 'deflate', false));
   const v = r.u8();
-  if (v !== VERSION) throw new Error(`unsupported share version ${v}`);
+  if (v !== VERSION) throw new ImportProblem('the share link was made by a newer version of the planner', 'Reload the page to get the newest version, then try again.');
   const at = r.varint();
   const origin = r.varint();
   const alignment = toAlignment(SHARE_ALIGN[r.varint()]);
