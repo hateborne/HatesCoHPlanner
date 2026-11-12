@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -83,6 +84,47 @@ DATA_OUT = REPO / "public" / "data"
 ASSETS_OUT = REPO / "public" / "assets"
 REPORT = REPO / "pipeline" / "report.md"
 FONTS_DIR = REPO / "pipeline" / "inputs" / "fonts"  # vendored game fonts (committed)
+
+
+# Names Windows reserves for devices: a folder with one of these names can't be made or is a device.
+_RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
+
+
+def valid_version_id(v: str) -> bool:
+    """Whether a game version id is safe as a data folder name on every system.
+
+    Lower-case letters, digits, "-" and "_" only, starting with a letter or digit, at most 32
+    characters, and not a Windows device name. Lower case only, because Windows folders ignore
+    case: "I28P4" would write into "i28p4" while versions.json treated them as two versions. No dots
+    either: Windows drops a trailing one, so "i28p4." would also land in "i28p4".
+
+    @param v The id.
+    @return True when it may name a folder under public/data.
+    """
+    return bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", v)) and v not in _RESERVED
+
+
+def scrub(text: str) -> str:
+    """Replace machine paths in text bound for a committed file (a report) with placeholders.
+
+    The configured inputs become <COH_CLIENT>, <COH_SOURCE>, <COH_MIDS>, the repository <repo> and
+    the user's home folder <home>; any other drive-letter, network-share or home-folder path left
+    over (from an exception message, say) becomes <path>.
+
+    @param text The text.
+    @return The text without machine paths.
+    """
+    named = [(CLIENT_DIR, "<COH_CLIENT>"), (SOURCE_ROOT, "<COH_SOURCE>"), (MIDS_DATA, "<COH_MIDS>"),
+             (REPO, "<repo>"), (Path.home(), "<home>")]
+    for p, tag in sorted(((p, t) for p, t in named if p is not None and str(p).strip("<")),
+                         key=lambda pt: -len(str(pt[0]))):
+        for form in {str(p), p.as_posix()}:
+            if len(form) > 3:  # never a bare drive root
+                text = re.sub(re.escape(form), tag, text, flags=re.IGNORECASE)
+    stop = r"[^\s'\"<>|,;)\]]"
+    text = re.sub(rf"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{stop}*", "<path>", text)
+    text = re.sub(rf"\\\\{stop}+", "<path>", text)
+    return re.sub(rf"(?<![A-Za-z0-9.])/(?:home|Users)/{stop}+", "<path>", text)
 
 
 def mids_available() -> bool:

@@ -49,6 +49,9 @@ const respecLevel = (raw: string) => {
  */
 export function Setup() {
   const { gd, build, startBuild, toOverview, versions, selectVersion } = useStore();
+  // Back returns to a build only when there is one to see: a build left on its first power screen
+  // has no picks, and its overview would be empty with nothing to continue
+  const hasPicks = !!build?.picks.some((p) => p);
   const [at, setAt] = useState<number | undefined>(build?.at);
   const [pri, setPri] = useState<number | undefined>(build?.primary);
   const [sec, setSec] = useState<number | undefined>(build?.secondary);
@@ -228,7 +231,7 @@ export function Setup() {
           <div style={{ position: 'relative', height: end + 20 }}>{bars}</div>
         </GameScroll>
         <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an origin and alignment, an archetype and its primary and secondary sets, then Finish.'} />
-        <NextButton skin={skin} dir="left" text="Back" locked={!build} onClick={toOverview} />
+        <NextButton skin={skin} dir="left" text="Back" locked={!hasPicks} onClick={toOverview} />
         <NextButton skin={skin} dir="right" text="Finish" locked={!ready} glow={ready} onClick={finish} />
       </>
     );
@@ -312,7 +315,7 @@ export function Setup() {
         </GameScroll>
       ))}
       <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an origin and an alignment, an archetype and its primary and secondary power sets, then press Finish to pick your level 1 powers.'} />
-      <NextButton skin={skin} dir="left" text="Back" locked={!build} onClick={toOverview} />
+      <NextButton skin={skin} dir="left" text="Back" locked={!hasPicks} onClick={toOverview} />
       <NextButton skin={skin} dir="right" text="Finish" locked={!ready} glow={ready} onClick={finish} />
     </>
   );

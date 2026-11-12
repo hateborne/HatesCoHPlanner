@@ -503,7 +503,13 @@ export function Overview({ skin }: { skin: Skin }) {
         <LevelOrb
           key={s.level}
           level={s.level}
-          onClick={() => (isPick ? editPick(s.picks[0]!) : editSlots(s.level))}
+          onClick={() => {
+            if (!isPick) return editSlots(s.level);
+            // the bar that flashes "Remove Enhancements First!" may be scrolled out of view: say it too
+            const k = s.picks[0]!;
+            if (build.picks[k] && pickHoldsEnhancements(gd, build, k)) useStore.getState().notify(`Remove the enhancements from ${gd.power(build.picks[k].power).dn} first`);
+            editPick(k);
+          }}
           title={orbTitle(s)}
           className="abs body-text"
           style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? '#ffd200' : '#4f94ff'}`, background: filled ? (isPick ? '#6b5400' : '#0b3d9a') : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}

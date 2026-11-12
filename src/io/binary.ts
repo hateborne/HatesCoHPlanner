@@ -124,11 +124,53 @@ export class ByteReader {
   }
 }
 
-/** Run bytes through a CompressionStream / DecompressionStream format. */
-export async function streamBytes(data: Uint8Array, format: 'deflate' | 'deflate-raw', compress: boolean): Promise<Uint8Array> {
+// The most a decompressed build may hold. A share link's or a Mids code's data is a few KB; a
+// stream that inflates past this is damaged or built to exhaust the tab's memory.
+export const MAX_INFLATED = 1 << 20;
+
+/** Decompressed data larger than the caller's limit (see MAX_INFLATED). */
+export class TooLarge extends Error {}
+
+/**
+ * Run bytes through a CompressionStream / DecompressionStream format.
+ *
+ * Decompression stops as soon as the output passes `limit`, so a small stream that would inflate
+ * to gigabytes never gets the chance to.
+ *
+ * @param data The input bytes.
+ * @param format The zlib format.
+ * @param compress Compress (true) or decompress (false).
+ * @param limit The most bytes the output may hold (default: MAX_INFLATED when decompressing).
+ * @return The output bytes.
+ * @raise TooLarge when the output passes `limit`.
+ */
+export async function streamBytes(data: Uint8Array, format: 'deflate' | 'deflate-raw', compress: boolean, limit = compress ? Infinity : MAX_INFLATED): Promise<Uint8Array> {
   const stream = compress ? new CompressionStream(format) : new DecompressionStream(format);
-  const out = new Blob([data]).stream().pipeThrough(stream);
-  return new Uint8Array(await new Response(out).arrayBuffer());
+  const reader = new Blob([data]).stream().pipeThrough(stream).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      void reader.cancel().catch(() => undefined);
+      throw new TooLarge(`decompressed data passed ${limit} bytes`);
+    }
+    chunks.push(value);
+  }
+  return concatBytes(chunks, total);
+}
+
+/** @return The chunks joined into one array of `total` bytes. */
+export function concatBytes(chunks: Uint8Array[], total = chunks.reduce((n, c) => n + c.length, 0)): Uint8Array {
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
 }
 
 export function toBase64(b: Uint8Array): string {

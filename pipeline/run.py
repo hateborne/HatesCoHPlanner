@@ -165,6 +165,10 @@ def main() -> int:
                     help="make this version the default in versions.json")
     ap.add_argument("--frames-from", metavar="VERSION",
                     help="borrow enhancement frames from this version when the client has none")
+    ap.add_argument("--overwrite-published", action="store_true",
+                    help="replace a version folder made from a different client (normally refused)")
+    ap.add_argument("--refresh-mids-map", action="store_true",
+                    help="replace an existing version folder's mids-map.json (normally kept)")
     args = ap.parse_args()
 
     dv, dl = default_game_version()
@@ -174,8 +178,8 @@ def main() -> int:
         print("error: no game version: pass --game-version or set homecoming.gameVersion in "
               "pipeline/patch-watch.json")
         return 2
-    if not all(c.isalnum() or c in "-_." for c in version) or version.startswith("."):
-        print(f"error: invalid game version id {version!r}")
+    if not config.valid_version_id(version):
+        print(f"error: invalid game version id {version!r} (lower-case letters, digits, '-' and '_')")
         return 2
 
     config.preflight()
@@ -198,11 +202,12 @@ def main() -> int:
     if partial:
         bad = ", ".join(k for k, v in data.health.items() if v["partial"])
         msg = f"decode health gate FAILED: {partial} partial records ({bad}); nothing was written"
-        config.atomic_write(report_path, render_failure(data, msg))
+        config.atomic_write(report_path, config.scrub(render_failure(data, msg)))
         print(f"error: {msg}")
         return 1
 
-    exp = export.write(data, version, args.frames_from)
+    exp = export.write(data, version, args.frames_from, overwrite_published=args.overwrite_published,
+                       refresh_mids_map=args.refresh_mids_map)
     warnings = list(exp["warnings"])
     root = exp["root"]
     assets = None
@@ -220,7 +225,8 @@ def main() -> int:
         else:
             warnings.append(f"WARNING: Mids validation skipped (no MidsReborn data at {config.MIDS_DATA})")
     default = export.write_indexes(version, label, exp["manifest"]["hash"], args.make_default)
-    text = render_report(data, exp, assets, val, warnings)
+    # the report is committed: no machine paths in it (a warning can quote one)
+    text = config.scrub(render_report(data, exp, assets, val, warnings))
     config.atomic_write(report_path, text)
     print(f"wrote {report_path} (version {version}, hash {exp['manifest']['hash']}, default {default})")
     for w in warnings:

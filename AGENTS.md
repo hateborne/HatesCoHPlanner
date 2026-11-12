@@ -136,7 +136,8 @@ src/
     buildtxt.ts              Homecoming's /build_save file (build.txt) import
     importProblem.ts         import failures in plain words (ImportProblem), file reading
     library.ts               builds saved in the browser (IndexedDB)
-    binary.ts                byte reader / writer helpers
+    binary.ts                byte reader / writer helpers, size-capped decompression
+    fileName.ts              safe names for downloaded files
   state/store.ts             zustand store: data, current build, level-up flow, dialogs
   ui/
     screens/                 Setup (New Build), ChooseNewPower, ChoosePoolSet,
@@ -157,6 +158,7 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
   config.py                  inputs, preflight checks, atomic writes
   ids.json                   stable IDs (append-only)
+  check_ids.py               ids.json well formed and only appended to (run by CI)
   patch-watch.json           newest patch-notes post seen; game version id and label
   inputs/fonts/              vendored game fonts (never change)
   report.md                  validation report of the last run
@@ -178,9 +180,17 @@ folder holds `core.json`, `powersets.json`, `powers.json`, `boosts.json` and `mi
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
 `pipeline/report.md`. Safety rails:
 
-- It refuses to write anything if any record decodes partially.
-- It saves `ids.json` first.
-- It refuses to shrink the asset set.
+- It refuses to write anything if any record decodes partially, or if a bin's records don't fill
+  it exactly (a wrong record count).
+- It refuses to rewrite a version folder made from a different client (other exe or pigg hashes)
+  unless given `--overwrite-published`: a run that forgot `--game-version` after a patch, or one
+  pointed at another client copy, stops before writing anything.
+- It keeps an existing folder's `mids-map.json` unless given `--refresh-mids-map` (old Mids codes
+  depend on it, and it isn't part of the version hash).
+- It refuses version ids other than lower-case letters, digits, `-` and `_`.
+- It saves `ids.json` first, and refuses a damaged one (an id used twice, a mixed-case key).
+- It refuses to shrink the asset set, and writes images atomically under names it checks.
+- Reports are committed, so machine paths in them are replaced with placeholders.
 
 Re-running on an unchanged client changes no files. After a patch:
 
@@ -239,6 +249,16 @@ they can do about it, in plain words. Anything else (game data that won't load, 
 calm generic message, with the details in the browser console. What an import couldn't bring over
 (a power or enhancement the data lacks) is listed after the build opens ("Imported, with gaps").
 New import code throws `ImportProblem` for every failure the user can fix.
+
+**Import limits.** Everything imported comes from strangers, so no input may make the tab do
+unbounded work. Decompression stops at a ceiling (`MAX_INFLATED` in `src/io/binary.ts` for share
+links and `|MxDz;` codes, the 2 MB build-file size for `|MBD;` Brotli data), counts past any real
+build's are refused (picks, slots, granted powers, Mids power entries and sets), pasted text and
+files over 2 MB are refused, and a `.mbd` whose fields have the wrong types is reported as damaged
+(`isMbd`). Downloaded file names are cleaned (`src/io/fileName.ts`). `tests/importlimits.test.ts`
+covers these; new import code keeps to them. The published page also carries a
+Content-Security-Policy (`vite.config.ts`, built pages only): everything is loaded from the site
+itself, so a new outside resource needs the policy changed with it.
 
 **Engine.** `BuildRules` (`src/engine/rules.ts`) answers every question the screens ask: what can
 be picked at a level, what is auto-granted, where slots can go, what is wrong with the build.
@@ -312,10 +332,10 @@ touches configuration or dependencies.
 
 | Check | Runs |
 |---|---|
-| Web app (lint, types, tests, build) | `npm ci`, lint, typecheck, test, build |
+| Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; every JSON file under `public/data` and in `pipeline/` parses |
-| Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter paths in tracked files |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, or `gh workflow run pages.yml --ref main`); it publishes `main` only and runs

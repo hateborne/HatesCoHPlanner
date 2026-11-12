@@ -16,6 +16,8 @@ blob-report/
 # Python pipeline scratch and this machine's input paths
 pipeline/.cache/
 pipeline/paths.local.json
+# atomic_write's temp file, left behind only if a run is killed mid-write
+*.tmp
 __pycache__/
 *.pyc
 .venv/
