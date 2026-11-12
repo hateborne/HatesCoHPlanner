@@ -89,7 +89,13 @@ export function serverFromPath(pathname: string, base: string): NamedServer {
  * @return As serverFromPath; neither for a bare code or a link on another site.
  */
 export function serverInLink(text: string, base: string): NamedServer {
-  const before = (/(\S*)#b=/.exec(text)?.[1] ?? '').replace(/^[<("'[]+/, '');
+  const at = text.indexOf('#b=');
+  if (at < 0) return {};
+  // the link runs back from its code to the whitespace before it; a plain scan, since a regex
+  // like /(\S*)#b=/ backtracks over long pasted text (2 MB of it froze the tab for minutes)
+  let start = at;
+  while (start > 0 && !/\s/.test(text.charAt(start - 1))) start--;
+  const before = text.slice(start, at).replace(/^[<("'[]+/, '');
   let path = '';
   try {
     path = new URL(before).pathname;
