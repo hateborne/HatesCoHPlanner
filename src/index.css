@@ -328,17 +328,6 @@ button {
   }
 }
 
-@keyframes slotflash {
-  0% {
-    transform: scale(1.8);
-    filter: brightness(3) drop-shadow(0 0 12px #9cf);
-  }
-  100% {
-    transform: scale(1);
-    filter: none;
-  }
-}
-
 .notice {
   color: #8fa1b8;
   font-size: 13px;
