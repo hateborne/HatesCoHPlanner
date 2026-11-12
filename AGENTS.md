@@ -230,7 +230,8 @@ and archetype caps. The engine is pure and synchronous; keep React and the DOM o
 
 It is persisted per browser tab (sessionStorage, with a localStorage fallback for new tabs). It
 is mirrored into the address bar as `#b=<share code>` with `history.replaceState`, so a reload or
-a copied address brings back exactly that build.
+a copied address brings back exactly that build. The tab title names a named build
+("HCP: <name>", `src/state/tabTitle.ts`), so a bookmark carries the name too.
 
 **Store and screens.** `src/state/store.ts` (zustand) holds the game data, the build and the
 level-up flow. The flow is a wizard from level 1 to 50, or one level reopened from the overview

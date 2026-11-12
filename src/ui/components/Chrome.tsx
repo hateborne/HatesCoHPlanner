@@ -4,7 +4,7 @@
  * text at the uniform screen scale S.
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { FONTS, getDevPx, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
+import { FONTS, getDevPx, ITALIC_DEG, REF_SCREEN_SCALE, S, snap, SY, textWidth, vs, vx, vy } from '../skin/metrics.ts';
 import { CLR_HIGH, CLR_SHADOW, icon as iconUrl, ui, type Skin } from '../skin/skin.ts';
 import { longPress, pressKeys, touchPress } from '../press.ts';
 import { play } from '../sound.ts';
@@ -12,29 +12,58 @@ import { GameText, useFontsReady } from './GameText.tsx';
 import { PHONE_NEXT_SCALE, PHONE_NEXT_X, phoneDesc, phoneGeom } from './Phone.tsx';
 import { Sprite } from './Sprite.tsx';
 import { smf } from '../smf.tsx';
+import { wrapTitle } from '../titleLines.ts';
 import { useStage } from './Stage.tsx';
 
 const TITLE_SCALE = 1.5;
 // phones: the title bar ends this far from the right edge, clear of the menu button
 const PHONE_TITLE_END = 72;
 
+/** Renaming from the title bar: clicking its dot or the bar opens a text field in the title's place. */
+export interface TitleEdit {
+  value: string; // the name as typed (the bar shows it in capitals)
+  maxLength: number;
+  label: string; // hover text and accessible name of the clickable dot and title
+  onCommit: (value: string) => void; // Enter or leaving the field; Escape keeps the old name
+}
+
 /**
  * drawMenuTitle(10*sx, 30*sy, s): glowing dot, black bar with pipes and right cap that slides
  * open by 30s per frame, and the title_18 x 1.5 title starting on top of the dot.
  *
+ * Planner additions for a build's name on the overview: on desktop, a title whose bar would reach
+ * `limit` wraps onto two lines at half size, which fit the bar's height; with `edit`, the dot and
+ * the bar open a text field to rename the build in place.
+ *
  * @param props.reserve Phones: stage px kept free at the right besides the menu button (the
  *   overview's level-log button).
+ * @param props.limit Desktop: stage x the bar must end before (the overview's Origin / Alignment
+ *   button); undefined lets it run as wide as its title.
+ * @param props.edit Makes the title renamable in place.
  */
-export function TitleBar({ skin, text, scale: scaleIn, reserve = 0 }: { skin: Skin; text: string; scale?: number; reserve?: number }) {
+export function TitleBar({ skin, text, scale: scaleIn, reserve = 0, limit, edit }: { skin: Skin; text: string; scale?: number; reserve?: number; limit?: number; edit?: TitleEdit }) {
   useFontsReady();
   const stage = useStage();
+  const [draft, setDraft] = useState<string | null>(null); // the field's text while renaming
   const x = stage.phone ? 10 : vx(10);
+  const f = FONTS.title_18;
   // phones: shrunk to end before the menu button at the top right (and `reserve` more stage px)
-  const fitPhone = () => (stage.w - PHONE_TITLE_END - reserve - x) / (textWidth(FONTS.title_18, FONTS.title_18.size * TITLE_SCALE, text) + 45);
+  const phoneEnd = stage.w - PHONE_TITLE_END - reserve;
+  const fitPhone = () => (phoneEnd - x) / (textWidth(f, f.size * TITLE_SCALE, text) + 45);
   const s = scaleIn ?? (stage.phone ? Math.min(S * 0.8, fitPhone()) : S);
   const y = stage.phone ? phoneGeom(stage).titleY : vy(30);
-  const strwd = textWidth(FONTS.title_18, FONTS.title_18.size * TITLE_SCALE * s, text);
-  const wd = strwd + 45 * s;
+  const em = f.size * TITLE_SCALE * s;
+  const end = stage.phone ? phoneEnd : limit;
+  // desktop: past `limit`, two lines at half size (2 x em/2 fits the bar's 30s height); the top
+  // line keeps the words that fit the single line, the rest wraps under it
+  const avail = !stage.phone && end !== undefined ? end - x - 45 * s : Infinity;
+  const oneWd = textWidth(f, em, text);
+  let lines = oneWd > avail ? wrapTitle(text, (t) => textWidth(f, em, t) <= avail) : null;
+  // only a name of mostly wide letters leaves a second line too long: then both lines fill up
+  if (lines && textWidth(f, em / 2, lines[1]) > avail) lines = wrapTitle(text, (t) => textWidth(f, em / 2, t) <= avail);
+  const strwd = lines ? Math.max(textWidth(f, em / 2, lines[0]), textWidth(f, em / 2, lines[1])) : oneWd;
+  // renaming opens the bar to its full width, so the field has room
+  const wd = draft !== null && end !== undefined ? Math.max(strwd + 45 * s, end - x) : strwd + 45 * s;
   const [acwd, setAcwd] = useState(45 * s);
   // the bar slides open for a new title; a resize (which re-measures the title) just resizes it
   const opened = useRef<string | null>(null);
@@ -71,11 +100,106 @@ export function TitleBar({ skin, text, scale: scaleIn, reserve = 0 }: { skin: Sk
           <Sprite src={ui(`${dir}/titlebar_dot`, skin)} x={x} y={y - 23 * s} w={47 * s} h={47 * s} z={4} />
         </>
       ) : null}
-      {/* text clipped to (x + 13.5s, acwd - 72s) while the bar animates open */}
-      <div className="abs" style={{ left: x + 13.5 * s, top: y - 40 * s, width: acwd < wd ? Math.max(0, acwd - 72 * s) : strwd + 40, height: 80 * s, overflow: 'hidden', zIndex: 6 }}>
-        <GameText font="title_18" scale={TITLE_SCALE * s} x={0} y={40 * s + 13.5 * s} colors={colors} text={text} />
-      </div>
+      {draft !== null && edit ? (
+        <TitleField
+          left={x + 13.5 * s}
+          baseline={y + 13.5 * s}
+          width={Math.max(0, x + wd - 22 * s - (x + 13.5 * s))}
+          em={em}
+          color={colors[0]}
+          edit={edit}
+          draft={draft}
+          setDraft={setDraft}
+        />
+      ) : (
+        <>
+          {/* text clipped to (x + 13.5s, acwd - 72s) while the bar animates open */}
+          <div className="abs" style={{ left: x + 13.5 * s, top: y - 40 * s, width: acwd < wd ? Math.max(0, acwd - 72 * s) : strwd + 40, height: 80 * s, overflow: 'hidden', zIndex: 6, pointerEvents: 'none' }}>
+            {lines ? (
+              // two half-size lines centred on the bar, one em/2 apart
+              lines.map((ln, i) => (
+                <GameText key={i} font="title_18" scale={(TITLE_SCALE * s) / 2} x={0} y={40 * s + (f.cap * em) / 4 + (i - 0.5) * (em / 2)} colors={colors} text={ln} />
+              ))
+            ) : (
+              <GameText font="title_18" scale={TITLE_SCALE * s} x={0} y={40 * s + 13.5 * s} colors={colors} text={text} />
+            )}
+          </div>
+          {edit ? (
+            // the dot and the bar rename (Praetorian titles have no dot: the bar alone does)
+            <div className="abs" title={edit.label} onClick={() => setDraft(edit.value)} {...pressKeys(() => setDraft(edit.value), undefined, edit.label)} style={{ left: x, top: y - 23 * s, width: Math.max(47 * s, acwd), height: 46 * s, cursor: 'pointer', zIndex: 7 }} />
+          ) : null}
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * The title bar's rename field: the title's font and size over the open bar. Enter or leaving it
+ * keeps the new name, Escape the old one.
+ *
+ * @param props.left Stage x the text starts at (where the title's text starts).
+ * @param props.baseline Stage y of the title's baseline.
+ * @param props.width Stage px the field may take.
+ * @param props.em The title's font size in stage px.
+ * @param props.color Text colour (the title's top gradient colour).
+ */
+function TitleField({ left, baseline, width, em, color, edit, draft, setDraft }: { left: number; baseline: number; width: number; em: number; color: string; edit: TitleEdit; draft: string; setDraft: (v: string | null) => void }) {
+  const f = FONTS.title_18;
+  const d = useStage().devPx;
+  const done = useRef(false); // Enter / Escape already ended it (the blur that follows must not commit again)
+  const finish = (keep: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    if (keep && draft.trim() !== edit.value.trim()) edit.onCommit(draft.trim());
+    setDraft(null);
+  };
+  // the same line box as GameText, so the text stays where the title was
+  const baseOff = (em - (f.ascent + f.descent) * em) / 2 + f.ascent * em;
+  return (
+    <input
+      className="abs"
+      autoFocus
+      value={draft}
+      maxLength={edit.maxLength}
+      aria-label={edit.label}
+      spellCheck={false}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          finish(true);
+        } else if (e.key === 'Escape') {
+          // ends here: not a popup for the Escape stack to close
+          e.preventDefault();
+          e.stopPropagation();
+          finish(false);
+        }
+      }}
+      style={{
+        left,
+        top: baseline - baseOff,
+        width,
+        height: em,
+        lineHeight: `${em}px`,
+        padding: 0,
+        border: 'none',
+        outline: 'none',
+        background: 'transparent',
+        color,
+        caretColor: color,
+        fontFamily: f.family,
+        fontSize: em,
+        letterSpacing: d,
+        textTransform: 'uppercase',
+        textShadow: `${d}px 0 0 #000, -${d}px 0 0 #000, 0 ${d}px 0 #000, 0 -${d}px 0 #000`,
+        transform: `skewX(-${ITALIC_DEG}deg)`,
+        transformOrigin: `0 ${baseOff}px`,
+        zIndex: 7,
+      }}
+    />
   );
 }
 
