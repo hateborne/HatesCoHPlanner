@@ -16,8 +16,12 @@ import { useEscape } from '../escape.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TitleText } from '../components/GameText.tsx';
+import { safeFileName } from '../../io/fileName.ts';
 
 const btn = (left: number, top: number) => ({ left, top, position: 'absolute' as const });
+
+// the most gaps the "Imported, with gaps" list shows before "... and N more"
+const MAX_GAP_LINES = 40;
 
 /** @return An issue as a line for the patch-move dialog ("Knockout Blow: Available at level 24"). */
 function issueLine(gd: GameData, b: Build, i: Issue): string {
@@ -62,7 +66,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   const download = (name: string, content: string) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
-    a.download = name;
+    a.download = safeFileName(name);
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -98,7 +102,29 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   const open = async (b: Build, gaps: string[]) => {
     await useStore.getState().openBuild(b);
     const name = b.name ? `"${b.name}"` : 'The build';
-    if (gaps.length) void useStore.getState().tell({ title: 'Imported, with gaps', text: `${name} is open, but some of it couldn't be brought over:`, lines: gaps });
+    // a damaged file can report thousands: list the first ones and how many more
+    const lines = gaps.length > MAX_GAP_LINES ? [...gaps.slice(0, MAX_GAP_LINES), `... and ${gaps.length - MAX_GAP_LINES} more`] : gaps;
+    if (gaps.length) void useStore.getState().tell({ title: 'Imported, with gaps', text: `${name} is open, but some of it couldn't be brought over:`, lines });
+  };
+  /**
+   * The browser refused to save or delete (a private window, storage full or switched off): say so
+   * instead of leaving the user to think the build was kept.
+   */
+  const storageFailed = (e: unknown, what: 'saved' | 'deleted') => {
+    console.error(`saved builds: ${what}`, e);
+    say(what === 'saved'
+      ? "Couldn't save in this browser (it may be a private window, or out of space). Use Copy share link or Download Mids .mbd to keep the build."
+      : "Couldn't delete that build: this browser's storage refused.");
+  };
+  /**
+   * The open build's own game data and Mids map, for exports: New Build's version picker may be
+   * showing another version, and the build must be written out against the data it was made on.
+   */
+  const buildData = async () => {
+    const st = useStore.getState();
+    const b = st.build!;
+    const bgd = st.gd && st.gd.core.manifest.dataVersion === b.dataVersion ? st.gd : await st.dataForVersion(b.dataVersion);
+    return { bgd, map: await loadMidsMap(bgd) };
   };
   /** Mids is an untrusted reference: a failed export says so instead of failing silently. */
   const midsFailed = (e: unknown) => say(`Mids export failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -230,7 +256,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           {build ? (
             <>
               <div style={btn(0, row(0))}>
-                <button className="info-button" style={{ position: 'static' }} onClick={() => void saveBuild(build).then(() => { void refresh(); say('Saved in this browser.'); })}>
+                <button className="info-button" style={{ position: 'static' }} onClick={() => void saveBuild(build).then(() => { void refresh(); say('Saved in this browser.'); }, (e: unknown) => storageFailed(e, 'saved'))}>
                   Save in this browser
                 </button>
               </div>
@@ -244,8 +270,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   className="info-button"
                   style={{ position: 'static' }}
                   onClick={() =>
-                    void loadMidsMap(gd).then((map) => {
-                      const { mbd, warnings } = exportMbd(gd, map, build);
+                    void buildData().then(({ bgd, map }) => {
+                      const { mbd, warnings } = exportMbd(bgd, map, build);
                       download(`${build.name || 'build'}.mbd`, JSON.stringify(mbd, null, 2));
                       say('Mids .mbd downloaded.', ...warnings.map((w) => `Warning: ${w}`));
                     }).catch(midsFailed)
@@ -259,8 +285,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   className="info-button"
                   style={{ position: 'static' }}
                   onClick={() =>
-                    void loadMidsMap(gd).then(async (map) => {
-                      const { mbd, warnings } = exportMbd(gd, map, build);
+                    void buildData().then(async ({ bgd, map }) => {
+                      const { mbd, warnings } = exportMbd(bgd, map, build);
                       await copy(await mbdToChunk(mbd), 'Mids share code');
                       if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
                     }).catch(midsFailed)
@@ -274,8 +300,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   className="info-button"
                   style={{ position: 'static' }}
                   onClick={() =>
-                    void loadMidsMap(gd).then(async (map) => {
-                      const { text: code, warnings } = await buildToMxDz(gd, map, build);
+                    void buildData().then(async ({ bgd, map }) => {
+                      const { text: code, warnings } = await buildToMxDz(bgd, map, build);
                       await copy(code, 'Legacy Mids (MxDz) code');
                       if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
                     }).catch(midsFailed)
@@ -340,7 +366,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                 <button className="info-button" style={listBtn} onClick={() => void replaceOk(s.name).then(async (ok) => { if (ok) { await loadBuild(s.build); say(`Loaded "${s.name}".`); } })}>
                   Load
                 </button>
-                <button className="info-button" style={listBtn} onClick={() => void deleteBuild(s.id!).then(refresh)}>
+                <button className="info-button" style={listBtn} onClick={() => void deleteBuild(s.id!).then(refresh, (e: unknown) => storageFailed(e, 'deleted'))}>
                   Delete
                 </button>
               </div>

@@ -9,6 +9,8 @@ Layout:
 from __future__ import annotations
 
 import json
+import os
+import re
 import zlib
 
 from pipeline import config
@@ -93,16 +95,33 @@ def export_sounds() -> tuple[list[str], list[str]]:
     return sorted(set(got)), miss
 
 
+# an asset's path under public/assets, built from game data names: plain names and folders only
+SAFE_ASSET = re.compile(r"[a-z0-9_'][a-z0-9_.\-' ]*(/[a-z0-9_'][a-z0-9_.\-' ]*)*")
+
+
 def _write(img, rel_out: str, webp: bool = False) -> str:
-    out = config.ASSETS_OUT / rel_out
+    """Save an image under public/assets atomically (temp file, then rename).
+
+    A run killed mid-save leaves no truncated image behind for add_missing_icons() to take as
+    present, and a name from the game data that would climb out of public/assets ("..", a drive or
+    an absolute path) is refused.
+
+    @param img The PIL image.
+    @param rel_out Its path under public/assets, without extension.
+    @param webp Save as WebP (backgrounds) instead of PNG.
+    @return The written path under public/assets.
+    @raise ValueError For an unsafe name.
+    """
+    if not SAFE_ASSET.fullmatch(rel_out) or ".." in rel_out.split("/"):
+        raise ValueError(f"refusing an unsafe asset name {rel_out!r}")
+    out = (config.ASSETS_OUT / rel_out).with_suffix(".webp" if webp else ".png")
+    config.out_path(out)
+    tmp = out.with_name(out.name + ".tmp")
     if webp:
-        out = out.with_suffix(".webp")
-        config.out_path(out)
-        img.save(out, "WEBP", quality=88, method=6)
+        img.save(tmp, "WEBP", quality=88, method=6)
     else:
-        out = out.with_suffix(".png")
-        config.out_path(out)
-        img.save(out, "PNG", optimize=True)
+        img.save(tmp, "PNG", optimize=True)
+    os.replace(tmp, out)
     return out.relative_to(config.ASSETS_OUT).as_posix()
 
 

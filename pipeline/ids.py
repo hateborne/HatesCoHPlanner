@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from pipeline import config
+from pipeline import check_ids, config
 
 REGISTRY = config.REPO / "pipeline" / "ids.json"
 KINDS = ("power", "powerset", "boostset", "archetype", "origin")
@@ -26,6 +26,12 @@ class IdRegistry:
         self.maps: dict[str, dict[str, int]] = {k: {} for k in KINDS}
         if REGISTRY.exists():
             data = json.loads(REGISTRY.read_text(encoding="utf-8"))
+            # a hand-edited or badly merged registry (an id used twice, a mixed-case key that
+            # would never match) must stop the run before it hands out ids from it
+            bad = check_ids.problems(data) if any(data.get(k) for k in KINDS) else []
+            if bad:
+                raise SystemExit("error: pipeline/ids.json is damaged -- " + "; ".join(bad[:5])
+                                 + ". Restore it from version control.")
             for k in KINDS:
                 self.maps[k] = {n: int(i) for n, i in data.get(k, {}).items()}
         if not any(self.maps.values()) and data_exists():

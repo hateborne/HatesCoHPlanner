@@ -7,7 +7,7 @@ import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
 import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine/actions.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
-import { computeTotals, defaultOn } from '../../engine/totals.ts';
+import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleEdit } from '../components/Chrome.tsx';
@@ -289,6 +289,13 @@ export function Overview({ skin }: { skin: Skin }) {
   const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
   const groupsOf = useMemo(() => (rules ? rules.toggleGroups() : new Map<number, Power[]>()), [rules]);
+  // each power's default on/off and the toggles that switch each other off (as computeTotals
+  // works them out, over the whole build)
+  const onState = useMemo(() => {
+    if (!gd || !build || !rules) return { defaults: new Map<string, boolean>(), groupOf: new Map<string, BuildEntry[]>() };
+    const counted = rules.entries();
+    return { defaults: defaultsOf(gd, counted), groupOf: new Map(exclusiveGroups(counted).flatMap((g) => g.map((e) => [e.key, g] as const))) };
+  }, [gd, build, rules]);
 
   // last pointer position in stage px, for placing the hover box
   const mouse = usePointer();
@@ -338,14 +345,22 @@ export function Overview({ skin }: { skin: Skin }) {
         const y = primY;
         const members = groupsOf.get(e.power.id);
         const chosen = members?.find((m) => build.granted[m.id]?.on ?? defaultOn(m));
-        const on = members ? !!chosen : (e.on ?? defaultOn(e.power));
+        const dflt = onState.defaults.get(e.key) ?? defaultOn(e.power);
+        const on = members ? !!chosen : (e.on ?? dflt);
         const flagged = issues.filter((i) => i.key === e.key);
         // a group's drop-down replaces the switch and takes the bar's right end
         const SELECT_W = 150;
         const barW = members ? g.barW + g.sw + 4 - SELECT_W - 8 : g.barW;
         // phones: a long press shows the power's tooltip (with the rule it breaks, if any)
         const longBar = g.phone ? (pt: { x: number; y: number }) => useHover.setState({ press: { kind: 'power', entry: e, notes: flagged.map((f) => f.message), ...pt } }) : undefined;
-        const toggleOn = () => setBuild(setOn(build, e.key, !on === defaultOn(e.power) ? undefined : !on));
+        const toggleOn = () => {
+          let nb = setOn(build, e.key, !on === dflt ? undefined : !on);
+          // as in the game, switching on one of toggles that exclude each other switches the rest off
+          if (!on) {
+            for (const o of onState.groupOf.get(e.key) ?? []) if (o.key !== e.key) nb = setOn(nb, o.key, onState.defaults.get(o.key) ? false : undefined);
+          }
+          setBuild(nb);
+        };
         if (e.source === 'pick') {
           // picked at the hovered orb's level: the bar lit half-white (LockFlash's shape)
           items.push(<OrbLight key={`${e.key}:light`} level={e.level} style={{ left: g.barCX - 19 * S, top: y - 16 * S, width: barW + 17 * S, height: 32 * S, borderRadius: 16 * S, zIndex: 20 }} />);
@@ -503,7 +518,13 @@ export function Overview({ skin }: { skin: Skin }) {
         <LevelOrb
           key={s.level}
           level={s.level}
-          onClick={() => (isPick ? editPick(s.picks[0]!) : editSlots(s.level))}
+          onClick={() => {
+            if (!isPick) return editSlots(s.level);
+            // the bar that flashes "Remove Enhancements First!" may be scrolled out of view: say it too
+            const k = s.picks[0]!;
+            if (build.picks[k] && pickHoldsEnhancements(gd, build, k)) useStore.getState().notify(`Remove the enhancements from ${gd.power(build.picks[k].power).dn} first`);
+            editPick(k);
+          }}
           title={orbTitle(s)}
           className="abs body-text"
           style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? '#ffd200' : '#4f94ff'}`, background: filled ? (isPick ? '#6b5400' : '#0b3d9a') : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
