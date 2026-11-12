@@ -181,3 +181,19 @@ live game:
   bookkeeping (each takes the lowest free slot level at or after its power's level); the "slot
   below the power level" check skips them. Reopening a slot level from the overview shows the
   slots booked at that level, and they may move to any power.
+
+## Slot levels are not stored
+
+The game keeps no level for an enhancement slot. `character_BuyBoostSlot`
+(`Common/entity/character_base.c`) only counts the slot (`iNumBoostsBought`) and appends an empty
+one. The database (`MapServer/src/container/containerloadsave.c`) keeps that count in the Powers
+table (`NumBoostsBought`) and one Boosts row per slotted enhancement (`boost_line_desc`: its power,
+slot index, level and combines); neither says when a slot was added. Nothing records whether the
+current build came from a respec either (`RespecTokens` is the set of respec tokens earned). The
+planner's slot levels are its own bookkeeping.
+
+So a build read from the game (Homecoming's `/build_save` file, `src/io/buildtxt.ts`) can only be
+told apart one way: `leveledSlotShortfall()` (`src/engine/schedule.ts`) checks from the top level
+down that the added slots on powers taken at each level or later fit in the slot schedule from
+that level on. A build that fails was made through a respec (a power taken at 49 with 6 slots
+needs 5, and leveling gives 3 after 49); one that passes may have been either.

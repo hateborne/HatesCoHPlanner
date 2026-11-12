@@ -9,7 +9,8 @@ import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
 import { cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
-import { levelSteps, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
+import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
+import { describeImportFailure, refusedBuild } from '../io/importProblem.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
 import { tabTitle } from './tabTitle.ts';
@@ -20,6 +21,12 @@ export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
 export interface PatchNotes {
   title: string; // "Changes for Issue 28, Page 4"
   lines: string[]; // one change per line, "before -> after"
+}
+/** One row of options in the planner's dialog (askChoices); one option is always picked. */
+export interface DialogChoice {
+  label: string; // the row's heading ("Alignment")
+  options: { id: string; label: string; block?: string }[]; // block: why it can't be picked (greyed, reason shown)
+  value: string; // the picked option's id
 }
 /** Hover tooltips: Enabled (description / slot details; Shift shows Advanced), Advanced, Disabled. */
 export type TipMode = 'enabled' | 'advanced' | 'disabled';
@@ -63,9 +70,28 @@ interface Store {
   poolsBlinked: boolean; // phones: the Pools tab has blinked for this build's first pool pick
   epicBlinked: boolean; // phones: ...and for the first pick that can open an epic pool
   flashLocked(key: string, label?: string): void;
-  confirm: { title: string; text: string; okLabel?: string; lines?: string[]; resolve: (ok: boolean) => void } | null;
+  confirm: {
+    title: string;
+    text: string;
+    okLabel?: string;
+    lines?: string[];
+    choices?: DialogChoice[];
+    alert?: boolean; // a message with one OK button (tell)
+    resolve: (ok: boolean, picked?: string[]) => void;
+  } | null;
   /** Ask a yes / no question in the planner's dialog (with an optional list under it); resolves true on Proceed. */
   askConfirm(q: { title: string; text: string; okLabel?: string; lines?: string[] }): Promise<boolean>;
+  /**
+   * Ask for one option in each of several rows in the planner's dialog.
+   *
+   * @param q The question; each row starts on its `value`.
+   * @return The picked option id of each row, in order, or null when cancelled.
+   */
+  askChoices(q: { title: string; text: string; okLabel?: string; choices: DialogChoice[] }): Promise<string[] | null>;
+  /** Pick an option in a row of the open dialog (ignored when the option is blocked). */
+  setConfirmChoice(row: number, id: string): void;
+  /** Show a message in the planner's dialog with one OK button (an optional list under it); resolves when it closes. */
+  tell(q: { title: string; text: string; lines?: string[] }): Promise<void>;
   patchNotes: PatchNotes | null; // what a patch move changed in the current build
   /** Show (or with null, dismiss) the current build's patch-move changes; remembered per tab. */
   setPatchNotes(n: PatchNotes | null): void;
@@ -94,8 +120,19 @@ interface Store {
   setMusicOn(on: boolean): void;
   menuOpen: boolean;
   setMenu(open: boolean): void;
-  /** Open a build from outside (link, saved, import) with its own game version's data. */
-  loadBuild(b: Build): Promise<void>;
+  /**
+   * Open a build from outside (link, saved, import) with its own game version's data.
+   *
+   * @raise ImportProblem when the build is refused (checkBuild); another Error when its game data
+   *   won't load (a fault on the planner's side).
+   */
+  openBuild(b: Build): Promise<void>;
+  /**
+   * openBuild(), telling the user in the dialog when the build can't be opened.
+   *
+   * @return Whether it opened.
+   */
+  loadBuild(b: Build): Promise<boolean>;
 }
 
 const STORAGE_KEY = 'hcp.current';
@@ -201,18 +238,12 @@ export function currentPick(steps: LevelStep[], l: LevelCtx): number {
  */
 function spreadSlots(step: LevelStep, owned: number[], taken: number[] = []): number[] {
   if (!step.slotLevels) return owned.map(() => step.level);
-  const free = [...step.slotLevels].sort((a, b) => a - b);
+  const free = [...step.slotLevels];
   for (const lv of taken) {
     const k = free.indexOf(lv);
     if (k >= 0) free.splice(k, 1);
   }
-  const out: number[] = [];
-  for (const i of owned.map((_, k) => k).sort((a, b) => owned[a]! - owned[b]!)) {
-    let k = free.findIndex((lv) => lv >= owned[i]!);
-    if (k < 0) k = free.length - 1;
-    out[i] = k >= 0 ? free.splice(k, 1)[0]! : step.level;
-  }
-  return out;
+  return lowestFreeLevels(free, owned, step.level);
 }
 
 /** Build with this level's pending choices applied (what the screens draw). */
@@ -360,11 +391,27 @@ export const useStore = create<Store>((set, get) => ({
     get().confirm?.resolve(false); // a newer question replaces an unanswered one
     return new Promise<boolean>((resolve) => set({ confirm: { ...q, resolve } }));
   },
+  askChoices(q) {
+    get().confirm?.resolve(false);
+    return new Promise<string[] | null>((resolve) =>
+      set({ confirm: { ...q, choices: q.choices.map((c) => ({ ...c })), resolve: (ok, picked) => resolve(ok ? (picked ?? []) : null) } }),
+    );
+  },
+  tell(q) {
+    get().confirm?.resolve(false);
+    return new Promise<void>((resolve) => set({ confirm: { ...q, alert: true, okLabel: 'OK', resolve: () => resolve() } }));
+  },
+  setConfirmChoice(row, id) {
+    const c = get().confirm;
+    const opt = c?.choices?.[row]?.options.find((o) => o.id === id);
+    if (!c || !opt || opt.block !== undefined) return;
+    set({ confirm: { ...c, choices: c.choices!.map((x, i) => (i === row ? { ...x, value: id } : x)) } });
+  },
   closeConfirm(ok) {
     const c = get().confirm;
     if (!c) return;
     set({ confirm: null });
-    c.resolve(ok);
+    c.resolve(ok, c.choices?.map((x) => x.value));
   },
   flashLocked(key, label = 'Remove Enhancements First!') {
     const id = (get().lockFlash?.id ?? 0) + 1;
@@ -424,29 +471,31 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  async loadBuild(b) {
+  async openBuild(b) {
     const { versions } = get();
-    if (!versions) return;
+    if (!versions) throw new Error('game versions not loaded yet');
     const { version, missing } = resolveVersion(versions, b.dataVersion);
-    let gd: GameData;
-    try {
-      gd = await dataFor(version);
-    } catch (e) {
-      get().notify(`That build can't be opened (${e instanceof Error ? e.message : String(e)})`);
-      return;
-    }
+    const gd = await dataFor(version);
     // checked before it replaces anything: an unusable build is refused, a repairable one repaired
     const { build: nb, fixes } = checkBuild(gd, b);
-    if (!nb) {
-      get().notify(`That build can't be opened (${fixes[fixes.length - 1] ?? 'invalid'})`);
-      return;
-    }
+    if (!nb) throw refusedBuild(fixes);
     if (fixes.length) console.warn('build repaired:', fixes);
     persist(nb);
     persistNotes(null, undefined);
     set({ gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false, poolsBlinked: false, epicBlinked: false, patchNotes: null });
     const note = missingNote(missing, version);
     if (note) get().notify(note);
+  },
+
+  async loadBuild(b) {
+    try {
+      await get().openBuild(b);
+      return true;
+    } catch (e) {
+      const f = describeImportFailure(e, "Couldn't open that build", "Couldn't open the build");
+      await get().tell({ title: f.title, text: f.text });
+      return false;
+    }
   },
 
   async load() {
@@ -456,34 +505,42 @@ export const useStore = create<Store>((set, get) => ({
       // every build from outside the app is checked (and repaired where safe) against its own game
       // version's data before it is used or saved again: a share link (#b=...) first, else this
       // tab's / the browser's remembered build
-      const candidates: (() => Promise<Build | undefined>)[] = [
-        async () => {
-          const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
-          return m ? decodeShare(m[1]!) : undefined;
-        },
-        async () => restore(),
-      ];
-      for (const next of candidates) {
+      const link = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
+      const candidates: (() => Promise<Build | undefined>)[] = [async () => (link ? decodeShare(link[1]!) : undefined), async () => restore()];
+      let linkFailed: unknown; // why the address's share link couldn't be opened, if it couldn't
+      // a bad link falls back to the remembered build, then says so
+      const tellLink = (opened: boolean) => {
+        if (linkFailed === undefined) return;
+        const f = describeImportFailure(linkFailed, "The share link in the page's address couldn't be opened", "Couldn't open the share link");
+        void get().tell({ title: f.title, text: opened ? `${f.text}\nYour last build is open instead.` : f.text });
+      };
+      for (const [k, next] of candidates.entries()) {
         let raw: Build | undefined;
         try {
           raw = await next();
-        } catch {
-          continue; // bad link: fall back to the remembered build
+        } catch (e) {
+          if (k === 0) linkFailed = e;
+          continue;
         }
         if (!raw) continue;
         const { version, missing } = resolveVersion(versions, typeof raw.dataVersion === 'string' ? raw.dataVersion : undefined);
         const gd = await dataFor(version);
         const c = checkBuild(gd, raw);
-        if (!c.build) continue;
+        if (!c.build) {
+          if (k === 0) linkFailed = refusedBuild(c.fixes);
+          continue;
+        }
         if (c.fixes.length) console.warn('saved build repaired:', c.fixes);
         persist(c.build);
         set({ gd, steps: levelSteps(gd.core), build: c.build, view: 'overview', patchNotes: restoreNotes(c.build) });
         const note = missingNote(missing, version);
         if (note) get().notify(note);
+        tellLink(true);
         return;
       }
       const gd = await dataFor(resolveVersion(versions, undefined).version);
       set({ gd, steps: levelSteps(gd.core), build: undefined, view: 'setup' });
+      tellLink(false);
     } catch (e) {
       set({ view: 'error', error: e instanceof Error ? e.message : String(e) });
     }
@@ -800,9 +857,14 @@ if (typeof window !== 'undefined') {
     const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
     const { versions, loadBuild } = useStore.getState();
     if (!m || !versions) return;
-    void decodeShare(m[1]!)
-      .then((b) => loadBuild(b)) // loadBuild loads its game version and checks it first
-      .catch(() => undefined); // a bad link leaves the current build alone
+    void decodeShare(m[1]!).then(
+      (b) => loadBuild(b), // loadBuild loads its game version, checks it first, and says when it can't
+      (e: unknown) => {
+        // a bad link leaves the current build alone, and says why
+        const f = describeImportFailure(e, "The share link couldn't be opened", "Couldn't open the share link");
+        void useStore.getState().tell({ title: f.title, text: f.text });
+      },
+    );
   });
 }
 

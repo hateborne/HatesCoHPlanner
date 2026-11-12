@@ -18,7 +18,8 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
   and superior), Hamidon / Hydra / Titan / D-Sync / Synthetic / Talismans.
 - Totals with expandable sources; a totals side tab during the wizard.
 - Share links (`#b=...`), builds saved in the browser, MidsReborn `.mbd` import/export, Mids share
-  codes (`|MBD;` and legacy `|MxDz;`).
+  codes (`|MBD;` and legacy `|MxDz;`), and import of a character saved in game with `/build_save`
+  (the `Builds/build.txt` file in the game's account folder).
 - Hero, villain and Praetorian skins by alignment; the game's UI sounds (with a mute switch);
   a one-panel-at-a-time layout on phones.
 

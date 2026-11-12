@@ -9,7 +9,8 @@ import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/b
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { defaultOn } from '../engine/totals.ts';
-import { ByteReader, ByteWriter, fromBase64, streamBytes, toBase64 } from './binary.ts';
+import { ByteReader, ByteWriter, EndOfData, fromBase64, streamBytes, toBase64 } from './binary.ts';
+import { ImportProblem, READABLE, readable, readablePower } from './importProblem.ts';
 import { PLANNER_APP } from './midsPatches.ts';
 
 export interface MidsMap {
@@ -55,6 +56,33 @@ export function loadMidsMap(gd: GameData): Promise<MidsMap> {
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
+/**
+ * Epic pools MidsReborn keeps under its own names, with the game's name for each. Its database and
+ * a table in its code use these; CrypticPowerNames.mhd, which mids-map.json's renames come from,
+ * lists none of them. Each was matched to the one game pool with its powers (tests/io.test.ts
+ * checks that every target exists). Mids name first, as it writes it.
+ */
+export const MIDS_EPIC_POOLS: readonly (readonly [mids: string, game: string])[] = [
+  ['Epic.Dark_Mastery_Blaster', 'Epic.Blaster_Dark_Mastery'],
+  ['Epic.Dark_Mastery_Controller', 'Epic.Controller_Dark_Mastery'],
+  ['Epic.Dark_Mastery_Dominator', 'Epic.Dominator_Dark_Mastery'],
+  ['Epic.Dark_Mastery_Mastermind', 'Epic.Mastermind_Dark_Mastery'],
+  ['Epic.Dark_Mastery_TankBrute', 'Epic.Tank_Dark_Mastery'],
+  ['Epic.Ice_Mastery_DefCorr', 'Epic.Defender_Ice_Mastery'],
+  ['Epic.Ice_Mastery_ScrapStalk', 'Epic.Scrapper_Ice_Mastery'],
+  ['Epic.Psionic_Mastery_ScrapStalk', 'Epic.Melee_Psionic_Mastery'],
+  ['Epic.Psionic_Mastery_TankBrute', 'Epic.Tank_Psionic_Mastery'],
+];
+const EPIC_TO_GAME = new Map(MIDS_EPIC_POOLS.map(([m, g]) => [m.toLowerCase(), g]));
+const EPIC_TO_MIDS = new Map(MIDS_EPIC_POOLS.map(([m, g]) => [g.toLowerCase(), m]));
+
+/** @return A full power or set name with its set part swapped through `table`, or undefined when it isn't listed. */
+function swapEpic(name: string, table: Map<string, string>): string | undefined {
+  const parts = name.split('.');
+  const set = table.get(parts.slice(0, 2).join('.').toLowerCase());
+  return set ? [set, ...parts.slice(2)].join('.') : undefined;
+}
+
 /** Lookups built from the map + game data. */
 class Translator {
   readonly renames = new Map<string, string>();
@@ -97,13 +125,13 @@ class Translator {
   }
 
   power(name: string): number | undefined {
-    const n = this.renames.get(name.toLowerCase()) ?? name;
+    const n = this.renames.get(name.toLowerCase()) ?? swapEpic(name, EPIC_TO_GAME) ?? name;
     return this.gd.powerByName.get(n.toLowerCase())?.id;
   }
 
   midsPowerName(pid: number): string {
     const n = this.gd.power(pid).n;
-    return this.reverseRenames.get(n.toLowerCase()) ?? n;
+    return this.reverseRenames.get(n.toLowerCase()) ?? swapEpic(n, EPIC_TO_MIDS) ?? n;
   }
 
   /** Game enhancement for a Mids enhancement (normal grades resolve by origin). */
@@ -208,12 +236,16 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
   const t = new Translator(gd, map);
   const warn: string[] = [];
   const at = gd.archetypeByName.get(m.Class.toLowerCase());
-  if (!at) throw new Error(`Unknown archetype ${m.Class}`);
-  const origin = gd.core.origins.find((o) => o.n.toLowerCase() === m.Origin.toLowerCase()) ?? gd.core.origins[0]!;
+  if (!at) throw new ImportProblem(`its archetype (${readable(m.Class.replace(/^Class_/i, ''))}) isn't one the planner has`, notOursHint(m));
+  const origin = gd.core.origins.find((o) => o.n.toLowerCase() === (m.Origin ?? '').toLowerCase()) ?? gd.core.origins[0]!;
   const alignment = toAlignment(m.Alignment);
-  const primary = setIdFor(gd, t, m.PowerSets[0] ?? '');
-  const secondary = setIdFor(gd, t, m.PowerSets[1] ?? '');
-  if (primary === undefined || secondary === undefined) throw new Error(`Unknown power sets ${m.PowerSets[0]} / ${m.PowerSets[1]}`);
+  const sets = Array.isArray(m.PowerSets) ? m.PowerSets : [];
+  const primary = setIdFor(gd, t, sets[0] ?? '');
+  const secondary = setIdFor(gd, t, sets[1] ?? '');
+  if (primary === undefined || secondary === undefined) {
+    const name = (s: string | undefined) => readable((s ?? '').split('.').pop() || 'none');
+    throw new ImportProblem(`its power sets (${name(sets[0])} / ${name(sets[1])}) aren't ones the planner has`, notOursHint(m));
+  }
   const sched = gd.core.schedule.power;
   const b: Build = {
     v: 1,
@@ -237,7 +269,7 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     // IO set piece by the game's own boost name, so look that up in the game data itself
     if (boost === undefined && e.Uid) boost = gd.powerByName.get(`boosts.${e.Uid}.${e.Uid}`.toLowerCase())?.id;
     if (boost === undefined) {
-      warn.push(`${where}: enhancement "${e.Uid ?? e.Enhancement}" not found`);
+      warn.push(`${where}: an enhancement (${readable(e.Uid ?? e.Enhancement ?? '?')}) isn't in the planner's game data, so its slot is empty`);
       return undefined;
     }
     const out: SlottedEnh = { boost };
@@ -262,7 +294,7 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     if (pid === undefined) {
       // Auto-granted powers Mids names differently only matter if they carried enhancements.
       if (i < sched.length || p.SlotEntries.some((s) => s.Enhancement)) {
-        warn.push(`Power "${p.PowerName}" not found in the current game data`);
+        warn.push(`${readablePower(p.PowerName)} isn't in the planner's game data, so it was left out`);
       }
       return;
     }
@@ -272,7 +304,7 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
       let idx = sched[i] === level && !used.has(i) ? i : -1;
       if (idx < 0) idx = sched.findIndex((l, k) => l === level && !used.has(k));
       if (idx < 0) {
-        warn.push(`${name}: no free pick at level ${p.Level}`);
+        warn.push(`${name} was taken at level ${p.Level}, which has no free power pick, so it was left out`);
         return;
       }
       used.add(idx);
@@ -305,7 +337,7 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     if (!ref) continue;
     const kind = rules.setKind(ref.set);
     if (kind === 'pool' && !pools.includes(ref.set.n)) pools.push(ref.set.n);
-    if (kind === 'epic') epic = ref.set.n;
+    if (kind === 'epic') epic = swapEpic(ref.set.n, EPIC_TO_MIDS) ?? ref.set.n;
   }
   while (pools.length < 4) pools.push('');
   const enh = (s: Slot): MbdEnh | null => {
@@ -443,7 +475,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
   const warn: string[] = [];
   const r = new ByteReader(bytes);
   const magic = r.bytes(4);
-  if (magic[0] !== 77 || magic[1] !== 120 || magic[2] !== 68) throw new Error('Not a Mids MxD build');
+  if (magic[0] !== 77 || magic[1] !== 120 || magic[2] !== 68) throw DAMAGED_CODE();
   const version = r.f32();
   const qualified = r.bool();
   const hasSub = r.bool();
@@ -472,7 +504,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     const a = r.i8();
     const bb = r.i8();
     if (!e) {
-      warn.push('Unknown enhancement index in MxD data');
+      warn.push("An enhancement couldn't be identified, so its slot is empty");
       return null;
     }
     if (e.type === 1 || e.type === 3) return { Uid: e.uid, RelativeLevel: RELATIVE[a] ?? 'Even', Grade: GRADES[bb] ?? 'None' };
@@ -488,7 +520,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     if (si >= 0 || (qualified && pname)) {
       const pid = qualified ? t.power(pname) : t.powerBySi.get(si);
       powerName = pid !== undefined ? gd.power(pid).n : '';
-      if (pid === undefined) warn.push(`Unknown power index ${si}${pname ? ` (${pname})` : ''}`);
+      if (pid === undefined) warn.push(`A power couldn't be identified${pname ? ` (${readablePower(pname)})` : ''}, so it was left out`);
       level = r.i8() + 1;
       stat = r.bool();
       if (v310) r.bool();
@@ -529,18 +561,103 @@ export type MidsParsed = { kind: 'mbd'; mbd: Mbd } | { kind: 'mxdz'; raw: Uint8A
  */
 export async function parseMidsText(text: string): Promise<MidsParsed> {
   const trimmed = text.trim();
-  if (trimmed.startsWith('{')) return { kind: 'mbd', mbd: JSON.parse(trimmed) as Mbd };
+  if (!trimmed) throw new ImportProblem("there's nothing to import", 'Paste a share link, a Mids share code or a build file, or drop a file on the box.');
+  if (trimmed.startsWith('{')) {
+    let json: unknown;
+    try {
+      json = JSON.parse(trimmed);
+    } catch {
+      throw new ImportProblem("it isn't valid Mids build data (it looks damaged or cut short)", 'Open the build in MidsReborn, save it again, and import the new file.');
+    }
+    if (!isMbd(json)) throw new ImportProblem("it isn't a Mids build", READABLE);
+    return { kind: 'mbd', mbd: json };
+  }
   const mbdHead = trimmed.match(/\|MBD;(\d+);(\d+);(\d+);BASE64;\|/);
   const mxdHead = trimmed.match(/\|MxDz;(\d+);(\d+);(\d+);HEX;\|/);
   if (mxdHead) {
-    const hex = payloadAfterHeader(trimmed, mxdHead).slice(0, Number(mxdHead[3]));
+    const hex = codeBody(trimmed, mxdHead, /^[0-9A-Fa-f]*$/);
     const comp = new Uint8Array(hex.length / 2);
     for (let i = 0; i < comp.length; i++) comp[i] = parseInt(hex.substr(i * 2, 2), 16);
-    return { kind: 'mxdz', raw: await streamBytes(comp, 'deflate', false) };
+    try {
+      return { kind: 'mxdz', raw: await streamBytes(comp, 'deflate', false) };
+    } catch {
+      throw DAMAGED_CODE();
+    }
   }
-  const b64 = mbdHead ? payloadAfterHeader(trimmed, mbdHead).slice(0, Number(mbdHead[3])) : trimmed.replace(/\s/g, '');
-  const br = await brotli();
-  return { kind: 'mbd', mbd: JSON.parse(new TextDecoder().decode(br.decompress(fromBase64(b64)))) as Mbd };
+  let b64: string;
+  if (mbdHead) b64 = codeBody(trimmed, mbdHead, /^[A-Za-z0-9+/=]*$/);
+  else {
+    // no header: a bare MBD share string, or nothing the planner reads
+    if (looksBinary(trimmed)) throw new ImportProblem("it isn't a text file the planner can read", READABLE);
+    b64 = trimmed.replace(/\s/g, '');
+    if (!/^[A-Za-z0-9+/]{16,}={0,2}$/.test(b64)) throw new ImportProblem("it isn't a build the planner recognizes", READABLE);
+  }
+  const br = await brotli(); // outside the try: the decoder failing to load is on our side
+  let json: unknown;
+  try {
+    json = JSON.parse(new TextDecoder().decode(br.decompress(fromBase64(b64))));
+  } catch {
+    throw mbdHead ? DAMAGED_CODE() : new ImportProblem("it isn't a build the planner recognizes", READABLE);
+  }
+  if (!isMbd(json)) throw DAMAGED_CODE();
+  return { kind: 'mbd', mbd: json };
+}
+
+/**
+ * Whether text came from a binary file (an old .mxd, an image): control characters other than tabs
+ * and line breaks, or the replacement character a binary file turns into when read as text.
+ */
+function looksBinary(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c < 9 || (c > 13 && c < 32) || c === 0xfffd) return true;
+  }
+  return false;
+}
+
+/** A Mids share code whose data won't decode. */
+const DAMAGED_CODE = () => new ImportProblem('the Mids share code is damaged', 'Copy it again from where it was posted, or ask for a new one.');
+
+/** @return Whether parsed JSON has the fields a Mids build file needs. */
+function isMbd(j: unknown): j is Mbd {
+  const m = j as Partial<Mbd> | null;
+  return !!m && typeof m === 'object' && typeof m.Class === 'string' && Array.isArray(m.PowerEntries);
+}
+
+/**
+ * The data of a |MBD; or |MxDz; chunk: the lines after its header, without the '|' bookends and
+ * line breaks, cut to the length the header gives.
+ *
+ * @param text The pasted text.
+ * @param header The header match; its third number is the data's length.
+ * @param alphabet The characters the data may hold.
+ * @return The data.
+ * @raise ImportProblem when the data is shorter than the header says, or holds other characters.
+ */
+function codeBody(text: string, header: RegExpMatchArray, alphabet: RegExp): string {
+  const want = Number(header[3]);
+  const body = payloadAfterHeader(text, header).slice(0, want);
+  if (!alphabet.test(body)) {
+    throw new ImportProblem(
+      "the Mids share code has characters a share code can't have",
+      'It may have been changed while it was copied (a forum or chat app can do that). Copy it again from where it was posted.',
+    );
+  }
+  if (body.length < want) throw new ImportProblem('part of the Mids share code is missing', 'Copy the whole code again, from its first line (|MBD; or |MxDz;) to its last.');
+  return body;
+}
+
+/**
+ * Why a Mids build's archetype or sets may be missing: another server's database, else a newer patch.
+ *
+ * @param m The build file.
+ * @return A sentence for the user.
+ */
+function notOursHint(m: Mbd): string {
+  const db = m.BuiltWith?.Database;
+  return db && !/^homecoming$/i.test(db)
+    ? `It was made with Mids' ${db} database, for another server; the planner covers Homecoming only.`
+    : 'It may come from a newer patch than the planner has.';
 }
 
 /**
@@ -553,7 +670,13 @@ export async function parseMidsText(text: string): Promise<MidsParsed> {
  */
 export async function importParsed(gd: GameData, map: MidsMap, p: MidsParsed): Promise<ImportResult> {
   if (p.kind === 'mbd') return importMbd(gd, map, p.mbd);
-  const { mbd, warnings } = await mxdzToMbd(gd, map, p.raw);
+  let legacy: { mbd: Mbd; warnings: string[] };
+  try {
+    legacy = await mxdzToMbd(gd, map, p.raw);
+  } catch (e) {
+    throw e instanceof EndOfData ? DAMAGED_CODE() : e; // the data ran out: a damaged code
+  }
+  const { mbd, warnings } = legacy;
   const res = importMbd(gd, map, mbd);
   return { build: res.build, warnings: [...warnings, ...res.warnings] };
 }

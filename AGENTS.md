@@ -44,7 +44,8 @@ Breaking any of these is a bug, whatever else the change does.
   `pipeline/paths.example.json`) or in the `COH_CLIENT` / `COH_SOURCE` / `COH_MIDS` environment
   variables.
 - Tests that need a personal file read its path from an environment variable and skip when it
-  is unset (for example `HCP_MIDS_SAMPLE` in `tests/io.test.ts`).
+  is unset (for example `HCP_MIDS_SAMPLE` in `tests/io.test.ts`, `HCP_BUILDTXT_SAMPLE` in
+  `tests/buildtxt.test.ts`).
 - The CI "Privacy" check fails on drive-letter paths in tracked files.
 
 **Local-only material**
@@ -132,6 +133,8 @@ src/
     share.ts                 #b= share links (bit-packed, deflated, base64url)
     mids.ts                  Mids .mbd and share codes (|MBD; and legacy |MxDz;)
     midsPatches.ts           which patch a Mids build was made on (Mids database version table)
+    buildtxt.ts              Homecoming's /build_save file (build.txt) import
+    importProblem.ts         import failures in plain words (ImportProblem), file reading
     library.ts               builds saved in the browser (IndexedDB)
     binary.ts                byte reader / writer helpers
   state/store.ts             zustand store: data, current build, level-up flow, dialogs
@@ -216,6 +219,27 @@ in the confirm dialog: picks trade places, slots trade the levels they were gain
 removed. The overview then keeps that list ("Changes for ...", `PatchNotes`) until it is
 dismissed.
 
+A `/build_save` file (`build.txt`, `src/io/buildtxt.ts`) is the live client's dump of a
+character, written with internal names, and opens on the default version. It holds no alignment
+and no slot levels: the game never stores the level a slot was added at, nor whether the build
+came from a respec. So the import asks for the alignment and the build type in the dialog
+(`askChoices`). Leveling is offered only when `leveledSlotShortfall()` finds that the slots could
+have come from leveling. Either way each added slot takes the lowest free slot level at or after
+its power's level (`lowestFreeLevels()`, the respec screen's rule).
+
+MidsReborn names 9 epic pools its own way (`Epic.Ice_Mastery_DefCorr` is the game's
+`Epic.Defender_Ice_Mastery`), and its CrypticPowerNames.mhd doesn't list them, so
+`MIDS_EPIC_POOLS` (`src/io/mids.ts`) maps them both ways; `tests/importproblems.test.ts` checks
+every target exists and that the archetypes each name is for can take it.
+
+**Import failures** are told to the user in the dialog (`tell`), never as raw error text
+(`src/io/importProblem.ts`). Something wrong with what they gave the planner (a code cut short, a
+damaged file, a build for another server) is thrown as an `ImportProblem`: what is wrong and what
+they can do about it, in plain words. Anything else (game data that won't load, a bug) gets one
+calm generic message, with the details in the browser console. What an import couldn't bring over
+(a power or enhancement the data lacks) is listed after the build opens ("Imported, with gaps").
+New import code throws `ImportProblem` for every failure the user can fix.
+
 **Engine.** `BuildRules` (`src/engine/rules.ts`) answers every question the screens ask: what can
 be picked at a level, what is auto-granted, where slots can go, what is wrong with the build.
 `totals.ts` and `enhance.ts` do the math with the game's own tables: enhancement curves,
@@ -260,7 +284,8 @@ read the store with narrow selectors (`useShallow`) and call its actions.
 
 **Pop-ups and hovers.**
 - Every pop-up closes with Escape (`useEscape`).
-- Questions use `askConfirm`; refusals use `notify` or `flashLocked`.
+- Questions use `askConfirm` (or `askChoices` for rows of options); messages with one OK button
+  use `tell`; refusals use `notify` or `flashLocked`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
 
