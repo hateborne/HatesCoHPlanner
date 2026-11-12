@@ -311,7 +311,7 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
       let idx = sched[i] === level && !used.has(i) ? i : -1;
       if (idx < 0) idx = sched.findIndex((l, k) => l === level && !used.has(k));
       if (idx < 0) {
-        warn.push(`${name} was taken at level ${p.Level}, which has no free power pick, so it was left out`);
+        warn.push(`${name} was taken at level ${readable(String(p.Level))}, which has no free power pick, so it was left out`);
         return;
       }
       used.add(idx);
@@ -805,7 +805,7 @@ function notOursHint(gd: GameData, m: Mbd): string {
   if (!db || db.toLowerCase() === serverOfData(gd).midsDb.toLowerCase()) return 'It may come from a newer patch than the planner has.';
   // @TODO open it on its own server when the site carries that server (SERVERS[].midsDb)
   const ours = SERVERS.map((s) => s.label).join(', ');
-  return `It was made with Mids' ${db} database, for another server; the planner covers ${ours} only.`;
+  return `It was made with Mids' ${readable(db)} database, for another server; the planner covers ${ours} only.`;
 }
 
 /**

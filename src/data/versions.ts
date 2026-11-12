@@ -96,6 +96,21 @@ function comparePatch(a: [number, number], b: [number, number]): number {
   return a[0] - b[0] || a[1] - b[1];
 }
 
+/**
+ * The notice for a build opened on another version than it asked for, which the site doesn't
+ * have. It never repeats the version as the build or link wrote it: a crafted link could make that
+ * text read as anything, in the planner's own words. A patch-shaped id is named as its patch.
+ *
+ * @param missing The version the build asked for.
+ * @param used The version it was opened with.
+ * @return The notice.
+ */
+export function missingVersionNote(missing: string, used: GameVersion): string {
+  const o = patchOrder(missing);
+  const what = o && o[0] < 1000 && o[1] < 1000 ? `Issue ${o[0]}, Page ${o[1]}` : 'a game version';
+  return `This build was made for ${what}, which the planner no longer has; it was opened with ${used.label}.`;
+}
+
 /** @return A patch's name for messages ("Issue 28, Page 3"), or the id itself. */
 export function patchLabel(patch: string): string {
   const o = patchOrder(patch);

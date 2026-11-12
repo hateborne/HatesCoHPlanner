@@ -9,7 +9,7 @@ import { ConfirmDialog } from './ui/components/ConfirmDialog.tsx';
 import { ServerDialog } from './ui/components/Servers.tsx';
 import { MenuFrame } from './ui/components/Chrome.tsx';
 import { phoneGeom } from './ui/components/Phone.tsx';
-import { Settings } from './ui/components/Settings.tsx';
+import { bottomLogoBox, Settings } from './ui/components/Settings.tsx';
 import { Stage, useStage } from './ui/components/Stage.tsx';
 import { AddEnhancementSlot } from './ui/screens/AddEnhancementSlot.tsx';
 import { BuildMenu } from './ui/screens/BuildMenu.tsx';
@@ -31,11 +31,49 @@ function Notice({ skin }: { skin: Skin }) {
   const stage = useStage();
   if (!notice) return null;
   if (stage.phone) return <PhoneToast key={notice.id} skin={skin} text={notice.text} onClose={dismissNotice} />;
-  const y = view === 'level' && level?.sub === 'slots' ? 985 : 1050;
+  // the slot screens' line sits above Slots Available; the others share the bottom bar's row with
+  // the server logo
+  const slots = view === 'level' && level?.sub === 'slots';
+  return <DesktopNotice key={notice.id} text={notice.text} y={slots ? 985 : 1050} clearOf={slots ? undefined : bottomLogoBox(stage)} />;
+}
+
+// desktop notice: its line height, its gap to the server logo, and how far in from each edge the
+// Back / Next buttons' tails reach (a long notice keeps between the logo and the right one)
+const NOTICE_LINE = 18;
+const NOTICE_GAP = 16;
+const NEXT_TAIL = 400;
+
+/**
+ * Desktop: the notice text, centered on the stage while it clears the server logo. A wider one
+ * moves into the room right of the logo (up to the Next button's tail), wrapping upward there
+ * when it is wider still, so it never runs over the logo.
+ *
+ * @param text The notice.
+ * @param y Top of its (last) line.
+ * @param clearOf The server logo's box to keep clear of, when on the same row.
+ */
+function DesktopNotice({ text, y, clearOf }: { text: string; y: number; clearOf?: { x: number; w: number } }) {
+  const stage = useStage();
+  const ref = useRef<HTMLSpanElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  // the text's one-line width, measured before the first paint
+  useLayoutEffect(() => setWidth(ref.current?.offsetWidth ?? null), [text]);
+  const room = clearOf ? clearOf.x + clearOf.w + NOTICE_GAP : 0;
+  const centered = !clearOf || (width !== null && width <= stage.w - 2 * room);
+  const box = centered ? { left: 0, width: stage.w } : { left: room, width: stage.w - NEXT_TAIL - room };
+  const style = { fontSize: 15, lineHeight: `${NOTICE_LINE}px` };
   return (
-    <div key={notice.id} className="abs body-text notice-msg" style={{ left: 0, width: stage.w, top: y, textAlign: 'center', fontSize: 15, color: '#ff5a5a', zIndex: 80 }}>
-      {notice.text}
-    </div>
+    <>
+      <span ref={ref} className="abs body-text" aria-hidden="true" style={{ ...style, left: 0, top: 0, whiteSpace: 'nowrap', visibility: 'hidden' }}>
+        {text}
+      </span>
+      <div
+        className="abs body-text notice-msg"
+        style={{ ...style, ...box, bottom: stage.h - y - NOTICE_LINE, textAlign: 'center', color: '#ff5a5a', zIndex: 80, visibility: width === null ? 'hidden' : 'visible', overflowWrap: 'anywhere' }}
+      >
+        {text}
+      </div>
+    </>
   );
 }
 

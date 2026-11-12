@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import { serverById, serverInLink, serverOf, withServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
-import { ALIGNMENTS, toAlignment, type Build } from '../../engine/build.ts';
+import { ALIGNMENTS, cleanName, toAlignment, type Build } from '../../engine/build.ts';
 import { fitToPatch } from '../../engine/migrate.ts';
 import type { Issue } from '../../engine/rules.ts';
 import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../../io/buildtxt.ts';
@@ -101,7 +101,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
    */
   const open = async (b: Build, gaps: string[]) => {
     await useStore.getState().openBuild(b);
-    const name = b.name ? `"${b.name}"` : 'The build';
+    const name = cleanName(b.name) ? `"${cleanName(b.name)}"` : 'The build';
     // a damaged file can report thousands: list the first ones and how many more
     const lines = gaps.length > MAX_GAP_LINES ? [...gaps.slice(0, MAX_GAP_LINES), `... and ${gaps.length - MAX_GAP_LINES} more`] : gaps;
     if (gaps.length) void useStore.getState().tell({ title: 'Imported, with gaps', text: `${name} is open, but some of it couldn't be brought over:`, lines });
@@ -133,7 +133,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     if (!build || !build.picks.some((p) => p)) return true;
     return useStore.getState().askConfirm({
       title: 'Replace the current build?',
-      text: `Loading ${incoming ? `"${incoming}"` : 'this build'} replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+      // an imported name isn't checked yet: shown as the planner would keep it
+      text: `Loading ${cleanName(incoming) ? `"${cleanName(incoming)}"` : 'this build'} replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first if you want to keep it.`,
       okLabel: 'Replace',
     });
   };
