@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'r
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
+import type { Build } from '../../engine/build.ts';
 import { boostPog } from '../../engine/enhance.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, stepsOf, useStore, useTipLevel } from '../../state/store.ts';
@@ -13,6 +14,7 @@ import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
+import { ElectricFlash } from '../components/ElectricFlash.tsx';
 import { FadingText, MenuFrame, NextButton, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
@@ -44,6 +46,12 @@ const PHONE_RING_DY = 38;
 // phones: the Slots Available row and the tapped power's line above Back / Next
 const PHONE_COUNTER_H = 52;
 const PHONE_INFO_H = 76;
+
+/** A slot placed by a click on this visit to the level (uiLevelSpec.c enhancementAnim_add). */
+interface NewSlot {
+  ring: string; // its pending ring's key, `${entry key}:n${k}`
+  at: number; // performance.now() of the click
+}
 
 interface Group {
   set: Powerset | null;
@@ -229,6 +237,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   // fadingText queue: "No slots to assign!" at the bottom, "FULL!" over the clicked bar
   const [fades, setFades] = useState<{ id: number; key?: string; full: boolean }[]>([]);
   const fadeId = useRef(0);
+  // slots clicked in on this visit to the level (a new level.base starts a new visit): they grow
+  // in under the electric crackle; once a slot is clicked in or out, the slots slide
+  const [visit, setVisit] = useState<{ base: Build; added: NewSlot[] } | null>(null);
   const [tab, setTab] = useState(0);
   const stage = useStage();
   const { phone } = stage;
@@ -249,6 +260,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const anyPower = respec || rules.slotsAnyPower(L);
   const entries = rules.entries().filter((e) => (anyPower || !later(e)) && rules.slottable(e.power) && e.power.sm !== 0);
   const remaining = rules.slotsLeft(levels);
+  const visiting = visit?.base === level.base;
+  const added = visiting ? visit.added : [];
+  const pendingOf = (key: string) => level.pendingSlots.filter((k) => k === key).length;
   const anyPlaceable = entries.some((e) => rules.slotBlock(e, L, levels) === null);
 
   const click = (e: BuildEntry) => {
@@ -256,13 +270,17 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     const noSlots = remaining <= 0;
     const block = noSlots ? 'No Slots' : rules.slotBlock(e, L, levels);
     if (block) {
-      play('reject5');
+      // drawPowerAndEnhancements: fadingText only, no sound (powerselect2 is for a placed slot)
       const id = ++fadeId.current;
       setFades((f) => [...f, { id, key: e.key, full: block !== 'No Slots' }]);
       window.setTimeout(() => setFades((f) => f.filter((x) => x.id !== id)), 1000);
       return;
     }
-    addPendingSlot(e.key); // CheckBar already played powerselect2
+    // enhancementAnim_add, electric_init on the new ring, then sndPlay("powerselect2")
+    const slot = { ring: `${e.key}:n${pendingOf(e.key)}`, at: performance.now() };
+    setVisit((v) => ({ base: level.base, added: [...(v?.base === level.base ? v.added : []), slot] }));
+    addPendingSlot(e.key);
+    play('powerselect2');
   };
   const noSlotFades = fades
     .filter((f) => !f.full)
@@ -280,7 +298,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       if (rules.entries().some((x) => x.key === key && x.slots.some((s, i) => i > 0 && levels.includes(s.level) && s.enh))) flashLocked(key);
       return;
     }
-    play('delete');
+    // the client plays nothing here; electric_removeById drops the newest slot's crackle
+    const ring = `${key}:n${pendingOf(key) - 1}`;
+    setVisit((v) => ({ base: level.base, added: v?.base === level.base ? v.added.filter((a) => a.ring !== ring) : [] }));
     removePendingSlot(idx);
   };
 
@@ -304,6 +324,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             y={y}
             wd={g.barW}
             halfText={!phone}
+            clickSounds={[]}
             text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
             state={respec && later(e) ? 'unselectable' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
@@ -320,7 +341,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         if (lockFlash?.key === e.key) items.push(<LockFlash key={`${e.key}:flash-${lockFlash.id}`} flashKey={e.key} x={g.barCX} y={y} w={g.barW} s={S} />);
         // pending slots sit next to the bar (positions 1..k); the owned ones slide right by k. Only
         // this level's empty slots are pending -- ones holding an enhancement stay locked
-        const pending = level.pendingSlots.filter((k) => k === e.key).length;
+        const pending = pendingOf(e.key);
         let skip = pending;
         const owned = e.slots.filter((s, i) => {
           const isPending = skip > 0 && i > 0 && levels.includes(s.level) && !s.enh;
@@ -328,7 +349,12 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
           return !isPending;
         });
         for (let k = 0; k < pending; k++) {
-          items.push(<SlotRing skin={skin} key={`${e.key}:n${k}`} x={g.ringX + (k + 1) * g.ringStep} y={y + g.ringDy} size={g.ring} pending title="Click or right-click to remove this slot" onClick={() => unclick(e.key)} onRightClick={() => unclick(e.key)} />);
+          const ring = `${e.key}:n${k}`;
+          const born = added.find((a) => a.ring === ring)?.at;
+          const rx = g.ringX + (k + 1) * g.ringStep;
+          items.push(<SlotRing skin={skin} key={ring} x={rx} y={y + g.ringDy} size={g.ring} pending born={born} title="Click or right-click to remove this slot" onClick={() => unclick(e.key)} onRightClick={() => unclick(e.key)} />);
+          // drawPowerAndEnhancements: electric_init on the new ring's center, inside the panel's clip
+          if (born !== undefined) items.push(<ElectricFlash key={`${ring}:fx${born}`} x={rx} y={y + g.ringDy} ring={g.ring} born={born} skin={skin} />);
         }
         owned.forEach((s, i) => {
           const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
@@ -339,6 +365,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
               x={g.ringX + (pending + i + 1) * g.ringStep}
               y={y + g.ringDy}
               size={g.ring}
+              slide={visiting}
               enhIcon={boost ? icon('enh', boost.icon) : undefined}
               frames={boost?.bf}
               pog={boost ? boostPog(gd, boost) : undefined}

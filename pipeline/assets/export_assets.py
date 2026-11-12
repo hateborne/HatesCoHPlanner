@@ -18,6 +18,9 @@ UI_PREFIXES = ("gui/creation/common/", "gui/creation/enhancements/", "gui/creati
                "gui/hud/tray/tray_ring", "gui/hud/common/scroll_bar/", "gui/hud/map/map_zoom_",
                "gui/hud/common/select_buttons/genericbutton_", "gui/hud/common/frame/frame_flat_3px/",
                "gui/hud/common/frame/frame_gen_backgrounds_3px/frame_3px_10r_background_")
+# Single UI textures, matched exactly (a prefix would also take their unused "..a" variants):
+# the sparks electric_display (uiFx.c) draws on a newly added enhancement slot.
+UI_FILES = frozenset(f"gui/hud/common/special_effects/enhnc_spark0{i}" for i in (1, 2, 3))
 FONT_FILES = ["REDCIRCL.ttf", "Paragon City Italic.ttf", "mont_demibold.TTF", "mont_hvbold.TTF"]
 FONT_DIR = config.FONTS_DIR  # vendored in the repo (pipeline/inputs/fonts); these never change
 # Front-end sounds the level-up screens play (sndPlay in uiLevelPower.c / uiLevelSpec.c /
@@ -248,7 +251,7 @@ def run(data_root) -> dict:
         missing[kind] = miss
 
     for rel, src in sorted(ix.by_rel.items()):
-        if not rel.startswith(UI_PREFIXES):
+        if not (rel.startswith(UI_PREFIXES) or rel in UI_FILES):
             continue
         img = decode(src.read())
         big = img.width * img.height >= 256 * 256

@@ -49,7 +49,7 @@ PvP-only effects dropped: 4113. Unresolved references: 0. New IDs: {'power': 0, 
 
 ## Assets
 
-powers: 1726, enh: 368, at: 15, origin: 5, ui: 351, fonts: 4, sounds: 62
+powers: 1728, enh: 368, at: 15, origin: 5, ui: 354, fonts: 4, sounds: 62
 
 - Missing powers (4): RadiationMelee_AssassinStrike, Spring_Attack_Spring_Attack_pow, Staff_Mastery, UtilityBelt_EnvenomedBarrage
 
