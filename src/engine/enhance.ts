@@ -4,7 +4,7 @@
  * character_mods.c (boost magnitude) and character_attribs.c (AggregateStrength / ED).
  */
 import type { GameData } from '../data/gamedata.ts';
-import type { Archetype, DimReturnSet, Mod, Power } from '../data/types.ts';
+import type { Archetype, BoostSet, DimReturnSet, Mod, Power } from '../data/types.ts';
 import type { SlottedEnh } from './build.ts';
 
 export const ORIGIN_COUNT = 5;
@@ -87,6 +87,63 @@ export function canSlot(gd: GameData, power: Power, boost: Power, originIndex: n
   const originOk = bba.some((v) => v < ORIGIN_COUNT && v === originIndex);
   const typeOk = bba.some((v) => v >= ORIGIN_COUNT && pba.includes(v));
   return originOk && typeOk;
+}
+
+/** IO set rarity tiers, one per Enhancement Converter group. */
+export type RarityKind =
+  | 'uncommon'
+  | 'rare'
+  | 'veryRare'
+  | 'pvp'
+  | 'archetype'
+  | 'superiorArchetype'
+  | 'winter'
+  | 'superiorWinter'
+  | 'event';
+
+/** An IO set's rarity: its tier and the name the tooltip shows for it. */
+export interface SetRarity {
+  kind: RarityKind;
+  name: string; // "Very Rare", "Archetype Origin", "Event", ...
+  event?: string; // event sets only: which event the set came from ("Summer Blockbuster")
+}
+
+// Enhancement Converter group (BoostSet.conv, from boostsets.bin) -> tier. "Very Rare" is the
+// game's own rarity name (menuMessages.ms); the rest follow the Homecoming wiki's Enhancement
+// Sets legend, which sorts sets by the same converter groups.
+const RARITY_BY_GROUP: Record<string, { kind: RarityKind; name: string }> = {
+  ECUncommon: { kind: 'uncommon', name: 'Uncommon' },
+  ECRare: { kind: 'rare', name: 'Rare' },
+  ECVeryRare: { kind: 'veryRare', name: 'Very Rare' },
+  ECPvP: { kind: 'pvp', name: 'PvP' },
+  ECATO: { kind: 'archetype', name: 'Archetype Origin' },
+  ECSATO: { kind: 'superiorArchetype', name: 'Superior Archetype Origin' },
+  ECWinter: { kind: 'winter', name: 'Winter Pack' },
+  ECSWinter: { kind: 'superiorWinter', name: 'Superior Winter Pack' },
+  ECUniversalDamage: { kind: 'event', name: 'Event' },
+};
+
+// The event sets share one converter group, so the game data can't say which event each came
+// from; the owner chose the wiki's event names, keyed by set.
+const EVENT_OF_SET: Record<string, string> = {
+  Overwhelming_Force: 'Summer Blockbuster',
+  Cupids_Crush: 'Spring Event Wedding',
+};
+
+/**
+ * The rarity of an IO set, from its Enhancement Converter group.
+ *
+ * @param set The set.
+ * @return Its tier and name, or undefined when none of its groups is a known tier.
+ */
+export function setRarity(set: BoostSet): SetRarity | undefined {
+  for (const g of set.conv) {
+    const r = RARITY_BY_GROUP[g];
+    if (!r) continue;
+    const event = r.kind === 'event' ? EVENT_OF_SET[set.n] : undefined;
+    return event ? { ...r, event } : { ...r };
+  }
+  return undefined;
 }
 
 /** IO set level range as 0-based enhancement levels (boostsets.bin stores 1-based levels). */
