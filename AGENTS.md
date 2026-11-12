@@ -94,7 +94,8 @@ Breaking any of these is a bug, whatever else the change does.
   forms. (Game text decoded from the client is data and is left as it is.)
 
 **Git and GitHub**
-- `main` is protected: every change goes through a pull request, all CI checks must pass, and
+- `main` is protected: every change goes through a pull request, all CI checks must pass on a
+  branch that is up to date with `main` (update it, then let CI run again, before merging), and
   pull requests need the owner's approval (CODEOWNERS); the owner may approve their own.
 - Never force-push `main`, rewrite its history, or change repository settings, rulesets or
   secrets.
@@ -245,6 +246,16 @@ be picked at a level, what is auto-granted, where slots can go, what is wrong wi
 `totals.ts` and `enhance.ts` do the math with the game's own tables: enhancement curves,
 Enhancement Diversification, boosters and exemplar handicaps, set bonuses with the rule of 5,
 and archetype caps. The engine is pure and synchronous; keep React and the DOM out of it.
+
+What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per
+build): autos and toggles on, clicks off, except
+- the inherent utility toggles (Rest, Walk, Sprint);
+- emergency toggles (`isEmergencyToggle`): ones that make their user untouchable, intangible or
+  able to affect only itself while they run (Hibernate, Icy Bastion, Geode, Phase Shift,
+  Personal Force Field, Nebulous Form), found from their effects;
+- toggles that switch each other off (`exclusiveGroups`: a shared GroupMembership, as the game's
+  `character_ShutOffAllTogglePowersInSameGroup` does): only the earliest picked is on. Switching
+  one on in the overview switches the others in its group off.
 
 **Builds.** A `Build` (`src/engine/build.ts`) stores ids only:
 

@@ -8,7 +8,7 @@ import type { GameData } from '../data/gamedata.ts';
 import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
-import { defaultOn } from '../engine/totals.ts';
+import { defaultOn, defaultsOf, exclusiveGroups } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, EndOfData, fromBase64, streamBytes, toBase64 } from './binary.ts';
 import { ImportProblem, READABLE, readable, readablePower } from './importProblem.ts';
 import { PLANNER_APP } from './midsPatches.ts';
@@ -280,10 +280,9 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     if (bp.bb && rel > 4) out.boosters = rel - 4;
     return out;
   };
-  // Mids' StatInclude is always explicit; keep it only when it differs from the planner's
-  // default for the power, so an export -> import round trip leaves the build unchanged
-  const onOverride = (pid: number, stat: boolean | undefined): boolean | undefined =>
-    stat === undefined || stat === defaultOn(gd.power(pid)) ? undefined : stat;
+  // Mids' StatInclude, by entry key: applied once the build is put together (applyStats), since a
+  // power's default can depend on the rest of the build
+  const stats = new Map<string, boolean>();
   const toSlots = (p: MbdPower, where: string): Slot[] =>
     p.SlotEntries.map((s) => ({ level: Math.max(0, s.Level - 1), enh: toEnh(s.Enhancement, where) }));
 
@@ -308,12 +307,61 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
         return;
       }
       used.add(idx);
-      b.picks[idx] = { power: pid, level, slots: toSlots(p, name), on: onOverride(pid, p.StatInclude) };
+      b.picks[idx] = { power: pid, level, slots: toSlots(p, name) };
+      if (typeof p.StatInclude === 'boolean') stats.set(`pick:${idx}`, p.StatInclude);
     } else {
-      b.granted[pid] = { slots: toSlots(p, name), on: onOverride(pid, p.StatInclude) };
+      b.granted[pid] = { slots: toSlots(p, name) };
+      if (typeof p.StatInclude === 'boolean') stats.set(`grant:${pid}`, p.StatInclude);
     }
   });
+  applyStats(gd, b, stats);
   return { build: b, warnings: warn };
+}
+
+/**
+ * Set an imported build's on/off switches from Mids' StatInclude.
+ *
+ * Mids writes StatInclude for every power, so it is kept only where it differs from the
+ * planner's default, and an export -> import round trip leaves the build unchanged. Mids counts
+ * every toggle, so of toggles that switch each other off in the game (exclusiveGroups) only the
+ * earliest one Mids counts stays on.
+ *
+ * @param gd Game data.
+ * @param b The imported build (changed in place).
+ * @param stats StatInclude by entry key ('pick:<index>' / 'grant:<powerId>').
+ */
+function applyStats(gd: GameData, b: Build, stats: Map<string, boolean>): void {
+  const setOn = (key: string, on: boolean | undefined) => {
+    const [kind, raw] = key.split(':');
+    const n = Number(raw);
+    if (kind === 'pick' && b.picks[n]) b.picks[n]!.on = on;
+    if (kind === 'grant' && b.granted[n]) b.granted[n]!.on = on;
+  };
+  const powerOf = (key: string) => {
+    const [kind, raw] = key.split(':');
+    const n = Number(raw);
+    return kind === 'pick' ? b.picks[n]?.power : n;
+  };
+  let defaults = new Map<string, boolean>();
+  try {
+    const counted = new BuildRules(gd, b).entries();
+    defaults = defaultsOf(gd, counted);
+    for (const g of exclusiveGroups(counted)) {
+      let kept = false;
+      for (const e of g) {
+        if (!(stats.get(e.key) ?? defaults.get(e.key))) continue;
+        if (kept) stats.set(e.key, false);
+        kept = true;
+      }
+    }
+  } catch {
+    // a build the rules can't read yet: per-power defaults below, and checkBuild decides later
+  }
+  for (const [key, on] of stats) {
+    const pid = powerOf(key);
+    const d = defaults.get(key) ?? (pid !== undefined && gd.powerById.has(pid) ? defaultOn(gd.power(pid)) : on);
+    setOn(key, on === d ? undefined : on);
+  }
 }
 
 /**
@@ -351,24 +399,25 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     const rel = bp.bie ? 4 + (s.enh.boosters ?? 0) : 4 + (s.enh.rel ?? 0);
     return { Uid: m.entry.uid, Grade: m.grade, IoLevel: s.enh.ioLevel ?? 49, RelativeLevel: RELATIVE[rel] ?? 'Even', Obtained: false };
   };
-  const entry = (pid: number | null, level: number, slots: Slot[], on: boolean | undefined): MbdPower => ({
+  const entries = rules.entries();
+  const defaults = defaultsOf(gd, rules.entries());
+  const entry = (key: string, pid: number | null, level: number, slots: Slot[], on: boolean | undefined): MbdPower => ({
     PowerName: pid === null ? '' : t.midsPowerName(pid),
     Level: pid === null ? -1 : level + 1,
-    // Mids has no "default": write what the planner actually counts (autos and toggles on)
-    StatInclude: pid === null ? false : (on ?? defaultOn(gd.power(pid))),
+    // Mids has no "default": write what the planner actually counts (defaultsOf)
+    StatInclude: pid === null ? false : (on ?? defaults.get(key) ?? defaultOn(gd.power(pid))),
     ProcInclude: false,
     VariableValue: 0,
     InherentSlotsUsed: 0,
     SubPowerEntries: [],
     SlotEntries: slots.map((s) => ({ Level: s.level + 1, IsInherent: false, Enhancement: enh(s), FlippedEnhancement: null })),
   });
-  const entries = rules.entries();
   const PowerEntries: MbdPower[] = b.picks.map((p, i) => {
     const e = entries.find((x) => x.key === `pick:${i}`);
-    return p && e ? entry(p.power, p.level, e.slots, p.on ?? undefined) : entry(null, 0, [], false);
+    return p && e ? entry(e.key, p.power, p.level, e.slots, p.on ?? undefined) : entry('', null, 0, [], false);
   });
   for (const e of entries.filter((x) => x.source === 'grant')) {
-    PowerEntries.push(entry(e.power.id, e.level, e.slots, e.on));
+    PowerEntries.push(entry(e.key, e.power.id, e.level, e.slots, e.on));
   }
   const mbd: Mbd = {
     BuiltWith: { App: PLANNER_APP, Version: '0.1.0', Database: 'Homecoming', DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
