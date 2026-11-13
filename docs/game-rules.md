@@ -20,7 +20,8 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   equality if both strings, else numeric), `eq` (string equality only), `+ - * / %`, `pow`,
   `negate`, `minmax`, `dup`, `drop`.
 - Functions used by player data: `powerset?` (owns set), `ownPower?`, `owned?`/`Owned?`
-  (badge -> treat false), `auth>` / `ProductOwned?` / `isVIP?` (account -> false),
+  (badge -> false, except the Patron accolades: see "Patron Power Pools" below),
+  `auth>` / `ProductOwned?` / `isVIP?` (account -> false),
   `char>`/`auto>` (property), `PowerBoostsSlotted>` (set-bonus requires), `level`.
 - Popping an empty stack yields 0 (so `['!']` is true). `['0']` is false (never buyable).
 - Unknown/runtime tokens (modes, tags, events, map state) evaluate as 0 in a planner.
@@ -39,6 +40,17 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   < count of `schedules.EpicPowerSet` entries <= L. Set allowed when `SetBuyRequires` passes and
   at least one of its powers passes Available + BuyRequires. Epic AT gating is via each power's
   `BuyRequires` (`$archetype`).
+- Patron Power Pools (Leviathan, Mace, Mu and Soul Mastery) are epic sets like the others: one
+  epic or Patron pool per build. Each pool's first two powers also ask for one of the Patron arcs'
+  accolades (`SpidersKissPatron`, `TheStingerPatron`, `BloodInTheWaterPatron`, `MiragePatron`
+  `Owned?`, or the beta server's `Beta_AutoLevel50`); any one opens all four pools, and the
+  character keeps them after changing alignment. A plan takes the accolade as earned
+  (`PLANNED_BADGES` in `src/engine/rules.ts`), so the pools are offered at level 35; every other
+  badge counts as not earned. Arachnos Soldiers and Widows have no other epic pools. Patron arcs
+  are villain content, so a Hero build choosing a Patron pool is told (once a visit to Choose an
+  Epic Power Set) that the character has to switch to villain in game for the arc; the pools stay
+  unlocked after switching back (`patronArcNote`; `isPatronSet` finds the pools from that
+  accolade check).
 - Specialization sets (`SpecializeAt != 0`, VEAT branches): offered alongside the trunk once
   `L >= SpecializeAt` and `SpecializeRequires` passes; only for sets in the class primary or
   secondary category. Branches exclude each other through their requires.

@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react';
-import { useStore } from '../../state/store.ts';
+import type { ReactElement, ReactNode } from 'react';
+import { useStore, type DialogLink } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { SKINS } from '../skin/skin.ts';
 import { skinOf } from '../../engine/build.ts';
@@ -21,6 +21,28 @@ import { useStage } from './Stage.tsx';
  * Escape cancels; clicking outside does nothing, so a stray click can't decide for you. It sits
  * above the Build menu's overlay (100), which asks some of these questions.
  */
+/**
+ * The dialog's text with its link's phrase (the first time it appears) as a link opening in a new
+ * tab. Only an https address is linked.
+ *
+ * @param text The text.
+ * @param link The phrase and its address, if any.
+ * @return The text, with the link in place.
+ */
+function linked(text: string, link: DialogLink | undefined): ReactNode {
+  const at = link && /^https:\/\//.test(link.href) ? text.indexOf(link.phrase) : -1;
+  if (!link || at < 0) return text;
+  return (
+    <>
+      {text.slice(0, at)}
+      <a className="support-link" href={link.href} target="_blank" rel="noopener noreferrer">
+        {link.phrase}
+      </a>
+      {text.slice(at + link.phrase.length)}
+    </>
+  );
+}
+
 /** @return The dialog's top edge: centred on a stage of height `stageH`. */
 function y0(stageH: number, h: number): number {
   return (stageH - h) / 2;
@@ -92,7 +114,7 @@ export function ConfirmDialog() {
       <MenuFrame x={x} y={y} w={w} h={h} r25 skin={skin} style={{ background: 'rgba(0,3,24,0.97)' }} />
       <SetTitle skin={skin} x={x + (phone ? 22 : 36)} y={y + 26} size={phone ? 26 : 28} text={confirm.title} />
       <div className="abs body-text" style={{ left: x + (phone ? 24 : 40), top: y + (phone ? 76 : 90), width: w - (phone ? 48 : 80), fontSize: 19, lineHeight: 1.35, color: '#cfe8ff', whiteSpace: 'pre-line' }}>
-        {confirm.text}
+        {linked(confirm.text, confirm.link)}
       </div>
       {list ? (
         <GameScroll skin={skin} left={x + pad} top={listTop} width={w - 2 * pad - 14} height={listBottom - listTop} barX={x + w - pad / 2}>
