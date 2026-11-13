@@ -21,6 +21,8 @@ export interface EvalContext {
   ownsPowerNum?(name: string): number;
   /** @return A character property: archetype, origin, level (1-based), alignment, type. */
   prop(name: string): string | number;
+  /** @return Whether the character has earned this badge or accolade (`Owned?`); none when absent. */
+  hasBadge?(name: string): boolean;
   /**
    * Whether the character is in a power mode (`kDefensiveAdaptation Source.Mode?`), i.e. a
    * running power sets it with SetMode. The name arrives with the data's `k` prefix.
@@ -180,6 +182,9 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
         continue;
       case 'powerset?':
         st.push(ctx.ownsSet(popStr()) ? 1 : 0);
+        continue;
+      case 'owned?':
+        st.push(ctx.hasBadge?.(popStr()) ? 1 : 0);
         continue;
       case 'ownpower?':
       case 'source.ownpower?':

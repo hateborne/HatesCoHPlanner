@@ -35,6 +35,12 @@ export const TIP_MODES: TipMode[] = ['enabled', 'advanced', 'disabled'];
 export type LevelSub = 'power' | 'pool' | 'epic' | 'slots';
 
 /** Where the level-up flow is and what the user has chosen but not yet confirmed. */
+/** A phrase in a dialog's text that opens a page in a new tab (an address in the planner's own code, never one from a build or file). */
+export interface DialogLink {
+  phrase: string; // the words in the text to link (the first time they appear)
+  href: string; // https address
+}
+
 export interface LevelCtx {
   step: number; // index into levelSteps()
   pickInStep: number; // which of the step's picks (level 1 has two)
@@ -100,6 +106,7 @@ interface Store {
     lines?: string[];
     choices?: DialogChoice[];
     alert?: boolean; // a message with one OK button (tell)
+    link?: DialogLink; // a phrase in the text that opens a page
     resolve: (ok: boolean, picked?: string[]) => void;
   } | null;
   /** Ask a yes / no question in the planner's dialog (with an optional list under it); resolves true on Proceed. */
@@ -113,8 +120,11 @@ interface Store {
   askChoices(q: { title: string; text: string; okLabel?: string; choices: DialogChoice[] }): Promise<string[] | null>;
   /** Pick an option in a row of the open dialog (ignored when the option is blocked). */
   setConfirmChoice(row: number, id: string): void;
-  /** Show a message in the planner's dialog with one OK button (an optional list under it); resolves when it closes. */
-  tell(q: { title: string; text: string; lines?: string[] }): Promise<void>;
+  /**
+   * Show a message in the planner's dialog with one OK button (an optional list under it, an
+   * optional phrase linking to a page); resolves when it closes.
+   */
+  tell(q: { title: string; text: string; lines?: string[]; link?: DialogLink }): Promise<void>;
   patchNotes: PatchNotes | null; // what a patch move changed in the current build
   /** Show (or with null, dismiss) the current build's patch-move changes; remembered per tab. */
   setPatchNotes(n: PatchNotes | null): void;

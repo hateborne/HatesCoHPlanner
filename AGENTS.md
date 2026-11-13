@@ -283,8 +283,9 @@ every target exists and that the archetypes each name is for can take it.
 it came: build names go through `cleanName` (plain text, at most 40 characters), names from imported
 files through `readable`, and a missing game version is named as its patch or not at all
 (`missingVersionNote`). A crafted link must not make the planner's own notices say what it likes.
-Every navigation goes to a fixed address on this site; none takes its target from a link, a build
-or a file.
+Every navigation goes to a fixed address written in the planner's code: on this site, or an outside
+page opened in a new tab (the Support dialog's charities, the wiki page a dialog's `link` opens).
+None takes its target from a link, a build or a file.
 
 **Import failures** are told to the user in the dialog (`tell`), never as raw error text
 (`src/io/importProblem.ts`). Something wrong with what they gave the planner (a code cut short, a
@@ -359,7 +360,9 @@ read the store with narrow selectors (`useShallow`) and call its actions.
 **Pop-ups and hovers.**
 - Every pop-up closes with Escape (`useEscape`).
 - Questions use `askConfirm` (or `askChoices` for rows of options); messages with one OK button
-  use `tell`; refusals use `notify` or `flashLocked`. The server list is `askServer`.
+  use `tell` (its optional `link` makes one phrase open a fixed https page in a new tab, as the
+  hero Patron note links the wiki); refusals use `notify` or `flashLocked`. The server list is
+  `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
 

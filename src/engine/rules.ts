@@ -52,6 +52,46 @@ export interface Issue {
 }
 
 const INHERENT_SETS = ['Inherent.Inherent', 'Inherent.Fitness'];
+// Badges a plan takes as earned (`Owned?`): the Patron arcs' accolades. Any one of them opens all
+// four Patron Power Pools (each pool's first two powers ask for one), and a character keeps them
+// after changing alignment, so a build planning a Patron pool has done an arc. Every other badge
+// counts as not earned (the veteran sprints' VetSprints, the beta server's Beta_AutoLevel50).
+const PLANNED_BADGES = new Set(['spiderskisspatron', 'thestingerpatron', 'bloodinthewaterpatron', 'miragepatron']);
+
+/**
+ * Whether a set is a Patron Power Pool: one of its powers asks for a Patron arc's accolade.
+ *
+ * @param gd Game data.
+ * @param set The set.
+ * @return True for the Patron pools (Leviathan, Mace, Mu and Soul Mastery, every archetype's).
+ */
+export function isPatronSet(gd: GameData, set: Powerset): boolean {
+  return set.p.some((pid) => {
+    const br = gd.power(pid).br ?? [];
+    return br.some((t, i) => PLANNED_BADGES.has(t.toLowerCase()) && br[i + 1]?.toLowerCase() === 'owned?');
+  });
+}
+
+// the Homecoming wiki's page on the Patron pools, linked from the hero note
+export const PATRON_WIKI = 'https://homecoming.wiki/wiki/Patron_Power_Pools';
+
+/**
+ * What a hero build choosing a Patron pool should know: in game the pools unlock through a villain
+ * story arc.
+ *
+ * @param gd Game data.
+ * @param b The build.
+ * @param set The epic set chosen.
+ * @return The note, with "Patron pool" linking to the wiki's page, or null when there is nothing
+ *   to say (not a Patron pool, or not a hero).
+ */
+export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: string; link: { phrase: string; href: string } } | null {
+  if (toAlignment(b.alignment) !== 'Hero' || !isPatronSet(gd, set)) return null;
+  return {
+    text: `${set.dn} is a Patron pool. In the game, Patron pools unlock by finishing a Patron story arc, a villain arc offered from level 35. Heroes have to switch to villain to run it; the pools stay unlocked after switching back.`,
+    link: { phrase: 'Patron pool', href: PATRON_WIKI },
+  };
+}
 
 /**
  * The power sets a new character can start with in a category (New Build's lists).
@@ -168,6 +208,7 @@ export class BuildRules {
         const p = this.gd.powerByName.get(name.toLowerCase());
         return !!p && owned.has(p.id);
       },
+      hasBadge: (name) => PLANNED_BADGES.has(name.toLowerCase()),
       ownsSet: (name) => {
         const s = this.gd.setByName.get(name.toLowerCase());
         return !!s && ownedSets.has(s.id);

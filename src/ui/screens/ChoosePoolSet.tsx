@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Power, Powerset } from '../../data/types.ts';
-import { BuildRules } from '../../engine/rules.ts';
+import { BuildRules, patronArcNote } from '../../engine/rules.ts';
 import { currentPick, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
@@ -35,7 +35,7 @@ function PoolDesc({ skin, phone, power, chosen }: { skin: Skin; phone: boolean; 
  * 2. choose one power from it on the right; Finish returns to Choose a New Power with it picked.
  */
 export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic' }) {
-  const { gd, steps, level, closeSetPicker } = useStore(useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, closeSetPicker: s.closeSetPicker })));
+  const { gd, steps, level, closeSetPicker, tell } = useStore(useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, closeSetPicker: s.closeSetPicker, tell: s.tell })));
   useFreshHover(); // hover lives in useHover: hovering a bar redraws only the description box
   useEscape(() => closeSetPicker()); // back to the power list
   const pick = level ? currentPick(steps, level) : -1;
@@ -43,6 +43,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
   const [setId, setSetId] = useState<number | undefined>(level?.pendingSet);
   const [power, setPower] = useState<number | undefined>(level?.pendingSet !== undefined ? level.pendingPower : undefined);
   const [tab, setTab] = useState(level?.pendingSet !== undefined ? 1 : 0);
+  const [patronTold, setPatronTold] = useState(false); // the hero Patron note, once a visit
   const stage = useStage();
   const { phone } = stage;
   if (!gd || !level || !rules) return null;
@@ -68,6 +69,12 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
           setSetId(c.set.id);
           setPower(undefined);
           setTab(1);
+          // a hero can't run the Patron arc that unlocks these in game: say so, once a visit
+          const note = kind === 'epic' && !patronTold ? patronArcNote(gd, level.base, c.set) : null;
+          if (note) {
+            setPatronTold(true);
+            void tell({ title: 'Patron Power Pool', ...note });
+          }
         }}
         onHover={(on) => useHover.setState({ desc: on ? { s: c.set } : null })}
       />
