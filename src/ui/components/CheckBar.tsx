@@ -28,7 +28,7 @@ interface CheckBarProps {
   onClick?: () => void;
   onRightClick?: () => void; // planner extra: right-click undoes (e.g. removes a slot placed at this level)
   onLongPress?: (pt: { x: number; y: number }) => void; // phones: press and hold (window px), in place of hovering
-  onHover?: (on: boolean) => void;
+  onHover?: (on: boolean, at?: DOMRect) => void; // at: the bar's outline (window px) when the pointer enters
   title?: string;
   testId?: string; // data-testid for the browser tests (e2e/)
 }
@@ -155,10 +155,10 @@ export function CheckBar(props: CheckBarProps) {
       style={{ left: boxLeft, top: boxTop - hitPad, width: snap(x + wd) - boxLeft, height: snap(y + 19 * s) - boxTop + 2 * hitPad }}
       {...pressKeys(press, onRightClick, text)}
       {...longPress(onLongPress)}
-      onMouseEnter={() => {
+      onMouseEnter={(ev) => {
         setHover(true);
         if (hoverSounds && selectable && !chosen) play('n_mouseenter');
-        onHover?.(true);
+        onHover?.(true, ev.currentTarget.getBoundingClientRect());
       }}
       onMouseLeave={() => {
         setHover(false);

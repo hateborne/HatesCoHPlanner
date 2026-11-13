@@ -249,9 +249,9 @@ function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; buil
   return (
     <>
       {ringTip && tipLevel !== 'off' ? <EnhTip gd={gd} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
-      {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} hint={hint} /> : null}
+      {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} hint={hint} /> : null}
       {tip && tipLevel === 'advanced' ? (
-        <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
+        <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
       ) : null}
     </>
   );
@@ -324,11 +324,11 @@ export function Overview({ skin }: { skin: Skin }) {
     return [...by.values()];
   };
 
-  const hoverOn = (e: BuildEntry, on: boolean) => {
+  const hoverOn = (e: BuildEntry, on: boolean, at?: DOMRect) => {
     if (phone) return;
     useHover.setState((h) => ({
       blink: e.source !== 'pick' ? h.blink : on ? e.level : h.blink === e.level ? null : h.blink,
-      tip: on ? { entry: e, x: mouse.current.x, y: mouse.current.y } : h.tip?.entry.key === e.key ? null : h.tip,
+      tip: on ? { entry: e, x: mouse.current.x, y: mouse.current.y, at } : h.tip?.entry.key === e.key ? null : h.tip,
     }));
   };
 
@@ -380,7 +380,7 @@ export function Overview({ skin }: { skin: Skin }) {
             title={flagged.map((f) => f.message).join('\n') || undefined}
             onClick={e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
             onLongPress={longBar}
-            onHover={(h) => hoverOn(e, h)}
+            onHover={(h, at) => hoverOn(e, h, at)}
           />,
         );
         if (lockFlash?.key === e.key) items.push(<LockFlash key={`${e.key}:flash-${lockFlash.id}`} flashKey={e.key} x={g.barCX} y={y} w={barW} s={S} />);
