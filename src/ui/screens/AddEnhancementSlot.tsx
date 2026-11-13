@@ -15,6 +15,7 @@ import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { ElectricFlash, preloadElectricFlash } from '../components/ElectricFlash.tsx';
+import { SLOT_FLASH_TICKS } from '../electric.ts';
 import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
@@ -282,7 +283,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     }
     // enhancementAnim_add, electric_init on the new ring, then sndPlay("powerselect2")
     const slot = { ring: `${e.key}:n${pendingOf(e.key)}`, at: performance.now() };
-    setVisit((v) => ({ base: level.base, added: [...(v?.base === level.base ? v.added : []), slot] }));
+    // one click time per ring: an older one left for the same place would date the new slot's flash
+    setVisit((v) => ({ base: level.base, added: [...(v?.base === level.base ? v.added.filter((a) => a.ring !== slot.ring) : []), slot] }));
     addPendingSlot(e.key);
     play('powerselect2');
   };
@@ -358,7 +360,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
           const rx = g.ringX + (k + 1) * g.ringStep;
           items.push(<SlotRing skin={skin} key={ring} x={rx} y={y + g.ringDy} size={g.ring} pending born={born} title="Click or right-click to remove this slot" onClick={() => unclick(e.key)} onRightClick={() => unclick(e.key)} />);
           // drawPowerAndEnhancements: electric_init on the new ring's center, inside the panel's clip
-          if (born !== undefined) items.push(<ElectricFlash key={`${ring}:fx${born}`} x={rx} y={y + g.ringDy} ring={g.ring} born={born} skin={skin} />);
+          if (born !== undefined) items.push(<ElectricFlash key={`${ring}:fx${born}`} x={rx} y={y + g.ringDy} ring={g.ring} born={born} duration={SLOT_FLASH_TICKS} skin={skin} />);
         }
         owned.forEach((s, i) => {
           const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { getDevPx, S, SX, SY, vs } from '../skin/metrics.ts';
 import { ui, type Skin } from '../skin/skin.ts';
+import { flashOver, flashStart, tickStep } from '../electric.ts';
 
 // electric_display's textures (uiFx.c): three broken electric rings (82 x 82) and the Next button's
 // glow halves (35 x 56 each)
@@ -11,17 +12,8 @@ const SPARK_PX = 82;
 const GLOW_W = 35;
 const GLOW_H = 56;
 
-const TICK_MS = 1000 / 30; // TIMESTEP = 30 x elapsed seconds (gfx.c)
-const MAX_STEP = 30; // gfx.c caps TIMESTEP at 30
-// the live client's drawPowerAndEnhancements passes duration 45 (1.5 s, about three flickers);
-// the source passes -1, which electric_initEx turns into 5000 ticks
-const LIFE = 45;
-const BURST_FRAMES = 5; // electric_initEx: ef->counter
 const BURST_SPARKS = 10; // electric_display: sparks per burst frame
 const GLOW_SCALE = 1.2; // electric_display: the glow halves at 1.2x the spark's scale
-// a remount this many ticks after the click (a phone tab switched back) keeps its age, no new burst;
-// one after LIFE draws nothing
-const BURST_LATE = 3;
 // drawPowerAndEnhancements' electric_init scale: MIN(1, .8 x scale x screenScale), scale 1
 const SC = Math.min(1, 0.8 * S);
 // electric_display's own screenScale: the mean of the x and y screen scales
@@ -125,8 +117,9 @@ function drawRotated(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: nu
  * 2. Three sparks (Enhnc_Spark01..03), each flickering on its own: on for 5-9 ticks with alpha
  *    255 x sin(pi t), each time at a new random angle and turning slowly, then off for 5-9 ticks.
  *    An "on" spark also draws the white Next-button glow behind it, in the same alpha.
- * 3. It lasts 45 ticks (1.5 s), as the live client's slot screen starts it (the source's -1 would
- *    be 5000 ticks); the slot screen unmounts it sooner (Finish, Cancel, the slot removed).
+ * 3. It lasts `duration` ticks, electric_init's argument (the slot screen passes the live
+ *    client's 45, SLOT_FLASH_TICKS); the slot screen unmounts it sooner (Finish, Cancel, the slot
+ *    removed). Mounted again after it ended (a phone tab switched back), it draws nothing.
  *
  * The client draws the sparks additively (GL_SRC_ALPHA, GL_ONE) and the glows with plain alpha,
  * so they sit on two canvases: the sparks' with 'lighter' and mix-blend-mode plus-lighter. The
@@ -136,9 +129,10 @@ function drawRotated(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: nu
  * @param y Center y.
  * @param ring Size of the slot ring it sits on: phones' larger rings scale the effect with them.
  * @param born performance.now() of the click that added the slot.
+ * @param duration How long it lasts, in ticks (30 a second).
  * @param skin UI skin (addAtlasTex's v_ / p_ texture variants).
  */
-export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y: number; ring?: number; born: number; skin?: Skin }) {
+export function ElectricFlash({ x, y, ring = RING, born, duration, skin }: { x: number; y: number; ring?: number; born: number; duration: number; skin?: Skin }) {
   const glowRef = useRef<HTMLCanvasElement>(null);
   const sparkRef = useRef<HTMLCanvasElement>(null);
   const k = ring / RING;
@@ -153,9 +147,10 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
     const glowR = texture(ui(GLOW_R_TEX, skin));
     const fx = initSparks();
     let last = performance.now();
-    let age = Math.max(0, (last - born) / TICK_MS); // ef->totalDuration
-    if (age > LIFE) return; // remounted after it ended
-    let burst = age < BURST_LATE ? BURST_FRAMES : 0;
+    const start = flashStart(born, last, duration);
+    let age = start?.age ?? 0; // ef->totalDuration
+    let burst = start?.burst ?? 0;
+    let glow: HTMLCanvasElement | undefined; // the joined glow, once its halves have loaded
     let raf = 0;
 
     // backing store in device pixels, but never finer than the textures' own texels (finer only
@@ -171,9 +166,16 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
       ctx.clearRect(0, 0, size, size);
       ctx.setTransform(1 / px, 0, 0, 1 / px, size / 2, size / 2);
     };
+    if (!start) {
+      // over already: clear anything an earlier run drew before it was stopped (frames paused in
+      // a background tab, then the ring resized)
+      prepare(gc);
+      prepare(sc);
+      return;
+    }
 
     const frame = (now: number) => {
-      const step = Math.min(MAX_STEP, Math.max(0, (now - last) / TICK_MS)); // TIMESTEP
+      const step = tickStep(last, now); // TIMESTEP
       last = now;
       prepare(gc);
       prepare(sc);
@@ -181,7 +183,7 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
       const sparkW = SPARK_PX * SC * AVG * k;
       const glowW = GLOW_W * GLOW_SCALE * SC * AVG * k;
       const glowH = GLOW_H * GLOW_SCALE * SC * AVG * k;
-      const glow = glowImage(glowL, glowR);
+      glow ??= glowImage(glowL, glowR);
       fx.forEach((f, i) => {
         if (f.total > 0 && f.total > f.timer) {
           // color 0xffffff00 | (int)(255 sin(pi (T - t) / T))
@@ -216,7 +218,7 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
         burst--;
       }
       age += step;
-      if (age > LIFE) {
+      if (flashOver(age, duration)) {
         prepare(gc);
         prepare(sc);
         return;
@@ -225,7 +227,7 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [born, half, k, skin]);
+  }, [born, duration, half, k, skin]);
 
   const box = { left: x - half, top: y - half, width: 2 * half, height: 2 * half };
   // z 9: over the slot rings (8) and bars, as the client's z + 190 is over the new slot's ring
