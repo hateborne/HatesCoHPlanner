@@ -6,7 +6,7 @@ import { currentPick, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { DescBox, InfoButton, MenuFrame, NextButton, SetFrame, TitleBar } from '../components/Chrome.tsx';
+import { DescBox, MenuFrame, NextButton, SetFrame, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { S, vx, vy } from '../skin/metrics.ts';
@@ -89,7 +89,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         title={o.reason}
         onClick={o.state === 'available' ? () => setPower(o.power.id === power ? undefined : o.power.id) : undefined}
         onLongPress={phone ? (pt) => pressPickTip(rules, o.power, pick, pt, o.state === 'available' ? undefined : o.reason) : undefined}
-        onHover={(on) => useHover.setState({ desc: on ? { p: o.power } : null })}
+        onHover={(on, at) => useHover.setState({ desc: on ? { p: o.power, at } : null })}
       />
     ));
 
@@ -136,7 +136,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
       <MenuFrame x={858} y={118} w={295} h={307} skin={skin} />
       <MenuFrame x={858} y={541} w={295} h={307} skin={skin} />
       <MenuFrame x={1153} y={118} w={702} h={730} skin={skin} />
-      <InfoButton skin={skin} x={vx(512)} y={vy(330)} text="Show Detailed Info" disabled={setId === undefined} />
+      {/* no Show Detailed Info button between the frames: the advanced tooltip shows those numbers */}
       <GameScroll skin={skin} left={L.left} top={clipTop} width={L.width} height={clipH} barX={vx(85) + 4 * S} barTop={barTop} barHeight={barH}>
         <div style={{ position: 'relative', height: contentH((choices.length + 1) * 61) }}>
           {choices.length ? <SetFrame skin={skin} x={vx(135) - L.left} y={setY - vy(48)} w={vx(260)} h={vy((choices.length - 1) * 61 + 96)} /> : null}

@@ -48,7 +48,8 @@ export function pressPickTip(rules: BuildRules, power: Power, pick: number, pt: 
  * @param props.pick The pick being made: the numbers are at its level.
  */
 export function PickTip({ gd, rules, pick }: { gd: GameData; rules: BuildRules; pick: number }) {
-  const power = useHover((h) => h.desc?.p);
+  const desc = useHover((h) => h.desc);
+  const power = desc?.p;
   const tipLevel = useTipLevel();
   const mouse = usePointer();
   const { phone } = useStage();
@@ -56,5 +57,5 @@ export function PickTip({ gd, rules, pick }: { gd: GameData; rules: BuildRules; 
   if (!power || tipLevel !== 'advanced' || phone) return null;
   const level = rules.pickLevel(pick);
   const entry = pickEntry(entries, power, level);
-  return <SlotTip gd={gd} power={power} x={mouse.current.x} y={mouse.current.y} advanced={<AdvancedInfo gd={gd} at={rules.at} entry={entry} level={level} />} />;
+  return <SlotTip gd={gd} power={power} x={mouse.current.x} y={mouse.current.y} avoid={desc?.at} advanced={<AdvancedInfo gd={gd} at={rules.at} entry={entry} level={level} />} />;
 }

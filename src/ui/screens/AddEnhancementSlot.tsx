@@ -218,6 +218,7 @@ function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: 
       power={tip.entry.power}
       x={tip.x}
       y={tip.y}
+      avoid={tip.at}
       hint={tipLevel === 'basic' && hint}
       advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(atId)} entry={tip.entry} level={level} /> : undefined}
     />
@@ -333,9 +334,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
             onClick={respec && later(e) ? undefined : () => click(e)}
             onRightClick={respec && later(e) ? undefined : () => unclick(e.key)}
             onLongPress={phone ? (pt) => useHover.setState({ press: { kind: 'power', entry: e, notes: [], ...pt } }) : undefined}
-            onHover={(on) => {
+            onHover={(on, at) => {
               // the info box keeps the last hovered power; the tooltip only while over the bar
-              if (on) useHover.setState({ desc: { p: e.power }, tip: phone ? null : { entry: e, x: mouse.current.x, y: mouse.current.y } });
+              if (on) useHover.setState({ desc: { p: e.power }, tip: phone ? null : { entry: e, x: mouse.current.x, y: mouse.current.y, at } });
               else useHover.setState((h) => (h.tip?.entry.key === e.key ? { tip: null } : h));
             }}
           />,

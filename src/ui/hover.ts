@@ -9,8 +9,8 @@ import type { BuildEntry } from '../engine/rules.ts';
  * level orb, the tooltip), never the whole screen.
  */
 export interface HoverState {
-  desc: { p?: Power; s?: Powerset } | null; // power / set under the pointer (the green description boxes)
-  tip: { entry: BuildEntry; x: number; y: number } | null; // power bar under the pointer (tooltip)
+  desc: { p?: Power; s?: Powerset; at?: DOMRect } | null; // power / set under the pointer (the green description boxes) and its bar (window px)
+  tip: { entry: BuildEntry; x: number; y: number; at?: DOMRect } | null; // power bar under the pointer (tooltip), and the bar itself (window px)
   ringTip: { entry: BuildEntry; slot: number; x: number; y: number } | null; // filled slot ring under the pointer
   blink: number | null; // 0-based level whose orb blinks (the hovered pick or slot was taken then)
   orb: number | null; // 0-based level of the hovered orb (lights that level's pick / slots)
@@ -41,7 +41,12 @@ export function useFreshHover(): void {
   }, []);
 }
 
-/** Describe a power while it is hovered (null: the pointer left it). Stable, so it never re-renders a list. */
-export function hoverPower(p: Power | null): void {
-  useHover.setState({ desc: p ? { p } : null });
+/**
+ * Describe a power while it is hovered (null: the pointer left it). Stable, so it never re-renders a list.
+ *
+ * @param p The power, or null.
+ * @param at Its bar (window px), which the tooltip keeps clear of.
+ */
+export function hoverPower(p: Power | null, at?: DOMRect): void {
+  useHover.setState({ desc: p ? { p, at } : null });
 }

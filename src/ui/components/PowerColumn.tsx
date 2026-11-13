@@ -61,7 +61,7 @@ interface PowerColumnProps {
   sets: SetOption[];
   pending?: number;
   onPick?: (p: Power) => void;
-  onHover?: (p: Power | null) => void;
+  onHover?: (p: Power | null, at?: DOMRect) => void;
   onLong?: (o: PowerOption, pt: { x: number; y: number }) => void; // phones: a long press (window px)
   flash?: { id: number; key: string; label: string } | null; // a refused pick: that bar flashes `label`
 }
@@ -92,7 +92,7 @@ export function PowerColumn({ skin, g, sets, pending, onPick, onHover, onLong, f
           title={o.reason}
           onClick={o.state === 'available' && onPick ? () => onPick(o.power) : undefined}
           onLongPress={onLong ? (pt) => onLong(o, pt) : undefined}
-          onHover={(on) => onHover?.(on ? o.power : null)}
+          onHover={(on, at) => onHover?.(on ? o.power : null, at)}
         />,
       );
       bottom = y + 19 * S;

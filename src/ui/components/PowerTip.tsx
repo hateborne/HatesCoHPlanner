@@ -10,6 +10,7 @@ import { smf } from '../smf.tsx';
 import { gameText, MenuFrame } from './Chrome.tsx';
 import { Sprite } from './Sprite.tsx';
 import { useStage } from './Stage.tsx';
+import { placeFloating, toStage } from '../floating.ts';
 
 /**
  * The last pointer position in stage px. Captured on the window, so a hover handler that runs
@@ -25,22 +26,24 @@ export function usePointer(): React.MutableRefObject<{ x: number; y: number }> {
       const r = wrap.getBoundingClientRect();
       mouse.current = { x: ((e.clientX - r.left) / r.width) * stage.w, y: ((e.clientY - r.top) / r.height) * stage.h };
     };
-    window.addEventListener('mousemove', on, true);
-    window.addEventListener('mouseover', on, true);
+    // mouseout too: React runs onMouseEnter from the mouseout of the element left behind, before
+    // the browser's mouseover or mousemove, so without it a tooltip opens where the pointer was
+    const kinds = ['mousemove', 'mouseover', 'mouseout'] as const;
+    for (const k of kinds) window.addEventListener(k, on, true);
     return () => {
-      window.removeEventListener('mousemove', on, true);
-      window.removeEventListener('mouseover', on, true);
+      for (const k of kinds) window.removeEventListener(k, on, true);
     };
   }, [stage.w, stage.h]);
   return mouse;
 }
 
 /**
- * A floating box under (or, near the bottom, above) a point, kept on screen and sized to its
- * content. `left` is where the box starts relative to x; `pad` reserves room on the left for
- * anything drawn outside the box (the description tip's icon ring).
+ * A floating box under a point (or above it, or beside the hovered bar: placeFloating), kept on
+ * screen and sized to its content. `left` is where the box starts relative to x; `pad` reserves room on the left for
+ * anything drawn outside the box (the description tip's icon ring); `avoid` is the hovered bar
+ * (window px), which the box keeps clear of (placeFloating).
  */
-function Floating({ x, y, w, gap, left = -140, pad = 0, render }: { x: number; y: number; w: number; gap: number; left?: number; pad?: number; render: (box: { x: number; y: number; h: number }, measure: React.RefObject<HTMLDivElement>) => ReactNode }) {
+function Floating({ x, y, w, gap, left = -140, pad = 0, avoid, render }: { x: number; y: number; w: number; gap: number; left?: number; pad?: number; avoid?: DOMRect; render: (box: { x: number; y: number; h: number }, measure: React.RefObject<HTMLDivElement>) => ReactNode }) {
   const stage = useStage();
   const ref = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(0);
@@ -50,9 +53,7 @@ function Floating({ x, y, w, gap, left = -140, pad = 0, render }: { x: number; y
     const v = ref.current?.offsetHeight ?? 0;
     if (v !== h) setH(v);
   });
-  const bx = Math.max(8 + pad, Math.min(stage.w - w - 8, x + left));
-  const below = y + gap;
-  const by = below + h <= stage.h - 64 ? below : Math.max(8, y - 30 - h);
+  const { x: bx, y: by } = placeFloating({ x, y, w, h, gap, left, pad }, stage, toStage(avoid, stage));
   return (
     // over the side Totals tab and pane (60), under the phone menu, notices and dialogs
     <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 65, pointerEvents: 'none' }}>
@@ -68,7 +69,7 @@ const SHIFT_HINT = 'Hold SHIFT for the advanced tooltip.';
  * (DescBox) -- a framed panel, the icon in powers_description_iconring on its left edge and the
  * long help in the skin's description green.
  */
-export function DescTip({ skin, power, x, y, hint }: { skin: Skin; power: Power; x: number; y: number; hint?: boolean }) {
+export function DescTip({ skin, power, x, y, avoid, hint }: { skin: Skin; power: Power; x: number; y: number; avoid?: DOMRect; hint?: boolean }) {
   const ring = 72 * S;
   const px = FONTS.smf_12.size * S;
   const pad = 12 * S;
@@ -80,6 +81,7 @@ export function DescTip({ skin, power, x, y, hint }: { skin: Skin; power: Power;
       w={w}
       gap={80}
       pad={ring / 2}
+      avoid={avoid}
       render={(b, ref) => {
         const h = Math.max(ring + 2 * pad, b.h);
         return (
@@ -142,7 +144,7 @@ export function SlotDetails({ gd, power, longColor }: { gd: GameData; power: Pow
  * The game's power hover tooltip box (screenshot: a dark panel with a thin rounded blue border):
  * the slot details, and in the Advanced view a divider and the detailed info below them.
  */
-export function SlotTip({ gd, power, x, y, hint, advanced, w = 640 }: { gd: GameData; power: Power; x: number; y: number; hint?: boolean; advanced?: ReactNode; w?: number }) {
+export function SlotTip({ gd, power, x, y, avoid, hint, advanced, w = 640 }: { gd: GameData; power: Power; x: number; y: number; avoid?: DOMRect; hint?: boolean; advanced?: ReactNode; w?: number }) {
   return (
     <Floating
       x={x}
@@ -150,6 +152,7 @@ export function SlotTip({ gd, power, x, y, hint, advanced, w = 640 }: { gd: Game
       w={advanced ? 760 : w}
       gap={34}
       left={30}
+      avoid={avoid}
       render={(b, ref) => (
         <div
           ref={ref}
@@ -195,8 +198,9 @@ const RARITY_STYLE: Record<Exclude<RarityKind, 'event'>, CSSProperties> = {
   veryRare: { color: '#a85df3' },
   pvp: gradientText('#6b8cf0', '#f04a32'), // the icon's blue left half to its red right half, lightened
   archetype: { color: '#f0b480' },
-  // a brighter Archetype Origin colour with a glow in the base colour
-  superiorArchetype: { color: '#ffe2c6', textShadow: '1px 0 #f0b480, -1px 0 #f0b480, 0 1px #f0b480, 0 -1px #f0b480' },
+  // a brighter Archetype Origin colour with a glow in the base colour, in the regular face: the
+  // heavy one under the glow was hard to read
+  superiorArchetype: { fontFamily: "'Montreal'", color: '#ffe2c6', textShadow: '1px 0 #f0b480, -1px 0 #f0b480, 0 1px #f0b480, 0 -1px #f0b480' },
   winter: gradientText('#d4eafc', '#f0c070'), // snowflake (a little bluer) to the border's gold
   superiorWinter: gradientText('#d4eafc', '#ca7dde'),
 };
@@ -210,7 +214,7 @@ const EVENT_STYLE: Record<string, CSSProperties> = {
 // browser-synthesised bold of the tooltip's demibold face, which barely shows
 const BOLD: CSSProperties = { fontFamily: "'MontrealHeavy'", fontWeight: 'normal' };
 
-/** The bold rarity name on the tooltip's Set Rarity line, in its tier's colours. */
+/** The rarity name on the tooltip's Set Rarity line, in its tier's colours (bold, but for a glowing one). */
 function RarityText({ r }: { r: SetRarity }) {
   if (r.kind === 'event') {
     return (
