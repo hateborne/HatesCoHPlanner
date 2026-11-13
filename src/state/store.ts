@@ -86,10 +86,10 @@ interface Store {
   view: View;
   build?: Build;
   level?: LevelCtx;
-  muted: boolean;
-  musicOn: boolean; // the login-screen music switch (remembered per browser; on by default, off on phones)
+  muted: boolean; // the Sound switch, off is muted (this tab's; new tabs start from the last change in any tab)
+  musicOn: boolean; // the login-screen music switch (this tab's, like muted; on by default, off on phones)
   setupAlign: Alignment; // the alignment picked on the setup screen (its skin and backdrop)
-  tips: TipMode; // hover tooltip setting (remembered per browser)
+  tips: TipMode; // hover tooltip setting (the browser's: open tabs follow a change in any tab)
   shift: boolean; // Shift held: Enabled tooltips show the Advanced view
   setTips(m: TipMode): void;
   notice: { id: number; text: string } | null; // a short red message (a refused change)
@@ -1081,15 +1081,28 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// The Sound, Music and Tooltips switches belong to the browser, not the tab, and the last change
-// made in any tab wins: every new or reloaded tab reads it from localStorage at start-up, and tabs
-// already open follow it at once (the storage event fires in every other tab of the site).
+/**
+ * What a switch changed in another tab of the site means for this one (the storage event).
+ *
+ * Every switch is saved in localStorage, so each new or reloaded tab starts from the last change
+ * made in any tab. Tabs already open follow only Tooltips: Sound and Music stay as each tab has
+ * them, so tabs open side by side to compare builds don't all start the music, each at its own
+ * place in the track.
+ *
+ * @param key The localStorage key that changed (null: the site's storage was cleared).
+ * @param value Its new value.
+ * @return The state to set in this tab, or null for none.
+ */
+export function fromOtherTab(key: string | null, value: string | null): { tips: TipMode } | null {
+  if (key === 'hcp.tooltips') return { tips: TIP_MODES.includes(value as TipMode) ? (value as TipMode) : 'enabled' };
+  if (key === null) return { tips: 'enabled' }; // site data cleared: the default
+  return null;
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key === 'hcp.muted') useStore.setState({ muted: e.newValue === '1' });
-    else if (e.key === 'hcp.music') useStore.setState({ musicOn: e.newValue !== '0' });
-    else if (e.key === 'hcp.tooltips') useStore.setState({ tips: TIP_MODES.includes(e.newValue as TipMode) ? (e.newValue as TipMode) : 'enabled' });
-    else if (e.key === null) useStore.setState({ muted: false, musicOn: defaultMusic(), tips: 'enabled' }); // site data cleared: defaults
+    const change = fromOtherTab(e.key, e.newValue);
+    if (change) useStore.setState(change);
   });
 }
 
