@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power, Powerset } from '../../data/types.ts';
@@ -14,7 +14,7 @@ import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { ElectricFlash } from '../components/ElectricFlash.tsx';
+import { ElectricFlash, preloadElectricFlash } from '../components/ElectricFlash.tsx';
 import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
@@ -235,6 +235,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   );
   useEscape(backLevel, level?.mode === 'edit'); // Escape cancels a level reopened from the overview
   useFreshHover(); // hover lives in useHover: hovering a bar redraws only the info box and tooltip
+  useEffect(() => preloadElectricFlash(skin), [skin]); // the new-slot flash's art, before the first click
   // fadingText queue: "No slots to assign!" at the bottom, "FULL!" over the clicked bar
   const [fades, setFades] = useState<{ id: number; key?: string; full: boolean }[]>([]);
   const fadeId = useRef(0);

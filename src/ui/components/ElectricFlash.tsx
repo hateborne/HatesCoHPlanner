@@ -13,11 +13,14 @@ const GLOW_H = 56;
 
 const TICK_MS = 1000 / 30; // TIMESTEP = 30 x elapsed seconds (gfx.c)
 const MAX_STEP = 30; // gfx.c caps TIMESTEP at 30
-const LIFE = 5000; // electric_initEx: a duration < 0 lasts 5000 ticks
+// the live client's drawPowerAndEnhancements passes duration 45 (1.5 s, about three flickers);
+// the source passes -1, which electric_initEx turns into 5000 ticks
+const LIFE = 45;
 const BURST_FRAMES = 5; // electric_initEx: ef->counter
 const BURST_SPARKS = 10; // electric_display: sparks per burst frame
 const GLOW_SCALE = 1.2; // electric_display: the glow halves at 1.2x the spark's scale
-// a remount this many ticks after the click (a phone tab switched back) keeps its age, no new burst
+// a remount this many ticks after the click (a phone tab switched back) keeps its age, no new burst;
+// one after LIFE draws nothing
 const BURST_LATE = 3;
 // drawPowerAndEnhancements' electric_init scale: MIN(1, .8 x scale x screenScale), scale 1
 const SC = Math.min(1, 0.8 * S);
@@ -43,6 +46,43 @@ function texture(url: string): HTMLImageElement {
   return img;
 }
 const ready = (img: HTMLImageElement) => img.complete && img.naturalWidth > 0;
+
+/**
+ * Start loading the effect's textures, so the first slot added flashes with them.
+ *
+ * @param skin UI skin (the textures' v_ / p_ variants).
+ */
+export function preloadElectricFlash(skin?: Skin): void {
+  for (const t of [...SPARK_TEX, GLOW_L_TEX, GLOW_R_TEX]) texture(ui(t, skin));
+}
+
+const glows = new Map<string, HTMLCanvasElement>();
+/**
+ * The Next button's glow, its two halves joined into one image.
+ *
+ * The client draws the halves edge to edge; drawn apart and scaled, a join that lands on half a
+ * device pixel is only partly covered by each half, and shows as a dark line through the glow.
+ *
+ * @param l The left half (loaded or not).
+ * @param r The right half.
+ * @return The joined glow, or undefined until both halves have loaded.
+ */
+function glowImage(l: HTMLImageElement, r: HTMLImageElement): HTMLCanvasElement | undefined {
+  if (!ready(l) || !ready(r)) return undefined;
+  const key = `${l.src}|${r.src}`;
+  let c = glows.get(key);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = l.naturalWidth + r.naturalWidth;
+    c.height = Math.max(l.naturalHeight, r.naturalHeight);
+    const ctx = c.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.drawImage(l, 0, 0);
+    ctx.drawImage(r, l.naturalWidth, 0);
+    glows.set(key, c);
+  }
+  return c;
+}
 
 /** C's rand() % n. */
 const rand = (n: number) => Math.floor(Math.random() * n);
@@ -85,7 +125,8 @@ function drawRotated(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: nu
  * 2. Three sparks (Enhnc_Spark01..03), each flickering on its own: on for 5-9 ticks with alpha
  *    255 x sin(pi t), each time at a new random angle and turning slowly, then off for 5-9 ticks.
  *    An "on" spark also draws the white Next-button glow behind it, in the same alpha.
- * 3. It lasts 5000 ticks; the slot screen unmounts it sooner (Finish, Cancel, the slot removed).
+ * 3. It lasts 45 ticks (1.5 s), as the live client's slot screen starts it (the source's -1 would
+ *    be 5000 ticks); the slot screen unmounts it sooner (Finish, Cancel, the slot removed).
  *
  * The client draws the sparks additively (GL_SRC_ALPHA, GL_ONE) and the glows with plain alpha,
  * so they sit on two canvases: the sparks' with 'lighter' and mix-blend-mode plus-lighter. The
@@ -113,6 +154,7 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
     const fx = initSparks();
     let last = performance.now();
     let age = Math.max(0, (last - born) / TICK_MS); // ef->totalDuration
+    if (age > LIFE) return; // remounted after it ended
     let burst = age < BURST_LATE ? BURST_FRAMES : 0;
     let raf = 0;
 
@@ -139,13 +181,13 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
       const sparkW = SPARK_PX * SC * AVG * k;
       const glowW = GLOW_W * GLOW_SCALE * SC * AVG * k;
       const glowH = GLOW_H * GLOW_SCALE * SC * AVG * k;
+      const glow = glowImage(glowL, glowR);
       fx.forEach((f, i) => {
         if (f.total > 0 && f.total > f.timer) {
           // color 0xffffff00 | (int)(255 sin(pi (T - t) / T))
           const a = Math.trunc(255 * Math.sin((Math.PI * (f.total - f.timer)) / f.total)) / 255;
           gc.globalAlpha = a;
-          if (ready(glowL)) gc.drawImage(glowL, -glowW, -glowH / 2, glowW, glowH);
-          if (ready(glowR)) gc.drawImage(glowR, 0, -glowH / 2, glowW, glowH);
+          if (glow) gc.drawImage(glow, -glowW, -glowH / 2, 2 * glowW, glowH);
           sc.globalAlpha = a;
           if (ready(sparks[i]!)) drawRotated(sc, sparks[i]!, sparkW, sparkW, f.angle);
           f.timer += step;
@@ -186,7 +228,8 @@ export function ElectricFlash({ x, y, ring = RING, born, skin }: { x: number; y:
   }, [born, half, k, skin]);
 
   const box = { left: x - half, top: y - half, width: 2 * half, height: 2 * half };
-  // z 9: over the slot rings (8) and bars, as the client's z + 190 is; under "FULL!" (z + 250). The
+  // z 9: over the slot rings (8) and bars, as the client's z + 190 is over the new slot's ring
+  // (drawMenuEnhancement, z + 100); under "FULL!" (z + 250). The
   // z-index sits on the canvases, not the wrapper: a stacking context there would hide the page
   // from the sparks' blend.
   const layer = { left: 0, top: 0, width: '100%', height: '100%', zIndex: 9 } as const;
