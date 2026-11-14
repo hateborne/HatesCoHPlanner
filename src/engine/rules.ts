@@ -334,7 +334,7 @@ export class BuildRules {
         return kind === 'pool' ? 'No more power pools at this level' : 'No epic pool at this level';
       }
     } else if (kind === 'branch') {
-      if (level < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
+      if (this.specLevel(level) < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
       if (!evalRequires(set.spr, ctx)) return 'Another specialization is chosen';
     } else if (kind !== 'primary' && kind !== 'secondary') {
       return 'Not available to this archetype';
@@ -371,8 +371,13 @@ export class BuildRules {
     if (av > level) return fail(`Available at level ${av + 1}`);
     const kind = this.setKind(ref.set);
     if (level === this.pickLevel(0) && (pickIndex === 0 || pickIndex === 1)) {
-      if (pickIndex === 0 && kind !== 'primary') return fail('Choose a primary power now');
-      if (pickIndex === 1 && kind !== 'secondary') return fail('Choose a secondary power now');
+      // the level-1 picks lock a column (category), not a set: a branch in the primary category
+      // (a respec at 24+) may take the primary pick, as its trunk may
+      const cat = this.gd.categoryOfSet.get(ref.set.id);
+      const isPri = kind === 'primary' || (kind === 'branch' && cat === this.at.cats.pri);
+      const isSec = kind === 'secondary' || (kind === 'branch' && cat === this.at.cats.sec);
+      if (pickIndex === 0 && !isPri) return fail('Choose a primary power now');
+      if (pickIndex === 1 && !isSec) return fail('Choose a secondary power now');
     }
     const block = this.newSetBlock(ref.set, pickIndex);
     if (block) return fail(block);
@@ -547,6 +552,22 @@ export class BuildRules {
     if (bought >= MAX_BOUGHT_SLOTS || e.slots.length >= (e.power.maxB ?? 0)) return 'Full';
     if (this.slotsLeft(levels) <= 0) return 'No Slots';
     return null;
+  }
+
+  /**
+   * The level a specialization (VEAT branch) set's SpecializeAt is checked against.
+   *
+   * The game checks the character's own level, never the level of the pick being made: the
+   * level-up screen passes the current level, and a respec its pre-respec level (uiReSpec.c
+   * powerLevelSelector with respec.maxLevel; character_respec.c with iExpLevel). So a leveling
+   * build opens the branches at their level, while a respec at that level or above takes branch
+   * powers from its first pick.
+   *
+   * @param level 0-based level of the pick.
+   * @return The pick's level, or for a Respec build the level it respecs to.
+   */
+  specLevel(level: number): number {
+    return this.b.respecTo ?? level;
   }
 
   /**

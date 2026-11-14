@@ -53,7 +53,14 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   accolade check).
 - Specialization sets (`SpecializeAt != 0`, VEAT branches): offered alongside the trunk once
   `L >= SpecializeAt` and `SpecializeRequires` passes; only for sets in the class primary or
-  secondary category. Branches exclude each other through their requires.
+  secondary category. Branches exclude each other through their requires, so the first branch
+  power taken chooses the path. `L` is the character's level, never the pick's
+  (`character_IsAllowedToSpecializeInPowerSet`): the level-up screen passes the current level and
+  a respec its pre-respec level (`uiReSpec.c` `respec.maxLevel`, `character_respec.c`
+  `iExpLevel`). So a leveling build opens the branches at 24, while a Respec build at 24 or above
+  may take branch powers from its first pick (`BuildRules.specLevel`); the branch powers keep their
+  own levels. At level 1 the first two picks lock a column (category), so a branch in it may take
+  that pick as its trunk may.
 
 ## Auto-issued powers
 
