@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_SERVER, defaultServer, serverById, serverOf, SERVERS, type GameServer } from '../../data/servers.ts';
 import { skinOf } from '../../engine/build.ts';
-import { useStore } from '../../state/store.ts';
+import { lastServer } from '../../state/lastServer.ts';
+import { CONTINUE_BUILD, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { pressKeys } from '../press.ts';
 import { SKINS } from '../skin/skin.ts';
@@ -23,7 +24,7 @@ async function switchServer(): Promise<void> {
   const st = useStore.getState();
   // only New Build switches (an open list, a first visit's above all, is never replaced)
   if (st.serverAsk || st.view !== 'setup') return;
-  const id = await st.askServer(/*cancellable=*/ true);
+  const id = await st.askServer(/*cancellable=*/ true, st.server);
   const to = serverById(id ?? undefined);
   const { build, server, askConfirm, selectServer } = useStore.getState();
   if (!to || to.id === server) return;
@@ -73,51 +74,65 @@ const PHONE_TILE_H = 170;
 /**
  * The server list (askServer): each server's logo as a tile, side by side (stacked on phones). A
  * first visit opens it once the site carries more than one server; the logo opens it any time.
- * The default (Homecoming) starts highlighted on a first visit, the shown server when switching;
- * Enter or Space takes the highlighted one, the arrow keys move between them and a click picks one.
- * Escape cancels a switch; a first visit can't be left without a server, so there it takes the
- * default.
+ * The server last shown in this browser (else the default) starts highlighted on a first visit, the
+ * shown server when switching. Enter or Space (or a first visit's OK) takes the highlighted one,
+ * the arrow keys move the highlight and a click picks a tile; hovering only lights a tile up, so
+ * the pointer crossing one on its way to OK changes nothing. Escape cancels a switch; a first visit
+ * can't be left without a server, so there it takes the preselected one.
+ *
+ * A page load after a long break (`resume`) shows the same list with a Continue button for the last
+ * build in place of OK. Continue starts highlighted (Enter and Escape take it); the arrow keys move
+ * between it and the tiles, and a tile starts a new build on its server.
  */
 export function ServerDialog() {
-  const cancellable = useStore((s) => s.serverAsk?.cancellable);
-  return cancellable === undefined ? null : <ServerList cancellable={cancellable} />;
+  const ask = useStore(
+    useShallow((s) => (s.serverAsk ? { cancellable: s.serverAsk.cancellable, preselect: s.serverAsk.preselect, resume: s.serverAsk.resume } : null)),
+  );
+  return ask ? <ServerList cancellable={ask.cancellable} preselect={ask.preselect} resume={ask.resume} /> : null;
 }
 
 /** The open server list (mounted per opening, so each starts on its own highlighted server). */
-function ServerList({ cancellable }: { cancellable: boolean }) {
+function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; preselect: string; resume?: string }) {
   const { close, shown, alignment, hasBuild } = useStore(
     useShallow((s) => ({ close: s.closeServerAsk, shown: s.server, alignment: s.build?.alignment, hasBuild: !!s.build })),
   );
   const stage = useStage();
-  const [hi, setHi] = useState(() => Math.max(0, SERVERS.findIndex((s) => s.id === (cancellable ? shown : DEFAULT_SERVER))));
+  const n = SERVERS.length;
+  // the highlight: a tile's index, or n for the Continue button (a return after a long break)
+  const items = resume ? n + 1 : n;
+  const first = Math.max(0, SERVERS.findIndex((s) => s.id === preselect));
+  const [hi, setHi] = useState(resume ? n : first);
+  // the server this browser last showed, named in a first visit's list (read once per opening)
+  const [last] = useState(() => lastServer()?.id);
   const tiles = useRef<(HTMLDivElement | null)[]>([]);
+  const resumeRef = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const pick = (i: number) => {
-    const s = SERVERS[i];
-    if (!s) return;
+    const id = resume && i === n ? CONTINUE_BUILD : SERVERS[i]?.id;
+    if (!id) return;
     play(SELECT[0]!);
-    close(s.id);
+    close(id);
   };
-  useEscape(() => (cancellable ? close(null) : pick(SERVERS.findIndex((s) => s.id === DEFAULT_SERVER))));
+  useEscape(() => (cancellable ? close(null) : pick(resume ? n : first)));
   // the keyboard focus follows the highlight
   useEffect(() => {
-    tiles.current[hi]?.focus();
-  }, [hi]);
+    (hi < n ? tiles.current[hi] : resumeRef.current)?.focus();
+  }, [hi, n]);
   // Enter / Space / arrows belong to the list wherever the focus is: caught before anything else
   // (capture on window, ahead of React's handlers) so nothing behind the dialog acts on them
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const keys = ['Enter', ' ', 'ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
       if (!keys.includes(e.key)) return; // Escape and Tab go on as usual
-      // the dialog's own Cancel button answers its own keys
-      if (e.target instanceof HTMLButtonElement && root.current?.contains(e.target)) return;
+      // the dialog's own buttons (Cancel, OK, Continue) answer their own Enter and Space
+      const own = e.target instanceof HTMLButtonElement && root.current?.contains(e.target);
+      if (own && (e.key === 'Enter' || e.key === ' ')) return;
       e.preventDefault();
       e.stopPropagation();
       if (e.repeat) return; // a key held down from opening the list (Enter on the logo) picks nothing
-      const n = SERVERS.length;
       if (e.key === 'Enter' || e.key === ' ') pick(hi);
-      else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') setHi((hi + 1) % n);
-      else setHi((hi + n - 1) % n);
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') setHi((hi + 1) % items);
+      else setHi((hi + items - 1) % items);
     };
     window.addEventListener('keydown', onKey, /*capture=*/ true);
     return () => window.removeEventListener('keydown', onKey, /*capture=*/ true);
@@ -125,7 +140,6 @@ function ServerList({ cancellable }: { cancellable: boolean }) {
 
   const { phone } = stage;
   const skin = SKINS[alignment ? skinOf(alignment) : 'hero'];
-  const n = SERVERS.length;
   const pad = phone ? 24 : 40;
   const textTop = phone ? 76 : 90;
   const textH = phone ? 150 : 104; // ~3 lines of the text
@@ -134,7 +148,7 @@ function ServerList({ cancellable }: { cancellable: boolean }) {
   const tileW = phone ? w - 2 * pad : TILE.w;
   const tileH = phone ? PHONE_TILE_H : TILE.h;
   const rowsH = phone ? n * (tileH + labelH) + (n - 1) * 16 : tileH + labelH;
-  const btnH = cancellable ? (phone ? 100 : 90) : 30;
+  const btnH = phone ? 100 : 90; // Cancel when switching, OK on a first visit, Continue after a break
   const h = textTop + textH + rowsH + btnH;
   const x = (stage.w - w) / 2;
   const y = Math.max(12, (stage.h - h) / 2);
@@ -143,7 +157,7 @@ function ServerList({ cancellable }: { cancellable: boolean }) {
     ? SERVERS.length > 1
       ? `Each server has its own archetypes, powers and enhancements, so picking another server clears the archetype and power sets chosen here${hasBuild ? ', and your current build (you are asked first)' : ''}.`
       : `The planner covers ${def.label} for now. Other servers are added once their game data is in.`
-    : `Which server do you play on? Each server has its own powers and enhancements.\nEnter or Space picks ${def.label}.`;
+    : `Which server do you play on? Each server has its own powers and enhancements.${resume ? '\nPick one to start a new build, or continue where you left off.' : ''}`;
   const rowTop = y + textTop + textH;
   const rowLeft = phone ? x + pad : x + (w - (n * TILE.w + (n - 1) * TILE.gap)) / 2;
   const btnW = Math.min(170, (w - 72) / 2);
@@ -158,34 +172,21 @@ function ServerList({ cancellable }: { cancellable: boolean }) {
         const tx = phone ? rowLeft : rowLeft + i * (TILE.w + TILE.gap);
         const ty = phone ? rowTop + i * (tileH + labelH + 16) : rowTop;
         const on = i === hi;
-        const note = s.id === shown && cancellable ? ' (current)' : s.id === DEFAULT_SERVER && !cancellable ? ' (default)' : '';
+        const note = cancellable ? (s.id === shown ? ' (current)' : '') : s.id === (last ?? DEFAULT_SERVER) ? (last ? ' (last used)' : ' (default)') : '';
         return (
           <div key={s.id}>
             <div
               ref={(el) => {
                 tiles.current[i] = el;
               }}
-              className="abs server-tile"
+              className={`abs server-tile${on ? ' on' : ''}`}
               role="button"
               tabIndex={0}
               aria-label={`${s.label}${note}`}
               data-testid={`server:${s.id}`}
               onClick={() => pick(i)}
               onFocus={() => setHi(i)}
-              onMouseEnter={() => setHi(i)}
-              style={{
-                left: tx,
-                top: ty,
-                width: tileW,
-                height: tileH,
-                boxSizing: 'border-box',
-                padding: 14,
-                borderRadius: 14,
-                border: `2px solid ${on ? '#4f94ff' : 'rgba(79,148,255,0.3)'}`,
-                background: on ? 'rgba(31,109,255,0.18)' : 'rgba(0,0,0,0.35)',
-                boxShadow: on ? '0 0 14px rgba(79,148,255,0.75)' : 'none',
-                cursor: 'pointer',
-              }}
+              style={{ left: tx, top: ty, width: tileW, height: tileH }}
             >
               <img src={logoSrc(s)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
             </div>
@@ -196,13 +197,29 @@ function ServerList({ cancellable }: { cancellable: boolean }) {
           </div>
         );
       })}
-      {cancellable ? (
-        <div className="abs" style={{ left: x, top: y + h - (phone ? 84 : 72), width: w, display: 'flex', justifyContent: 'center' }}>
+      <div className="abs" style={{ left: x, top: y + h - (phone ? 84 : 72), width: w, display: 'flex', justifyContent: 'center' }}>
+        {cancellable ? (
           <button className="info-button" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => close(null)}>
             Cancel
           </button>
-        </div>
-      ) : null}
+        ) : resume ? (
+          <button
+            ref={resumeRef}
+            className={`info-button server-continue${hi === n ? ' on' : ''}`}
+            data-testid="server:continue"
+            title={resume}
+            style={{ position: 'static', maxWidth: w - 2 * pad, padding: '0 28px' }}
+            onFocus={() => setHi(n)}
+            onClick={() => pick(n)}
+          >
+            {resume}
+          </button>
+        ) : (
+          <button className="info-button" data-testid="server:ok" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => pick(hi)}>
+            OK
+          </button>
+        )}
+      </div>
     </div>
   );
 }

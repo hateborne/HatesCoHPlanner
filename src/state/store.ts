@@ -14,6 +14,8 @@ import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelSt
 import { describeImportFailure, refusedBuild, serverListsUnread, unknownServer, wrongServer } from '../io/importProblem.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
+import { lastServer, rememberServer } from './lastServer.ts';
+import { returning, trackUse } from './lastUsed.ts';
 import { tabTitle } from './tabTitle.ts';
 
 export type View = 'loading' | 'error' | 'setup' | 'level' | 'overview';
@@ -66,15 +68,18 @@ interface Store {
    * @return Whether it is shown (the build is cleared only then).
    */
   selectServer(id: string): Promise<boolean>;
-  serverAsk: { cancellable: boolean; resolve: (id: string | null) => void } | null; // the server list dialog, while open
+  serverAsk: { cancellable: boolean; preselect: string; resume?: string; resolve: (id: string | null) => void } | null; // the server list dialog, while open
   /**
    * Ask which game server to use, in the server list dialog.
    *
    * @param cancellable Whether it can be closed without a pick (switching servers from the logo); a
-   *   first visit's can't, and Escape there takes the default.
-   * @return The picked server's id, or null when cancelled.
+   *   first visit's can't, and Escape there takes the preselected server.
+   * @param preselect The server highlighted at first (Enter, Space or OK takes it).
+   * @param resume The label of a button that continues the last build instead (a page load after a
+   *   long break); it starts highlighted then.
+   * @return The picked server's id, CONTINUE_BUILD for the resume button, or null when cancelled.
    */
-  askServer(cancellable: boolean): Promise<string | null>;
+  askServer(cancellable: boolean, preselect: string, resume?: string): Promise<string | null>;
   /** Close the server list dialog with a pick, or with null as cancelled. */
   closeServerAsk(id: string | null): void;
   gd?: GameData; // the data of the version being shown (the build's, or the one picked on New Build)
@@ -170,6 +175,14 @@ interface Store {
 
 const STORAGE_KEY = 'hcp.current';
 const NOTES_KEY = 'hcp.patchNotes';
+
+/** What the server list answers when its resume button (continue the last build) is used. */
+export const CONTINUE_BUILD = ':continue';
+
+// whether this page load comes after a long break (read once, before any input here counts as a use)
+const AWAY_AT_LOAD = returning(Date.now());
+// the answer to the return question, once given: Try again on the error screen keeps it
+let returnAnswer: string | null = null;
 
 /** @return What ties patch notes to one build (they are dropped when another build opens; a rename keeps them). */
 function buildTag(b: Build): string {
@@ -272,6 +285,20 @@ function dataFor(s: GameServer, v: GameVersion): Promise<GameData> {
 }
 
 /**
+ * Start loading a server's game data in the background (the server list's likely pick), so the
+ * screen behind it shows sooner once it is picked. The caches above keep it; a failure is dropped
+ * from them and left for the real load to report.
+ *
+ * @param s The server.
+ * @param version The game version a build asks for (its default when none or unknown).
+ */
+function prefetch(s: GameServer, version?: unknown): void {
+  versionsFor(s)
+    .then((vs) => dataFor(s, resolveVersion(vs, typeof version === 'string' ? version : undefined).version))
+    .catch(() => undefined);
+}
+
+/**
  * The server a build is for.
  *
  * @param b The build.
@@ -337,24 +364,65 @@ function forget(b: Build | undefined): void {
   }
 }
 
+/** @return The remembered builds: this tab's, then the browser's most recent one (unchecked: see checkBuild). */
+function storedBuilds(): Build[] {
+  // even touching window.sessionStorage throws when site data is blocked, so the access itself is
+  // inside the try
+  const read = (get: () => Storage) => {
+    try {
+      const raw = get().getItem(STORAGE_KEY);
+      const b: unknown = raw ? JSON.parse(raw) : undefined;
+      return b && typeof b === 'object' ? [b as Build] : [];
+    } catch {
+      return [];
+    }
+  };
+  return [...read(() => sessionStorage), ...read(() => localStorage)];
+}
+
 /**
  * @param accept Which remembered builds may open (one for the server the address names).
  * @return This tab's build, else the browser's most recent one, the first `accept` takes
  *   (unchecked: see checkBuild).
  */
 function restore(accept: (b: Build) => boolean = () => true): Build | undefined {
-  // even touching window.sessionStorage throws when site data is blocked, so the access itself is
-  // inside the try
-  const read = (get: () => Storage) => {
+  return storedBuilds().find((b) => {
     try {
-      const raw = get().getItem(STORAGE_KEY);
-      const b = raw ? (JSON.parse(raw) as Build) : undefined;
-      return b && accept(b) ? b : undefined;
+      return accept(b);
     } catch {
-      return undefined;
+      return false;
     }
-  };
-  return read(() => sessionStorage) ?? read(() => localStorage);
+  });
+}
+
+/**
+ * Whether a share link holds this browser's own remembered build (the address keeps the open
+ * build's code, so a reloaded tab's link is its own build, not one someone sent).
+ *
+ * @param code The link's share code.
+ * @param server The server the link opens on.
+ * @return True when it is the code of a remembered build for that server.
+ */
+async function isRemembered(code: string, server: string): Promise<boolean> {
+  for (const b of storedBuilds()) {
+    try {
+      if (serverOf(b) === server && (await encodeShare(b)) === code) return true;
+    } catch {
+      /* a damaged remembered build is nobody's code */
+    }
+  }
+  return false;
+}
+
+/** @return Whether a remembered build has a power picked (one with none is nothing to continue: checkBuild drops it). */
+function hasPicks(b: Build): boolean {
+  return Array.isArray(b.picks) && b.picks.some((p) => p);
+}
+
+/** @return The resume button's label for a build ('Continue "Fire Guy" on Thunderspy'). */
+function resumeLabel(b: Build, server: GameServer): string {
+  const name = cleanName(b.name).trim();
+  return `${name ? `Continue "${name}"` : 'Continue your last build'} on ${server.label}`;
 }
 
 // selectServer calls in flight: only the newest may show its server
@@ -500,9 +568,9 @@ export const useStore = create<Store>((set, get) => ({
   // the address's server from the start, so the logo and footer don't show another one while loading
   server: (typeof location !== 'undefined' ? serverFromPath(location.pathname, import.meta.env.BASE_URL).server : undefined)?.id ?? defaultServer().id,
   serverAsk: null,
-  askServer(cancellable) {
+  askServer(cancellable, preselect, resume) {
     get().serverAsk?.resolve(null); // a newer question replaces an unanswered one
-    return new Promise<string | null>((resolve) => set({ serverAsk: { cancellable, resolve } }));
+    return new Promise<string | null>((resolve) => set({ serverAsk: { cancellable, preselect, resume, resolve } }));
   },
   closeServerAsk(id) {
     const a = get().serverAsk;
@@ -696,12 +764,16 @@ export const useStore = create<Store>((set, get) => ({
         async () => restore((r) => !named.server || serverOf(r) === named.server.id),
       ];
       let linkFailed: unknown; // why the address's share link couldn't be opened, if it couldn't
+      let lastFailed: unknown; // why the remembered build couldn't be opened, if it couldn't
       // a bad link falls back to the remembered build, then says so
       const tellLink = (opened: boolean) => {
         if (linkFailed === undefined) return;
         const f = describeImportFailure(linkFailed, "The share link in the page's address couldn't be opened", "Couldn't open the share link");
         void get().tell({ title: f.title, text: opened ? `${f.text}\nYour last build is open instead.` : f.text });
       };
+      let asked = false; // the return question (below) is asked once per load
+      let fresh: GameServer | undefined; // the server it picked for a new build instead
+      let continued: GameServer | undefined; // the server of the build it was told to continue
       for (const [k, next] of candidates.entries()) {
         let raw: Build | undefined;
         try {
@@ -716,6 +788,23 @@ export const useStore = create<Store>((set, get) => ({
           if (k === 0) linkFailed = unknownServer(String(raw.server));
           continue;
         }
+        // after a long break the player's own build (this browser's remembered one, or the link a
+        // reloaded tab keeps in its address) doesn't reopen unannounced: the server list asks first,
+        // with a button that continues it. A link someone sent opens as always.
+        if (AWAY_AT_LOAD && !asked && SERVERS.length > 1 && hasPicks(raw) && (k === 1 || (await isRemembered(link?.[1] ?? '', server.id)))) {
+          asked = true;
+          prefetch(server, raw.dataVersion); // what Continue opens
+          const id = returnAnswer ?? (await get().askServer(/*cancellable=*/ false, (named.server ?? lastServer() ?? server).id, resumeLabel(raw, server)));
+          if (id === null) return; // a newer load() asked again (React's dev double mount): it carries on
+          returnAnswer = id;
+          if (id !== CONTINUE_BUILD) {
+            fresh = serverById(id);
+            // New Build: the address no longer carries the build (it stays remembered until a new one starts)
+            if (k === 0 && typeof history !== 'undefined') history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+            break;
+          }
+          continued = server;
+        }
         const versions = await versionsFor(server);
         const { version, missing } = resolveVersion(versions, typeof raw.dataVersion === 'string' ? raw.dataVersion : undefined);
         let gd: GameData;
@@ -726,6 +815,7 @@ export const useStore = create<Store>((set, get) => ({
           // rather than stopping on the error screen
           console.error(`couldn't load ${server.id}/${version.id} for a remembered build`, e);
           if (k === 0) linkFailed = e;
+          else lastFailed = e;
           continue;
         }
         const c = checkBuild(gd, raw);
@@ -733,6 +823,7 @@ export const useStore = create<Store>((set, get) => ({
           // a build started but with no power picked yet (the address keeps it from New Build's
           // first screen) is nothing to open, not a broken link
           if (k === 0 && c.fixes[c.fixes.length - 1] !== 'no powers picked yet') linkFailed = refusedBuild(c.fixes);
+          else if (k === 1) lastFailed = refusedBuild(c.fixes);
           continue;
         }
         if (c.fixes.length) console.warn('saved build repaired:', c.fixes);
@@ -743,11 +834,20 @@ export const useStore = create<Store>((set, get) => ({
         tellLink(true);
         return;
       }
-      // no build: New Build on the server the address names; else, once the site carries more than
-      // one, the player picks (the default is one key press away); else the only one
-      let picked = named.server;
+      // asked to continue a build that then couldn't open: say so (a link already says why), and show
+      // New Build on its server rather than asking again
+      if (continued && linkFailed === undefined && lastFailed !== undefined) {
+        const f = describeImportFailure(lastFailed, "Your last build couldn't be opened", "Couldn't open your last build");
+        void get().tell({ title: f.title, text: f.text });
+      }
+      // no build: New Build on the server picked above, else the one the address names; else, once
+      // the site carries more than one, the player picks (the server last shown in this browser, else
+      // the default, is one key press away, and its data loads while the list is open); else the only one
+      let picked = fresh ?? continued ?? named.server;
       if (!picked && SERVERS.length > 1) {
-        const id = await get().askServer(/*cancellable=*/ false);
+        const likely = lastServer() ?? defaultServer();
+        prefetch(likely);
+        const id = await get().askServer(/*cancellable=*/ false, likely.id);
         if (id === null) return; // a newer load() asked again (React's dev double mount): it carries on
         picked = serverById(id);
       }
@@ -1077,6 +1177,19 @@ if (typeof window !== 'undefined') {
     const same = !was.unknown && (was.server?.id ?? DEFAULT_SERVER) === s.server;
     const hash = cleared || !same ? '' : location.hash;
     if (location.pathname !== path || location.hash !== hash) history.replaceState(history.state, '', `${path}${location.search}${hash}`);
+  });
+}
+
+// A click, tap, key or wheel in any tab is a use: a page load after RETURN_AFTER without one asks
+// before reopening the last build (see load)
+if (typeof window !== 'undefined') trackUse(window);
+
+// The server shown once the page is up (picked, switched to, or a build's) is the one the server
+// list starts on next time
+if (typeof window !== 'undefined') {
+  useStore.subscribe((s, prev) => {
+    if (s.view === 'loading' || s.view === 'error') return;
+    if (s.server !== prev.server || s.view !== prev.view) rememberServer(s.server);
   });
 }
 

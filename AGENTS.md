@@ -285,10 +285,18 @@ with its `#b=` code (`notFoundRedirect`, written into the page and allowed by it
 CSP); anything else gets a "not found" page linking to the planner, so an unknown server's link is
 never opened as Homecoming. On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
-unless the address names another server. With no build, New
+unless the address names another server. After a long break (`RETURN_AFTER`, 4 hours without a
+click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; none on record counts
+as a break) the player's own build doesn't reopen unannounced: the remembered build, or a link holding
+its share code (a reloaded tab's address), opens the server list with a Continue button for it
+(`askServer`'s `resume`, answered `CONTINUE_BUILD`), highlighted so Enter takes it, and its data
+loads while the list is open. A tile starts New Build on its server instead; the build stays
+remembered until a new one starts. A link someone else sent opens at once. With no build, New
 Build opens on the server the address names; failing that, once `SERVERS` holds more than one, a
-first visit asks in the server list dialog (`askServer`; the default is highlighted, so Enter or
-Space takes it); otherwise on the only server. The address is then rewritten in place to the build's
+visit asks in the server list dialog (`askServer`). The server this browser last showed
+(`hcp.server`, `src/state/lastServer.ts`), else the default, starts highlighted, so Enter, Space or OK
+takes it, and its data starts loading while the list is open; hovering a tile doesn't move the
+highlight. Otherwise New Build opens on the only server. The address is then rewritten in place to the build's
 server (with no build, the server shown). The server logo (`ServerLogo`, in the desktop bottom bar
 and at the top of the phone menu) shows on every screen, but only New Build makes it the selector: it
 opens the same list there, and picking another server shows that server's data and clears the

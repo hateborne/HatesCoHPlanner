@@ -25,8 +25,10 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
 - Game servers: Homecoming and Thunderspy (`.../HatesCoHPlanner/Thunderspy/`). The server's logo
   shows in the bottom bar (the phone menu on phones); on the New Build screen it opens the server
   list. Switching there clears the archetype and power sets, and, after a warning, the current
-  build (builds never move between servers). A first visit to the site root asks which one (Enter
-  or Space takes Homecoming). Thunderspy has no Mids import or export (MidsReborn has no Thunderspy
+  build (builds never move between servers). A visit to the site root with no build open asks which one,
+  with the server you last used (at first Homecoming) highlighted: Enter or OK takes it. Coming back
+  after 4 hours or more away, the same list greets you with a button that continues your last build.
+  Thunderspy has no Mids import or export (MidsReborn has no Thunderspy
   database) and no `/build_save` import (its client doesn't write one); its builds share by link.
 - Hero, villain and Praetorian skins by alignment; the game's UI sounds (with a mute switch);
   a one-panel-at-a-time layout on phones.

@@ -516,3 +516,35 @@ button {
 .server-logo.active:hover img {
   filter: brightness(1.12) drop-shadow(0 0 6px rgba(79, 148, 255, 0.8));
 }
+/* the server list's tiles: the highlighted one (.on, what Enter / OK takes) glows; hovering only lights one up */
+.server-tile {
+  box-sizing: border-box;
+  padding: 14px;
+  border-radius: 14px;
+  border: 2px solid rgba(79, 148, 255, 0.3);
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.server-tile:hover {
+  border-color: rgba(79, 148, 255, 0.65);
+  background: rgba(31, 109, 255, 0.08);
+}
+.server-tile.on {
+  border-color: #4f94ff;
+  background: rgba(31, 109, 255, 0.18);
+  box-shadow: 0 0 14px rgba(79, 148, 255, 0.75);
+}
+/* its Continue button (a load after a long break): dimmed until highlighted, then it glows as a tile does */
+.server-continue {
+  box-shadow: none;
+  filter: brightness(0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.server-continue.on {
+  filter: none;
+  border-color: #cfe8ff;
+  box-shadow: 0 0 14px rgba(79, 148, 255, 0.9);
+}
