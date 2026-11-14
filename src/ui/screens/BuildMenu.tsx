@@ -163,7 +163,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
         const named = serverInLink(t, import.meta.env.BASE_URL);
         if (named.unknown) throw unknownServer(named.unknown);
         const code = await decodeShare(m[1]!);
-        const b = withServer(code, await shareServer(named, code.dataVersion));
+        const b = withServer(code, shareServer(named, code.dataVersion));
         if (!(await replaceOk(b.name))) return;
         await open(b, []);
         return;

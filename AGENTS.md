@@ -86,11 +86,15 @@ Breaking any of these is a bug, whatever else the change does.
   no server: the link's address does. An address that names a server the site doesn't carry is
   refused, never opened as Homecoming. Anything that makes a build from a server's data (imports,
   `checkBuild`, `newBuild`) stamps that server on it.
-- Every game version id belongs to one server (the pipeline refuses an id another server's
-  `versions.json` lists; Thunderspy's start with `ts`, release 9.6 is `ts9-6`). A share code names
-  its version, so `shareServer` (`src/state/store.ts`) opens a bare code on the server its version
-  belongs to and refuses a code whose version is another server's than the address names
-  (`wrongServer`): a Thunderspy code is never read with Homecoming's ids.
+- Every game version id names its server by its prefix: `versionPrefix` in `SERVERS` and
+  `version_prefix` in `pipeline/config.py`, kept in step (Thunderspy's start with `ts`, release 9.6
+  is `ts9-6`; Homecoming has none, and its ids are those no other prefix starts). The pipeline
+  refuses an id with the wrong prefix, or one another server's `versions.json` lists. A share code
+  names its version, so `shareServer` (`src/state/store.ts`, through `versionServer`) opens a bare
+  code on the server its version belongs to and refuses a code whose version is another server's
+  than the address names (`wrongServer`): a Thunderspy code is never read with Homecoming's ids.
+  It downloads nothing to decide, so a link never fails because another server's files won't load.
+  A new server gets a prefix no other starts with or is started by (`tests/shareserver.test.ts`).
 - The share-link format (`src/io/share.ts`) may only grow by optional trailing fields, and old
   links must keep decoding. Links without a version open as `LEGACY_GAME_VERSION` (`i28p4`).
 - Builds from outside the app (links, browser storage, saved builds, imports) always pass

@@ -93,6 +93,9 @@ class Server:
     report: str              # report name under pipeline/ (report-<version> for older versions)
     mids: bool               # a MidsReborn database exists for it (Mids map and validation)
     shared_assets: bool      # its default version exports the shared public/assets (Homecoming only)
+    version_prefix: str = "" # every game version id of its starts with this ("" for Homecoming:
+                             # its ids are those no other prefix starts); the app reads a share
+                             # code's server from it (versionPrefix in src/data/servers.ts)
 
 
 HOMECOMING = Server("homecoming", "COH_CLIENT", ("client",), "bin/win64/live/cityofheroes.exe",
@@ -102,7 +105,8 @@ HOMECOMING = Server("homecoming", "COH_CLIENT", ("client",), "bin/win64/live/cit
 # Thunderspy keeps every bin, powers.bin included, in tspy/bin.pigg; its own art is in tspy/*.pigg
 THUNDERSPY = Server("thunderspy", "COH_CLIENT_THUNDERSPY", ("servers", "thunderspy", "client"),
                     "Thunderspy.exe", "tspy/bin.pigg", "tspy/bin.pigg", "piggs", "tspy", None,
-                    "thunderspy", "ids-thunderspy.json", "report-thunderspy", False, False)
+                    "thunderspy", "ids-thunderspy.json", "report-thunderspy", False, False,
+                    version_prefix="ts")
 SERVERS = {s.id: s for s in (HOMECOMING, THUNDERSPY)}
 # Folder names under public/data that hold a server's data, never a game version (Rebirth's is
 # reserved for when its data comes).
@@ -225,6 +229,20 @@ def valid_version_id(v: str) -> bool:
     @return True when it may name a folder under public/data.
     """
     return bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", v)) and v not in _RESERVED and v not in SERVER_FOLDERS
+
+
+def version_server(version: str) -> Server:
+    """The server a game version id belongs to, by its prefix.
+
+    A share code names its game version but not its server, and the app tells the server from the id
+    alone (versionServer in src/data/servers.ts), downloading no server's version list: so a link
+    never fails because another server's files won't load. Every id must therefore start with its
+    server's prefix, and a Homecoming id with none of the others'.
+
+    @param version The version id ("i28p4", "ts9-6").
+    @return The server whose prefix it starts with, else Homecoming.
+    """
+    return next((s for s in SERVERS.values() if s.version_prefix and version.startswith(s.version_prefix)), HOMECOMING)
 
 
 def scrub(text: str) -> str:

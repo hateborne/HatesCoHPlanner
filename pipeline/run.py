@@ -244,6 +244,13 @@ def main() -> int:
         print(f"error: invalid game version id {version!r} (lower-case letters, digits, '-' and '_', "
               "not a server's folder name)")
         return 2
+    named = config.version_server(version)
+    if named.id != config.SERVER.id:
+        want = (f"start with {config.SERVER.version_prefix!r}" if config.SERVER.version_prefix
+                else f"not start with {named.version_prefix!r}")
+        print(f"error: game version id {version!r} reads as {named.id}'s: {args.server}'s ids must {want} "
+              "(the app tells a share code's server from its version id)")
+        return 2
     owner = version_owner(version)
     if owner:
         print(f"error: game version id {version!r} is already {owner}'s; every version id names one server")

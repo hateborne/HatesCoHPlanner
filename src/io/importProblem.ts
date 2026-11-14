@@ -98,16 +98,6 @@ export function wrongServer(made: ServerName, named: ServerName): ImportProblem 
 }
 
 /**
- * The problem to report for a share code whose server can't be told: no server's version list
- * that loaded holds its game version, and some list didn't load.
- *
- * @return The problem, worded for the user.
- */
-export function serverListsUnread(): ImportProblem {
-  return new ImportProblem("the planner couldn't load every server's game versions, so it can't tell which server the build is for", 'Check the connection, then try again.');
-}
-
-/**
  * The problem to report for Mids on a server MidsReborn has no database for.
  *
  * @param s The server.

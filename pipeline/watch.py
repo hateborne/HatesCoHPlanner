@@ -49,8 +49,6 @@ PATCH_WATCH = config.REPO / "pipeline" / "patch-watch.json"
 MAX_MANIFEST = 2 << 20          # bytes a manifest may have (Thunderspy's is ~20 KB)
 TIMEOUT = 30                    # seconds the whole manifest download may take
 USER_AGENT = "patch-watch/1.0"  # generic: names nothing about the owner or this machine
-# Version id prefix per server, before the release with "-" for "." (release 9.6 is ts9-6).
-VERSION_PREFIX = {"thunderspy": "ts"}
 _MD5 = re.compile(r"[0-9a-f]{32}")
 _RELEASE = re.compile(r"\d{1,4}(?:\.\d{1,4}){0,3}")
 
@@ -222,7 +220,7 @@ def published_default(server_id: str) -> Published | None:
 
 def suggested_id(server: config.Server, release: str, taken: frozenset) -> str:
     """@return The version id a release would get ("ts9-7"), or a placeholder when that id is taken or invalid."""
-    vid = VERSION_PREFIX.get(server.id, "") + release.replace(".", "-")
+    vid = server.version_prefix + release.replace(".", "-")  # release 9.6 is ts9-6
     if not config.valid_version_id(vid):
         return "<new id>"
     return f"<new id; {vid} is published>" if vid in taken else vid

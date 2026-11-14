@@ -18,6 +18,7 @@ export interface GameServer {
   logo: string; // its logo under the site base (public/servers/)
   midsDb?: string; // the name Mids gives its database (BuiltWith.Database); none: Mids has no database for it
   buildSave: boolean; // its game client writes /build_save files (build.txt) the planner can import
+  versionPrefix?: string; // every game version id of its starts with this (the pipeline enforces it); the default server has none
 }
 
 /** The server new visitors start on (the most played), and the one builds without a server belong to. */
@@ -30,8 +31,24 @@ export const DEFAULT_SERVER = 'homecoming';
 export const SERVERS: readonly GameServer[] = [
   { id: 'homecoming', label: 'Homecoming', path: 'Homecoming', data: 'data/', logo: 'servers/homecoming.webp', midsDb: 'Homecoming', buildSave: true },
   // Thunderspy's client has no /build_save, and MidsReborn has no Thunderspy database
-  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false },
+  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts' },
 ];
+
+/**
+ * The server a game version id belongs to: the one whose `versionPrefix` it starts with, else the
+ * default server, whose ids carry none.
+ *
+ * A share code names its game version but not its server, and each server numbers its powers on its
+ * own. The pipeline gives every server's ids its prefix (Thunderspy's release 9.6 is "ts9-6") and
+ * refuses a Homecoming id that starts with another's, so the id alone tells the server: no server's
+ * version list has to be downloaded, and a link never fails because another server's files won't load.
+ *
+ * @param version The version id ("i28p4", "ts9-6").
+ * @return Its server.
+ */
+export function versionServer(version: string): GameServer {
+  return SERVERS.find((s) => s.versionPrefix && version.startsWith(s.versionPrefix)) ?? defaultServer();
+}
 
 /** @return The server with this id, or undefined when the site doesn't carry it. */
 export function serverById(id: string | undefined): GameServer | undefined {
