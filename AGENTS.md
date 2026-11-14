@@ -66,11 +66,16 @@ Breaking any of these is a bug, whatever else the change does.
 - A second exception, also approved: an older client with no enhancement frame data (before the
   February 10, 2026 update) shows a newer version's frames (`--frames-from`, recorded as
   `framesFrom` in its manifest). Frames are artwork only; no number comes from the other version.
+  Thunderspy's client has none either and borrows Homecoming's (`--frames-from homecoming/i28p4`):
+  by internal name, and for a set piece Homecoming lacks, the pair Homecoming's set pieces use for
+  its conversion group (attuned or not), which matches every Homecoming set piece it answers when
+  tried on Homecoming's own sets one left out at a time (`borrow_frames` in `pipeline/export.py`).
 - Code that touches Mids data must survive it being missing or malformed: warn and carry on.
 
 **Stable IDs and old builds**
-- `pipeline/ids.json` assigns the numeric IDs that share links and saved builds use. It is
-  append-only: never renumber, reuse, reorder or delete entries.
+- `pipeline/ids.json` assigns the numeric IDs that share links and saved builds use; each other
+  server has its own file (`pipeline/ids-thunderspy.json`), so one server's ids never move
+  another's. They are append-only: never renumber, reuse, reorder or delete entries.
 - Each game version's data lives in its own folder, `public/data/<id>/` (for example `i28p4` for
   Issue 28, Page 4), listed in `public/data/versions.json`. Never edit or delete a published
   version folder: links made on that patch load it. A new patch gets a new folder.
@@ -81,8 +86,11 @@ Breaking any of these is a bug, whatever else the change does.
   no server: the link's address does. An address that names a server the site doesn't carry is
   refused, never opened as Homecoming. Anything that makes a build from a server's data (imports,
   `checkBuild`, `newBuild`) stamps that server on it.
-- @TODO before a second server's data goes in: `pipeline/ids.json` is one namespace. Decide with the
-  owner whether the new server shares it (same internal names, same ids) or gets its own.
+- Every game version id belongs to one server (the pipeline refuses an id another server's
+  `versions.json` lists; Thunderspy's start with `ts`, release 9.6 is `ts9-6`). A share code names
+  its version, so `shareServer` (`src/state/store.ts`) opens a bare code on the server its version
+  belongs to and refuses a code whose version is another server's than the address names
+  (`wrongServer`): a Thunderspy code is never read with Homecoming's ids.
 - The share-link format (`src/io/share.ts`) may only grow by optional trailing fields, and old
   links must keep decoding. Links without a version open as `LEGACY_GAME_VERSION` (`i28p4`).
 - Builds from outside the app (links, browser storage, saved builds, imports) always pass
@@ -163,7 +171,9 @@ tests/                       vitest; tests/helpers/data.ts loads public/data lik
 e2e/                         Playwright browser tests (playwright.config.ts; local only)
 public/data/<version>/       exported game data per game version (generated, committed)
 public/data/versions.json    version index {default, versions: [{id, label, hash, patch?, approx?}]}
+public/data/thunderspy/      Thunderspy's data: its own versions.json and version folders (no mids-map)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
+public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
 public/favicon.png           the site icon (placed by hand)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
@@ -171,12 +181,14 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
   config.py                  inputs, preflight checks, atomic writes
   ids.json                   stable IDs (append-only)
-  check_ids.py               ids.json well formed and only appended to (run by CI)
-  patch-watch.json           newest patch-notes post seen; game version id and label
+  ids-thunderspy.json        Thunderspy's stable IDs (append-only)
+  check_ids.py               every ids file well formed and only appended to (run by CI)
+  patch-watch.json           per server: newest patch seen; game version id and label
   inputs/fonts/              vendored game fonts (never change)
   report.md                  validation report of the last run
   report-<id>.md             report of a version that is not the default (pipeline.run), or what an
                              approximate version changed (overlay.py)
+  report-thunderspy.md       Thunderspy's report (report-thunderspy-<id>.md for older versions)
 tools/                       standard-library Python decoders for client file formats
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
@@ -197,7 +209,9 @@ The run then exports icons, UI textures, fonts and sounds to `public/assets/` an
   it exactly (a wrong record count).
 - It refuses to rewrite a version folder made from a different client (other exe or pigg hashes)
   unless given `--overwrite-published`: a run that forgot `--game-version` after a patch, or one
-  pointed at another client copy, stops before writing anything.
+  pointed at another client copy, stops before writing anything. The same goes for a re-run whose
+  `--frames-from` differs from the folder's `framesFrom` (a forgotten flag would strip every
+  enhancement's frames).
 - It keeps an existing folder's `mids-map.json` unless given `--refresh-mids-map` (old Mids codes
   depend on it, and it isn't part of the version hash).
 - It refuses version ids other than lower-case letters, digits, `-` and `_`.
@@ -218,6 +232,28 @@ An older patch whose client survives (a copy of an old install) gets its own ver
 writes `pipeline/report-<id>.md` instead of `report.md`, and its asset export only adds icons
 `public/assets` lacks (it never overwrites, and leaves UI textures, fonts and sounds alone). Never
 run anything from the old install itself: copy the files, read the copy.
+
+**Thunderspy** (`--server thunderspy`) reads its own client (`COH_CLIENT_THUNDERSPY`, or
+`servers.thunderspy.client` in `pipeline/paths.local.json`): `Thunderspy.exe`, every bin in
+`tspy/bin.pigg`, base art in `piggs/`, its own art in `tspy/*.pigg`. Run
+`python -m pipeline.run --server thunderspy --game-version ts<release> --game-label "Release <x.y>"
+--frames-from homecoming/i28p4` (the release is the folder the live manifest,
+https://thunderspy.net/manifest/live.xml, gives `tspy/bin.pigg`: `9.6` is `ts9-6`). It writes
+`public/data/thunderspy/`, `pipeline/ids-thunderspy.json` and `pipeline/report-thunderspy.md`, no
+Mids map (MidsReborn has no Thunderspy database), and never touches the shared assets: it keeps
+its own copy of every icon it shows in `public/assets/thunderspy/icons/`, and the data names them
+`thunderspy:<name>` (the app's `icon()` resolves the prefix). Where its art matches the shared icon
+(`icon_difference`, a 32x32 comparison) the copy is the shared file's bytes, so the default art shows
+and Git stores the file once; a later Homecoming redraw can't change what Thunderspy shows. A newer
+Thunderspy release's default run does replace a redrawn icon for every Thunderspy version, as
+Homecoming's newest version does for the shared icons; an older Thunderspy version only adds files
+the folder lacks. Icons are decided before the run's checks and written after them
+(`plan_icon_overlay`, `write_icon_overlay`): a name that can't be a file stops the run before
+anything is written, a refused run writes nothing, and `--no-assets` writes no icon files. Every
+`tspy/*.pigg` is read for art, the last by file name winning; the report names any texture two of
+them draw differently (none in release 9.6), to check against the game. Thunderspy's download server keeps only the files its live manifest names,
+so a superseded release can't be fetched again: export each release while it is live, or keep a
+copy of its `tspy/bin.pigg` and `Thunderspy.exe`.
 
 An older patch with no client files left can get an approximate version:
 `python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
@@ -245,12 +281,22 @@ Space takes it); otherwise on the only server. The address is then rewritten in 
 server (with no build, the server shown). The server logo (`ServerLogo`, in the desktop bottom bar
 and at the top of the phone menu) shows on every screen, but only New Build makes it the selector: it
 opens the same list there, and picking another server shows that server's data and clears the
-archetype and both power sets (another server's ids mean other archetypes and sets). A build is never
+archetype and both power sets (another server's ids mean other archetypes and sets); the origin
+carries over by its internal name (`carryOrigin`). A build is never
 moved to another server: a switch with a build in the background asks first (`askConfirm`), then
 clears that build (this tab's storage and its share code in the address), and `selectServer` is
 refused outside New Build. Import reads a pasted link's server
-from its address (`serverInLink`); a bare code is Homecoming's. A share code left in the address by
-a link that couldn't open is dropped once the address moves to another server.
+from its address (`serverInLink`); a bare code opens on the server its game version belongs to
+(Homecoming's for a code from before servers). A share code left in the address by a link that
+couldn't open is dropped once the address moves to another server.
+
+What a server offers is in its `SERVERS` entry: `midsDb` (MidsReborn's name for its database; none
+for Thunderspy) and `buildSave` (its client writes `/build_save` files; Thunderspy's doesn't). Without
+them the build menu hides the Mids exports and the file button, and an import of Mids text or a
+`build.txt` is refused in words (`midsUnavailable`, `noBuildSave`) that name the server it belongs to.
+Thunderspy keeps the engine's rules (ported from Homecoming's client and the game source) wherever its
+data doesn't decide them; its staff-only sets (Organic Armor) stay off New Build because no player
+passes their powers' BuyRequires (`startingSets`).
 
 **Imports and patches.** A Mids build records only its Mids database version, so
 `midsMadeOn()` (`src/io/midsPatches.ts`) looks it up in the owner-confirmed table. An unlisted

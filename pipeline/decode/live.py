@@ -1,4 +1,4 @@
-"""Decode every live Homecoming bin the planner needs, with health stats and a local cache.
+"""Decode every live bin the planner needs (Homecoming's or another server's), with health stats and a local cache.
 
 Result (`LiveData`) holds raw decoded records exactly as the client parse tables describe them;
 labelling and trimming happen later in export.py. The cache key is the sha1 of the exe and the two
@@ -194,9 +194,9 @@ def _origins(health) -> list:
 
 
 def load(force=False, verbose=True) -> LiveData:
-    """Decode with a pickle cache under pipeline/.cache keyed by input and decoder hashes."""
+    """Decode with a pickle cache under pipeline/.cache (one per server) keyed by input and decoder hashes."""
     fp = _fingerprint()
-    cache = config.CACHE_DIR / "live.pickle"
+    cache = config.CACHE_FILE
     if cache.exists() and not force:
         try:
             with open(cache, "rb") as f:

@@ -5,13 +5,13 @@
  * silently dropped.
  */
 import type { GameData } from '../data/gamedata.ts';
-import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, SERVERS, type GameServer } from '../data/servers.ts';
+import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverByMidsDb, SERVERS, type GameServer } from '../data/servers.ts';
 import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { defaultOn, defaultsOf, exclusiveGroups } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
-import { ImportProblem, MAX_BUILD_FILE, READABLE, readable, readablePower } from './importProblem.ts';
+import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readablePower } from './importProblem.ts';
 import { PLANNER_APP } from './midsPatches.ts';
 
 export interface MidsMap {
@@ -35,12 +35,19 @@ const mapPromises = new Map<string, Promise<MidsMap>>(); // one per server and g
 /** @return The server a data set is for (Homecoming when it names one the site doesn't carry). */
 const serverOfData = (gd: GameData): GameServer => serverById(gd.server) ?? defaultServer();
 
+/** @return The problem for Mids on a server MidsReborn has no database for. */
+export function midsUnavailable(s: GameServer): ImportProblem {
+  return noMids(s, SERVERS.filter((x) => x.midsDb));
+}
+
 /**
  * Load mids-map.json for the current data version (once). MidsReborn is an untrusted reference,
  * so a missing or broken map rejects with a readable message and the next call tries again.
  */
 export function loadMidsMap(gd: GameData): Promise<MidsMap> {
   const server = serverOfData(gd);
+  // no Mids database for this server (Thunderspy): every Mids import and export stops here, in words
+  if (!server.midsDb) return Promise.reject(midsUnavailable(server));
   const version = gd.core.manifest.dataVersion;
   const key = `${server.id}/${version}`;
   const hit = mapPromises.get(key);
@@ -428,7 +435,7 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     PowerEntries.push(entry(e.key, e.power.id, e.level, e.slots, e.on));
   }
   const mbd: Mbd = {
-    BuiltWith: { App: PLANNER_APP, Version: '0.1.0', Database: serverOfData(gd).midsDb, DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
+    BuiltWith: { App: PLANNER_APP, Version: '0.1.0', Database: serverOfData(gd).midsDb ?? '', DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
     Level: '49',
     Class: at.n,
     Origin: origin.n,
@@ -814,8 +821,9 @@ function codeBody(text: string, header: RegExpMatchArray, alphabet: RegExp): str
  */
 function notOursHint(gd: GameData, m: Mbd): string {
   const db = m.BuiltWith?.Database;
-  if (!db || db.toLowerCase() === serverOfData(gd).midsDb.toLowerCase()) return 'It may come from a newer patch than the planner has.';
-  // @TODO open it on its own server when the site carries that server (SERVERS[].midsDb)
+  if (!db || db.toLowerCase() === serverOfData(gd).midsDb?.toLowerCase()) return 'It may come from a newer patch than the planner has.';
+  const carried = serverByMidsDb(db);
+  if (carried) return `It was made with Mids' ${carried.label} database: switch to ${carried.label} on New Build, then import it there.`;
   const ours = SERVERS.map((s) => s.label).join(', ');
   return `It was made with Mids' ${readable(db)} database, for another server; the planner covers ${ours} only.`;
 }

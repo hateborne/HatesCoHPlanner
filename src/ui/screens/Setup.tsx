@@ -3,7 +3,7 @@ import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../co
 import { useStage } from '../components/Stage.tsx';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
-import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
+import { ALIGNMENTS, carryOrigin, skinOf, type Alignment } from '../../engine/build.ts';
 import { startingSets } from '../../engine/rules.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
@@ -66,15 +66,17 @@ export function Setup() {
   const [respecTo, setRespecTo] = useState(String((build?.respecTo ?? 49) + 1)); // typed text, 1-based
   const [tab, setTab] = useState(0);
   // switching servers (the logo) clears the archetype and both power sets; the rest stays, the
-  // origin only while the new server has it
-  const [seenServer, setSeenServer] = useState(gd?.server);
-  if (gd && gd.server !== seenServer) {
-    setSeenServer(gd.server);
-    setAt(undefined);
-    setPri(undefined);
-    setSec(undefined);
-    setDesc(null);
-    if (origin !== undefined && !gd.core.origins.some((o) => o.id === origin)) setOrigin(undefined);
+  // origin by its internal name while the new server has it (each server numbers origins on its own)
+  const [seenGd, setSeenGd] = useState(gd);
+  if (gd && gd !== seenGd) {
+    setSeenGd(gd);
+    if (gd.server !== seenGd?.server) {
+      setAt(undefined);
+      setPri(undefined);
+      setSec(undefined);
+      setDesc(null);
+      setOrigin(carryOrigin(origin, seenGd?.core.origins, gd.core.origins));
+    }
   }
   const stage = useStage();
   const { phone } = stage;

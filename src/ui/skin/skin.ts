@@ -1,3 +1,4 @@
+import { serverById } from '../../data/servers.ts';
 import { SKIN_VARIANTS } from './skinVariants.ts';
 
 /**
@@ -166,7 +167,21 @@ export function ui(path: string, skin?: Skin): string {
   return `${import.meta.env.BASE_URL}assets/ui/${p}.${big ? 'webp' : 'png'}`;
 }
 
-/** URL of an icon: kind = powers | enh | at | origin. */
+/**
+ * URL of an icon.
+ *
+ * Homecoming's icons are in assets/icons/. Another server keeps its own copy of every icon it shows
+ * (public/assets/<server>/, pipeline plan_icon_overlay), and its data names them "<server>:<name>".
+ * A prefix that names no server the site carries is read as part of a shared name.
+ *
+ * @param kind The icon folder: powers | enh | at | origin.
+ * @param name The icon name from the game data.
+ * @return The asset URL.
+ */
 export function icon(kind: 'powers' | 'enh' | 'at' | 'origin', name: string): string {
-  return `${import.meta.env.BASE_URL}assets/icons/${kind}/${name.toLowerCase()}.png`;
+  const base = import.meta.env.BASE_URL;
+  const at = name.indexOf(':');
+  const own = at > 0 ? serverById(name.slice(0, at)) : undefined;
+  if (own) return `${base}assets/${own.id}/icons/${kind}/${name.slice(at + 1).toLowerCase()}.png`;
+  return `${base}assets/icons/${kind}/${name.toLowerCase()}.png`;
 }

@@ -45,6 +45,28 @@ export const NAME_MAX = 40;
 // eslint-disable-next-line no-control-regex -- matching control characters is the point
 const HIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
 
+/** An origin as both servers' data name it: its id there and its internal name ("Science"). */
+interface OriginRef {
+  id: number; // the id in that server's data
+  n: string; // internal name
+}
+
+/**
+ * The origin New Build keeps when it switches to other game data: the same origin by internal name
+ * (each server numbers its origins on its own), or none when the new data lacks it.
+ *
+ * @param origin The chosen origin's id in the old data, if any.
+ * @param from The old data's origins (undefined: no old data, so the id is only checked).
+ * @param to The new data's origins.
+ * @return The origin's id in the new data, or undefined.
+ */
+export function carryOrigin(origin: number | undefined, from: readonly OriginRef[] | undefined, to: readonly OriginRef[]): number | undefined {
+  if (origin === undefined) return undefined;
+  if (!from) return to.some((o) => o.id === origin) ? origin : undefined;
+  const name = from.find((o) => o.id === origin)?.n.toLowerCase();
+  return name ? to.find((o) => o.n.toLowerCase() === name)?.id : undefined;
+}
+
 /** @return Text with control and invisible formatting characters removed. */
 export function stripHidden(text: string): string {
   return text.replace(HIDDEN_CHARS, '');

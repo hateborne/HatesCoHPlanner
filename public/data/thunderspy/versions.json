@@ -1,0 +1,10 @@
+{
+  "default": "ts9-6",
+  "versions": [
+    {
+      "id": "ts9-6",
+      "label": "Release 9.6",
+      "hash": "773df012998d"
+    }
+  ]
+}

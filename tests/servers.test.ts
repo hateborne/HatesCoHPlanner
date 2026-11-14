@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { GameData } from '../src/data/gamedata.ts';
-import { dataRoot, DEFAULT_SERVER, defaultServer, notFoundRedirect, serverById, serverFromPath, serverHref, serverInLink, serverOf, SERVERS, withServer } from '../src/data/servers.ts';
+import { dataRoot, DEFAULT_SERVER, defaultServer, notFoundRedirect, serverById, serverByMidsDb, serverFromPath, serverHref, serverInLink, serverOf, SERVERS, withServer } from '../src/data/servers.ts';
 import { newBuild } from '../src/engine/build.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { finishBuildTxt, readBuildTxt } from '../src/io/buildtxt.ts';
@@ -13,6 +13,7 @@ import { loadData, loadMidsMapFile, pid, sid } from './helpers/data.ts';
 const BASE = '/HatesCoHPlanner/';
 const gd = loadData();
 const homecoming = serverById('homecoming')!;
+const thunderspy = serverById('thunderspy')!;
 
 /** A small Homecoming build (one power) for the round trips below. */
 function sample() {
@@ -44,6 +45,18 @@ describe('server list', () => {
     expect(homecoming.data).toBe('data/');
     expect(homecoming.path).toBe('Homecoming');
     expect(homecoming.midsDb).toBe('Homecoming');
+    expect(homecoming.buildSave).toBe(true);
+  });
+
+  it('carries Thunderspy in its own data folder, without Mids or /build_save', () => {
+    expect(thunderspy).toBeDefined();
+    expect(thunderspy.data).toBe('data/thunderspy/');
+    expect(thunderspy.path).toBe('Thunderspy');
+    expect(thunderspy.midsDb).toBeUndefined();
+    expect(thunderspy.buildSave).toBe(false);
+    expect(serverByMidsDb('homecoming')).toBe(homecoming);
+    expect(serverByMidsDb('Rebirth')).toBeUndefined();
+    expect(serverByMidsDb(undefined)).toBeUndefined();
   });
 
   it('gives every server its own id, address and data, with files the site serves', () => {
@@ -63,6 +76,8 @@ describe('server list', () => {
   it('builds addresses and data URLs under the site base', () => {
     expect(serverHref(homecoming, BASE)).toBe('/HatesCoHPlanner/Homecoming/');
     expect(dataRoot(homecoming, BASE)).toBe('/HatesCoHPlanner/data/');
+    expect(serverHref(thunderspy, BASE)).toBe('/HatesCoHPlanner/Thunderspy/');
+    expect(dataRoot(thunderspy, BASE)).toBe('/HatesCoHPlanner/data/thunderspy/');
   });
 });
 
@@ -72,6 +87,8 @@ describe('server from the address', () => {
     expect(serverFromPath('/HatesCoHPlanner/Homecoming', BASE)).toEqual({ server: homecoming });
     expect(serverFromPath('/HatesCoHPlanner/homecoming/', BASE)).toEqual({ server: homecoming });
     expect(serverFromPath('/HatesCoHPlanner/HOMECOMING/index.html', BASE)).toEqual({ server: homecoming });
+    expect(serverFromPath('/HatesCoHPlanner/Thunderspy/', BASE)).toEqual({ server: thunderspy });
+    expect(serverFromPath('/HatesCoHPlanner/thunderspy', BASE)).toEqual({ server: thunderspy });
   });
 
   it('names no server for the bare site, its index.html or another site (Homecoming, as before servers)', () => {
@@ -90,6 +107,7 @@ describe('server from the address', () => {
     expect(serverInLink('see https://hateborne.github.io/HatesCoHPlanner/homecoming#b=eJx please', BASE)).toEqual({ server: homecoming });
     expect(serverInLink('<http://localhost:5173/HatesCoHPlanner/Homecoming/?x=1#b=eJx>', BASE)).toEqual({ server: homecoming });
     expect(serverInLink('/HatesCoHPlanner/Homecoming/#b=eJx', BASE)).toEqual({ server: homecoming });
+    expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/Thunderspy/#b=eJx', BASE)).toEqual({ server: thunderspy });
     expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/Rebirth/#b=eJx', BASE)).toEqual({ unknown: 'Rebirth' });
   });
 
@@ -115,10 +133,12 @@ describe('the 404 page redirect', () => {
     expect(notFoundRedirect('/HatesCoHPlanner/homecoming', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
     expect(notFoundRedirect('/HatesCoHPlanner/HOMECOMING/x/y.html', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
     expect(notFoundRedirect('/HatesCoHPlanner/Homecoming/nope', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
+    expect(notFoundRedirect('/HatesCoHPlanner/thunderspy/x', BASE, paths)).toBe('/HatesCoHPlanner/Thunderspy/');
   });
 
   it("leaves anything else on the 404 page, and never redirects a server's own page to itself", () => {
     expect(notFoundRedirect('/HatesCoHPlanner/Homecoming/', BASE, paths)).toBeNull();
+    expect(notFoundRedirect('/HatesCoHPlanner/Thunderspy/', BASE, paths)).toBeNull();
     expect(notFoundRedirect('/HatesCoHPlanner/Rebirth/', BASE, paths)).toBeNull();
     expect(notFoundRedirect('/HatesCoHPlanner/', BASE, paths)).toBeNull();
     expect(notFoundRedirect('/HatesCoHPlanner/assets/missing.png', BASE, paths)).toBeNull();

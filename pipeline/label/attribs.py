@@ -1,4 +1,4 @@
-"""Label raw AttribMod `Attrib` byte offsets using tables compiled into cityofheroes.exe.
+"""Label raw AttribMod `Attrib` byte offsets using tables compiled into the client exe.
 
 * Offsets 0..464 come from the CharacterAttributes parse table (one float per attribute; the
   storeoffset IS the byte offset an AttribMod stores). Homecoming inserted Absorb at 84, so
@@ -10,14 +10,21 @@ from __future__ import annotations
 
 import struct
 
+from pipeline import config
 from pipeline.coh import p7reader as P
 
 REDUNDANT = 1 << 8
 
 
 def character_attributes() -> dict[int, dict]:
-    """{offset: {"name", "aliases"}} for the CharacterAttributes struct."""
+    """{offset: {"name", "aliases"}} for the CharacterAttributes struct.
+
+    Homecoming's ends at Gravity, an attribute only it has, and a Homecoming client without it
+    fails loudly. Another server's is the float table (DamageType01 at offset 4) that also holds
+    Absorb, whose float offsets run from 0 without a gap (a whole table, not a piece of one).
+    """
     x = P.exe()
+    fallback = None
     for va in P.field_entries(x, "DamageType00"):
         start = x.find_table_start(va)
         off = x.va2off(start)
@@ -31,10 +38,11 @@ def character_attributes() -> dict[int, dict]:
             so = struct.unpack_from("<Q", x.d, eo + 16)[0]
             rows.append((name, typ, so))
         names = {r[0] for r in rows}
-        # The CharacterAttributes table is the one with 4-byte float stride ending at Gravity.
-        if "Gravity" not in names or "Absorb" not in names:
+        # The CharacterAttributes table is the one with 4-byte float stride (ending at Gravity on
+        # Homecoming).
+        if "Absorb" not in names:
             continue
-        if next(so for n, _, so in rows if n == "DamageType01") != 4:
+        if next((so for n, _, so in rows if n == "DamageType01"), None) != 4:
             continue
         out: dict[int, dict] = {}
         for name, typ, so in rows:
@@ -44,7 +52,13 @@ def character_attributes() -> dict[int, dict]:
                 out.setdefault(so, {"name": name, "aliases": []})["aliases"].append(name)
             else:
                 out.setdefault(so, {"name": name, "aliases": []})["name"] = name
-        return out
+        if "Gravity" in names:
+            return out
+        offsets = sorted(out)
+        if config.SERVER is not config.HOMECOMING and offsets and offsets == list(range(0, offsets[-1] + 4, 4)):
+            fallback = fallback or out
+    if fallback:
+        return fallback
     raise RuntimeError("CharacterAttributes parse table not found in exe")
 
 

@@ -1,5 +1,5 @@
-"""Extract the compiled-in parse tables and StaticDefine enums from the live
-Homecoming client executable (cityofheroes.exe).
+"""Extract the compiled-in parse tables and StaticDefine enums from a live
+client executable (Homecoming's cityofheroes.exe, Thunderspy's Thunderspy.exe).
 
 This is the authoritative source of the Parse7 struct layouts: the client reads
 the .bin files with these very tables, so recovering them removes all guesswork
@@ -40,7 +40,7 @@ class CohExe:
     def __init__(self, path=DEFAULT_EXE):
         self.path = path
         self.d = open(path, "rb").read()
-        self.imgbase, self.secs = self._parse_pe()
+        self.imgbase, self.imgsize, self.secs = self._parse_pe()
         self._tbl_cache = {}
 
     # -- PE plumbing --------------------------------------------------------
@@ -53,13 +53,18 @@ class CohExe:
         magic = struct.unpack_from("<H", d, pe + 24)[0]
         imgbase = (struct.unpack_from("<Q", d, pe + 24 + 24)[0] if magic == 0x20b
                    else struct.unpack_from("<I", d, pe + 24 + 28)[0])
+        imgsize = struct.unpack_from("<I", d, pe + 24 + 56)[0]  # SizeOfImage (same place in PE32 and PE32+)
         secbase = pe + 24 + optsz
         secs = []
         for i in range(nsec):
             o = secbase + i * 40
             vsz, va, rsz, ptr = struct.unpack_from("<IIII", d, o + 8)
             secs.append((va, vsz, ptr, rsz))
-        return imgbase, secs
+        return imgbase, imgsize, secs
+
+    def in_image(self, va):
+        """Whether va lies inside the loaded image (Thunderspy's is ~29 MB, past the old 16 MiB guess)."""
+        return self.imgbase <= va < self.imgbase + self.imgsize
 
     def va2off(self, va):
         r = va - self.imgbase
@@ -79,7 +84,7 @@ class CohExe:
         return self.d[off:self.d.index(0, off)].decode("latin1")
 
     def _str_at(self, va):
-        if not (self.imgbase <= va < self.imgbase + 0x1000000):
+        if not self.in_image(va):
             return None
         so = self.va2off(va)
         if so is None:
@@ -115,32 +120,41 @@ class CohExe:
             if prev is None or prev == TOK_END:
                 break
             va -= STRIDE
-        # seek forward to the '{' opener if there is one in the first few entries
+        # seek forward to the '{' opener if there is one in the first few entries (never past the
+        # entry we came from or this table's '}'). The name must be "{": the tail of a StaticDefine
+        # before a table reads as entries too, and one whose value is 1 looks like TOK_START
+        # (Thunderspy's boost_effect table follows kOnActivate = 1 ... kOnIncarnateUnequip).
         probe = va
-        for _ in range(3):
-            if self._entry_base(probe) == self.TOK_START:
+        for _ in range(8):
+            base = self._entry_base(probe)
+            if base is None or base == TOK_END or probe > any_entry_va:
+                break
+            if base == self.TOK_START and self._str_at(self._q(probe)) == "{":
                 return probe
             probe += STRIDE
         return va
 
     def entry_va_for_field(self, field_name, lo=None, hi=None):
-        """VA(s) of parse-table entries whose name is field_name."""
+        """VA(s) of parse-table entries whose name is field_name.
+
+        Every copy of the name string is searched, in file order (Thunderspy's exe holds several
+        "PowerSets", and the powercat table points at a later one).
+        """
         d = self.d
-        soff = d.find(field_name.encode() + b"\x00")
-        if soff < 0:
-            return []
-        sva = self.off2va(soff)
-        needle = struct.pack("<Q", sva)
+        name = field_name.encode() + b"\x00"
         hits = []
-        s = 0
-        while True:
-            j = d.find(needle, s)
-            if j < 0:
-                break
-            v = self.off2va(j)
-            if v is not None and (lo is None or lo <= v < hi):
-                hits.append(v)
-            s = j + 1
+        soff = d.find(name)
+        while soff >= 0:
+            sva = self.off2va(soff)
+            if sva is not None:
+                needle = struct.pack("<Q", sva)
+                j = d.find(needle)
+                while j >= 0:
+                    v = self.off2va(j)
+                    if v is not None and (lo is None or lo <= v < hi) and v not in hits:
+                        hits.append(v)
+                    j = d.find(needle, j + 1)
+            soff = d.find(name, soff + 1)
         return hits
 
     def extract(self, table_va, depth=0):
@@ -162,9 +176,9 @@ class CohExe:
             if base == TOK_END:
                 break
             sub = enum = None
-            if base == TOK_STRUCT and self.imgbase <= subva < self.imgbase + 0x1000000:
+            if base == TOK_STRUCT and self.in_image(subva):
                 sub = self.extract(subva, depth + 1)
-            elif self.imgbase <= subva < self.imgbase + 0x1000000:
+            elif self.in_image(subva):
                 enum = subva
             cols.append(Column(nm, typ, param if param > 0 else 0, subtable=sub, enum=enum))
         return cols

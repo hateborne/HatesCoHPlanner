@@ -4,6 +4,8 @@
  *
  * Homecoming came first, so a build, saved build or link that names no server is Homecoming's: its
  * data stays in data/ (published version folders never move), and builds for it store no server.
+ * Each server numbers its powers, sets and archetypes on its own (pipeline/ids-<server>.json), and
+ * every game version id belongs to one server only, so a share code tells its server by its version.
  * Pure (no DOM, no import.meta): vite.config.ts reads the address paths from here too.
  */
 
@@ -14,7 +16,8 @@ export interface GameServer {
   path: string; // the address segment, as written in links ("Homecoming"); read in any case
   data: string; // its data folder under the site base: versions.json and one folder per game version
   logo: string; // its logo under the site base (public/servers/)
-  midsDb: string; // the name Mids gives its database (BuiltWith.Database)
+  midsDb?: string; // the name Mids gives its database (BuiltWith.Database); none: Mids has no database for it
+  buildSave: boolean; // its game client writes /build_save files (build.txt) the planner can import
 }
 
 /** The server new visitors start on (the most played), and the one builds without a server belong to. */
@@ -25,7 +28,9 @@ export const DEFAULT_SERVER = 'homecoming';
  * (public/servers/rebirth.webp); it gets an entry here once its data is exported (to data/rebirth/).
  */
 export const SERVERS: readonly GameServer[] = [
-  { id: 'homecoming', label: 'Homecoming', path: 'Homecoming', data: 'data/', logo: 'servers/homecoming.webp', midsDb: 'Homecoming' },
+  { id: 'homecoming', label: 'Homecoming', path: 'Homecoming', data: 'data/', logo: 'servers/homecoming.webp', midsDb: 'Homecoming', buildSave: true },
+  // Thunderspy's client has no /build_save, and MidsReborn has no Thunderspy database
+  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false },
 ];
 
 /** @return The server with this id, or undefined when the site doesn't carry it. */
@@ -36,6 +41,12 @@ export function serverById(id: string | undefined): GameServer | undefined {
 /** @return The default server. */
 export function defaultServer(): GameServer {
   return serverById(DEFAULT_SERVER)!;
+}
+
+/** @return The carried server whose Mids database has this name (any case), or undefined. */
+export function serverByMidsDb(db: string | undefined): GameServer | undefined {
+  const d = db?.toLowerCase();
+  return d ? SERVERS.find((s) => s.midsDb?.toLowerCase() === d) : undefined;
 }
 
 /** @return The server id a build belongs to (one that names none is Homecoming's). */

@@ -5,13 +5,13 @@
 import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, withServer, type GameServer } from '../data/servers.ts';
-import { loadVersions, missingVersionNote, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
+import { loadVersions, missingVersionNote, normalizeVersion, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
 import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
 import { cleanName, cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
-import { describeImportFailure, refusedBuild, unknownServer } from '../io/importProblem.ts';
+import { describeImportFailure, refusedBuild, serverListsUnread, unknownServer, wrongServer } from '../io/importProblem.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
 import { tabTitle } from './tabTitle.ts';
@@ -207,6 +207,55 @@ function versionsFor(s: GameServer): Promise<GameVersions> {
     versionCache.set(s.id, p);
   }
   return p;
+}
+
+/**
+ * The server whose game data a version id belongs to.
+ *
+ * A share code carries its game version but not its server, and each server numbers its powers on
+ * its own; every version id names one server (the pipeline refuses to reuse one), so the version
+ * tells a code's server: a Thunderspy code is never decoded against Homecoming's ids.
+ *
+ * @param raw The code's game version as written (a link from before versions decodes as Homecoming's,
+ *   an older saved build's data id counts as Homecoming's i28p4).
+ * @param first The server to ask first (the one the link's address names): a code for it needs no
+ *   other server's list.
+ * @return The server whose version list holds it, or undefined when none does.
+ * @raise ImportProblem when no list holds it and some list wouldn't load: the code could be that
+ *   server's, and reading it with another server's ids would open the wrong powers.
+ */
+export async function serverOfVersion(raw: string | undefined, first?: GameServer): Promise<GameServer | undefined> {
+  if (!raw) return undefined;
+  const version = normalizeVersion(raw); // a pre-versioning data id ("20261017-...") is Homecoming's i28p4
+  const order = first ? [first, ...SERVERS.filter((s) => s.id !== first.id)] : SERVERS;
+  let unread = false;
+  for (const s of order) {
+    let vs: GameVersions;
+    try {
+      vs = await versionsFor(s);
+    } catch {
+      unread = true;
+      continue;
+    }
+    if (vs.versions.some((v) => v.id === version)) return s;
+  }
+  if (unread) throw serverListsUnread();
+  return undefined;
+}
+
+/**
+ * The server a decoded share code opens on: the one its address names, else the one its game
+ * version belongs to (Homecoming when neither says).
+ *
+ * @param named What the link's address says about its server.
+ * @param version The code's game version.
+ * @return The server's id, or undefined for Homecoming.
+ * @raise ImportProblem when the address names one server and the version another's.
+ */
+export async function shareServer(named: { server?: GameServer }, version: string | undefined): Promise<string | undefined> {
+  const made = await serverOfVersion(version, named.server);
+  if (named.server && made && made.id !== named.server.id) throw wrongServer(made, named.server);
+  return (named.server ?? made)?.id;
 }
 
 // one fetch per game version per page: switching back to a version already seen is instant
@@ -641,7 +690,8 @@ export const useStore = create<Store>((set, get) => ({
           if (!link) return undefined;
           // an address naming a server the site doesn't carry: never open its link on another's data
           if (named.unknown) throw unknownServer(named.unknown);
-          return withServer(await decodeShare(link[1]!), named.server?.id);
+          const code = await decodeShare(link[1]!);
+          return withServer(code, await shareServer(named, code.dataVersion));
         },
         async () => restore((r) => !named.server || serverOf(r) === named.server.id),
       ];
@@ -1049,11 +1099,15 @@ if (typeof window !== 'undefined') {
     const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
     const { versions, loadBuild } = useStore.getState();
     if (!m || !versions) return;
-    const current = useStore.getState().build;
     const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
-    void (named.unknown ? Promise.reject(unknownServer(named.unknown)) : decodeShare(m[1]!)).then(
-      async (decoded) => {
-        const b = withServer(decoded, named.server?.id); // for the server the address names
+    // for the server the address names (or, naming none, the one the code's game version belongs to)
+    const decoding = named.unknown
+      ? Promise.reject(unknownServer(named.unknown))
+      : decodeShare(m[1]!).then(async (d) => withServer(d, await shareServer(named, d.dataVersion)));
+    void decoding.then(
+      async (b) => {
+        // the build open now, after the waits above (it may have changed meanwhile)
+        const current = useStore.getState().build;
         // as the Build menu does: a build with picks is only replaced once the user agrees (and the
         // link to the build already open replaces nothing)
         if (current?.picks.some((p) => p)) {

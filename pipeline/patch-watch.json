@@ -4,5 +4,11 @@
     "lastSeen": "patch-notes/issue-28/page-4/october-20-update-r48/",
     "gameVersion": "i28p4",
     "gameLabel": "Issue 28, Page 4"
+  },
+  "thunderspy": {
+    "manifest": "https://thunderspy.net/manifest/live.xml",
+    "binRelease": "9.6",
+    "gameVersion": "ts9-6",
+    "gameLabel": "Release 9.6"
   }
 }

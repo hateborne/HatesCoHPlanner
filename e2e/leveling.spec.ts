@@ -16,7 +16,7 @@ const FILE = 'elec-sonic-stalker-leveling.mbd';
 
 test('Electrical Melee / Sonic Aura Stalker, levelled 1 to 50 (Mids .mbd file)', async ({ page }, info) => {
   const me = new Player(page, info.project.name === 'phone');
-  await page.goto('./');
+  await page.goto('./Homecoming/'); // the site root asks for a server once there is more than one
 
   const target = await me.importFile(join(process.cwd(), 'tests', 'fixtures', 'builds', FILE));
   const rules = new BuildRules(gd, target);

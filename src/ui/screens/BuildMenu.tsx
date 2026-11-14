@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
-import { serverById, serverInLink, serverOf, withServer } from '../../data/servers.ts';
+import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
 import { ALIGNMENTS, cleanName, toAlignment, type Build } from '../../engine/build.ts';
 import { fitToPatch } from '../../engine/migrate.ts';
 import type { Issue } from '../../engine/rules.ts';
 import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../../io/buildtxt.ts';
-import { describeImportFailure, readBuildFile, unknownServer } from '../../io/importProblem.ts';
+import { describeImportFailure, noBuildSave, readBuildFile, unknownServer } from '../../io/importProblem.ts';
 import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/library.ts';
-import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, parseMidsText } from '../../io/mids.ts';
+import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, midsUnavailable, parseMidsText } from '../../io/mids.ts';
 import { midsMadeOn } from '../../io/midsPatches.ts';
 import { decodeShare, shareLink } from '../../io/share.ts';
-import { useStore } from '../../state/store.ts';
+import { shareServer, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
@@ -53,6 +53,16 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     void refresh();
   }, []);
   if (!gd) return null;
+  // the server shown (imports go to it) and the open build's own (exports are for it)
+  const shown = serverById(gd.server) ?? defaultServer();
+  const ofBuild = build ? (serverById(serverOf(build)) ?? defaultServer()) : shown;
+  // what the import box takes on the shown server (Thunderspy has no Mids database and no /build_save)
+  const takes = [
+    'a share link',
+    ...(shown.midsDb ? ['a Mids share code (|MBD; or |MxDz;)', '.mbd JSON'] : []),
+    ...(shown.buildSave ? ['a /build_save file from the game (build.txt)'] : []),
+  ];
+  const fileKinds = [...(shown.midsDb ? ['.mbd'] : []), ...(shown.buildSave ? ['build.txt'] : [])];
   const say = (...lines: string[]) => setStatus(lines);
   const copy = async (s: string, what: string) => {
     setText(s);
@@ -148,20 +158,26 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
       const t = src.trim();
       const m = /#b=([A-Za-z0-9_-]+)/.exec(t);
       if (m) {
-        // a link's address names its server (/HatesCoHPlanner/Homecoming/#b=...); a bare code is Homecoming's
+        // a link's address names its server (/HatesCoHPlanner/Homecoming/#b=...); a bare code is the
+        // server's its game version belongs to (Homecoming's for a code from before servers)
         const named = serverInLink(t, import.meta.env.BASE_URL);
         if (named.unknown) throw unknownServer(named.unknown);
-        const b = withServer(await decodeShare(m[1]!), named.server?.id);
+        const code = await decodeShare(m[1]!);
+        const b = withServer(code, await shareServer(named, code.dataVersion));
         if (!(await replaceOk(b.name))) return;
         await open(b, []);
         return;
       }
       if (isBuildTxt(t)) {
+        if (!shown.buildSave) throw noBuildSave(shown, SERVERS.filter((s) => s.buildSave));
         await importBuildTxt(t);
         return;
       }
       const st = useStore.getState();
+      // text that isn't Mids is refused as everywhere (what the planner reads); real Mids text on a
+      // server MidsReborn has no database for is refused as that
       const parsed = await parseMidsText(t);
+      if (!shown.midsDb) throw midsUnavailable(shown);
       const made = parsed.kind === 'mbd' ? midsMadeOn(parsed.mbd) : undefined;
       const { version, move } = versions ? importTarget(versions, made) : { version: undefined, move: false };
       const tgd = version ? await st.dataForVersion(version.id) : gd;
@@ -266,6 +282,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   Copy share link
                 </button>
               </div>
+              {ofBuild.midsDb ? (
+                <>
               <div style={btn(0, row(2))}>
                 <button
                   className="info-button"
@@ -311,6 +329,13 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   Copy legacy MxDz code
                 </button>
               </div>
+                </>
+              ) : (
+                // no Mids database for this server (Thunderspy): say so where the Mids buttons would be
+                <div style={{ ...btn(0, row(2)), color: '#8fa1b8', fontSize: 16, maxWidth: phone ? W - 40 : 600 }}>
+                  MidsReborn has no {ofBuild.label} database, so {ofBuild.label} builds can't go to Mids. Share them with the share link.
+                </div>
+              )}
             </>
           ) : (
             <div style={{ marginTop: 40 }}>No build yet.</div>
@@ -337,21 +362,23 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
               e.preventDefault();
               dropFile(f);
             }}
-            placeholder="Paste a share link, a Mids share code (|MBD; or |MxDz;), .mbd JSON, or a /build_save file from the game (build.txt). Or drop a file here."
+            placeholder={`Paste ${takes.length > 1 ? `${takes.slice(0, -1).join(', ')}, or ${takes[takes.length - 1]}` : takes[0]}.${fileKinds.length ? ' Or drop a file here.' : ''}`}
             style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: dropping ? '#001a3a' : '#000', color: '#cfe8ff', border: `2px ${dropping ? 'dashed #9fd0ff' : 'solid #4f94ff'}`, borderRadius: 10, padding: 10, fontSize: 14 }}
           />
           <div style={btn(0, BOX_Y + BOX_H + 20)}>
             <button className="info-button" style={{ position: 'static' }} onClick={() => void doImport(text, from ?? undefined)} disabled={!text.trim()}>
               Import pasted text
             </button>
-            <label className="info-button" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 12 }}>
-              Open .mbd or build.txt
-              <input type="file" accept=".mbd,.json,.txt" style={{ display: 'none' }} onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = ''; // the same file can be picked again
-                if (f) readBuildFile(f).then((s) => doImport(s, f.name), (err: unknown) => fail(err, `Couldn't import "${f.name}"`));
-              }} />
-            </label>
+            {fileKinds.length ? (
+              <label className="info-button" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 12 }}>
+                Open {fileKinds.join(' or ')}
+                <input type="file" accept={[...(shown.midsDb ? ['.mbd', '.json'] : []), ...(shown.buildSave ? ['.txt'] : [])].join(',')} style={{ display: 'none' }} onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = ''; // the same file can be picked again
+                  if (f) readBuildFile(f).then((s) => doImport(s, f.name), (err: unknown) => fail(err, `Couldn't import "${f.name}"`));
+                }} />
+              </label>
+            ) : null}
           </div>
         </div>
         <div className={phone ? '' : 'abs'} style={rightStyle}>

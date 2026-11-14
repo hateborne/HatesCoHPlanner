@@ -76,6 +76,67 @@ export function unknownServer(name: string): ImportProblem {
   return new ImportProblem(`it was made for a game server the planner doesn't carry ("${name}")`, 'Check the link, or open the build on the site it was made with.');
 }
 
+/** A server as the messages below name it (the planner's own SERVERS entries, never imported text). */
+interface ServerName {
+  label: string; // "Thunderspy"
+  path: string; // its address segment ("Thunderspy")
+}
+
+/**
+ * The problem to report for a share code made on one server's data opened at another server's
+ * address. Each server numbers its powers on its own, so the code would read as other powers.
+ *
+ * @param made The server whose game version the code names.
+ * @param named The server the link's address names.
+ * @return The problem, worded for the user.
+ */
+export function wrongServer(made: ServerName, named: ServerName): ImportProblem {
+  return new ImportProblem(
+    `the build was made on ${made.label}'s game data, but the link's address names ${named.label}`,
+    `Open it on ${made.label}: change "/${named.path}/" in the link to "/${made.path}/".`,
+  );
+}
+
+/**
+ * The problem to report for a share code whose server can't be told: no server's version list
+ * that loaded holds its game version, and some list didn't load.
+ *
+ * @return The problem, worded for the user.
+ */
+export function serverListsUnread(): ImportProblem {
+  return new ImportProblem("the planner couldn't load every server's game versions, so it can't tell which server the build is for", 'Check the connection, then try again.');
+}
+
+/**
+ * The problem to report for Mids on a server MidsReborn has no database for.
+ *
+ * @param s The server.
+ * @param withMids The servers that do have one (for the way out).
+ * @return The problem, worded for the user.
+ */
+export function noMids(s: ServerName, withMids: readonly ServerName[]): ImportProblem {
+  const other = withMids.map((x) => x.label).join(' or ');
+  return new ImportProblem(
+    `MidsReborn has no ${s.label} database, so ${s.label} builds can't come from or go to Mids`,
+    `Share ${s.label} builds with the planner's share links.${other ? ` A Mids build made for ${other} imports after switching to ${other} on New Build.` : ''}`,
+  );
+}
+
+/**
+ * The problem to report for a /build_save file on a server whose game client doesn't write them.
+ *
+ * @param s The server shown.
+ * @param writers The servers whose clients write them.
+ * @return The problem, worded for the user.
+ */
+export function noBuildSave(s: ServerName, writers: readonly ServerName[]): ImportProblem {
+  const w = writers.map((x) => x.label).join(' or ');
+  return new ImportProblem(
+    `a /build_save file comes from ${w || 'another server'}'s game client, not ${s.label}'s`,
+    w ? `Switch to ${w} on New Build, then import it there.` : '',
+  );
+}
+
 /** Largest file the import reads: build files are a few KB to a few hundred KB of text. */
 export const MAX_BUILD_FILE = 2_000_000;
 

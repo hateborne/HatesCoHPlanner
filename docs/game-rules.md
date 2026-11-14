@@ -4,6 +4,10 @@ Source: `CityOfHeroes_OuroV2_Source` (the engine source checkout) (I24 engine; H
 decoded from the live client). Paths below are relative to that root. All levels in data are
 0-based (`Available[]`, schedules, `SpecializeAt`); the UI shows level + 1.
 
+Thunderspy's data is decoded from its own client the same way, and the same rules apply to it
+wherever its data doesn't decide them. @TODO check the rules taken from Homecoming's live client
+(one-screen respec, three combines, the epic level gates) against Thunderspy's game.
+
 ## Requirement expressions (BuyRequires, SetBuyRequires, SpecializeRequires)
 
 Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.c`
@@ -121,6 +125,10 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   character of the archetype at level 1, it has powers, and it is not a VEAT branch
   (`SpecializeAt`). The live data gives Wind Control (Controller and Dominator) `SetRequires 0`,
   so the game hides it, and so does New Build.
+- It also needs a level-1 power whose `BuyRequires` a player passes. Thunderspy's client has no
+  `SetRequires`; its staff-only sets (Organic Armor) ask `accesslevel char> 0 >` of their powers
+  instead, so no player can take them and New Build leaves them out. On Homecoming this changes no
+  list.
 
 ## Set bonuses
 
