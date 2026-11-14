@@ -26,8 +26,9 @@ Goals, in priority order:
    silent, from MidsReborn's GPL code).
 2. **Fidelity to the in-game screens.** Layout, sizes, fonts, colours, textures and sounds come
    from the client and its UI source. They are ported, not hand-tuned.
-3. **Builds never break.** Share links, saved builds and Mids exports made today must still open
-   after future patches.
+3. **Builds never break.** The planner is in production (since November 14, 2026). Share links,
+   saved builds and Mids exports made today must still open, as the same build, after every
+   future change and patch.
 4. **Privacy.** Nothing that identifies the owner or their machine goes into the repository.
 
 It is a non-profit fan tool, GPL-3.0, and not affiliated with NCSoft or Homecoming.
@@ -35,6 +36,23 @@ It is a non-profit fan tool, GPL-3.0, and not affiliated with NCSoft or Homecomi
 ## Hard rules
 
 Breaking any of these is a bug, whatever else the change does.
+
+**In production: links never break** (the owner's rule from November 14, 2026, for the life of
+the project)
+- The planner is in production. No change may break a link or change what it opens. A link that
+  opens today keeps opening the same build (the same server, game version, archetype, power sets,
+  picks, slots and enhancements) for as long as the project lives.
+- Links are share links (`#b=` codes, with or without a game version or a server in the address)
+  and the site's addresses (the root and every server's `/HatesCoHPlanner/<Server>/`, in any case).
+  What they open with is covered too: the ids files, the published version folders, `SERVERS`, the
+  decoder (`src/io/share.ts`), version and server resolution (`src/data/versions.ts`,
+  `src/data/servers.ts`, `shareServer`) and the load flow in `src/state/store.ts`.
+- A link must not fail where it opened before, in any condition: a slow or failed download of
+  another server's files included.
+- A change that touches any of the above shows that links made before it still open the same
+  build: tests that decode links made before the change, plus a check in the preview.
+- Never change what an old link opens, even to fix a bug in old data or ids. Corrections go into a
+  new game version. If a change seems to need it, stop and ask the owner.
 
 **Privacy**
 - Never commit personal data: real names, e-mail addresses (commits use the GitHub noreply
