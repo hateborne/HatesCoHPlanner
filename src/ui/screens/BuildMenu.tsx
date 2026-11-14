@@ -37,6 +37,25 @@ function approxNote(v: GameVersion, gd: GameData, all: GameVersion[]): string {
   return `Opened on ${v.label}: power levels from MidsReborn's database for that patch, everything else from ${baseLabel}.`;
 }
 
+/**
+ * The reminder shown after each "Save in this browser": the planner has no server, so a saved build
+ * lives only in this browser's site data, and clearing it (or a private window closing, or Safari's
+ * 7-day limit on sites not visited) loses it. The page's address holds the whole build, so a
+ * bookmark keeps it safe.
+ *
+ * @param touch Whether this is a phone or another touch screen (no keyboard shortcut to name there).
+ * @return The dialog's title and text.
+ */
+export function saveReminder(touch: boolean): { title: string; text: string } {
+  const how = touch ? "with your browser's menu" : '(Ctrl+D, or Cmd+D on a Mac)';
+  return {
+    title: 'Saved in this browser only',
+    text:
+      'This build is kept only in this browser on this device, not on any server. Clearing your browsing data (cookies and site data) erases it, and so can closing a private window, or Safari after 7 days without a visit.\n' +
+      `Bookmark this page now ${how}: its address holds the whole build. Bookmark it again after you change the build.`,
+  };
+}
+
 /** Save / load / share / Mids import-export, in the in-game skin. */
 export function BuildMenu({ onClose }: { onClose: () => void }) {
   const { gd, build, loadBuild, versions } = useStore();
@@ -257,7 +276,21 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           {build ? (
             <>
               <div style={btn(0, row(0))}>
-                <button className="info-button" style={{ position: 'static' }} onClick={() => void saveBuild(build).then(() => { void refresh(); say('Saved in this browser.'); }, (e: unknown) => storageFailed(e, 'saved'))}>
+                <button
+                  className="info-button"
+                  style={{ position: 'static' }}
+                  onClick={() =>
+                    void saveBuild(build).then(
+                      () => {
+                        void refresh();
+                        say('Saved in this browser.');
+                        // a tablet held sideways gets the desktop layout but has no Ctrl+D either
+                        void useStore.getState().tell(saveReminder(phone || matchMedia('(pointer: coarse)').matches));
+                      },
+                      (e: unknown) => storageFailed(e, 'saved'),
+                    )
+                  }
+                >
                   Save in this browser
                 </button>
               </div>

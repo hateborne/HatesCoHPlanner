@@ -19,7 +19,8 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
 - Totals with expandable sources; a totals side tab during the wizard.
 - Share links (`.../HatesCoHPlanner/Homecoming/#b=...`: the address names the game server; links
   from before servers, with no server in the address, open on Homecoming), builds saved in the
-  browser, MidsReborn `.mbd` import/export, Mids share codes (`|MBD;` and legacy `|MxDz;`), and
+  browser (only there: the planner has no server, and clearing the browser's site data erases them,
+  so saving reminds you to bookmark the build's address), MidsReborn `.mbd` import/export, Mids share codes (`|MBD;` and legacy `|MxDz;`), and
   import of a character saved in game with `/build_save` (the `Builds/build.txt` file in the game's
   account folder).
 - Game servers: Homecoming today. The server's logo shows in the bottom bar (the phone menu on
