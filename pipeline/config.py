@@ -170,6 +170,26 @@ def select_server(server_id: str) -> None:
         LIVE_TEX_PIGGS = [LIVE_ASSETS / n for n in s.live_tex]
 
 
+def version_index(server_id: str) -> dict | None:
+    """Read a server's versions.json.
+
+    @param server_id A key of SERVERS.
+    @return The parsed index, or None when the server has no versions.json.
+    @raise ValueError When the file exists but can't be read or isn't an index (a JSON object).
+    """
+    p = data_dir(server_id) / "versions.json"
+    try:
+        text = p.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        raise ValueError(f"{p.name} can't be read ({e})") from e
+    idx = json.loads(text)  # a JSONDecodeError is a ValueError
+    if not isinstance(idx, dict):
+        raise ValueError(f"{p.name} is not a JSON object")
+    return idx
+
+
 def version_folders() -> list[Path]:
     """@return Every exported version folder (one holding core.json) of every server."""
     out: list[Path] = []

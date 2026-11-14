@@ -179,11 +179,14 @@ public/favicon.png           the site icon (placed by hand)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
   run.py                     entry point: python -m pipeline.run
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
+  watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
+  watch_test.py              its tests (python -m unittest pipeline.watch_test; run by CI)
   config.py                  inputs, preflight checks, atomic writes
   ids.json                   stable IDs (append-only)
   ids-thunderspy.json        Thunderspy's stable IDs (append-only)
   check_ids.py               every ids file well formed and only appended to (run by CI)
-  patch-watch.json           per server: newest patch seen; game version id and label
+  patch-watch.json           per server: newest patch seen (Thunderspy: release and MD5 of its
+                             tspy/bin.pigg); game version id and label
   inputs/fonts/              vendored game fonts (never change)
   report.md                  validation report of the last run
   report-<id>.md             report of a version that is not the default (pipeline.run), or what an
@@ -251,9 +254,17 @@ the folder lacks. Icons are decided before the run's checks and written after th
 (`plan_icon_overlay`, `write_icon_overlay`): a name that can't be a file stops the run before
 anything is written, a refused run writes nothing, and `--no-assets` writes no icon files. Every
 `tspy/*.pigg` is read for art, the last by file name winning; the report names any texture two of
-them draw differently (none in release 9.6), to check against the game. Thunderspy's download server keeps only the files its live manifest names,
-so a superseded release can't be fetched again: export each release while it is live, or keep a
-copy of its `tspy/bin.pigg` and `Thunderspy.exe`.
+them draw differently (none in release 9.6), to check against the game.
+
+Thunderspy's download server keeps only the files its live manifest names, so a superseded release
+can't be fetched again: export each release while it is live, or keep a copy of its
+`tspy/bin.pigg` and `Thunderspy.exe`. `python -m pipeline.watch` says when one is live: it compares
+the release folder and MD5 the live manifest gives `tspy/bin.pigg` with `binRelease` and `binMd5` in
+`pipeline/patch-watch.json`, the installed client with the manifest, and the installed client with
+the default version's source hashes. It prints the export command for a new release and exits 1
+when something needs doing (2 when it can't check, a crash included). Once the release is exported as the default
+version, `python -m pipeline.watch --record` records it; it refuses unless the default version was
+made from the live `tspy/bin.pigg`.
 
 An older patch with no client files left can get an approximate version:
 `python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
@@ -426,6 +437,7 @@ npm test             # vitest
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
 npm run build        # type check + production build into dist/
 python -m pipeline.run --help
+python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -437,7 +449,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test` (the release check); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub

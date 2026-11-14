@@ -51,7 +51,8 @@ first and names any missing setting.
 
 `pipeline/patch-watch.json` records the newest Homecoming patch-notes post the data was checked
 against (for a scheduled job that notices new patches) and the game version the next run exports
-(`homecoming.gameVersion`, e.g. `i28p4`, and `gameLabel`, e.g. `Issue 28, Page 4`).
+(`homecoming.gameVersion`, e.g. `i28p4`, and `gameLabel`, e.g. `Issue 28, Page 4`). For Thunderspy it
+records the release and MD5 of the `tspy/bin.pigg` the data was made from (`binRelease`, `binMd5`).
 
 **Thunderspy.** `python -m pipeline.run --server thunderspy --game-version ts9-6 --game-label
 "Release 9.6" --frames-from homecoming/i28p4` reads the Thunderspy client (`servers.thunderspy.client`
@@ -60,8 +61,12 @@ own ids (`pipeline/ids-thunderspy.json`) and report (`pipeline/report-thunderspy
 no enhancement frame data, so it shows Homecoming's frame art. It keeps its own copy of every icon
 it shows (`public/assets/thunderspy/`): Homecoming's file where the art is the same, its own where it
 differs, so a later Homecoming redraw doesn't change Thunderspy (a newer Thunderspy release's
-art does replace older Thunderspy versions' copies, as Homecoming's newest version does). Thunderspy's download server keeps only the
-current release's files, so export each release while it is live.
+art does replace older Thunderspy versions' copies, as Homecoming's newest version does).
+Thunderspy's download server keeps only the current release's files, so export each release while
+it is live: `python -m pipeline.watch` checks the live manifest against `pipeline/patch-watch.json`,
+the installed client and the published data, and prints the command to export a new release (exit
+status 1 when something needs doing). `python -m pipeline.watch --record` records the release once
+it is exported as the default version.
 
 Each game version lives in its own folder, `public/data/<id>/` (`core`, `powersets`, `powers`,
 `boosts`, `mids-map`). `public/data/versions.json` lists them (`{"default", "versions": [{id,

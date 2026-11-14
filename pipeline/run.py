@@ -54,8 +54,8 @@ def default_game_version() -> tuple[str | None, str | None]:
 def current_default() -> str | None:
     """@return The default version id in the server's versions.json (None if absent or unreadable)."""
     try:
-        return json.loads((config.DATA_OUT / "versions.json").read_text(encoding="utf-8")).get("default") or None
-    except (OSError, ValueError):
+        return (config.version_index(config.SERVER.id) or {}).get("default") or None
+    except ValueError:
         return None
 
 
@@ -69,10 +69,10 @@ def version_owner(version: str) -> str | None:
         if sid == config.SERVER.id:
             continue
         try:
-            idx = json.loads((config.data_dir(sid) / "versions.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            idx = config.version_index(sid) or {}
+        except ValueError:
             continue
-        if any(v.get("id") == version for v in idx.get("versions", [])):
+        if any(isinstance(v, dict) and v.get("id") == version for v in idx.get("versions") or []):
             return sid
     return None
 

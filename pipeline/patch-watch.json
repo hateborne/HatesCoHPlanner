@@ -8,6 +8,7 @@
   "thunderspy": {
     "manifest": "https://thunderspy.net/manifest/live.xml",
     "binRelease": "9.6",
+    "binMd5": "d96c9a4aa661ef8d6ec77f6f0a25bec9",
     "gameVersion": "ts9-6",
     "gameLabel": "Release 9.6"
   }
