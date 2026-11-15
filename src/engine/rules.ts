@@ -202,54 +202,7 @@ export class BuildRules {
    * @param owned Power ids owned at that level.
    */
   ctx(level: number, owned: Set<number>): EvalContext {
-    const ownedSets = this.ownedSets(owned);
-    const origin = this.gd.core.origins.find((o) => o.id === this.b.origin);
-    const align = toAlignment(this.b.alignment).toLowerCase();
-    return {
-      ownsPower: (name) => {
-        const p = this.gd.powerByName.get(name.toLowerCase());
-        return !!p && owned.has(p.id);
-      },
-      hasBadge: (name) => PLANNED_BADGES.has(name.toLowerCase()),
-      ownsSet: (name) => {
-        const s = this.gd.setByName.get(name.toLowerCase());
-        return !!s && ownedSets.has(s.id);
-      },
-      ownsPowerNum: (name) => {
-        const n = name.toLowerCase();
-        const p = this.gd.powerByName.get(n);
-        if (p) return owned.has(p.id) ? 1 : 0;
-        let count = 0;
-        for (const pid of owned) {
-          const ref = this.gd.setOfPower.get(pid);
-          if (!ref) continue;
-          const cat = (this.gd.categoryOfSet.get(ref.set.id) ?? '').toLowerCase();
-          if (cat === n || ref.set.n.toLowerCase() === n) count++;
-        }
-        return count;
-      },
-      prop: (name) => {
-        // engine: anything starting with "arch" or "rank" is the class name ($archtype appears in data)
-        if (name.startsWith('arch') || name.startsWith('rank')) return this.at.n;
-        switch (name) {
-          case 'class':
-            return this.at.n;
-          case 'origin':
-            return origin?.n ?? '';
-          case 'level':
-            return level + 1;
-          case 'alignment':
-            return align === 'villain' ? 'villain' : 'hero';
-          case 'type':
-            return align === 'villain' ? 'villain' : 'hero';
-          case 'subtype':
-            return align === 'praetorian' ? 'paragon' : 'normal';
-          default:
-            return 0;
-        }
-      },
-      targetEntType: 'critter',
-    };
+    return characterContext(this.gd, this.at, this.b, level, owned, this.ownedSets(owned));
   }
 
   // ---- auto-granted powers ---------------------------------------------------------------------
@@ -779,6 +732,75 @@ export class BuildRules {
   }
 }
 
+/** What a requirement expression can read about a character besides its powers and sets. */
+export interface CharacterTraits {
+  origin?: number; // origin id (unset on New Build before one is chosen)
+  alignment?: Build['alignment']; // unset reads as Hero
+}
+
+/**
+ * The engine's answers to a requirement expression's questions about a character: the powers and
+ * sets it owns, and its archetype, origin, alignment and level. BuildRules and New Build's pair
+ * test both use it, so they read the data alike.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param who Its origin and alignment.
+ * @param level 0-based level.
+ * @param owned Power ids owned.
+ * @param ownedSets Powerset ids owned.
+ * @return The context.
+ */
+function characterContext(gd: GameData, at: Archetype, who: CharacterTraits, level: number, owned: Set<number>, ownedSets: Set<number>): EvalContext {
+  const origin = gd.core.origins.find((o) => o.id === who.origin);
+  const align = toAlignment(who.alignment).toLowerCase();
+  return {
+    ownsPower: (name) => {
+      const p = gd.powerByName.get(name.toLowerCase());
+      return !!p && owned.has(p.id);
+    },
+    hasBadge: (name) => PLANNED_BADGES.has(name.toLowerCase()),
+    ownsSet: (name) => {
+      const s = gd.setByName.get(name.toLowerCase());
+      return !!s && ownedSets.has(s.id);
+    },
+    ownsPowerNum: (name) => {
+      const n = name.toLowerCase();
+      const p = gd.powerByName.get(n);
+      if (p) return owned.has(p.id) ? 1 : 0;
+      let count = 0;
+      for (const pid of owned) {
+        const ref = gd.setOfPower.get(pid);
+        if (!ref) continue;
+        const cat = (gd.categoryOfSet.get(ref.set.id) ?? '').toLowerCase();
+        if (cat === n || ref.set.n.toLowerCase() === n) count++;
+      }
+      return count;
+    },
+    prop: (name) => {
+      // engine: anything starting with "arch" or "rank" is the class name ($archtype appears in data)
+      if (name.startsWith('arch') || name.startsWith('rank')) return at.n;
+      switch (name) {
+        case 'class':
+          return at.n;
+        case 'origin':
+          return origin?.n ?? '';
+        case 'level':
+          return level + 1;
+        case 'alignment':
+          return align === 'villain' ? 'villain' : 'hero';
+        case 'type':
+          return align === 'villain' ? 'villain' : 'hero';
+        case 'subtype':
+          return align === 'praetorian' ? 'paragon' : 'normal';
+        default:
+          return 0;
+      }
+    },
+    targetEntType: 'critter',
+  };
+}
+
 /**
  * Whether a new character of an archetype could start with a set while owning another: the
  * character creator's test for each set it lists.
@@ -794,20 +816,19 @@ export class BuildRules {
  * @param gd Game data.
  * @param at The archetype.
  * @param set The set listed.
- * @param other The set chosen in the other list.
+ * @param other The set chosen in the other list; none tests the set on its own.
+ * @param who The character's origin and alignment, when known.
  * @return True when `set` has a level-1 power to pick with both sets (and the inherent ones) owned.
  */
-export function setFitsWith(gd: GameData, at: Archetype, set: Powerset, other: Powerset): boolean {
-  const owned = new Set([set.id, other.id]);
+export function setFitsWith(gd: GameData, at: Archetype, set: Powerset, other?: Powerset, who: CharacterTraits = {}): boolean {
+  const owned = new Set([set.id]);
+  if (other) owned.add(other.id);
   for (const n of INHERENT_SETS) {
     const s = gd.setByName.get(n.toLowerCase());
     if (s) owned.add(s.id);
   }
-  const ctx: EvalContext = {
-    ownsPower: () => false,
-    ownsSet: (n) => owned.has(gd.setByName.get(n.toLowerCase())?.id ?? -1),
-    prop: (n: string) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0),
-  };
+  // a new character: level 1, no powers bought yet
+  const ctx = characterContext(gd, at, who, 0, new Set(), owned);
   // a power level 1 can pick: auto-issued powers come free (as in BuildRules.newSetBlock)
   return (
     evalRequires(set.sbr, ctx) &&
@@ -819,6 +840,21 @@ export function setFitsWith(gd: GameData, at: Archetype, set: Powerset, other: P
 }
 
 /**
+ * Whether a set fits on its own but not with another: the other set is what keeps it out
+ * (setFitsWith both ways round).
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param set The set listed.
+ * @param other The set chosen in the other list.
+ * @param who The character's origin and alignment, when known.
+ * @return True when `other` is the reason `set` can't start a build.
+ */
+function setClashes(gd: GameData, at: Archetype, set: Powerset, other: Powerset, who?: CharacterTraits): boolean {
+  return !setFitsWith(gd, at, set, other, who) && setFitsWith(gd, at, set, undefined, who);
+}
+
+/**
  * Whether a new character of an archetype can start with this primary and secondary: each fits
  * with the other (setFitsWith), so level 1's two picks can be made.
  *
@@ -826,25 +862,31 @@ export function setFitsWith(gd: GameData, at: Archetype, set: Powerset, other: P
  * @param at The archetype.
  * @param pri The primary.
  * @param sec The secondary.
+ * @param who The character's origin and alignment, when known.
  * @return True when the pair goes together.
  */
-export function setsGoTogether(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset): boolean {
-  return setFitsWith(gd, at, pri, sec) && setFitsWith(gd, at, sec, pri);
+export function setsGoTogether(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset, who?: CharacterTraits): boolean {
+  return setFitsWith(gd, at, pri, sec, who) && setFitsWith(gd, at, sec, pri, who);
 }
 
 /**
- * What stops a primary and secondary from starting a build, naming the set New Build greys: the
- * secondary when it doesn't fit the primary, else the primary (startingLocks).
+ * What stops a primary and secondary from starting a build because of each other, naming the set
+ * New Build greys: the secondary when it clashes with the primary, else the primary
+ * (startingLocks).
+ *
+ * A set that can't start a build on its own (a staff-only set, hidden by its powers' BuyRequires) is
+ * no clash: it fits with nothing, so the other set isn't to blame.
  *
  * @param gd Game data.
  * @param at The archetype.
  * @param pri The primary.
  * @param sec The secondary.
- * @return "<set> can't be taken with <other set>", or null when the pair goes together.
+ * @param who The character's origin and alignment, when known.
+ * @return "<set> can't be taken with <other set>", or null when neither set keeps the other out.
  */
-export function pairProblem(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset): string | null {
-  if (!setFitsWith(gd, at, sec, pri)) return `${sec.dn} can't be taken with ${pri.dn}`;
-  if (!setFitsWith(gd, at, pri, sec)) return `${pri.dn} can't be taken with ${sec.dn}`;
+export function pairProblem(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset, who?: CharacterTraits): string | null {
+  if (setClashes(gd, at, sec, pri, who)) return `${sec.dn} can't be taken with ${pri.dn}`;
+  if (setClashes(gd, at, pri, sec, who)) return `${pri.dn} can't be taken with ${sec.dn}`;
   return null;
 }
 
@@ -860,15 +902,16 @@ export function buildPairProblem(gd: GameData, b: Build): string | null {
   const at = gd.archetypeById.get(b.at);
   const pri = gd.setById.get(b.primary);
   const sec = gd.setById.get(b.secondary);
-  return at && pri && sec ? pairProblem(gd, at, pri, sec) : null;
+  return at && pri && sec ? pairProblem(gd, at, pri, sec, b) : null;
 }
 
 /**
- * The sets New Build greys, and why: each offered primary or secondary that doesn't fit with the
- * set chosen in the other list (setFitsWith).
+ * The sets New Build greys, and why: each offered primary or secondary that clashes with the set
+ * chosen in the other list (fits on its own, but not with that set).
  *
- * A greyed secondary (an older build's pair) counts as none chosen, as a greyed set does in the
- * game, so it greys no primary.
+ * A chosen set that is greyed itself (an older build's pair, or a pair that clashes one way only)
+ * counts as none chosen, as a greyed set does in the game, so it greys nothing in the other list.
+ * When both clash, the primary keeps its place and the secondary is the one greyed.
  *
  * @param gd Game data.
  * @param at The archetype.
@@ -876,12 +919,15 @@ export function buildPairProblem(gd: GameData, b: Build): string | null {
  * @param secs The secondaries offered.
  * @param pri The chosen primary, if any.
  * @param sec The chosen secondary, if any.
+ * @param who The character's origin and alignment, when known.
  * @return Map of greyed set id to the reason ("Can't be taken with <set>").
  */
-export function startingLocks(gd: GameData, at: Archetype, pris: Powerset[], secs: Powerset[], pri?: Powerset, sec?: Powerset): Map<number, string> {
+export function startingLocks(gd: GameData, at: Archetype, pris: Powerset[], secs: Powerset[], pri?: Powerset, sec?: Powerset, who?: CharacterTraits): Map<number, string> {
+  const secOff = !!(pri && sec && setClashes(gd, at, sec, pri, who));
+  const priOff = !!(pri && sec && !secOff && setClashes(gd, at, pri, sec, who));
   const out = new Map<number, string>();
-  if (pri) for (const s of secs) if (!setFitsWith(gd, at, s, pri)) out.set(s.id, `Can't be taken with ${pri.dn}`);
-  if (sec && !out.has(sec.id)) for (const s of pris) if (!setFitsWith(gd, at, s, sec)) out.set(s.id, `Can't be taken with ${sec.dn}`);
+  if (pri && !priOff) for (const s of secs) if (setClashes(gd, at, s, pri, who)) out.set(s.id, `Can't be taken with ${pri.dn}`);
+  if (sec && !secOff) for (const s of pris) if (setClashes(gd, at, s, sec, who)) out.set(s.id, `Can't be taken with ${sec.dn}`);
   return out;
 }
 

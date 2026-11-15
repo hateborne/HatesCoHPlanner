@@ -4,7 +4,7 @@ import { useStage } from '../components/Stage.tsx';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, carryOrigin, cleanName, skinOf, type Alignment } from '../../engine/build.ts';
-import { pairProblem, startingLocks, startingSets } from '../../engine/rules.ts';
+import { pairProblem, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
 import { rememberedBuild, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
@@ -85,11 +85,19 @@ export function Setup() {
   const secs = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.sec, archetype) : []), [gd, archetype]);
   const priSet = pris.find((s) => s.id === pri);
   const secSet = secs.find((s) => s.id === sec);
-  // sets that can't go with the set chosen in the other list, and why: the character creator greys them
-  const clashes = useMemo(() => (gd && archetype ? startingLocks(gd, archetype, pris, secs, priSet, secSet) : new Map<number, string>()), [gd, archetype, pris, secs, priSet, secSet]);
-  // why the chosen pair can't start a build (level 1's picks couldn't be made), if it can't
-  const problem = gd && archetype && priSet && secSet ? pairProblem(gd, archetype, priSet, secSet) : null;
-  const pairBlocked = problem !== null;
+  // sets that can't go with the set chosen in the other list, and why: the character creator greys
+  // them (a requirement may also read the origin and alignment chosen)
+  const clashes = useMemo(
+    () => (gd && archetype ? startingLocks(gd, archetype, pris, secs, priSet, secSet, { origin, alignment: align }) : new Map<number, string>()),
+    [gd, archetype, pris, secs, priSet, secSet, origin, align],
+  );
+  // whether level 1's picks can't be made with the chosen pair, and why when the sets clash
+  const { pairBlocked, problem } = useMemo(() => {
+    if (!gd || !archetype || !priSet || !secSet) return { pairBlocked: false, problem: null };
+    const who = { origin, alignment: align };
+    if (setsGoTogether(gd, archetype, priSet, secSet, who)) return { pairBlocked: false, problem: null };
+    return { pairBlocked: true, problem: pairProblem(gd, archetype, priSet, secSet, who) };
+  }, [gd, archetype, priSet, secSet, origin, align]);
   // a choice that blocks the pair says why at once (a tapped set's help stays up on phones)
   useEffect(() => {
     if (pairBlocked) setDesc(null);
@@ -108,7 +116,7 @@ export function Setup() {
     return lock ? `${lock}.<br>${s.lh || s.sh}` : s.lh || s.sh;
   };
   // the description box's text while nothing is hovered
-  const pairNote = problem ? `${problem}. Choose another primary or secondary power set.` : undefined;
+  const pairNote = pairBlocked ? `${problem ?? "Level 1's powers can't be picked with these sets"}. Choose another primary or secondary power set.` : undefined;
   const ROW = 47;
   const finish = async () => {
     if (at === undefined || pri === undefined || sec === undefined || origin === undefined) return;

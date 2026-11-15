@@ -44,12 +44,13 @@ const ordered = (g: (typeof SHIELD_PAIRS)[number], melee: string): [string, stri
 function wizardStarts(data: GameData, at: Archetype, pri: Powerset, sec: Powerset): boolean {
   const b = newBuild({ dataVersion: data.core.manifest.dataVersion, at: at.id, origin: data.core.origins[0]!.id, alignment: 'Hero', primary: pri.id, secondary: sec.id, pickCount: data.core.schedule.power.length });
   const r0 = new BuildRules(data, b);
-  const firsts = pri.p.filter((p) => r0.powerOption(p, 0).state === 'available');
+  // level 1's picks: only powers available at level 1 can be taken
+  const firsts = pri.p.filter((p, i) => pri.av[i] === 0 && r0.powerOption(p, 0).state === 'available');
   return (
     firsts.length > 0 &&
     firsts.every((first) => {
       const r = new BuildRules(data, { ...b, picks: b.picks.map((x, i) => (i === 0 ? { power: first, level: 0, slots: [{ level: 0 }] } : x)) });
-      return sec.p.some((p) => r.powerOption(p, 1).state === 'available');
+      return sec.p.some((p, i) => sec.av[i] === 0 && r.powerOption(p, 1).state === 'available');
     })
   );
 }
@@ -95,10 +96,15 @@ describe('setsGoTogether', () => {
     expect(got.sort()).toEqual(want);
   });
 
-  it.each(Object.keys(OTHER_PAIRS))("%s: agrees with the level-up wizard's level-1 picks for every pair New Build offers", (v) => {
+  // the wizard's check builds the level-up rules for every first pick, so it is slow: every pair of
+  // the default version, and an older version's archetypes whose pairs differ from it (its data
+  // never changes, and the forbidden lists above pin the rest)
+  const SWEEP: Record<string, string[] | undefined> = { i28p4: undefined, i28p3: ['Class_Brute', 'Class_Tanker'] };
+  it.each(Object.keys(SWEEP))("%s: agrees with the level-up wizard's level-1 picks for the pairs swept", (v) => {
     const data = loadData(v);
+    const only = SWEEP[v]?.map((n) => n.toLowerCase());
     const bad: string[] = [];
-    for (const at of data.core.archetypes) {
+    for (const at of data.core.archetypes.filter((a) => !only || only.includes(a.n.toLowerCase()))) {
       for (const p of startingSets(data, at.cats.pri, at)) {
         for (const s of startingSets(data, at.cats.sec, at)) {
           const fits = setsGoTogether(data, at, p, s);
@@ -144,6 +150,41 @@ describe("New Build's greyed sets (startingLocks)", () => {
   it('greys nothing for a pair that goes together', () => {
     expect(startingLocks(gd, at, pris, secs, set('Tanker_Defense.Invulnerability'), set('Tanker_Melee.Super_Strength')).size).toBe(0);
   });
+
+  it('a chosen primary greyed by a one-way clash greys no secondary (it counts as none chosen)', () => {
+    // no Homecoming pair clashes one way only: Dual Blades with Super Strength's powers, which don't
+    // forbid Shield Defense, while Shield Defense's forbid Dual Blades
+    const ss = set('Tanker_Melee.Super_Strength');
+    const oneWay: Powerset = { ...blades, p: ss.p, av: ss.av };
+    const offered = secs.map((s) => (s.id === blades.id ? oneWay : s));
+    expect(setFitsWith(gd, at, shield, oneWay)).toBe(false);
+    expect(setFitsWith(gd, at, oneWay, shield)).toBe(true);
+    const locks = startingLocks(gd, at, pris, offered, shield, oneWay);
+    expect(names(locks)).toEqual(['Tanker_Defense.Shield_Defense']);
+    expect(locks.get(shield.id)).toBe("Can't be taken with Dual Blades");
+    expect(pairProblem(gd, at, shield, oneWay)).toBe("Shield Defense can't be taken with Dual Blades");
+  });
+});
+
+describe('New Build reads requirements as the level-up screens do', () => {
+  const at = arch('Class_Tanker');
+  const shield = set('Tanker_Defense.Shield_Defense');
+  const ss = set('Tanker_Melee.Super_Strength');
+  const origin = (n: string) => gd.core.origins.find((o) => o.n === n)!.id;
+  /** @return Whether the level-up wizard's first pick could take a power of `sec` (BuildRules.newSetBlock). */
+  const wizard = (sec: Powerset, o: number) =>
+    new BuildRules(gd, newBuild({ dataVersion: 'i28p4', at: at.id, origin: o, alignment: 'Hero', primary: shield.id, secondary: sec.id, pickCount: gd.core.schedule.power.length })).newSetBlock(sec, 0) === null;
+
+  it.each([
+    ['$archtype (as the data writes it)', ['$archtype', '@Class_Tanker', '=='], 'Science', true],
+    ['another archetype', ['$archtype', '@Class_Blaster', '=='], 'Science', false],
+    ['the origin chosen', ['$origin', '@Magic', '=='], 'Magic', true],
+    ['another origin', ['$origin', '@Magic', '=='], 'Science', false],
+  ] as const)('a SetBuyRequires on %s', (_, sbr, o, want) => {
+    const gated: Powerset = { ...ss, sbr: [...sbr] };
+    expect(setFitsWith(gd, at, gated, shield, { origin: origin(o), alignment: 'Hero' })).toBe(want);
+    expect(wizard(gated, origin(o))).toBe(want);
+  });
 });
 
 describe('pairProblem', () => {
@@ -154,6 +195,18 @@ describe('pairProblem', () => {
 
   it('says nothing for a pair that goes together', () => {
     expect(pairProblem(gd, arch('Class_Tanker'), set('Tanker_Defense.Shield_Defense'), set('Tanker_Melee.Super_Strength'))).toBeNull();
+  });
+
+  it("blames no set for one that can't start a build on its own (a staff-only set)", () => {
+    // every Homecoming set can start a build on its own: Super Strength made staff-only, as a server
+    // may hide a set through its powers' BuyRequires
+    const at = arch('Class_Tanker');
+    const shield = set('Tanker_Defense.Shield_Defense');
+    const staff: Powerset = { ...set('Tanker_Melee.Super_Strength'), sbr: ['accesslevel', 'char>', '0', '>'] };
+    expect(setFitsWith(gd, at, staff)).toBe(false);
+    expect(setsGoTogether(gd, at, shield, staff)).toBe(false);
+    expect(pairProblem(gd, at, shield, staff)).toBeNull();
+    expect(startingLocks(gd, at, [shield], [staff], shield, staff).size).toBe(0);
   });
 });
 
@@ -233,6 +286,34 @@ describe('the warning such a build opens with (warnInvalidPair)', () => {
     vi.advanceTimersByTime(0);
     expect(useStore.getState().confirm).toBeNull();
   }));
+
+  it('a dialog asked for during the countdown waits for it to close, then shows as it would have', async () => {
+    vi.useFakeTimers();
+    try {
+      useStore.setState({ gd, confirm: null, build: old });
+      warnInvalidPair();
+      vi.advanceTimersByTime(0);
+      const warning = useStore.getState().confirm!;
+      expect(warning.title).toBe(PAIR_WARNING_TITLE);
+      // a share link pasted meanwhile asks first; a bad one says so
+      const asked = useStore.getState().askConfirm({ title: 'Replace the current build?', text: 'The link opens another build.' });
+      const told = useStore.getState().tell({ title: "The share link couldn't be opened", text: 'It is cut short.' });
+      await Promise.resolve();
+      expect(useStore.getState().confirm).toBe(warning);
+      vi.advanceTimersByTime(5000);
+      expect(useStore.getState().confirm).toBe(warning); // unlocked, up until it is closed
+      useStore.getState().closeConfirm(true);
+      // then the newer replaces the older, as it always has (the question answered no)
+      expect(await asked).toBe(false);
+      expect(useStore.getState().confirm?.title).toBe("The share link couldn't be opened");
+      useStore.getState().closeConfirm(true);
+      await told;
+      expect(useStore.getState().confirm).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      useStore.setState({ confirm: null, build: undefined });
+    }
+  });
 });
 
 describe('a build that already holds a forbidden pair', () => {
@@ -322,6 +403,20 @@ describe('links made before this change open the same build (load, openBuild)', 
     await vi.waitFor(() => expect(useStore.getState().gd?.core.manifest.dataVersion).toBe('i28p4'));
     await tick();
     expect(useStore.getState().build).toEqual(opened);
+    expect(useStore.getState().confirm).toBeNull();
+  });
+
+  it('nor when Back is pressed twice before the build is shown', async () => {
+    serveData();
+    reset();
+    await useStore.getState().openBuild(await decodeShare(LINK));
+    await tick();
+    useStore.setState({ confirm: null });
+    useStore.setState({ gd: loadData('i28p3'), view: 'setup' });
+    useStore.getState().toOverview();
+    useStore.getState().toOverview();
+    await vi.waitFor(() => expect(useStore.getState().gd?.core.manifest.dataVersion).toBe('i28p4'));
+    for (let i = 0; i < 5; i++) await tick();
     expect(useStore.getState().confirm).toBeNull();
   });
 });
