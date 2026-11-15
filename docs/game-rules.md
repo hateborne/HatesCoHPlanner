@@ -178,6 +178,13 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   `SetRequires`; its staff-only sets (Organic Armor) ask `accesslevel char> 0 >` of their powers
   instead, so no player can take them and New Build leaves them out. On Homecoming this changes no
   list.
+- Thunderspy's data (ts9-6) forbids other pairs than Homecoming's: Shield Defense with Claws,
+  Dual Blades, Katana, Staff Fighting or Titan Weapons for Scrappers and Brutes (Spines is
+  allowed), and with Dual Blades, Staff Fighting, Titan Weapons or Pale Blade for Tankers (Pale
+  Blade's Lash forbids it, and Fetid Presence needs Lash). Brute Claws and Stone Armor clash one
+  way only: Claws' level-1 powers forbid Stone Armor, but Stone Armor keeps Stone Skin with
+  Claws, so New Build greys Claws once Stone Armor is chosen and not the reverse; Finish stays
+  locked for the pair all the same (`setsGoTogether`).
 
 ## Set bonuses
 

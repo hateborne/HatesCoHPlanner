@@ -10,7 +10,7 @@ import { serverById, SERVERS } from '../src/data/servers.ts';
 import type { Archetype, Powerset } from '../src/data/types.ts';
 import { carryOrigin, newBuild } from '../src/engine/build.ts';
 import { boostPog, effectiveness, levelsAbove, setRarity } from '../src/engine/enhance.ts';
-import { BuildRules, isPatronSet, patronArcNote, startingSets } from '../src/engine/rules.ts';
+import { BuildRules, isPatronSet, patronArcNote, setFitsWith, setsGoTogether, startingLocks, startingSets } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { ImportProblem, noBuildSave, wrongServer } from '../src/io/importProblem.ts';
@@ -107,17 +107,8 @@ describe('Thunderspy icons', () => {
   });
 });
 
-/**
- * Whether the game lets a primary go with a secondary: some sets forbid each other through their
- * powers' BuyRequires (Thunderspy's Katana, Staff Fighting and Titan Weapons with Shield Defense).
- */
-function goTogether(at: Archetype, pri: Powerset, sec: Powerset): boolean {
-  const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: pri.id, secondary: sec.id, pickCount: ts.core.schedule.power.length });
-  const r = new BuildRules(ts, b);
-  // level 1's first pick is from the primary, its second from the secondary
-  const free = (s: Powerset, pick: number) => s.p.some((p, i) => s.av[i] === 0 && r.powerOption(p, pick).state === 'available');
-  return free(pri, 0) && free(sec, 1);
-}
+/** @return Whether the game lets a primary go with a secondary on Thunderspy (setsGoTogether). */
+const goTogether = (at: Archetype, pri: Powerset, sec: Powerset) => setsGoTogether(ts, at, pri, sec);
 
 describe('Thunderspy builds', () => {
   // every set New Build offers, each primary and each secondary at least once, paired in turn (a
@@ -154,6 +145,77 @@ describe('Thunderspy builds', () => {
     expect(fixes).toEqual([]);
     expect(build!.server).toBe('thunderspy');
     expect(build!.picks).toEqual(b.picks);
+  });
+});
+
+describe('Thunderspy power set pairs', () => {
+  const set = (name: string) => ts.setByName.get(name.toLowerCase())!;
+  // the pairs ts9-6 forbids: Shield Defense with Claws, Dual Blades, Katana, Staff Fighting or Titan
+  // Weapons (Scrappers and Brutes; Spines is allowed, unlike Homecoming), with Dual Blades, Staff
+  // Fighting, Titan Weapons or Pale Blade (Tankers), and Brute Claws with Stone Armor (one way)
+  const FORBIDDEN = [
+    'Brute_Melee.Claws + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Claws + Brute_Defense.Stone_Armor',
+    'Brute_Melee.Dual_Blades + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Katana + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Staff_Fighting + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Titan_Weapons + Brute_Defense.Shield_Defense',
+    'Scrapper_Melee.Claws + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Dual_Blades + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Katana + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Staff_Fighting + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Titan_Weapons + Scrapper_Defense.Shield_Defense',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Dual_Blades',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Pale_Blade',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Staff_Fighting',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Titan_Weapons',
+  ];
+
+  it('forbids exactly these pairs of the sets New Build offers, and the wizard agrees on every pair', () => {
+    const forbidden: string[] = [];
+    const disagree: string[] = [];
+    for (const at of ts.core.archetypes) {
+      for (const p of startingSets(ts, at.cats.pri, at)) {
+        for (const s of startingSets(ts, at.cats.sec, at)) {
+          const fits = setsGoTogether(ts, at, p, s);
+          if (!fits) forbidden.push(`${p.n} + ${s.n}`);
+          // the level-up wizard: some primary power at level 1, and after any of them a secondary one
+          const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: p.id, secondary: s.id, pickCount: ts.core.schedule.power.length });
+          const r0 = new BuildRules(ts, b);
+          const firsts = p.p.filter((x) => r0.powerOption(x, 0).state === 'available');
+          const starts =
+            firsts.length > 0 &&
+            firsts.every((first) => {
+              const r = new BuildRules(ts, { ...b, picks: b.picks.map((x, i) => (i === 0 ? { power: first, level: 0, slots: [{ level: 0 }] } : x)) });
+              return s.p.some((x) => r.powerOption(x, 1).state === 'available');
+            });
+          if (starts !== fits) disagree.push(`${p.n} + ${s.n}: setsGoTogether says ${fits}`);
+        }
+      }
+    }
+    expect(forbidden.sort()).toEqual([...FORBIDDEN].sort());
+    expect(disagree).toEqual([]);
+  }, 120_000);
+
+  it("Pale Blade can't go with Shield Defense: Lash forbids it, and Fetid Presence needs Lash", () => {
+    const at = ts.archetypeByName.get('class_tanker')!;
+    expect(setFitsWith(ts, at, set('Tanker_Melee.Pale_Blade'), set('Tanker_Defense.Shield_Defense'))).toBe(false);
+    expect(setFitsWith(ts, at, set('Tanker_Defense.Shield_Defense'), set('Tanker_Melee.Pale_Blade'))).toBe(false);
+  });
+
+  it('Brute Claws and Stone Armor clash one way: New Build greys Claws once Stone Armor is chosen, not the reverse', () => {
+    const at = ts.archetypeByName.get('class_brute')!;
+    const claws = set('Brute_Melee.Claws');
+    const stone = set('Brute_Defense.Stone_Armor');
+    // Claws' level-1 powers forbid Stone Armor; Stone Armor keeps Stone Skin with Claws
+    expect(setFitsWith(ts, at, claws, stone)).toBe(false);
+    expect(setFitsWith(ts, at, stone, claws)).toBe(true);
+    const pris = startingSets(ts, at.cats.pri, at);
+    const secs = startingSets(ts, at.cats.sec, at);
+    expect(startingLocks(ts, at, pris, secs, claws).has(stone.id)).toBe(false);
+    expect(startingLocks(ts, at, pris, secs, undefined, stone).get(claws.id)).toBe("Can't be taken with Stone Armor");
+    // a pair that can't start a build all the same: Finish stays locked
+    expect(setsGoTogether(ts, at, claws, stone)).toBe(false);
   });
 });
 
