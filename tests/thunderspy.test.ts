@@ -10,7 +10,7 @@ import { serverById, SERVERS } from '../src/data/servers.ts';
 import type { Archetype, Powerset } from '../src/data/types.ts';
 import { carryOrigin, newBuild } from '../src/engine/build.ts';
 import { boostPog, effectiveness, levelsAbove, setRarity } from '../src/engine/enhance.ts';
-import { BuildRules, isPatronSet, patronArcNote, setFitsWith, setsGoTogether, startingLocks, startingSets } from '../src/engine/rules.ts';
+import { BuildRules, buildPairProblem, isPatronSet, pairProblem, patronArcNote, setFitsWith, setsGoTogether, startingLocks, startingSets } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { ImportProblem, noBuildSave, wrongServer } from '../src/io/importProblem.ts';
@@ -182,12 +182,12 @@ describe('Thunderspy power set pairs', () => {
           // the level-up wizard: some primary power at level 1, and after any of them a secondary one
           const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: p.id, secondary: s.id, pickCount: ts.core.schedule.power.length });
           const r0 = new BuildRules(ts, b);
-          const firsts = p.p.filter((x) => r0.powerOption(x, 0).state === 'available');
+          const firsts = p.p.filter((x, i) => p.av[i] === 0 && r0.powerOption(x, 0).state === 'available');
           const starts =
             firsts.length > 0 &&
             firsts.every((first) => {
               const r = new BuildRules(ts, { ...b, picks: b.picks.map((x, i) => (i === 0 ? { power: first, level: 0, slots: [{ level: 0 }] } : x)) });
-              return s.p.some((x) => r.powerOption(x, 1).state === 'available');
+              return s.p.some((x, i) => s.av[i] === 0 && r.powerOption(x, 1).state === 'available');
             });
           if (starts !== fits) disagree.push(`${p.n} + ${s.n}: setsGoTogether says ${fits}`);
         }
@@ -216,6 +216,32 @@ describe('Thunderspy power set pairs', () => {
     expect(startingLocks(ts, at, pris, secs, undefined, stone).get(claws.id)).toBe("Can't be taken with Stone Armor");
     // a pair that can't start a build all the same: Finish stays locked
     expect(setsGoTogether(ts, at, claws, stone)).toBe(false);
+  });
+
+  it('with both chosen, only Claws is greyed: a greyed choice greys nothing in the other list', () => {
+    const at = ts.archetypeByName.get('class_brute')!;
+    const claws = set('Brute_Melee.Claws');
+    const stone = set('Brute_Defense.Stone_Armor');
+    const pris = startingSets(ts, at.cats.pri, at);
+    const secs = startingSets(ts, at.cats.sec, at);
+    // Claws would grey Shield Defense, but greyed itself it counts as none chosen
+    expect(setFitsWith(ts, at, set('Brute_Defense.Shield_Defense'), claws)).toBe(false);
+    const locks = startingLocks(ts, at, pris, secs, claws, stone);
+    expect([...locks.keys()].map((id) => ts.powerset(id).n)).toEqual(['Brute_Melee.Claws']);
+    expect(pairProblem(ts, at, claws, stone)).toBe("Claws can't be taken with Stone Armor");
+  });
+
+  it("a staff-only set (Organic Armor) fits with nothing, so an older build holding it isn't warned of a clash", () => {
+    const at = ts.archetypeByName.get('class_tanker')!;
+    const organic = set('Tanker_Defense.Organic_Armor');
+    const ss = set('Tanker_Melee.Super_Strength');
+    // its powers need staff access: New Build doesn't offer it
+    expect(setFitsWith(ts, at, organic)).toBe(false);
+    expect(startingSets(ts, at.cats.pri, at).some((s) => s.id === organic.id)).toBe(false);
+    expect(setsGoTogether(ts, at, organic, ss)).toBe(false);
+    expect(pairProblem(ts, at, organic, ss)).toBeNull();
+    const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: organic.id, secondary: ss.id, pickCount: ts.core.schedule.power.length });
+    expect(buildPairProblem(ts, b)).toBeNull();
   });
 });
 
