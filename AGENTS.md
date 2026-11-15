@@ -447,11 +447,13 @@ read the store with narrow selectors (`useShallow`) and call its actions.
 - The owner compares visuals with in-game screenshots taken at 3840x2160 (in `IGNORE/`).
 
 **Pop-ups and hovers.**
-- Every pop-up closes with Escape (`useEscape`).
+- Every pop-up closes with Escape (`useEscape`). The one exception, the owner's choice: a `tell`
+  with `wait` (the "Invalid power sets" warning) takes neither OK nor Escape until its countdown
+  ends.
 - Questions use `askConfirm` (or `askChoices` for rows of options); messages with one OK button
   use `tell` (its optional `link` makes one phrase open a fixed https page in a new tab, as the
-  hero Patron note links the wiki); refusals use `notify` or `flashLocked`. The server list is
-  `askServer`.
+  hero Patron note links the wiki; its optional `wait` greys OK for that many seconds, counted down
+  on the button); refusals use `notify` or `flashLocked`. The server list is `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
 
