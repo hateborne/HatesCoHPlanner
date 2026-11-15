@@ -1,0 +1,144 @@
+Fire/Kin Controller, from the retail-forum archive thread "Ranged Softcapped Fire/Kin/Fire Controller, can you streamline my build?"
+(Mids' Hero Designer 1.955 post: Hero Plan text, then the legacy MxDz data chunk): https://forumarchive.cityofheroes.dev/index.php?/topic/136070-ranged-softcapped-firekinfire-controller-can-you-streamline-my-build/
+
+Hero Plan by Mids' Hero Designer 1.955
+
+http://www.cohplanner.com/
+
+
+
+Click this DataLink to open the build!
+
+
+
+Level 50 Science Controller
+
+Primary Power Set: Fire Control
+
+Secondary Power Set: Kinetics
+
+Power Pool: Flight
+
+Power Pool: Fighting
+
+Power Pool: Leadership
+
+Power Pool: Speed
+
+Ancillary Pool: Fire Mastery
+
+
+
+Hero Profile:
+
+Level 1: Char -- Thundr-Acc/Dmg:50(A), Thundr-Dmg/EndRdx:50(3), Thundr-Dmg/Rchg:50(3), Thundr-Acc/Dmg/Rchg:50(5), Thundr-Acc/Dmg/EndRdx:50(5), Thundr-Dmg/EndRdx/Rchg:50(7)
+
+Level 1: Transfusion -- Numna-Regen/Rcvry+:50(A), Numna-Heal:50(7), Numna-Heal/EndRdx:50(9), Numna-EndRdx/Rchg:50(9), Numna-Heal/Rchg:50(11), Numna-Heal/EndRdx/Rchg:50(11)
+
+Level 2: Fire Cages -- SWotController-Rchg/Dmg%:50(A), SWotController-Acc/Conf/Hold/Immob/Sleep/Stun/Fear/EndRdx/Rchg:50(13), SWotController-Acc/Conf/Hold/Immob/Sleep/Stun/Fear/EndRdx:50(13), SWotController-EndRdx/Rchg:50(15), SWotController-Conf/Hold/Immob/Sleep/Stun/Fear/Rchg:50(15), SWotController-Acc/Conf/Hold/Immob/Sleep/Stun/Fear:50(17)
+
+Level 4: Siphon Power -- Acc-I:50(A)
+
+Level 6: Hover -- LkGmblr-Rchg+:50(A), LkGmblr-Def:50(17), LkGmblr-Def/EndRdx:50(19)
+
+Level 8: Hot Feet -- Armgdn-Dam%:50(A), Armgdn-Dmg:50(19), Armgdn-Dmg/Rchg:50(21), Armgdn-Acc/Rchg:50(21), Armgdn-Acc/Dmg/Rchg:50(23), EndRdx-I:50(23)
+
+Level 10: Siphon Speed -- Acc-I:30(A), RechRdx-I:50(25), RechRdx-I:50(25)
+
+Level 12: Flashfire -- Amaze-ToHitDeb%:50(A), Amaze-EndRdx/Stun:50(27), Amaze-Acc/Rchg:50(27), Amaze-Acc/Stun/Rchg:50(29), Amaze-Stun/Rchg:50(29)
+
+Level 14: Boxing -- Empty(A)
+
+Level 16: Tough -- GA-3defTpProc:50(A), S'fstPrt-ResDam/Def+:30(31)
+
+Level 18: Cinders -- UbrkCons-Dam%:50(A), UbrkCons-EndRdx/Hold:50(31), UbrkCons-Acc/Rchg:50(31), UbrkCons-Acc/Hold/Rchg:50(33), UbrkCons-Hold/Rchg:50(33)
+
+Level 20: Speed Boost -- Zephyr-ResKB:50(A)
+
+Level 22: Weave -- LkGmblr-Rchg+:50(A), LkGmblr-Def:50(33), LkGmblr-Def/EndRdx:50(34), RedFtn-Def/EndRdx:50(34)
+
+Level 24: Maneuvers -- LkGmblr-Rchg+:50(A), LkGmblr-Def:50(34), LkGmblr-Def/EndRdx:50(36), RedFtn-Def/EndRdx:50(36)
+
+Level 26: Fly -- Zephyr-Travel:50(A), Zephyr-Travel/EndRdx:50(36), Flight-I:50(50)
+
+Level 28: Ring of Fire -- Thundr-Dmg/EndRdx/Rchg:50(A), Thundr-Acc/Dmg/EndRdx:50(37), Thundr-Dmg/EndRdx:50(37), Thundr-Acc/Dmg:50(37), Thundr-Dmg/Rchg:50(39), Thundr-Acc/Dmg/Rchg:50(39)
+
+Level 30: Afterburner -- LkGmblr-Rchg+:50(A), Flight-I:50(39)
+
+Level 32: Fire Imps -- ExRmnt-Acc/Rchg:50(A), ExRmnt-Dmg/EndRdx:50(40), ExRmnt-Acc/Dmg:50(40), ExRmnt-Acc/Dmg/Rchg:50(40), ExRmnt-EndRdx/Dmg/Rchg:50(42), ExRmnt-+Res(Pets):50(42)
+
+Level 35: Transference -- Efficacy-EndMod/Rchg:50(A), P'Shift-EndMod/Acc/Rchg:50(42), P'Shift-EndMod/Rchg:50(43)
+
+Level 38: Fulcrum Shift -- Acc-I:50(A), RechRdx-I:50(43)
+
+Level 41: Fire Blast -- Thundr-Dmg/EndRdx/Rchg:50(A), Thundr-Acc/Dmg/EndRdx:30(43), Thundr-Acc/Dmg/Rchg:50(45), Thundr-Dmg/Rchg:50(45), Thundr-Dmg/EndRdx:50(45), Thundr-Acc/Dmg:30(46)
+
+Level 44: Fire Ball -- Ragnrk-Knock%:50(A), Ragnrk-Dmg/EndRdx:50(46), Ragnrk-Acc/Rchg:50(46), Ragnrk-Acc/Dmg/Rchg:50(48), Ragnrk-Dmg/Rchg:50(48)
+
+Level 47: Fire Shield -- HO:Ribo(A), HO:Ribo(48), HO:Ribo(50)
+
+Level 49: Hasten -- RechRdx-I:50(A), RechRdx-I:50(50)
+
+Level 1: Brawl -- Empty(A)
+
+Level 1: Containment 
+
+Level 1: Prestige Power Dash -- Empty(A)
+
+Level 1: Prestige Power Slide -- Empty(A)
+
+Level 1: Prestige Power Quick -- Empty(A)
+
+Level 1: Prestige Power Rush -- Empty(A)
+
+Level 1: Prestige Power Surge -- Empty(A)
+
+Level 1: Sprint -- Empty(A)
+
+Level 2: Rest -- Empty(A)
+
+Level 4: Ninja Run 
+
+Level 4: Swift -- Flight-I:50(A)
+
+Level 4: Health -- Mrcl-Rcvry+:40(A)
+
+Level 4: Hurdle -- Jump-I:50(A)
+
+Level 4: Stamina -- EndMod-I:50(A)
+
+------------
+
+
+
+
+
+
+
+
+
+	Code:
+| Copy & Paste this data into Mids' Hero Designer to view the build |
+|-------------------------------------------------------------------|
+|MxDz;1460;659;1318;HEX;|
+|78DA6594594F135114C7EFED0CD6B620ADEC3BA52CB540A1827BD404649356D1AAA|
+|F86940126690A696BA28F266AD4E893BEA2E2BE247E20F52B28B8BCD733F3FF179A|
+|743293DFBD67B9E7DC73CF9DD4ED0BB55FE7EE9E573A389D5D2E146E4E6FE48AF98|
+|D6CD6CA7BD319DBCA652CE53C5EF97AF67565B3F8AC9DB7CA93D60AFDD4ADD5D5F8|
+|A29DB38A76A6105AC8AD5B792B578C970781A50DC7396BAFAD17EB307686766EADD|
+|E9D25ADE5152B5F58B737FDEE3CBD69592BA1994D3B8388A9E542D1CADF6995AC06|
+|E4BBAF159F528DDA12244CE57941BE04CD57E43678E03538E3F86AFADED0D05D070|
+|F5E21AF82FE34790D7CA0E92ABEFA8BE1CA6A3F939FC0431FC90F60F03D382B8E86|
+|EB5D52463B72F149996B908BA7A60931828DE0E120F850E065BEDEB31EE84E828DA|
+|7C83360F369328CF5E7C5CFA7DD981E9F13B3CB54ADC3D095F948D401ECC90C5C86|
+|7FFB2532057626C945504BDE75F0517525799421927A4874FD51ECB8BB45BB111F0|
+|B428C105AC00ADDF3E41CD83B4BCE8017C5A781111A7E40664A8C2654C26862B57A|
+|59AD30AB15F68321B16DA16D0B6DC3B48DD03642DB80D8B62196A7ED1B6245BE838|
+|908AA744F4C3B78F21DECA47E76563F3BAF9F9D38C80E1C6407AA6629036BD3C55C|
+|06B9EE1399F670DD9E1DC41CFA4DEE927FC0237FC97F60527CFB9877DF53EA9E83B|
+|167604A3B37C6ED003DC0AE8BF1E4DFC83145193BCA3DC5B6D12523CC7D847B19E1|
+|1E47B7A07F2BBEC33CD3E11388357A9C3C068E4D9213E03BF189B3DBE3E704A6A1C|
+|6C804D92767310E1B3DCE3C1364A7B977EBE575BAAE6B5F528A5569C7AB24892AC9|
+|449564D2DCFB3F5092ACB25932F7FE034ABB125FD0B9DDC8E4A75FC65CC1E039EF5|
+|4CA9CE61E32D5AF4A591476BB95B25EC8FE03C5AEDF3A|
+|-------------------------------------------------------------------|

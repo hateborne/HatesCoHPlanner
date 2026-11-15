@@ -130,6 +130,54 @@ describe('Mids interop', () => {
     expect(warnings).toEqual(["A power couldn't be identified, so it was left out", "A power couldn't be identified, so it was left out"]);
   });
 
+  /** A legacy chunk of a Fire Blast / Fire Manipulation Blaster whose pick 0 has a Mids index the map lacks, and `head` above it. */
+  async function unknownPickChunk(head: string) {
+    const sets = ['Blaster_Ranged.Fire_Blast', 'Blaster_Support.Fire_Manipulation'];
+    const w = new ByteWriter();
+    w.bytes(new Uint8Array([77, 120, 68, 12]));
+    w.f32(3.2);
+    w.bool(false);
+    w.bool(true);
+    for (const s of ['Class_Blaster', 'Magic']) w.netString(s);
+    w.i32(0);
+    w.netString('Plan');
+    w.i32(sets.length - 1);
+    for (const s of sets) w.netString(s);
+    w.i32(0);
+    w.i32(23); // 24 power entries
+    for (let i = 0; i < 24; i++) {
+      w.i32(i === 0 ? 999_999 : -1);
+      if (i === 0) {
+        w.i8(0); // level 1
+        w.bool(true);
+        w.bool(false);
+        w.i32(0);
+        w.i32(0);
+        w.i8(-1);
+      }
+      w.i8(-1); // no slots
+    }
+    const raw = w.done();
+    const hex = Buffer.from(deflateSync(raw)).toString('hex').toUpperCase();
+    return importMidsText(gd, map, `${head}|MxDz;${raw.length};${hex.length / 2};${hex.length};HEX;|\n${hex}\n|----|`);
+  }
+
+  it("names a power the chunk's index can't identify from the Hero Plan text above it", async () => {
+    const plan = ["Hero Plan by Mids' Hero Designer 1.955", '', 'Hero Profile:', '', 'Level 1: Flares -- Acc-I:50(A)', '', 'Level 2: Ring of Fire -- Acc-I:50(A)', '', ''].join('\n');
+    const named = await unknownPickChunk(plan);
+    expect(named.warnings).toEqual([]);
+    expect(named.build.picks[0]?.power).toBe(pid(gd, 'Blaster_Ranged.Fire_Blast.Flares'));
+    // without the plan text the pick is lost and said so
+    const bare = await unknownPickChunk('');
+    expect(bare.warnings).toEqual(["A power couldn't be identified, so it was left out"]);
+    expect(bare.build.picks[0]).toBeNull();
+    // a name that matches nothing, a name at another level, or a power from a set the chunk lacks, leaves it lost
+    // (two powers it could be, since both are plan lines at that level: left lost, not guessed)
+    for (const head of ['Level 1: Nothing Like It -- x\n', 'Level 2: Flares -- x\n', 'Level 1: Ice Bolt -- x\n', 'Level 1: Flares -- x\nLevel 1: Ring of Fire -- x\n']) {
+      expect((await unknownPickChunk(head)).warnings, head).toHaveLength(1);
+    }
+  });
+
   // a real Mids .mbd of a Fiery Aura / Fiery Melee Tanker on this machine (set HCP_MIDS_SAMPLE to
   // its path); skipped when unset, so no personal file names live in the repository
   const local = process.env.HCP_MIDS_SAMPLE ?? '';

@@ -127,3 +127,56 @@ describe('export file names', () => {
     expect(safeFileName('Fire Farmer.mbd')).toBe('Fire Farmer.mbd');
   });
 });
+
+describe('Hero Plan text above a legacy Mids chunk', () => {
+  /** A Fire Blast / Fire Manipulation chunk whose pick 0 has a Mids index the map lacks, with `head` pasted above it. */
+  async function withHead(head: string) {
+    const sets = ['Blaster_Ranged.Fire_Blast', 'Blaster_Support.Fire_Manipulation'];
+    const w = new ByteWriter();
+    w.bytes(new Uint8Array([77, 120, 68, 12]));
+    w.f32(3.2);
+    w.bool(false);
+    w.bool(true);
+    for (const s of ['Class_Blaster', 'Magic']) w.netString(s);
+    w.i32(0);
+    w.netString('Plan');
+    w.i32(sets.length - 1);
+    for (const s of sets) w.netString(s);
+    w.i32(0);
+    w.i32(23); // 24 power entries
+    for (let i = 0; i < 24; i++) {
+      w.i32(i === 0 ? 999_999 : -1);
+      if (i === 0) {
+        w.i8(0); // level 1
+        w.bool(true);
+        w.bool(false);
+        w.i32(0);
+        w.i32(0);
+        w.i8(-1);
+      }
+      w.i8(-1); // no slots
+    }
+    const raw = w.done();
+    const hex = Buffer.from(deflateSync(raw)).toString('hex').toUpperCase();
+    return importMidsText(gd, map, `${head}|MxDz;${raw.length};${hex.length / 2};${hex.length};HEX;|\n${hex}\n|----|`);
+  }
+  const lost = ["A power couldn't be identified, so it was left out"];
+
+  it('ignores a flood of Level lines, very long names and lines, and out-of-range levels', async () => {
+    const t0 = Date.now();
+    expect((await withHead('Level 1: Nothing -- x\n'.repeat(80_000))).warnings).toEqual(lost);
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect((await withHead(`Level 1: ${'Flares '.repeat(50)} -- x\n`)).warnings).toEqual(lost); // a name over 80 characters
+    expect((await withHead(`Level 1: Flares${' '.repeat(5000)}-- x\n`)).warnings).toEqual(lost); // a line over 400 characters
+    expect((await withHead('Level 0: Flares -- x\nLevel 51: Flares -- x\nLevel 100: Flares\n')).warnings).toEqual(lost);
+    // the real line comes after the 200 lines the importer reads
+    expect((await withHead(`${'Level 1: Nothing -- x\n'.repeat(200)}Level 1: Flares -- x\n`)).warnings).toEqual(lost);
+  });
+
+  it('strips hidden characters, and a name matching nothing changes nothing', async () => {
+    expect((await withHead('Level 1: Fla\u202Ere\u200Bs -- x\n')).warnings).toEqual([]); // stripped, so it reads as "Flares"
+    expect((await withHead('Level 1: \u202Esralf\u202C -- x\n')).warnings).toEqual(lost); // reversed text is not "Flares"
+    expect((await withHead('Level 1: Nothing At All\u0000\u0007 -- x\n')).warnings).toEqual(lost);
+    expect((await withHead('<script>alert(1)</script>\nLevel 1: Blaster_Ranged.Fire_Blast.Flares\n')).warnings).toEqual(lost); // internal full names are not names
+  });
+});
