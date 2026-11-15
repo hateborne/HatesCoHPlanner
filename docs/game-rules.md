@@ -121,12 +121,13 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   Homecoming, Shield Defense can't go with Claws, Dual Blades, Katana (Ninja Blade), Spines,
   Staff Fighting or Titan Weapons (Brutes, Scrappers, Stalkers and Tankers): with both owned,
   neither set has a level-1 power to buy. Issue 28, Page 3 also keeps Claws from Stone Armor
-  (Brutes and Tankers); Page 4 dropped that. These are the only pairs either version forbids. The character creator buys the set chosen in one list
-  before it lists the other, and greys every set the character could then not have, with "This
-  power set is unavailable due to the selection of an incompatible power set." (`initPowerSetSelector`
-  in `Game/src/UI/Hybrid/uiPower.c`, through `character_IsAllowedToHavePowerSetHypothetically` in
-  `Common/entity/character_base.c`: the set's `SetBuyRequires` fails, or none of its powers
-  available at the character's level passes its `BuyRequires`). Only the listed set's own
+  (Brutes and Tankers); Page 4 dropped that. These are the only pairs either version forbids.
+  The character creator buys the set chosen in one list before it lists the other, and greys every
+  set the character could then not have, with "This power set is unavailable due to the selection
+  of an incompatible power set." (`initPowerSetSelector` in `Game/src/UI/Hybrid/uiPower.c`, through
+  `character_IsAllowedToHavePowerSetHypothetically` in `Common/entity/character_base.c`: the
+  set's `SetBuyRequires` fails, or none of its powers available at the character's level passes
+  its `BuyRequires`). Only the listed set's own
   requirements count, so a pair whose powers forbid each other one way only is greyed in one list
   only. Clicking a greyed set in the game chooses none, so it greys nothing in the other list.
   New Build greys the same sets, naming the set in the way (`setFitsWith` and `startingLocks` in
