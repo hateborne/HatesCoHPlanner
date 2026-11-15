@@ -28,29 +28,51 @@ export interface TitleEdit {
   onCommit: (value: string) => void; // Enter or leaving the field; Escape keeps the old name
 }
 
+/** A second title the bar swaps with its own every TITLE_ALT_MS (a warning, in its own colours). */
+export interface TitleAlt {
+  text: string;
+  colors: [string, string]; // the text's top and bottom colours
+}
+
+// how long each of the two titles shows (TitleAlt)
+const TITLE_ALT_MS = 1500;
+
 /**
  * drawMenuTitle(10*sx, 30*sy, s): glowing dot, black bar with pipes and right cap that slides
  * open by 30s per frame, and the title_18 x 1.5 title starting on top of the dot.
  *
  * Planner additions for a build's name on the overview: on desktop, a title whose bar would reach
  * `limit` wraps onto two lines at half size, which fit the bar's height; with `edit`, the dot and
- * the bar open a text field to rename the build in place.
+ * the bar open a text field to rename the build in place; with `alt`, the title alternates with
+ * another, the bar sized for the wider of the two.
  *
  * @param props.reserve Phones: stage px kept free at the right besides the menu button (the
  *   overview's level-log button).
  * @param props.limit Desktop: stage x the bar must end before (the overview's Origin / Alignment
  *   button); undefined lets it run as wide as its title.
  * @param props.edit Makes the title renamable in place.
+ * @param props.alt A second title to alternate with (the overview's INVALID POWER SETS).
  */
-export function TitleBar({ skin, text, scale: scaleIn, reserve = 0, limit, edit }: { skin: Skin; text: string; scale?: number; reserve?: number; limit?: number; edit?: TitleEdit }) {
+export function TitleBar({ skin, text, scale: scaleIn, reserve = 0, limit, edit, alt }: { skin: Skin; text: string; scale?: number; reserve?: number; limit?: number; edit?: TitleEdit; alt?: TitleAlt }) {
   useFontsReady();
   const stage = useStage();
   const [draft, setDraft] = useState<string | null>(null); // the field's text while renaming
+  const [altShown, setAltShown] = useState(false); // `alt` is the title showing now
+  const altText = alt?.text;
+  useEffect(() => {
+    setAltShown(false);
+    if (altText === undefined) return;
+    const t = window.setInterval(() => setAltShown((v) => !v), TITLE_ALT_MS);
+    return () => window.clearInterval(t);
+  }, [altText]);
+  const shown = alt && altShown ? alt.text : text;
+  // both titles, so the scale and the bar keep their size while they swap
+  const titles = alt ? [text, alt.text] : [text];
   const x = stage.phone ? 10 : vx(10);
   const f = FONTS.title_18;
   // phones: shrunk to end before the menu button at the top right (and `reserve` more stage px)
   const phoneEnd = stage.w - PHONE_TITLE_END - reserve;
-  const fitPhone = () => (phoneEnd - x) / (textWidth(f, f.size * TITLE_SCALE, text) + 45);
+  const fitPhone = () => Math.min(...titles.map((t) => (phoneEnd - x) / (textWidth(f, f.size * TITLE_SCALE, t) + 45)));
   const s = scaleIn ?? (stage.phone ? Math.min(S * 0.8, fitPhone()) : S);
   const y = stage.phone ? phoneGeom(stage).titleY : vy(30);
   const em = f.size * TITLE_SCALE * s;
@@ -58,11 +80,16 @@ export function TitleBar({ skin, text, scale: scaleIn, reserve = 0, limit, edit 
   // desktop: past `limit`, two lines at half size (2 x em/2 fits the bar's 30s height); the top
   // line keeps the words that fit the single line, the rest wraps under it
   const avail = !stage.phone && end !== undefined ? end - x - 45 * s : Infinity;
-  const oneWd = textWidth(f, em, text);
-  let lines = oneWd > avail ? wrapTitle(text, (t) => textWidth(f, em, t) <= avail) : null;
-  // only a name of mostly wide letters leaves a second line too long: then both lines fill up
-  if (lines && textWidth(f, em / 2, lines[1]) > avail) lines = wrapTitle(text, (t) => textWidth(f, em / 2, t) <= avail);
-  const strwd = lines ? Math.max(textWidth(f, em / 2, lines[0]), textWidth(f, em / 2, lines[1])) : oneWd;
+  /** @return A title's two lines (null when it fits one) and its drawn width. */
+  const measure = (title: string) => {
+    const oneWd = textWidth(f, em, title);
+    let two = oneWd > avail ? wrapTitle(title, (t) => textWidth(f, em, t) <= avail) : null;
+    // only a name of mostly wide letters leaves a second line too long: then both lines fill up
+    if (two && textWidth(f, em / 2, two[1]) > avail) two = wrapTitle(title, (t) => textWidth(f, em / 2, t) <= avail);
+    return { two, wd: two ? Math.max(textWidth(f, em / 2, two[0]), textWidth(f, em / 2, two[1])) : oneWd };
+  };
+  const lines = measure(shown).two;
+  const strwd = Math.max(...titles.map((t) => measure(t).wd));
   // renaming opens the bar to its full width, so the field has room
   const wd = draft !== null && end !== undefined ? Math.max(strwd + 45 * s, end - x) : strwd + 45 * s;
   const [acwd, setAcwd] = useState(45 * s);
@@ -85,7 +112,8 @@ export function TitleBar({ skin, text, scale: scaleIn, reserve = 0, limit, edit 
   }, [text, wd, s]);
   const dir = 'creation/common/titlebar';
   const praet = skin.name === 'praetorian';
-  const colors: [string, string] = praet ? ['#e6daa4', '#e6daa4'] : ['#ffff00', '#ffa500'];
+  const own: [string, string] = praet ? ['#e6daa4', '#e6daa4'] : ['#ffff00', '#ffa500'];
+  const colors = alt && altShown ? alt.colors : own;
   return (
     <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 30 }}>
       {/* drawMenuTitle's black: a white_tex rectangle from the dot (Praetorian: the screen edge) plus
@@ -107,7 +135,7 @@ export function TitleBar({ skin, text, scale: scaleIn, reserve = 0, limit, edit 
           baseline={y + 13.5 * s}
           width={Math.max(0, x + wd - 22 * s - (x + 13.5 * s))}
           em={em}
-          color={colors[0]}
+          color={own[0]}
           edit={edit}
           draft={draft}
           setDraft={setDraft}
@@ -122,7 +150,7 @@ export function TitleBar({ skin, text, scale: scaleIn, reserve = 0, limit, edit 
                 <GameText key={i} font="title_18" scale={(TITLE_SCALE * s) / 2} x={0} y={40 * s + (f.cap * em) / 4 + (i - 0.5) * (em / 2)} colors={colors} text={ln} />
               ))
             ) : (
-              <GameText font="title_18" scale={TITLE_SCALE * s} x={0} y={40 * s + 13.5 * s} colors={colors} text={text} />
+              <GameText font="title_18" scale={TITLE_SCALE * s} x={0} y={40 * s + 13.5 * s} colors={colors} text={shown} />
             )}
           </div>
           {edit ? (
