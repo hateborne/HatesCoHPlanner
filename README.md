@@ -68,7 +68,9 @@ Thunderspy's download server keeps only the current release's files, so export e
 it is live: `python -m pipeline.watch` checks the live manifest against `pipeline/patch-watch.json`,
 the installed client and the published data, and prints the command to export a new release (exit
 status 1 when something needs doing). `python -m pipeline.watch --record` records the release once
-it is exported as the default version.
+it is exported as the default version. `python -m pipeline.compare --server thunderspy` writes
+`pipeline/report-thunderspy-diff.md`, every difference of Thunderspy's data from Homecoming's by
+internal name, from the committed data alone, to know what to spot-check in the Thunderspy client.
 
 Each game version lives in its own folder, `public/data/<id>/` (`core`, `powersets`, `powers`,
 `boosts`, `mids-map`). `public/data/versions.json` lists them (`{"default", "versions": [{id,

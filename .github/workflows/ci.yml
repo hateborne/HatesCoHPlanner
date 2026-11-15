@@ -68,6 +68,9 @@ jobs:
       # the release check (no network: its manifests are written by the test)
       - name: Release check tests
         run: python -m unittest pipeline.watch_test
+      # the difference report between servers (synthetic data, no client)
+      - name: Difference report tests
+        run: python -m unittest pipeline.compare_test
       # share links and saved builds store these ids: none may change or disappear
       - name: Stable IDs are only appended to
         env:
