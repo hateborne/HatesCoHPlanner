@@ -120,6 +120,9 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
     L.append(f"\nPvP-only effects dropped: {rep['pvp_effects_dropped']}. "
              f"Unresolved references: {sum(rep['unresolved_refs'].values())}. "
              f"New IDs: {exp['ids_added']}.\n")
+    if rep["missing_text"].get("written as text"):
+        L.append(f"Names and descriptions written into the data as text rather than as message keys "
+                 f"(shown as written, as the client does): {rep['missing_text']['written as text']}.\n")
     fr = exp.get("frames")
     if fr and fr.get("cross"):  # an older version of the same server reports as it always did
         L.append("## Enhancement frames\n")

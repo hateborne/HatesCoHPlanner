@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { serverById, SERVERS } from '../src/data/servers.ts';
 import type { Archetype, Powerset } from '../src/data/types.ts';
 import { carryOrigin, newBuild } from '../src/engine/build.ts';
-import { boostPog, effectiveness, levelsAbove } from '../src/engine/enhance.ts';
+import { boostPog, effectiveness, levelsAbove, setRarity } from '../src/engine/enhance.ts';
 import { BuildRules, isPatronSet, patronArcNote, startingSets } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
@@ -171,6 +171,42 @@ describe('Thunderspy totals', () => {
       const prot = computeTotals(gd, new BuildRules(gd, b), b).lines.get('mezprot.Knock');
       expect(prot?.value, gd.server).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('Thunderspy pools and set rarity', () => {
+  it("opens pools from level 2: level 1's two picks are its primary and secondary", () => {
+    const at = ts.archetypeByName.get('class_blaster')!;
+    const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: startingSets(ts, at.cats.pri, at)[0]!.id, secondary: startingSets(ts, at.cats.sec, at)[0]!.id, pickCount: ts.core.schedule.power.length });
+    const r = new BuildRules(ts, b);
+    expect(ts.core.schedule.pool[0]).toBe(0); // its schedule opens a pool at level 1
+    expect([0, 1].map((i) => r.canAddNewSet('pool', i))).toEqual([false, false]);
+    expect(r.newSetChoices('pool', 0)[0]?.block).toBe('Level 1 takes a primary and a secondary power');
+    expect(r.canAddNewSet('pool', 2)).toBe(true);
+  });
+
+  it('gives every enhancement set in a converter group a rarity on every server, Thunderspy\'s second archetype group too', () => {
+    // a set in no converter group (Thunderspy's Subaluwa) has no rarity in the game either
+    for (const gd of [hc, ts]) {
+      const unrated = gd.boostSets.filter((s) => (s.conv ?? []).length && !setRarity(s)).map((s) => s.n);
+      expect(unrated, gd.server).toEqual([]);
+    }
+  });
+});
+
+describe('Thunderspy set bonuses', () => {
+  it("counts its +Damage bonuses: Affected mods of a power aimed at the caster, not Caster mods", () => {
+    const at = ts.archetypeByName.get('class_blaster')!;
+    const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: ts.setByName.get('blaster_ranged.fire_blast')!.id, secondary: ts.setByName.get('blaster_support.fire_manipulation')!.id, pickCount: ts.core.schedule.power.length });
+    const set = ts.boostSets.find((s) => s.n === 'Defiant_Barrage')!;
+    // two pieces in one power: the 2-piece bonus is Set_Bonus.Set_Bonus.Increased_Damage_3
+    const lv = [0, ts.core.schedule.slot[0]!]; // the power's own slot, then the first slot the schedule grants
+    b.picks[0] = { power: ts.powerByName.get('blaster_ranged.fire_blast.flares')!.id, level: 0, slots: [0, 1].map((l) => ({ level: lv[l]!, enh: { boost: set.slots[l]![0]! } })) };
+    const r = new BuildRules(ts, b);
+    expect(r.issues()).toEqual([]);
+    const t = computeTotals(ts, r, b);
+    expect(t.lines.get('dmg.00')?.value ?? 0).toBeGreaterThan(0);
+    expect(t.setGroups.find((g) => g.set.n === 'Defiant_Barrage')?.stats.map((s) => s.label)).toContain('Damage');
   });
 });
 

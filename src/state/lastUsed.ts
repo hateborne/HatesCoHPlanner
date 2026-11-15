@@ -17,22 +17,25 @@ const SKEW = 60 * 1000;
 /**
  * Whether a page load now comes after a long break.
  *
- * No use on record counts as a long break: a build remembered from before the planner kept the
- * time, or one whose time was cleared, asks first rather than reopening unannounced.
+ * Only a recorded use counts. No time on record (a build remembered from before the planner kept
+ * the time, so every returning player on the day this shipped), a damaged or future time, or
+ * storage that can't be read, is not a break: the build opens as it always did, and the next input
+ * starts the clock. Asking every existing player at once, or on every reload where storage is
+ * blocked, would put their builds one wrong click from being replaced.
  *
  * @param now The time now (ms since the epoch).
  * @param storage Where the time is kept (localStorage; tests pass their own).
- * @return True when the last use was RETURN_AFTER or longer ago, or isn't known.
+ * @return True only when a recorded last use is RETURN_AFTER or longer ago.
  */
 export function returning(now: number, storage: () => Pick<Storage, 'getItem'> = () => localStorage): boolean {
   let raw: string | null;
   try {
     raw = storage().getItem(LAST_USED_KEY);
   } catch {
-    return true;
+    return false;
   }
   const t = raw === null || !/^\d{1,15}$/.test(raw) ? NaN : Number(raw);
-  if (!Number.isFinite(t) || t > now + SKEW) return true;
+  if (!Number.isFinite(t) || t > now + SKEW) return false;
   return now - t >= RETURN_AFTER;
 }
 

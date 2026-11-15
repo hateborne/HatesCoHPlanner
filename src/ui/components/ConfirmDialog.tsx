@@ -132,7 +132,7 @@ export function ConfirmDialog() {
         </button>
         {confirm.alert ? null : (
           <button className="info-button" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => closeConfirm(false)} autoFocus>
-            Cancel
+            {confirm.cancelLabel ?? 'Cancel'}
           </button>
         )}
       </div>

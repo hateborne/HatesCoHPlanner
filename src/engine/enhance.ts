@@ -119,6 +119,9 @@ const RARITY_BY_GROUP: Record<string, { kind: RarityKind; name: string }> = {
   ECPvP: { kind: 'pvp', name: 'PvP' },
   ECATO: { kind: 'archetype', name: 'Archetype Origin' },
   ECSATO: { kind: 'superiorArchetype', name: 'Superior Archetype Origin' },
+  // Thunderspy files its newer archetype sets (Defiant Barrage, Gauntleted Fist, ...) in a second group
+  ECATO2: { kind: 'archetype', name: 'Archetype Origin' },
+  ECSATO2: { kind: 'superiorArchetype', name: 'Superior Archetype Origin' },
   ECWinter: { kind: 'winter', name: 'Winter Pack' },
   ECSWinter: { kind: 'superiorWinter', name: 'Superior Winter Pack' },
   ECUniversalDamage: { kind: 'event', name: 'Event' },

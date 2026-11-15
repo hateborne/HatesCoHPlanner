@@ -108,6 +108,7 @@ interface Store {
     title: string;
     text: string;
     okLabel?: string;
+    cancelLabel?: string; // the second button's label (default Cancel)
     lines?: string[];
     choices?: DialogChoice[];
     alert?: boolean; // a message with one OK button (tell)
@@ -115,7 +116,7 @@ interface Store {
     resolve: (ok: boolean, picked?: string[]) => void;
   } | null;
   /** Ask a yes / no question in the planner's dialog (with an optional list under it); resolves true on Proceed. */
-  askConfirm(q: { title: string; text: string; okLabel?: string; lines?: string[] }): Promise<boolean>;
+  askConfirm(q: { title: string; text: string; okLabel?: string; cancelLabel?: string; lines?: string[] }): Promise<boolean>;
   /**
    * Ask for one option in each of several rows in the planner's dialog.
    *
@@ -364,6 +365,19 @@ function restore(accept: (b: Build) => boolean = () => true): Build | undefined 
       return false;
     }
   });
+}
+
+/**
+ * The build this browser remembers (this tab's, else the most recent), when it holds any work.
+ *
+ * New Build asks before a new build replaces it while it isn't open: after the return question's
+ * tile, or at another server's address, it is still remembered but nothing on screen shows it.
+ *
+ * @return It (unchecked: open it through loadBuild), or undefined.
+ */
+export function rememberedBuild(): Build | undefined {
+  const b = restore();
+  return b && hasPicks(b) ? b : undefined;
 }
 
 /**
@@ -742,6 +756,7 @@ export const useStore = create<Store>((set, get) => ({
         const f = describeImportFailure(linkFailed, "The share link in the page's address couldn't be opened", "Couldn't open the share link");
         void get().tell({ title: f.title, text: opened ? `${f.text}\nYour last build is open instead.` : f.text });
       };
+      let linkFor: string | undefined; // the server the address's link was decoded for, when it was
       let asked = false; // the return question (below) is asked once per load
       let fresh: GameServer | undefined; // the server it picked for a new build instead
       let continued: GameServer | undefined; // the server of the build it was told to continue
@@ -754,6 +769,7 @@ export const useStore = create<Store>((set, get) => ({
           continue;
         }
         if (!raw) continue;
+        if (k === 0) linkFor = serverOf(raw);
         const server = serverById(serverOf(raw));
         if (!server) {
           if (k === 0) linkFailed = unknownServer(String(raw.server));
@@ -825,6 +841,12 @@ export const useStore = create<Store>((set, get) => ({
       picked ??= defaultServer();
       const versions = await versionsFor(picked);
       const gd = await dataFor(picked, resolveVersion(versions, undefined).version);
+      // a link that couldn't open stays in the address for a reload to retry, but only on its own
+      // server: shown on another (a bare Thunderspy code whose data didn't load, Homecoming picked)
+      // the address would name the wrong server for it
+      if (linkFailed !== undefined && linkFor && linkFor !== picked.id && typeof history !== 'undefined') {
+        history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+      }
       set({ server: picked.id, versions, gd, steps: levelSteps(gd.core), build: undefined, view: 'setup' });
       tellLink(false);
     } catch (e) {

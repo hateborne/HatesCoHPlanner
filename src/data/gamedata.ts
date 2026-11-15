@@ -82,7 +82,13 @@ export class GameData {
     for (const bs of raw.boosts.sets) {
       this.boostSetById.set(bs.id, bs);
       bs.slots.forEach((variants, letter) => {
-        variants.forEach((bid, variant) => this.boostSetOf.set(bid, { set: bs, letter, variant }));
+        variants.forEach((bid, variant) => {
+          this.boostSetOf.set(bid, { set: bs, letter, variant });
+          // a piece whose name the client's text lacks (Thunderspy's Scourging Blast proc) is
+          // shown by its set and letter, never as a blank tile
+          const p = this.powerById.get(bid);
+          if (p && !p.dn.trim()) p.dn = `${bs.dn}: Unnamed piece ${String.fromCharCode(65 + letter)}`;
+        });
       });
     }
     const names = new Set(Object.values(raw.core.attribs).map((a) => a.name));

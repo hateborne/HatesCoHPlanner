@@ -335,6 +335,9 @@ export class BuildRules {
       if (have.size >= countForLevel(level, sched)) {
         return kind === 'pool' ? 'No more power pools at this level' : 'No epic pool at this level';
       }
+      // level 1's two picks are its primary and secondary power (powerOption), so a pool its
+      // schedule opens at level 1 (Thunderspy's) can't be chosen there
+      if (level === this.pickLevel(0) && (pickIndex === 0 || pickIndex === 1)) return 'Level 1 takes a primary and a secondary power';
     } else if (kind === 'branch') {
       if (level < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
       if (!evalRequires(set.spr, ctx)) return 'Another specialization is chosen';

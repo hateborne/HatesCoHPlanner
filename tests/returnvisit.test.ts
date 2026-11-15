@@ -53,14 +53,16 @@ describe('returning / markUsed', () => {
     expect(returning(now, at(now - 7 * 60 * 60 * 1000))).toBe(true);
   });
 
-  it('counts an unknown, damaged or future time as a return', () => {
-    expect(returning(now, () => memory())).toBe(true);
-    for (const bad of ['', 'soon', '1e12', '-5', String(now + 10 * 60_000)]) expect(returning(now, at(bad)), bad).toBe(true);
+  it('never counts an unknown, damaged or future time, or blocked storage, as a return', () => {
+    // every player on the day this shipped has no time on record: their builds open as before
+    expect(returning(now, () => memory())).toBe(false);
+    for (const bad of ['', 'soon', '1e12', '-5', String(now + 10 * 60_000)]) expect(returning(now, at(bad)), bad).toBe(false);
+    // blocked localStorage (sessionStorage may still hold the tab's build): no prompt on every reload
     expect(
       returning(now, () => {
         throw new DOMException('denied', 'SecurityError');
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('records a use', () => {
@@ -107,7 +109,7 @@ describe('a page load after a long break', () => {
    * @param opts What the browser holds: the remembered build, the last use, the address.
    * @return The store, the local storage and the history stand-in.
    */
-  async function visit(opts: { build?: Build; lastUsed?: number; path?: string; hash?: string; lastServer?: string }) {
+  async function visit(opts: { build?: Build; lastUsed?: number; path?: string; hash?: string; lastServer?: string; failing?: RegExp }) {
     const local = memory({
       ...(opts.build ? { 'hcp.current': JSON.stringify(opts.build) } : {}),
       ...(opts.lastUsed !== undefined ? { [LAST_USED_KEY]: String(opts.lastUsed) } : {}),
@@ -120,6 +122,7 @@ describe('a page load after a long break', () => {
     vi.stubGlobal('history', history);
     vi.stubGlobal('fetch', (url: string) => {
       const rel = String(url).split('?')[0]!.slice(BASE.length);
+      if (opts.failing?.test(rel)) return Promise.reject(new TypeError('Failed to fetch'));
       try {
         const body = readFileSync(join(process.cwd(), 'public', rel), 'utf-8');
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(body) as unknown) });
@@ -160,11 +163,11 @@ describe('a page load after a long break', () => {
     expect(JSON.parse(local.m.get('hcp.current')!)).toEqual(b);
   });
 
-  it('counts a build remembered from before the planner kept the time as a return', async () => {
+  it('reopens a build remembered from before the planner kept the time, with no question', async () => {
     const { useStore, done } = await visit({ build: sample('Old Build') });
-    expect(useStore.getState().serverAsk?.resume).toContain('Old Build');
-    useStore.getState().closeServerAsk(null);
     await done;
+    expect(useStore.getState().serverAsk).toBeNull();
+    expect(useStore.getState().build?.name).toBe('Old Build');
   });
 
   it('names an unnamed build plainly, and an untrusted name only as cleaned', async () => {
@@ -215,5 +218,22 @@ describe('a page load after a long break', () => {
     useStore.getState().closeServerAsk('homecoming');
     await done;
     expect(useStore.getState().view).toBe('setup');
+  });
+
+  it("drops a bare Thunderspy link that couldn't open once Homecoming is shown instead", async () => {
+    const ts = loadData(undefined, 'thunderspy');
+    const at = ts.archetypeByName.get('class_blaster')!;
+    const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, name: 'Spy', at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: ts.setByName.get('blaster_ranged.fire_blast')!.id, secondary: ts.setByName.get('blaster_support.fire_manipulation')!.id, pickCount: ts.core.schedule.power.length });
+    b.picks[0] = { power: ts.powerByName.get('blaster_ranged.fire_blast.flares')!.id, level: 0, slots: [{ level: 0 }] };
+    const code = await encodeShare(b);
+    // Thunderspy's list loads but its game data doesn't: the link can't open
+    const { useStore, history, done } = await visit({ hash: `#b=${code}`, lastUsed: Date.now(), failing: /^data\/thunderspy\/ts/ });
+    expect(useStore.getState().serverAsk).not.toBeNull();
+    useStore.getState().closeServerAsk('homecoming');
+    await done;
+    expect([useStore.getState().view, useStore.getState().server]).toEqual(['setup', 'homecoming']);
+    // the address keeps no Thunderspy code under a Homecoming address (a reload would refuse it)
+    expect(history.replaceState).toHaveBeenCalledWith(null, '', BASE);
+    expect(useStore.getState().confirm?.title).toMatch(/share link/i);
   });
 });

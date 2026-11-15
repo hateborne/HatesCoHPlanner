@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import re
 from pathlib import Path
 from collections import Counter
 
@@ -79,12 +80,25 @@ class Exporter:
 
     # ---- helpers ------------------------------------------------------------------------------
     def text(self, key: str) -> str:
+        """Display text for a message key.
+
+        A string that isn't a key in the message store is shown as written, as the client's
+        textStd does: Thunderspy's data writes some names straight into the field ("Earth Combat",
+        "Auto Turret", Primalist's help), where Homecoming's always gives a "P<number>" key. A
+        "P<number>" key the store lacks is missing text and stays empty.
+
+        @param key The field's value (a message key, or the text itself).
+        @return The text to show.
+        """
         if not key:
             return ""
         t = self.M.get(key)
         if t is None:
-            self.report["missing_text"][key[:1] if key.startswith("P") else "other"] += 1
-            return ""
+            if re.fullmatch(r"P\d+", key):
+                self.report["missing_text"]["P"] += 1
+                return ""
+            self.report["missing_text"]["written as text"] += 1
+            return key
         return t
 
     def power_name(self, name: str) -> str | None:

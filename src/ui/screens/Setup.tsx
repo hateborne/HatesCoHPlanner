@@ -3,9 +3,9 @@ import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../co
 import { useStage } from '../components/Stage.tsx';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
-import { ALIGNMENTS, carryOrigin, skinOf, type Alignment } from '../../engine/build.ts';
+import { ALIGNMENTS, carryOrigin, cleanName, skinOf, type Alignment } from '../../engine/build.ts';
 import { startingSets } from '../../engine/rules.ts';
-import { useStore } from '../../state/store.ts';
+import { rememberedBuild, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -103,6 +103,23 @@ export function Setup() {
         okLabel: 'Start new',
       });
       if (!ok) return;
+    } else if (!build) {
+      // nothing open, but the browser still remembers a build (the return question's tile, another
+      // server's address): a new build replaces it, so offer it back first
+      const old = rememberedBuild();
+      if (old) {
+        const named = cleanName(old.name);
+        const ok = await useStore.getState().askConfirm({
+          title: 'Start a new build?',
+          text: `This browser still remembers your last build${named ? ` "${named}"` : ''}. A new build replaces it. Open it to keep working on it, or save it (Saved builds / Import).`,
+          okLabel: 'Start new',
+          cancelLabel: 'Open it',
+        });
+        if (!ok) {
+          await useStore.getState().loadBuild(old);
+          return;
+        }
+      }
     }
     startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: buildType === 'respec' ? respecLevel(respecTo) - 1 : undefined });
   };

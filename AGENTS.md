@@ -308,12 +308,14 @@ CSP); anything else gets a "not found" page linking to the planner, so an unknow
 never opened as Homecoming. On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
 unless the address names another server. After a long break (`RETURN_AFTER`, 4 hours without a
-click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; none on record counts
-as a break) the player's own build doesn't reopen unannounced: the remembered build, or a link holding
+click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; only a recorded time
+counts, so none on record, a damaged one or blocked storage opens the build as before) the player's
+own build doesn't reopen unannounced: the remembered build, or a link holding
 its share code (a reloaded tab's address), opens the server list with a Continue button for it
 (`askServer`'s `resume`, answered `CONTINUE_BUILD`), highlighted so Enter takes it, and its data
 loads while the list is open. A tile starts New Build on its server instead; the build stays
-remembered until a new one starts. A link someone else sent opens at once. With no build, New
+remembered until a new one starts, and New Build's Finish asks first while it isn't open ("Start new"
+or "Open it", `rememberedBuild`). A link someone else sent opens at once. With no build, New
 Build opens on the server the address names; failing that, once `SERVERS` holds more than one, a
 visit asks in the server list dialog (`askServer`). The server this browser last showed
 (`hcp.server`, `src/state/lastServer.ts`), else the default, starts highlighted, so Enter, Space or OK
