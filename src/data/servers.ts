@@ -19,6 +19,7 @@ export interface GameServer {
   midsDb?: string; // the name Mids gives its database (BuiltWith.Database); none: Mids has no database for it
   buildSave: boolean; // its game client writes /build_save files (build.txt) the planner can import
   versionPrefix?: string; // every game version id of its starts with this (the pipeline enforces it); the default server has none
+  ioLevelsAbove?: number; // how far an IO or set piece's level may be above the character's and still work; omitted: the boost effect table's length - 1 (3, Homecoming's client)
 }
 
 /** The server new visitors start on (the most played), and the one builds without a server belong to. */
@@ -30,8 +31,10 @@ export const DEFAULT_SERVER = 'homecoming';
  */
 export const SERVERS: readonly GameServer[] = [
   { id: 'homecoming', label: 'Homecoming', path: 'Homecoming', data: 'data/', logo: 'servers/homecoming.webp', midsDb: 'Homecoming', buildSave: true },
-  // Thunderspy's client has no /build_save, and MidsReborn has no Thunderspy database
-  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts' },
+  // Thunderspy's client has no /build_save, and MidsReborn has no Thunderspy database. Its
+  // power_MinBoostUseLevel gives an IO or set piece (BoostIgnoreEffectiveness) no levels below its
+  // own: MAX(MinSlotLevel, level), where Homecoming's takes level - 3 (seen in Thunderspy.exe)
+  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts', ioLevelsAbove: 0 },
 ];
 
 /**

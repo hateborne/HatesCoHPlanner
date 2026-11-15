@@ -9,8 +9,9 @@ import { describe, expect, it } from 'vitest';
 import { serverById, SERVERS } from '../src/data/servers.ts';
 import type { Archetype, Powerset } from '../src/data/types.ts';
 import { carryOrigin, newBuild } from '../src/engine/build.ts';
-import { boostPog } from '../src/engine/enhance.ts';
+import { boostPog, effectiveness, levelsAbove } from '../src/engine/enhance.ts';
 import { BuildRules, isPatronSet, patronArcNote, startingSets } from '../src/engine/rules.ts';
+import { computeTotals } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { ImportProblem, noBuildSave, wrongServer } from '../src/io/importProblem.ts';
 import { loadMidsMap, midsUnavailable } from '../src/io/mids.ts';
@@ -153,6 +154,50 @@ describe('Thunderspy builds', () => {
     expect(fixes).toEqual([]);
     expect(build!.server).toBe('thunderspy');
     expect(build!.picks).toEqual(b.picks);
+  });
+});
+
+describe('Thunderspy totals', () => {
+  it("reads its client's Knockback as the engine's Knock, so knockback protection counts", () => {
+    // Homecoming's client calls offset 328 Knock (alias Knockback); Thunderspy's calls it Knockback
+    expect(ts.core.attribs['328']!.name).toBe('Knockback');
+    expect(ts.attribName.get(328)).toBe('Knock');
+    expect(ts.attribByName.get('Knockback')).toBe(328);
+    for (const gd of [hc, ts]) {
+      const at = gd.archetypeByName.get('class_blaster')!;
+      const b = newBuild({ dataVersion: gd.core.manifest.dataVersion, at: at.id, origin: gd.core.origins[0]!.id, alignment: 'Hero', primary: startingSets(gd, at.cats.pri, at)[0]!.id, secondary: startingSets(gd, at.cats.sec, at)[0]!.id, pickCount: gd.core.schedule.power.length });
+      const acro = gd.powerByName.get('pool.leaping.leap')!; // Acrobatics
+      b.picks[10] = { power: acro.id, level: gd.core.schedule.power[10]!, slots: [{ level: gd.core.schedule.power[10]! }] };
+      const prot = computeTotals(gd, new BuildRules(gd, b), b).lines.get('mezprot.Knock');
+      expect(prot?.value, gd.server).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('Thunderspy enhancement levels (its client, not the source)', () => {
+  const io = (gd: typeof ts) => gd.powerByName.get('boosts.crafted_accuracy.crafted_accuracy')!;
+  const so = (gd: typeof ts) => gd.powerByName.get('boosts.magic_accuracy.magic_accuracy')!;
+
+  it('works an IO or set piece only at or above its own level (power_MinBoostUseLevel)', () => {
+    expect(levelsAbove(hc)).toBe(3);
+    expect(levelsAbove(ts)).toBe(0);
+    for (const [gd, at47] of [[hc, 1], [ts, 0]] as const) {
+      const b = io(gd);
+      expect(effectiveness(gd, b, { boost: b.id, ioLevel: 49 }, 46), gd.server).toBe(at47);
+      expect(effectiveness(gd, b, { boost: b.id, ioLevel: 49 }, 49), gd.server).toBe(1);
+    }
+  });
+
+  it("keeps TO/DO/SO-style pieces at full strength at any level: its tables are 50 flat entries", () => {
+    expect(ts.core.boostEffect.above).toHaveLength(50);
+    for (const rel of [-10, -3, 0, 3, 10]) {
+      const b = so(ts);
+      expect(effectiveness(ts, b, { boost: b.id, rel }, 30), String(rel)).toBe(1);
+    }
+    // Homecoming's: +/- 3 levels, 5% a level above, 10% a level below
+    const h = so(hc);
+    expect(effectiveness(hc, h, { boost: h.id, rel: 3 }, 30)).toBeCloseTo(1.15);
+    expect(effectiveness(hc, h, { boost: h.id, rel: -10 }, 30)).toBe(0);
   });
 });
 

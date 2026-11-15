@@ -682,8 +682,8 @@ export class BuildRules {
    * Why a piece can't be used at the build's last level, if it can't (boost_IsValidToSlotAtLevel).
    *
    * The character's level must be within the piece's MinSlotLevel..MaxSlotLevel, and an IO works
-   * from 3 levels below its own (boost_Effectiveness); attuned pieces and TO/DO/SO-style pieces
-   * follow the character.
+   * from `levelsAbove` levels below its own (boost_Effectiveness: 3 on Homecoming, none on
+   * Thunderspy); attuned pieces and TO/DO/SO-style pieces follow the character.
    *
    * @param boost The piece.
    * @param ioLevel Its IO level when it has one; else the lowest level it is made at.
