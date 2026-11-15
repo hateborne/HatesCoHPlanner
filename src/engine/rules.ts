@@ -774,4 +774,110 @@ export class BuildRules {
   }
 }
 
+/**
+ * Whether a new character of an archetype could start with a set while owning another: the
+ * character creator's test for each set it lists.
+ *
+ * Some sets forbid each other through their powers' BuyRequires (on Homecoming, Shield Defense with
+ * Claws, Dual Blades, Katana, Spines, Staff Fighting or Titan Weapons). The creator buys the set
+ * chosen in one list before it lists the other, and greys every set the character could then not
+ * have (initPowerSetSelector in Game/src/UI/Hybrid/uiPower.c, which asks
+ * character_IsAllowedToHavePowerSetHypothetically): its SetBuyRequires fails, or none of its
+ * level-1 powers' BuyRequires passes. Only the listed set's own requirements count, so a pair can
+ * fail one way only (a set whose powers forbid the other, while the other's don't forbid it).
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param set The set listed.
+ * @param other The set chosen in the other list.
+ * @return True when `set` has a level-1 power to pick with both sets (and the inherent ones) owned.
+ */
+export function setFitsWith(gd: GameData, at: Archetype, set: Powerset, other: Powerset): boolean {
+  const owned = new Set([set.id, other.id]);
+  for (const n of INHERENT_SETS) {
+    const s = gd.setByName.get(n.toLowerCase());
+    if (s) owned.add(s.id);
+  }
+  const ctx: EvalContext = {
+    ownsPower: () => false,
+    ownsSet: (n) => owned.has(gd.setByName.get(n.toLowerCase())?.id ?? -1),
+    prop: (n: string) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0),
+  };
+  // a power level 1 can pick: auto-issued powers come free (as in BuildRules.newSetBlock)
+  return (
+    evalRequires(set.sbr, ctx) &&
+    set.p.some((pid, i) => {
+      const p = gd.powerById.get(pid);
+      return !!p && set.av[i] === 0 && !p.auto && evalRequires(p.br, ctx);
+    })
+  );
+}
+
+/**
+ * Whether a new character of an archetype can start with this primary and secondary: each fits
+ * with the other (setFitsWith), so level 1's two picks can be made.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param pri The primary.
+ * @param sec The secondary.
+ * @return True when the pair goes together.
+ */
+export function setsGoTogether(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset): boolean {
+  return setFitsWith(gd, at, pri, sec) && setFitsWith(gd, at, sec, pri);
+}
+
+/**
+ * What stops a primary and secondary from starting a build, naming the set New Build greys: the
+ * secondary when it doesn't fit the primary, else the primary (startingLocks).
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param pri The primary.
+ * @param sec The secondary.
+ * @return "<set> can't be taken with <other set>", or null when the pair goes together.
+ */
+export function pairProblem(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset): string | null {
+  if (!setFitsWith(gd, at, sec, pri)) return `${sec.dn} can't be taken with ${pri.dn}`;
+  if (!setFitsWith(gd, at, pri, sec)) return `${pri.dn} can't be taken with ${sec.dn}`;
+  return null;
+}
+
+/**
+ * pairProblem for a build's own primary and secondary: a build from before New Build greyed such
+ * pairs (an older link, a saved build, an import) can hold one.
+ *
+ * @param gd The build's game data.
+ * @param b The build.
+ * @return What is wrong, or null when its sets go together (or aren't in this data).
+ */
+export function buildPairProblem(gd: GameData, b: Build): string | null {
+  const at = gd.archetypeById.get(b.at);
+  const pri = gd.setById.get(b.primary);
+  const sec = gd.setById.get(b.secondary);
+  return at && pri && sec ? pairProblem(gd, at, pri, sec) : null;
+}
+
+/**
+ * The sets New Build greys, and why: each offered primary or secondary that doesn't fit with the
+ * set chosen in the other list (setFitsWith).
+ *
+ * A greyed secondary (an older build's pair) counts as none chosen, as a greyed set does in the
+ * game, so it greys no primary.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param pris The primaries offered (startingSets).
+ * @param secs The secondaries offered.
+ * @param pri The chosen primary, if any.
+ * @param sec The chosen secondary, if any.
+ * @return Map of greyed set id to the reason ("Can't be taken with <set>").
+ */
+export function startingLocks(gd: GameData, at: Archetype, pris: Powerset[], secs: Powerset[], pri?: Powerset, sec?: Powerset): Map<number, string> {
+  const out = new Map<number, string>();
+  if (pri) for (const s of secs) if (!setFitsWith(gd, at, s, pri)) out.set(s.id, `Can't be taken with ${pri.dn}`);
+  if (sec && !out.has(sec.id)) for (const s of pris) if (!setFitsWith(gd, at, s, sec)) out.set(s.id, `Can't be taken with ${sec.dn}`);
+  return out;
+}
+
 export { GameData };

@@ -8,7 +8,7 @@ import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, se
 import { loadVersions, missingVersionNote, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
 import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
 import { cleanName, cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
-import { BuildRules } from '../engine/rules.ts';
+import { BuildRules, buildPairProblem } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { describeImportFailure, refusedBuild, unknownServer } from '../io/importProblem.ts';
@@ -107,6 +107,7 @@ interface Store {
     choices?: DialogChoice[];
     alert?: boolean; // a message with one OK button (tell)
     link?: DialogLink; // a phrase in the text that opens a page
+    waitUntil?: number; // a countdown message: it can't be closed before this time (performance.now() ms, which a clock change can't move)
     resolve: (ok: boolean, picked?: string[]) => void;
   } | null;
   /** Ask a yes / no question in the planner's dialog (with an optional list under it); resolves true on Proceed. */
@@ -122,9 +123,10 @@ interface Store {
   setConfirmChoice(row: number, id: string): void;
   /**
    * Show a message in the planner's dialog with one OK button (an optional list under it, an
-   * optional phrase linking to a page); resolves when it closes.
+   * optional phrase linking to a page); resolves when it closes. With `wait`, OK (and Escape)
+   * unlock only after that many seconds, counted down on the button.
    */
-  tell(q: { title: string; text: string; lines?: string[]; link?: DialogLink }): Promise<void>;
+  tell(q: { title: string; text: string; lines?: string[]; link?: DialogLink; wait?: number }): Promise<void>;
   patchNotes: PatchNotes | null; // what a patch move changed in the current build
   /** Show (or with null, dismiss) the current build's patch-move changes; remembered per tab. */
   setPatchNotes(n: PatchNotes | null): void;
@@ -523,9 +525,10 @@ export const useStore = create<Store>((set, get) => ({
       set({ confirm: { ...q, choices: q.choices.map((c) => ({ ...c })), resolve: (ok, picked) => resolve(ok ? (picked ?? []) : null) } }),
     );
   },
-  tell(q) {
+  tell({ wait, ...q }) {
     get().confirm?.resolve(false);
-    return new Promise<void>((resolve) => set({ confirm: { ...q, alert: true, okLabel: 'OK', resolve: () => resolve() } }));
+    const waitUntil = wait ? performance.now() + wait * 1000 : undefined;
+    return new Promise<void>((resolve) => set({ confirm: { ...q, alert: true, okLabel: 'OK', waitUntil, resolve: () => resolve() } }));
   },
   setConfirmChoice(row, id) {
     const c = get().confirm;
@@ -536,6 +539,7 @@ export const useStore = create<Store>((set, get) => ({
   closeConfirm(ok) {
     const c = get().confirm;
     if (!c) return;
+    if (c.waitUntil !== undefined && performance.now() < c.waitUntil) return; // a countdown can't be skipped
     set({ confirm: null });
     c.resolve(ok, c.choices?.map((x) => x.value));
   },
@@ -611,6 +615,7 @@ export const useStore = create<Store>((set, get) => ({
     persist(nb);
     persistNotes(null, undefined);
     set({ server: server.id, versions, gd, steps: levelSteps(gd.core), build: nb, view: 'overview', level: undefined, menuOpen: false, poolsBlinked: false, epicBlinked: false, patchNotes: null });
+    warnInvalidPair();
     const note = missingNote(missing, version);
     if (note) get().notify(note);
   },
@@ -688,6 +693,7 @@ export const useStore = create<Store>((set, get) => ({
         if (c.fixes.length) console.warn('saved build repaired:', c.fixes);
         persist(c.build);
         set({ server: server.id, versions, gd, steps: levelSteps(gd.core), build: c.build, view: 'overview', patchNotes: restoreNotes(c.build) });
+        warnInvalidPair();
         const note = missingNote(missing, version);
         if (note) get().notify(note);
         tellLink(true);
@@ -741,7 +747,13 @@ export const useStore = create<Store>((set, get) => ({
     // the New Build screen may have switched to another game version or server: show the build's own again
     const { build, gd } = get();
     if (build && gd && (build.dataVersion !== gd.core.manifest.dataVersion || serverOf(build) !== gd.server)) {
-      void get().loadBuild(build);
+      // the build already open, shown again: its invalid power sets warning isn't repeated
+      reopening = build;
+      void get()
+        .loadBuild(build)
+        .finally(() => {
+          if (reopening === build) reopening = undefined;
+        });
       return;
     }
     set({ view: 'overview', level: undefined });
@@ -1163,4 +1175,54 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
     }
     return 'guard';
   };
+}
+
+// the message a build whose power sets can't go together opens with, and how long its OK stays locked
+export const PAIR_WARNING_TITLE = 'Invalid power sets';
+const PAIR_WARNING_WAIT = 5; // seconds
+let pairWarnings = 0; // warnings asked for: only the latest one shows
+let reopening: Build | undefined; // the build toOverview is showing again on its own data (no warning)
+
+/**
+ * Warn about the build just opened when its primary and secondary can't start a build: an older
+ * link's, a saved build's or an import's, from before New Build greyed such pairs (buildPairProblem).
+ *
+ * The message's OK unlocks after a countdown. It waits for any message the opening itself shows (an
+ * import's gaps, a link that couldn't open), which is asked for right after the build opens. Leaving
+ * New Build for the build already open (toOverview) doesn't repeat it.
+ */
+export function warnInvalidPair(): void {
+  const { gd, build } = useStore.getState();
+  let problem: string | null = null;
+  try {
+    problem = gd && build ? buildPairProblem(gd, build) : null;
+  } catch (e) {
+    // a warning is never worth failing the build that opens (links in production keep opening)
+    console.error("couldn't check the build's power sets", e);
+  }
+  if (!problem || !build) return;
+  const r = reopening;
+  if (r && serverOf(r) === serverOf(build) && r.at === build.at && r.primary === build.primary && r.secondary === build.secondary) return;
+  const text = `${problem}. The game won't start a character with these two sets, so this build's level 1 powers can't be picked (they're flagged in red). The build is kept as it is. To play it, start a new build with sets that go together.`;
+  const seq = ++pairWarnings;
+  // already up: React's dev double mount opens the same build twice
+  const shown = () => {
+    const c = useStore.getState().confirm;
+    return c?.title === PAIR_WARNING_TITLE && c.text === text;
+  };
+  const show = () => {
+    const s = useStore.getState();
+    // a later open warns for itself
+    if (seq !== pairWarnings || shown() || s.build?.at !== build.at || s.build.primary !== build.primary || s.build.secondary !== build.secondary) return;
+    void s.tell({ title: PAIR_WARNING_TITLE, text, wait: PAIR_WARNING_WAIT });
+  };
+  setTimeout(() => {
+    if (shown()) return;
+    if (!useStore.getState().confirm) return show();
+    const off = useStore.subscribe((s) => {
+      if (s.confirm) return;
+      off();
+      show();
+    });
+  }, 0);
 }

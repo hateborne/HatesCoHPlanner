@@ -205,7 +205,8 @@ button {
   cursor: pointer;
   box-shadow: 0 0 6px #1f6dff;
 }
-.info-button:disabled {
+.info-button:disabled,
+.info-button[aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
 }

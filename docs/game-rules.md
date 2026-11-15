@@ -117,6 +117,27 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
 
 ## Starting sets (New Build)
 
+- A primary and a secondary may forbid each other through their powers' `BuyRequires`. On
+  Homecoming, Shield Defense can't go with Claws, Dual Blades, Katana (Ninja Blade), Spines,
+  Staff Fighting or Titan Weapons (Brutes, Scrappers, Stalkers and Tankers): with both owned,
+  neither set has a level-1 power to buy. Issue 28, Page 3 also keeps Claws from Stone Armor
+  (Brutes and Tankers); Page 4 dropped that. These are the only pairs either version forbids. The character creator buys the set chosen in one list
+  before it lists the other, and greys every set the character could then not have, with "This
+  power set is unavailable due to the selection of an incompatible power set." (`initPowerSetSelector`
+  in `Game/src/UI/Hybrid/uiPower.c`, through `character_IsAllowedToHavePowerSetHypothetically` in
+  `Common/entity/character_base.c`: the set's `SetBuyRequires` fails, or none of its powers
+  available at the character's level passes its `BuyRequires`). Only the listed set's own
+  requirements count, so a pair whose powers forbid each other one way only is greyed in one list
+  only. Clicking a greyed set in the game chooses none, so it greys nothing in the other list.
+  New Build greys the same sets, naming the set in the way (`setFitsWith` and `startingLocks` in
+  `src/engine/rules.ts`); a greyed set takes no click, and a greyed secondary (an older build's
+  pair) greys no primary. Finish needs a pair where each set fits with the other
+  (`setsGoTogether`), so level 1's two picks can always be made. Unlike the game's test, the
+  planner's skips auto-issued powers, as level 1's picks can't take them (no Homecoming pair
+  differs). A build that already holds such a pair (a link, a saved build, an import) still opens
+  as it is, its level-1 picks flagged. Each time it opens (a reload too) an "Invalid power sets"
+  message names the clash, its OK greyed and counting down from 5 (`warnInvalidPair` in
+  `src/state/store.ts`), and its overview title alternates with INVALID POWER SETS in red.
 - A primary or secondary is offered when its `SetRequires` and `SetBuyRequires` pass for a new
   character of the archetype at level 1, it has powers, and it is not a VEAT branch
   (`SpecializeAt`). The live data gives Wind Control (Controller and Dominator) `SetRequires 0`,

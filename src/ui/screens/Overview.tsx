@@ -5,12 +5,12 @@ import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
 import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine/actions.ts';
-import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
+import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
-import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleEdit } from '../components/Chrome.tsx';
+import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleAlt, type TitleEdit } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PatchNotesBar, PatchNotesBox, patchNotesHeight } from '../components/PatchNotes.tsx';
@@ -45,6 +45,9 @@ const RING = vs(35) * 0.88;
 // ring spacing shrunk with the rings, so they sit edge to edge like the slot screen's
 const RING_STEP = SPEC_WD * S * 0.88;
 const SWITCH = 30; // the floating on/off button
+// the title's warning for a build whose power sets can't go together (buildPairProblem), in the
+// issues' red
+const INVALID_TITLE: TitleAlt = { text: 'INVALID POWER SETS', colors: ['#ff6060', '#e00000'] };
 // phones: finger-sized rings, switches and level orbs, and the rows spaced to hold them
 const PHONE_RING = 56;
 const PHONE_RING_STEP = 58;
@@ -288,6 +291,8 @@ export function Overview({ skin }: { skin: Skin }) {
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
   const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
+  // an older build whose power sets can't go together: its title alternates with INVALID_TITLE
+  const pairInvalid = useMemo(() => !!(gd && build && buildPairProblem(gd, build)), [gd, build]);
   const groupsOf = useMemo(() => (rules ? rules.toggleGroups() : new Map<number, Power[]>()), [rules]);
   // each power's default on/off and the toggles that switch each other off (as computeTotals
   // works them out, over the whole build)
@@ -604,7 +609,7 @@ export function Overview({ skin }: { skin: Skin }) {
     const P = phonePanel(pg, 4, notes ? NOTES_BAR : 0);
     return (
       <>
-        <TitleBar skin={skin} text={title} reserve={LOG_RESERVE} edit={rename} />
+        <TitleBar skin={skin} text={title} reserve={LOG_RESERVE} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
         <LevelLog gd={gd} skin={skin} build={build} shown={shown} entries={entries} />
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} y={pg.tabsY} />
         <MenuFrame x={P.x} y={P.y} w={P.w} h={P.h} skin={skin} />
@@ -630,7 +635,7 @@ export function Overview({ skin }: { skin: Skin }) {
   return (
     <>
       {/* the name stops just short of the Origin / Alignment button (two half-size lines past it) */}
-      <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} />
+      <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
       <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
       {topButtons(stage.w / 2, vy(22), OA_W, vy(26))}
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
