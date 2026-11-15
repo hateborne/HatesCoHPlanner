@@ -124,7 +124,8 @@ interface Store {
   /**
    * Show a message in the planner's dialog with one OK button (an optional list under it, an
    * optional phrase linking to a page); resolves when it closes. With `wait`, OK (and Escape)
-   * unlock only after that many seconds, counted down on the button.
+   * unlock only after that many seconds, counted down on the button, and a newer dialog waits for
+   * it to close instead of replacing it.
    */
   tell(q: { title: string; text: string; lines?: string[]; link?: DialogLink; wait?: number }): Promise<void>;
   patchNotes: PatchNotes | null; // what a patch move changed in the current build
@@ -516,19 +517,26 @@ export const useStore = create<Store>((set, get) => ({
   },
   confirm: null,
   askConfirm(q) {
-    get().confirm?.resolve(false); // a newer question replaces an unanswered one
-    return new Promise<boolean>((resolve) => set({ confirm: { ...q, resolve } }));
+    // a newer question replaces an unanswered one (a countdown message: once it closes)
+    return afterCountdown(() => {
+      get().confirm?.resolve(false);
+      return new Promise<boolean>((resolve) => set({ confirm: { ...q, resolve } }));
+    });
   },
   askChoices(q) {
-    get().confirm?.resolve(false);
-    return new Promise<string[] | null>((resolve) =>
-      set({ confirm: { ...q, choices: q.choices.map((c) => ({ ...c })), resolve: (ok, picked) => resolve(ok ? (picked ?? []) : null) } }),
-    );
+    return afterCountdown(() => {
+      get().confirm?.resolve(false);
+      return new Promise<string[] | null>((resolve) =>
+        set({ confirm: { ...q, choices: q.choices.map((c) => ({ ...c })), resolve: (ok, picked) => resolve(ok ? (picked ?? []) : null) } }),
+      );
+    });
   },
   tell({ wait, ...q }) {
-    get().confirm?.resolve(false);
-    const waitUntil = wait ? performance.now() + wait * 1000 : undefined;
-    return new Promise<void>((resolve) => set({ confirm: { ...q, alert: true, okLabel: 'OK', waitUntil, resolve: () => resolve() } }));
+    return afterCountdown(() => {
+      get().confirm?.resolve(false);
+      const waitUntil = wait ? performance.now() + wait * 1000 : undefined;
+      return new Promise<void>((resolve) => set({ confirm: { ...q, alert: true, okLabel: 'OK', waitUntil, resolve: () => resolve() } }));
+    });
   },
   setConfirmChoice(row, id) {
     const c = get().confirm;
@@ -749,10 +757,11 @@ export const useStore = create<Store>((set, get) => ({
     if (build && gd && (build.dataVersion !== gd.core.manifest.dataVersion || serverOf(build) !== gd.server)) {
       // the build already open, shown again: its invalid power sets warning isn't repeated
       reopening = build;
+      reopens++;
       void get()
         .loadBuild(build)
         .finally(() => {
-          if (reopening === build) reopening = undefined;
+          if (--reopens === 0) reopening = undefined;
         });
       return;
     }
@@ -1182,6 +1191,27 @@ export const PAIR_WARNING_TITLE = 'Invalid power sets';
 const PAIR_WARNING_WAIT = 5; // seconds
 let pairWarnings = 0; // warnings asked for: only the latest one shows
 let reopening: Build | undefined; // the build toOverview is showing again on its own data (no warning)
+let reopens = 0; // toOverview's reopenings still loading (Back pressed again before the first ends)
+
+/**
+ * Open a dialog once no countdown message is up: a newer dialog waits for it to close rather than
+ * replacing it, so the countdown is never cut short. With none up it opens at once.
+ *
+ * @param open Opens the dialog.
+ * @return What `open` returns.
+ */
+function afterCountdown<T>(open: () => Promise<T>): Promise<T> {
+  const counting = () => useStore.getState().confirm?.waitUntil !== undefined;
+  if (!counting()) return open();
+  return new Promise<T>((resolve, reject) => {
+    const off = useStore.subscribe(() => {
+      if (counting()) return;
+      off();
+      // once the closing has finished (its resolve and the other listeners)
+      queueMicrotask(() => afterCountdown(open).then(resolve, reject));
+    });
+  });
+}
 
 /**
  * Warn about the build just opened when its primary and secondary can't start a build: an older
