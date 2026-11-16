@@ -822,6 +822,19 @@ def compare_folders(base_dir: Path, other_dir: Path, base_ids: tuple = ("homecom
 
 # ---------------------------------------------------------------- rendering
 
+def field_counts(fields: Counter) -> list:
+    """How many powers differ in each field, most first.
+
+    Ties go by the field's name: Counter.most_common keeps first-counted order, which follows
+    set iteration and so the string hash seed, and an unchanged data set must give the same file.
+
+    @param fields Powers differing per field key (Result.fields).
+    @return (field name, count) pairs.
+    """
+    named = ((FIELD_NAMES.get(k, k), n) for k, n in fields.items())
+    return sorted(named, key=lambda kv: (-kv[1], kv[0]))
+
+
 def render(r: Result) -> str:
     """@return The markdown report (ASCII; the caller applies config.scrub before writing)."""
     b, o = r.base, r.other
@@ -835,7 +848,7 @@ def render(r: Result) -> str:
     if r.fields:
         L.append("")
         L.append("Powers differing, by field (a power counts once per field): "
-                 + ", ".join(f"{FIELD_NAMES.get(k, k)} {n}" for k, n in r.fields.most_common()))
+                 + ", ".join(f"{name} {n}" for name, n in field_counts(r.fields)))
     L += ["", "How the data was normalised: ids became internal names; attribute offsets became attribute "
           "names (35 names sit at other offsets on the two servers); damage, defense and elusivity types "
           "became their own names (Homecoming has 17 damage types, Thunderspy 15; 18 defense types against "

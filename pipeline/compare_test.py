@@ -310,6 +310,12 @@ class Report(unittest.TestCase):
         self.assertIn("## Summary", text)
         self.assertIn("HC = hc v1; TS = ts v1", text)
 
+    def test_field_counts_break_ties_by_name(self):
+        # counted in two orders: the same list either way, most first, then by name
+        for keys in (["rech", "end", "acc", "acc"], ["acc", "end", "acc", "rech"]):
+            got = C.field_counts(C.Counter(keys))
+            self.assertEqual(got, [("accuracy", 2), ("endurance", 1), ("recharge", 1)])
+
     def test_report_section_without_homecoming(self):
         with mock.patch.object(C.config, "version_index", return_value=None):
             out = "\n".join(C.report_section("thunderspy", "ts9-6", C.Path("nowhere")))
