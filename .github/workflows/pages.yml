@@ -1,12 +1,28 @@
 # Build and publish the site from main. Started by hand only (Actions -> Deploy to GitHub Pages ->
-# Run workflow, or `gh workflow run pages.yml --ref main`), so a run of merges deploys once, when
-# the owner chooses, instead of once per merge. Deploys run one at a time: a run started while one
-# is running waits for it (only the newest waiting run is kept), so an older build can never finish
-# last and overwrite a newer one. Actions are pinned to release commit SHAs.
+# Run workflow, or `gh workflow run pages.yml --ref main -f bump=minor`), so a run of merges deploys
+# once, when the owner chooses, instead of once per merge. Deploys run one at a time: a run started
+# while one is running waits for it (only the newest waiting run is kept), so an older build can
+# never finish last and overwrite a newer one. Actions are pinned to release commit SHAs.
+#
+# Each deploy is a release (AGENTS.md, "Versions and releases"): the bump picked here makes the next
+# vX.Y.Z (scripts/release-version.mjs), the build shows it in the footer, and the release job tags it
+# and publishes its notes before the site goes live, so a failed deploy can't let another build take
+# the same number. A commit that already carries a version deploys again under it, with no new tag.
 name: Deploy to GitHub Pages
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump: major (massive feature changes, redesigns), minor (a new server, medium-sized work), patch (fixes, small changes)'
+        type: choice
+        required: true
+        default: pick one
+        options:
+          - pick one
+          - patch
+          - minor
+          - major
 
 permissions: {}
 
@@ -20,6 +36,10 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      fresh: ${{ steps.version.outputs.fresh }}
+      previous: ${{ steps.version.outputs.previous }}
     steps:
       # the Run workflow button lets any branch be picked; only main is ever published
       - name: Refuse branches other than main
@@ -33,16 +53,46 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # the version this deploy publishes (the input goes in through the environment, never the script text)
+      - name: Pick the version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: node scripts/release-version.mjs "$BUMP"
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm run build
+        env:
+          HCP_VERSION: ${{ steps.version.outputs.version }}
+          HCP_COMMIT: ${{ github.sha }}
       # (no configure-pages step: the site's base path is fixed in vite.config.ts)
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
 
-  deploy:
+  # tag the new version and publish its notes (the pull requests merged since the last release);
+  # skipped when the commit already carries a version
+  release:
     needs: build
+    if: needs.build.outputs.fresh == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Tag the release and publish its notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PREVIOUS: ${{ needs.build.outputs.previous }}
+        run: >-
+          gh release create "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}"
+          --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
+
+  deploy:
+    needs: [build, release]
+    # after a new version is tagged, or straight away for a commit that already had one
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

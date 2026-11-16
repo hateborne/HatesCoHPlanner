@@ -7,6 +7,7 @@ import { fitToPatch } from '../src/engine/migrate.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { exportMbd, importMbd, type Mbd } from '../src/io/mids.ts';
 import { midsDbPatch, midsMadeOn, PLANNER_APP } from '../src/io/midsPatches.ts';
+import { APP_VERSION } from '../src/version.ts';
 import { loadData, loadMidsMapFile, loadVersionIndex, pid } from './helpers/data.ts';
 
 /** @return The .mbd JSON inside a |MBD; chunk (Brotli + Base64), decoded with Node's own Brotli. */
@@ -135,6 +136,9 @@ describe('Infinitum, a Page 3 build', () => {
     // the planner's own export names the version, so it reopens there
     const { mbd } = exportMbd(gd, loadMidsMapFile('i28p3'), build);
     expect(importTarget(loadVersionIndex(), midsMadeOn(mbd)).version.id).toBe('i28p3');
+    // and the planner release it was made with (imports never read it), X.Y.Z even from a dev build
+    expect(APP_VERSION).toBe('dev');
+    expect(mbd.BuiltWith?.Version).toBe('0.0.0');
   });
 
   it('moves to Page 4 by trading Knockout Blow and Rage, slots and enhancements going along', () => {
