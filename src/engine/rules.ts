@@ -94,22 +94,45 @@ export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: st
 }
 
 /**
- * The note the level-up wizard shows when it reaches the respec an archetype's training forces
- * (the trainer's "You will gain: An IMMEDIATE respec of your powers").
+ * The 0-based level an archetype's training forces a respec at (the class's LevelUpRespecs), or
+ * undefined when it never does.
+ *
+ * The export leaves LevelUpRespecs out, so it is read from the archetype's specialization sets:
+ * every class that has them (Arachnos Soldier and Widow, on Homecoming and Thunderspy) respecs on
+ * training to the level they open at (SpecializeAt 23, LevelUpRespecs 24), and no other class
+ * respecs. The pipeline warns if a client ever breaks that (forced_respec_warnings).
  *
  * @param gd Game data.
- * @param b The build.
- * @param level 0-based level of the respec (levelUpRespec).
- * @return The dialog's title and text.
+ * @param at The archetype.
+ * @return The respec's level, or undefined.
  */
-export function forcedRespecNote(gd: GameData, b: Build, level: number): { title: string; text: string } {
-  const at = gd.archetype(b.at);
+export function levelUpRespec(gd: GameData, at: Archetype): number | undefined {
+  let lv: number | undefined;
+  for (const cat of [at.cats.pri, at.cats.sec]) {
+    for (const s of gd.setsInCategory(cat)) if (s.spa && (lv === undefined || s.spa < lv)) lv = s.spa;
+  }
+  return lv;
+}
+
+/**
+ * Why New Build makes an archetype whose training forces a respec (levelUpRespec) a Respec build:
+ * in the game it trains to that level only through a respec (contactInteraction.c:
+ * class_IsRespecLevelUp offers TrainRespecNow instead of TrainNow), which chooses every power and
+ * slot up to it again, so the planner plans its builds as a respec from the start.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @return The dialog's title and text, or null for an archetype that never respecs on training.
+ */
+export function respecOnlyNote(gd: GameData, at: Archetype): { title: string; text: string } | null {
+  const level = levelUpRespec(gd, at);
+  if (level === undefined) return null;
   const names = [at.cats.pri, at.cats.sec].flatMap((c) => gd.setsInCategory(c).filter((s) => s.spa).map((s) => s.dn));
-  const sets = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'the branch sets');
+  const sets = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'their branch sets');
   const n = level + 1;
   return {
     title: `Respec at Level ${n}`,
-    text: `${at.dn}s train to level ${n} only through a respec. Choose every power from level 1 to ${n} again, with ${sets} open from level 1, then place every slot up to level ${n} on any power. Your current choices stay selected.`,
+    text: `${at.dn}s can only train to level ${n} through a respec, which chooses every power and slot up to ${n} again. So their builds are planned as a Respec from the start: set the level to respec to. From level ${n} on, ${sets} are open from level 1.`,
   };
 }
 
@@ -136,27 +159,6 @@ export function startingSets(gd: GameData, cat: string, at: Archetype): Powerset
     .filter((s) => s.av.some((a) => a === 0));
 }
 
-/**
- * The 0-based level an archetype's training forces a respec at (the class's LevelUpRespecs), or
- * undefined when it never does.
- *
- * The export leaves LevelUpRespecs out, so it is read from the archetype's specialization sets:
- * every class that has them (Arachnos Soldier and Widow, on Homecoming and Thunderspy) respecs on
- * training to the level they open at (SpecializeAt 23, LevelUpRespecs 24), and no other class
- * respecs. The pipeline warns if a client ever breaks that.
- *
- * @param gd Game data.
- * @param at The archetype.
- * @return The respec's level, or undefined.
- */
-export function levelUpRespec(gd: GameData, at: Archetype): number | undefined {
-  let lv: number | undefined;
-  for (const cat of [at.cats.pri, at.cats.sec]) {
-    for (const s of gd.setsInCategory(cat)) if (s.spa && (lv === undefined || s.spa < lv)) lv = s.spa;
-  }
-  return lv;
-}
-
 export class BuildRules {
   readonly at: Archetype;
   readonly pickLevels: number[];
@@ -164,16 +166,9 @@ export class BuildRules {
   private slottedCache: { counts: Map<string, number>; ctx: EvalContext } | null = null;
   private forcedRespec: number | undefined | null = null; // levelUpRespec(), once looked up
 
-  /**
-   * @param gd Game data.
-   * @param b The build.
-   * @param reach 0-based level the character has reached: the level-up wizard's current level.
-   *   Left out, the build's last level (lastLevel()).
-   */
   constructor(
     readonly gd: GameData,
     readonly b: Build,
-    readonly reach?: number,
   ) {
     this.at = gd.archetype(b.at);
     this.pickLevels = gd.core.schedule.power;
@@ -393,7 +388,8 @@ export class BuildRules {
    *
    * A branch is listed while the character owns a power from it or may still specialize in it
    * (uiLevelPower.c: character_WillBeAllowedToSpecializeInPowerSet checks SpecializeRequires, not
-   * the level): both branches show, greyed, until 24, and once one is chosen the other is gone.
+   * the level): both branches show, greyed, until they open, and once one is chosen the other is
+   * gone.
    *
    * @param pickIndex Pick being made.
    */
@@ -562,19 +558,19 @@ export class BuildRules {
 
   /**
    * The level of the last respec the build's powers and slots up to it come from: a Respec
-   * build's own, or the one its archetype's training forces (levelUpRespec) once the build has
-   * reached that level, whichever is higher.
+   * build's own, or the one its archetype's training forces (levelUpRespec) when the build goes
+   * that far, whichever is higher.
    *
-   * An Arachnos Soldier or Widow trains to 24 only through a respec (contactInteraction.c:
-   * class_IsRespecLevelUp offers TrainRespecNow instead of TrainNow), so every one past 23 has
-   * chosen its powers and slots up to 24 again.
+   * New Build makes those archetypes (Arachnos Soldier and Widow) Respec builds; a leveling build
+   * of one (from before that, a link or an import) that goes past 23 has chosen its powers and
+   * slots up to 24 again in game, so it is judged as respecced there.
    *
    * @return The 0-based level, or undefined for a leveling build that hasn't respecced.
    */
   respecLevel(): number | undefined {
     if (this.forcedRespec === null) this.forcedRespec = levelUpRespec(this.gd, this.at);
     const forced = this.forcedRespec;
-    const reached = forced !== undefined && (this.reach ?? this.lastLevel()) >= forced ? forced : undefined;
+    const reached = forced !== undefined && this.lastLevel() >= forced ? forced : undefined;
     if (this.b.respecTo === undefined) return reached;
     return reached === undefined ? this.b.respecTo : Math.max(this.b.respecTo, reached);
   }
@@ -584,10 +580,9 @@ export class BuildRules {
    *
    * The game checks the character's own level, never the level of the pick being made: the
    * level-up screen passes the current level, and a respec its pre-respec level (uiReSpec.c
-   * powerLevelSelector with respec.maxLevel; character_respec.c with iExpLevel). So a leveling
-   * build opens the branches at their level, while a respec at that level or above (a Respec
-   * build, or the respec an Arachnos character's training to 24 forces) takes branch powers from
-   * its first pick.
+   * powerLevelSelector with respec.maxLevel; character_respec.c with iExpLevel). So a respec at
+   * that level or above takes branch powers from its first pick, the branch powers keeping their
+   * own levels.
    *
    * @param level 0-based level of the pick.
    * @return The pick's level, or the respec's level (respecLevel) when that is higher.
@@ -619,11 +614,10 @@ export class BuildRules {
       if (!pick) return;
       const opt = this.powerOption(pick.power, i);
       // powerOption reports the current pick as 'owned'; re-check it as if unpicked.
-      const probe = new BuildRules(
-        this.gd,
-        { ...this.b, picks: this.b.picks.map((p, j) => (j === i ? null : p)) },
-        this.reach,
-      ).powerOption(pick.power, i);
+      const probe = new BuildRules(this.gd, {
+        ...this.b,
+        picks: this.b.picks.map((p, j) => (j === i ? null : p)),
+      }).powerOption(pick.power, i);
       if (opt.state !== 'owned' || probe.state !== 'available') {
         out.push({ key: `pick:${i}`, message: probe.reason ?? 'Not allowed at this level' });
       }

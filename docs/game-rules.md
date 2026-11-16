@@ -68,14 +68,14 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   training to that level offers only "Respec and train up to next level"
   (`contactInteraction.c`, `class_IsRespecLevelUp` gives `TrainRespecNow` instead of `TrainNow`),
   and the respec runs to the new level (`uiReSpec.c`: `respec.maxLevel` is the level plus one),
-  so the branches are open from its first pick. Every Arachnos character past 23 has chosen its
-  powers and slots up to 24 again: a leveling build that reaches 24 is judged as respecced there
-  (`BuildRules.respecLevel`, from the planner's `reach`: the wizard's level, else the build's last
-  level), and one stopped before keeps the branches shut. The export leaves `LevelUpRespecs` out;
-  the planner takes it to be the level the specialization sets open at (`levelUpRespec`), and the
-  pipeline warns if a client breaks that (`forced_respec_warnings`). The leveling wizard walks the
-  respec in place of level 24 (`withForcedRespec`): every power from level 1 to 24 again with the
-  earlier choice selected, then one slot screen for every slot up to 24, then on to 25.
+  so the branches are open from its first pick. New Build therefore plans those archetypes as
+  Respec builds only: picking one with Leveling set switches to Respec and says why
+  (`respecOnlyNote`), and Leveling is greyed for them. A leveling build of one from before that (a
+  link, a saved build, an import) that goes past 23 has chosen its powers and slots up to 24 again
+  in game, so it is judged as respecced there (`BuildRules.respecLevel`); one stopped before keeps
+  the branches shut. The export leaves `LevelUpRespecs` out; the planner takes it to be the level
+  the specialization sets open at (`levelUpRespec`), and the pipeline warns if a client breaks
+  that (`forced_respec_warnings`).
 
 ## Auto-issued powers
 

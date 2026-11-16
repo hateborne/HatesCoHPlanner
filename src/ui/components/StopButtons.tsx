@@ -1,4 +1,4 @@
-import { inRespec, useStore } from '../../state/store.ts';
+import { useStore } from '../../state/store.ts';
 import { vx, vy } from '../skin/metrics.ts';
 import type { Skin } from '../skin/skin.ts';
 import { InfoButton } from './Chrome.tsx';
@@ -11,10 +11,10 @@ import { useStage } from './Stage.tsx';
  * when a level was reopened from the overview. Phones have it in the menu pane (Settings.tsx).
  */
 export function StopButtons({ skin }: { skin: Skin }) {
-  const { level, steps, stopHere } = useStore();
+  const { level, stopHere } = useStore();
   const stage = useStage();
   if (stage.phone || level?.mode !== 'wizard') return null;
   // a respec draws "Current Respec Level" at the top center and a long slot-screen title: sit right of both
-  const x = inRespec(steps, level) ? vx(700) : stage.w / 2;
+  const x = level.flow ? vx(700) : stage.w / 2;
   return <InfoButton skin={skin} x={x} y={vy(22)} w={vx(110)} h={vy(26)} text="View Build" onClick={() => stopHere(false)} />;
 }

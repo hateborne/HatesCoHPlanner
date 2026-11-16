@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power } from '../../data/types.ts';
-import { pickHoldsEnhancements } from '../../engine/actions.ts';
 import type { Build } from '../../engine/build.ts';
 import { BuildRules, type SetOption } from '../../engine/rules.ts';
-import { currentPick, inRespec, levelRules, stepsOf, useStore, type LevelCtx } from '../../state/store.ts';
+import { currentPick, stepsOf, useStore, type LevelCtx } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { hoverPower, useFreshHover, useHover } from '../hover.ts';
 import { DescBox, MenuBar, MenuFrame, NextButton, RespecCounter, TitleBar } from '../components/Chrome.tsx';
@@ -61,7 +60,7 @@ function phoneTabState(rules: BuildRules, pick: number, extra: SetOption[]): { o
 function initialTab(gd: GameData, steps: Parameters<typeof currentPick>[0], level: LevelCtx): number {
   if (tabMemo && tabMemo.base === level.base && tabMemo.step === level.step && tabMemo.pick === level.pickInStep) return tabMemo.tab;
   if (level.pendingSet !== undefined) return 2;
-  const rules = levelRules(gd, steps, level);
+  const rules = new BuildRules(gd, level.base);
   const pick = currentPick(steps, level);
   const options = rules.setOptions(pick);
   const own = options.find((o) => o.powers.some((p) => p.power.id === level.pendingPower));
@@ -98,7 +97,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
     let epic = false;
     const st = useStore.getState();
     if (level.mode === 'wizard' && tab !== 2 && !(st.poolsBlinked && st.epicBlinked)) {
-      const r = levelRules(gd, steps, level);
+      const r = new BuildRules(gd, level.base);
       const pk = currentPick(steps, level);
       const t = phoneTabState(r, pk, r.setOptions(pk).filter((o) => o.column === 2));
       pools = t.unlocked && !st.poolsBlinked;
@@ -122,7 +121,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
     if (ps.epic) useStore.setState({ epicBlinked: true });
   }, [ps.pools, ps.epic, phone, pickKey]);
   const pick = level ? currentPick(steps, level) : -1;
-  const rules = useMemo(() => (gd && level ? levelRules(gd, steps, level) : null), [gd, steps, level]);
+  const rules = useMemo(() => (gd && level ? new BuildRules(gd, level.base) : null), [gd, level]);
   if (!gd || !level || !rules) return null;
 
   const options = rules.setOptions(pick);
@@ -140,35 +139,24 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   // the client clears the help text when the mouse leaves a bar (uiLevelPower.c); phones have no
   // hover, so there the chosen power's text stays up
   const fallback = phone && level.pendingPower !== undefined ? gd.power(level.pendingPower) : null;
-  const cur = stepsOf(steps, level)[level.step];
   const onPick = (p: Power) => {
-    // reopened from the overview, or offered again by a forced respec: a power that can't hold this
-    // pick's bought slots would leave them hidden, so those slots must be removed first
-    const prev = level.mode === 'edit' || cur?.rewalk ? level.orig.picks[pick] : null;
+    // reopened from the overview: a power that can't hold this pick's bought slots would leave them
+    // hidden, so those slots must be removed first
+    const prev = level.mode === 'edit' ? level.orig.picks[pick] : null;
     if (prev && prev.slots.length > 1 && p.id !== prev.power && (!rules.slottable(p) || prev.slots.length > (p.maxB ?? 0))) {
       flashLocked(`power:${p.id}`, 'Remove Slots First!');
-      return;
-    }
-    // a forced respec can't swap out a power holding enhancements (some may not fit the new one),
-    // as the overview won't reopen its level (editPick)
-    if (cur?.rewalk && prev && p.id !== prev.power && pickHoldsEnhancements(gd, level.orig, pick)) {
-      flashLocked(`power:${p.id}`);
       return;
     }
     choosePower(p.id === level.pendingPower ? undefined : p.id);
     // a power from a set chosen on the pool picker keeps that set shown; others drop it
   };
   const firstStep = level.step === 0 && level.pickInStep === 0;
-  const lvl = cur?.level ?? 0;
-  const respec = inRespec(steps, level);
-  // respec_powerCounter: picks still to make up to the respec level (this one included); a forced
-  // respec has them all made already, so it counts its screens
-  const rewalkOrder = cur?.rewalk ? stepsOf(steps, level).filter((s) => s.rewalk).flatMap((s) => s.picks) : null;
-  const respecEnd = cur?.respec ?? 49;
-  const remaining = rewalkOrder
-    ? rewalkOrder.length - rewalkOrder.indexOf(pick)
-    : level.base.picks.filter((p, i) => !p && (gd.core.schedule.power[i] ?? 99) <= respecEnd).length;
-  const bought = rewalkOrder ? rewalkOrder.indexOf(pick) : level.base.picks.filter((p) => p).length;
+  const lvl = stepsOf(steps, level)[level.step]?.level ?? 0;
+  const respec = !!level.flow;
+  // respec_powerCounter: picks still to make up to the respec level (this one included)
+  const respecEnd = level.base.respecTo ?? 49;
+  const remaining = level.base.picks.filter((p, i) => !p && (gd.core.schedule.power[i] ?? 99) <= respecEnd).length;
+  const bought = level.base.picks.filter((p) => p).length;
   const chosen = level.pendingPower !== undefined;
   const extraButtons = (canPool ? 1 : 0) + (canEpic ? 1 : 0);
   const tabs = phoneTabState(rules, pick, extra);

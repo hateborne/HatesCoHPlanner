@@ -20,8 +20,6 @@ export interface LevelStep {
   picks: number[]; // pick indices granted at this level
   slots: number; // enhancement slots granted at this level
   slotLevels?: number[]; // respec only: the slot levels merged into this step, one entry per slot
-  respec?: number; // a respec's step: the 0-based level the respec runs to
-  rewalk?: boolean; // the respec an archetype's training forces (withForcedRespec): its choices are already made, and offered again
 }
 
 /**
@@ -66,30 +64,9 @@ export function respecSteps(steps: LevelStep[], end: number): LevelStep[] {
   // pick 0 is level 1's primary and pick 1 its secondary (BuildRules.powerOption); the respec asks
   // the secondary first, as the I24 code already did for VEATs (uiReSpec.c pickingPrimary)
   const order = (p: number[]) => (p.includes(0) && p.includes(1) ? [1, 0, ...p.filter((k) => k > 1)] : p);
-  const powers: LevelStep[] = upTo.filter((s) => s.picks.length).map((s) => ({ level: s.level, picks: order(s.picks), slots: 0, respec: end }));
+  const powers: LevelStep[] = upTo.filter((s) => s.picks.length).map((s) => ({ level: s.level, picks: order(s.picks), slots: 0 }));
   const slotLevels = upTo.flatMap((s) => Array.from({ length: s.slots }, () => s.level));
-  return slotLevels.length ? [...powers, { level: end, picks: [], slots: slotLevels.length, slotLevels, respec: end }] : powers;
-}
-
-/**
- * The leveling steps of an archetype whose training forces a respec (levelUpRespec): the levels
- * before it, then that respec in place of its level (respecSteps, every step marked `rewalk`),
- * then the levels after it.
- *
- * An Arachnos Soldier or Widow trains to 24 only through a respec, which re-chooses every power
- * and slot up to 24 with the branch sets open from level 1. The planner offers the choices already
- * made again, so the respec changes only what the player changes.
- *
- * @param steps The leveling steps (levelSteps()).
- * @param at 0-based level of the forced respec.
- * @return The steps in the order the game asks them.
- */
-export function withForcedRespec(steps: LevelStep[], at: number): LevelStep[] {
-  return [
-    ...steps.filter((s) => s.level < at),
-    ...respecSteps(steps, at).map((s) => ({ ...s, rewalk: true })),
-    ...steps.filter((s) => s.level > at),
-  ];
+  return slotLevels.length ? [...powers, { level: end, picks: [], slots: slotLevels.length, slotLevels }] : powers;
 }
 
 /** @return The distinct levels a step places slots at (just its own level outside a respec). */

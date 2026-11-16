@@ -5,7 +5,7 @@ import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
-import { inRespec, levelRules, previewBuild, stepsOf, useStore, useTipLevel } from '../../state/store.ts';
+import { previewBuild, stepsOf, useStore, useTipLevel } from '../../state/store.ts';
 import { stepSlotLevels } from '../../engine/schedule.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
@@ -252,14 +252,14 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const flow = level ? stepsOf(steps, level) : steps;
   const step = level ? flow[level.step] : undefined;
   const preview = useMemo(() => (gd && level ? previewBuild(gd, steps, level) : null), [gd, steps, level]);
-  const rules = useMemo(() => (gd && preview && level ? levelRules(gd, steps, level, preview) : null), [gd, steps, level, preview]);
+  const rules = useMemo(() => (gd && preview ? new BuildRules(gd, preview) : null), [gd, preview]);
   if (!gd || !level || !step || !rules) return null;
   const L = step.level;
   // enhancements are the finished build's: their level numbers read as on the build screen
   const buildEnd = preview!.endLevel ?? 49;
   const levels = stepSlotLevels(step); // a respec screen places the slots of several levels
   // a respec (uiReSpec.c respec_assignment) draws every power, greying the ones bought later
-  const respec = inRespec(steps, level);
+  const respec = !!level.flow;
   const later = (e: BuildEntry) => e.level > L;
   // a respec's slot level reopened from the overview: its slots may still go on any power
   const anyPower = respec || rules.slotsAnyPower(L);

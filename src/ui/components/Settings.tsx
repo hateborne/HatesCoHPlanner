@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { continueTarget, respecUnfinished, stepsOf, stopLevel, TIP_MODES, useStore, type TipMode } from '../../state/store.ts';
+import { continueTarget, respecUnfinished, stepsOf, TIP_MODES, useStore, type TipMode } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { fitScale, FONTS, S, snap } from '../skin/metrics.ts';
 import { pressKeys } from '../press.ts';
@@ -156,16 +156,14 @@ function PhoneMenu({ skin }: { skin: Skin }) {
   let top: { label: string; title: string; act: () => void } | null = null;
   if (wizard && level) {
     const step = stepsOf(steps, level)[level.step];
-    // as stopHere: a respec stopped on its slot screen (or anywhere in a forced one) ends at its respec level
-    const end = step ? stopLevel(step) : null;
+    // as stopHere: a respec stopped on its slot screen ends at its respec level
+    const end = step ? (level.flow && !step.picks.length ? (level.base.respecTo ?? 49) : step.level) : null;
     if (end !== null) top = { label: `View Build (${end + 1})`, title: 'End the build at this level', act: () => stopHere(false) };
   } else if (overview && build && gd) {
     const end = build.endLevel ?? 49;
     const can = respecUnfinished(gd, build, steps) || (build.endLevel !== undefined && steps.some((st) => st.level > end));
     const where = can ? continueTarget(gd, build, steps) : null;
-    // a forced respec is part of leveling, and starts again at its level
-    const own = where?.target.respec !== undefined && !where.target.rewalk;
-    if (where) top = { label: `${own ? 'Continue Respec' : 'Continue Leveling'} (${(where.target.rewalk ? where.target.respec! : where.target.level) + 1})`, title: 'Pick up where the build stopped', act: continueLeveling };
+    if (where) top = { label: `${where.flow ? 'Continue Respec' : 'Continue Leveling'} (${where.target.level + 1})`, title: 'Pick up where the build stopped', act: continueLeveling };
   }
   if (top) {
     const t = top;

@@ -6,11 +6,11 @@ import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, withServer, type GameServer } from '../data/servers.ts';
 import { loadVersions, missingVersionNote, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
-import { addSlot, clearPick, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
+import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
 import { cleanName, cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
-import { BuildRules, buildPairProblem, forcedRespecNote, levelUpRespec } from '../engine/rules.ts';
+import { BuildRules, buildPairProblem } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
-import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, withForcedRespec, type LevelStep } from '../engine/schedule.ts';
+import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { describeImportFailure, refusedBuild, unknownServer } from '../io/importProblem.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
@@ -51,8 +51,7 @@ export interface LevelCtx {
   pendingPower?: number;
   pendingSet?: number; // a new pool/epic set chosen on the set picker
   pendingSlots: string[]; // entry keys, one per slot placed at this level
-  flow?: LevelStep[]; // a Respec build's wizard order (respecSteps), or the leveling order with a forced respec (withForcedRespec); absent: the leveling order
-  preRespec?: Build; // the build as a forced respec found it: Back out of the respec restores it
+  flow?: LevelStep[]; // a Respec build's wizard order (respecSteps); absent: the leveling order
 }
 
 interface Store {
@@ -320,43 +319,6 @@ export function stepsOf(steps: LevelStep[], l: LevelCtx): LevelStep[] {
   return l.flow ?? steps;
 }
 
-/**
- * The leveling order of a build whose archetype's training forces a respec (levelUpRespec), with
- * that respec in it; undefined for every other build, and for a Respec build whose own respec
- * already runs to that level or past it.
- *
- * @param gd Game data.
- * @param b The build.
- * @param steps The leveling steps.
- */
-export function forcedRespecFlow(gd: GameData, b: Build, steps: LevelStep[]): LevelStep[] | undefined {
-  const at = levelUpRespec(gd, gd.archetype(b.at));
-  if (at === undefined || (b.respecTo !== undefined && b.respecTo >= at)) return undefined;
-  return withForcedRespec(steps, at);
-}
-
-/** @return The level the character has reached on the level-up screens (BuildRules' reach): a respec's level, else the step's; undefined when a level was reopened from the overview. */
-export function levelReach(steps: LevelStep[], l: LevelCtx): number | undefined {
-  if (l.mode !== 'wizard') return undefined;
-  const s = stepsOf(steps, l)[l.step];
-  return s ? (s.respec ?? s.level) : undefined;
-}
-
-/** @return The rules the level-up screens judge a build by (by default the one before this level's choice). */
-export function levelRules(gd: GameData, steps: LevelStep[], l: LevelCtx, b: Build = l.base): BuildRules {
-  return new BuildRules(gd, b, levelReach(steps, l));
-}
-
-/** @return Whether the level-up flow is on a respec's screen (a Respec build's, or the one leveling forces). */
-export function inRespec(steps: LevelStep[], l: LevelCtx): boolean {
-  return stepsOf(steps, l)[l.step]?.respec !== undefined;
-}
-
-/** @return The level a build stopped on this step ends at: a respec's slot screen, or any screen of a forced respec, ends at the respec level. */
-export function stopLevel(s: LevelStep): number {
-  return s.respec !== undefined && (s.rewalk || !s.picks.length) ? s.respec : s.level;
-}
-
 /** @return The pick index the flow is on (power steps only). */
 export function currentPick(steps: LevelStep[], l: LevelCtx): number {
   return stepsOf(steps, l)[l.step]?.picks[l.pickInStep] ?? -1;
@@ -399,9 +361,8 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
     return b;
   }
   const pick = currentPick(steps, l);
-  // editing a level from the overview, or a forced respec offering a choice again: the pick's
-  // slots and enhancements come from the original
-  const carry = l.mode === 'edit' || step.rewalk ? l.orig.picks[pick] : undefined;
+  // editing a level from the overview: the pick's slots and enhancements come from the original
+  const carry = l.mode === 'edit' ? l.orig.picks[pick] : undefined;
   return l.pendingPower !== undefined && pick >= 0 ? setPick(gd, l.base, pick, l.pendingPower, carry) : l.base;
 }
 
@@ -438,57 +399,15 @@ function slotKeysAt(gd: GameData, b: Build, levels: number[], emptyOnly = false)
   return keys;
 }
 
-/** @return How many enhancements a build holds. */
-function enhancementCount(gd: GameData, b: Build): number {
-  return new BuildRules(gd, b).entries().reduce((n, e) => n + e.slots.filter((s) => s.enh).length, 0);
-}
-
 /** @return Whether undoing a level (and, with dropLater, everything after it) would discard an enhancement. */
 function dropsEnhancements(gd: GameData, b: Build, step: LevelStep, pick: number | null, dropLater: boolean, order?: number[]): boolean {
-  return enhancementCount(gd, withoutLevel(b, step, pick, dropLater, false, order)) < enhancementCount(gd, b);
-}
-
-/** @return The build without its picks and slots above a level. */
-function withoutAfter(b: Build, level: number): Build {
-  const nb = cloneBuild(b);
-  nb.picks = nb.picks.map((p) => (p && p.level > level ? null : p));
-  const filt = <T extends { level: number }>(slots: T[]) => slots.filter((s, i) => i === 0 || s.level <= level);
-  for (const p of nb.picks) if (p) p.slots = filt(p.slots);
-  for (const g of Object.values(nb.granted)) g.slots = filt(g.slots);
-  return nb;
+  const after = withoutLevel(b, step, pick, dropLater, false, order);
+  const count = (x: Build) => new BuildRules(gd, x).entries().reduce((n, e) => n + e.slots.filter((s) => s.enh).length, 0);
+  return count(after) < count(b);
 }
 
 /**
- * The level-up flow on a step, entered going forward (or by Back into a forced respec).
- *
- * A forced respec's step (`rewalk`) offers the choice already made again: its power chosen (the
- * pick taken out of the base, its slots carried back by previewBuild), or its slots placed again
- * where they were (the empty ones movable, the ones holding enhancements kept, as editSlots).
- *
- * @param gd Game data.
- * @param flow The steps the flow walks.
- * @param step Index of the step in `flow`.
- * @param pickInStep Which of the step's picks.
- * @param b The build so far.
- * @param field The flow to keep in the context (undefined: the leveling steps).
- * @return The flow's state on that step.
- */
-function enterStep(gd: GameData, flow: LevelStep[], step: number, pickInStep: number, b: Build, field: LevelStep[] | undefined, pre?: Build): LevelCtx {
-  const s = flow[step]!;
-  const ctx: LevelCtx = { step, pickInStep, mode: 'wizard', sub: s.picks.length ? 'power' : 'slots', base: b, orig: b, pendingSlots: [], flow: field, preRespec: pre };
-  if (!s.rewalk) return ctx;
-  if (s.picks.length) {
-    const pick = s.picks[pickInStep]!;
-    const had = b.picks[pick];
-    if (!had) return ctx;
-    const base = clearPick(b, pick);
-    return { ...ctx, base, ...offerAgain(gd, base, pick, had.power) };
-  }
-  return { ...ctx, base: withoutLevel(b, s, null, false, true), pendingSlots: slotKeysAt(gd, b, stepSlotLevels(s), true) };
-}
-
-/**
- * A power offered again on its pick's screen (Back, a level reopened, a forced respec), with the
+ * A power offered again on its pick's screen (Back, a level reopened from the overview), with the
  * pool or epic set it needs shown.
  *
  * The screen lists only the pool and epic sets the build owns without this pick, so a pick that
@@ -507,11 +426,6 @@ function offerAgain(gd: GameData, base: Build, pick: number, power: number | und
   const kind = rules.setKind(set);
   const listed = (kind !== 'pool' && kind !== 'epic') || rules.setOptions(pick).some((o) => o.set.id === set.id);
   return listed ? { pendingPower: power } : { pendingPower: power, pendingSet: set.id };
-}
-
-/** @return Whether a flow's step is the first of a forced respec (where the note about it shows). */
-function firstOfForcedRespec(flow: LevelStep[], step: number): boolean {
-  return !!flow[step]?.rewalk && !flow[step - 1]?.rewalk;
 }
 
 const LOCKED = 'Remove enhancements first';
@@ -546,14 +460,9 @@ export function continueTarget(gd: GameData, b: Build, steps: LevelStep[]): { fl
   const rules = new BuildRules(gd, b);
   const rflow = b.respecTo !== undefined ? respecSteps(steps, b.respecTo) : undefined;
   const ri = rflow ? rflow.findIndex((s) => !stepDone(rules, b, s)) : -1;
-  if (rflow && ri >= 0) return { flow: rflow, step: ri, target: rflow[ri]! };
-  // a forced respec is done once its last power is chosen (only the respec asks for it): until
-  // then the flow starts it again from its first screen
-  const lflow = forcedRespecFlow(gd, b, steps);
-  const flow = lflow ?? steps;
-  const respecced = flow.filter((s) => s.rewalk).every((s) => s.picks.every((k) => b.picks[k]));
-  const step = flow.findIndex((s) => !stepDone(rules, b, s) || (!!s.rewalk && !respecced));
-  return step < 0 ? null : { flow: lflow, step, target: flow[step]! };
+  const flow = ri >= 0 ? rflow : undefined;
+  const step = flow ? ri : steps.findIndex((s) => !stepDone(rules, b, s));
+  return step < 0 ? null : { flow, step, target: (flow ?? steps)[step]! };
 }
 
 /** @return Whether a Respec build still has powers or slots to place (it offers Continue Respec). */
@@ -844,7 +753,7 @@ export const useStore = create<Store>((set, get) => ({
     const b = newBuild({ ...args, server: gd.server, dataVersion: gd.core.manifest.dataVersion, pickCount: gd.core.schedule.power.length });
     persist(b);
     persistNotes(null, undefined);
-    const flow = args.respecTo !== undefined ? respecSteps(get().steps, args.respecTo) : forcedRespecFlow(gd, b, get().steps);
+    const flow = args.respecTo !== undefined ? respecSteps(get().steps, args.respecTo) : undefined;
     set({
       build: b,
       view: 'level',
@@ -942,10 +851,19 @@ export const useStore = create<Store>((set, get) => ({
       set({ build: b, view: 'overview', level: undefined });
       return;
     }
-    // a forced respec keeps the build it found, for Back out of it
-    const starts = step !== level.step && firstOfForcedRespec(flow, step);
-    set({ build: b, level: enterStep(gd, flow, step, pickInStep, b, level.flow, starts ? b : level.preRespec) });
-    if (starts) void get().tell(forcedRespecNote(gd, b, next.respec!));
+    set({
+      build: b,
+      level: {
+        step,
+        pickInStep,
+        mode: 'wizard',
+        sub: next.picks.length ? 'power' : 'slots',
+        base: b,
+        orig: b,
+        pendingSlots: [],
+        flow: level.flow,
+      },
+    });
   },
 
   backLevel() {
@@ -977,38 +895,22 @@ export const useStore = create<Store>((set, get) => ({
       pickInStep = Math.max(0, prev.picks.length - 1);
     }
     const target = flow[step]!;
-    // a forced respec's screen took its choice out of the base to offer it again: Back puts it
-    // back; Back out of the respec restores the build it found (its changes undone)
-    const committed = cur?.rewalk ? (!target.rewalk ? (level.preRespec ?? level.orig) : level.orig) : level.base;
-    if (target.rewalk) {
-      // within (or back into) a forced respec its choices stay, offered again; only the levels
-      // after it are discarded, and not while they hold enhancements
-      const kept = withoutAfter(committed, target.respec!);
-      if (enhancementCount(gd, kept) < enhancementCount(gd, committed)) {
-        get().notify(LOCKED);
-        return;
-      }
-      set({ build: kept, level: enterStep(gd, flow, step, pickInStep, kept, level.flow, level.preRespec) });
-      return;
-    }
+    const committed = level.base;
     // Back discards that level and everything after it: not while any of it holds enhancements
     const order = flow.flatMap((s) => s.picks);
     if (dropsEnhancements(gd, committed, target, sub === 'slots' ? null : target.picks[pickInStep]!, true, order)) {
       get().notify(LOCKED);
       return;
     }
-    // a forced respec's snapshot stays while the flow is past the respec, for Back into it and out
-    const respecAt = flow.findIndex((s) => s.rewalk);
-    const preRespec = respecAt >= 0 && step > respecAt ? level.preRespec : undefined;
     if (sub === 'slots') {
       const pending = slotKeysAt(gd, committed, stepSlotLevels(target));
       const base = withoutLevel(committed, target, null, true);
-      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingSlots: pending, flow: level.flow, preRespec } });
+      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingSlots: pending, flow: level.flow } });
     } else {
       const pick = target.picks[pickInStep]!;
       const base = withoutLevel(committed, target, pick, true, false, order);
       const offer = offerAgain(gd, base, pick, committed.picks[pick]?.power);
-      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, ...offer, pendingSlots: [], flow: level.flow, preRespec } });
+      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, ...offer, pendingSlots: [], flow: level.flow } });
     }
   },
 
@@ -1075,11 +977,9 @@ export const useStore = create<Store>((set, get) => ({
     if (!gd || !level || level.mode !== 'wizard') return;
     const step = stepsOf(steps, level)[level.step];
     if (!step) return;
-    // a forced respec's pick left unchosen keeps the power it had
-    const now = step.rewalk && level.sub !== 'slots' && level.pendingPower === undefined ? level.orig : previewBuild(gd, steps, level);
-    // a respec stopped on its slot screens has every power, and a forced respec's choices are all
-    // made already: both end at the respec level
-    const b = { ...now, endLevel: stopLevel(step) };
+    const now = previewBuild(gd, steps, level);
+    // a respec stopped on its slot screens has every power: it ends at its respec level
+    const b = { ...now, endLevel: level.flow && !step.picks.length ? (now.respecTo ?? 49) : step.level };
     persist(b);
     set({ build: b, view: 'overview', level: undefined, menuOpen: openMenu });
   },
@@ -1091,16 +991,9 @@ export const useStore = create<Store>((set, get) => ({
     if (!where) return;
     const { flow, step, target } = where;
     const b = cloneBuild(build);
-    // a Respec build's own respec ends at its level; leveling (a forced respec included) runs on
-    if (target.respec !== undefined && !target.rewalk) b.endLevel = target.respec < 49 ? target.respec : undefined;
+    if (flow) b.endLevel = build.respecTo! < 49 ? build.respecTo : undefined;
     else delete b.endLevel;
     persist(b);
-    if (target.rewalk) {
-      // a forced respec starts again from its first screen, every choice offered again
-      set({ build: b, view: 'level', level: enterStep(gd, flow!, step, 0, b, flow, b) });
-      if (firstOfForcedRespec(flow!, step)) void get().tell(forcedRespecNote(gd, b, target.respec!));
-      return;
-    }
     const firstPick = target.picks.findIndex((k) => !b.picks[k]);
     const sub: LevelSub = firstPick >= 0 ? 'power' : 'slots';
     const pendingSlots = sub === 'slots' ? slotKeysAt(gd, b, stepSlotLevels(target), true) : [];
@@ -1289,7 +1182,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
         const levels = stepSlotLevels(step);
         for (let k = 0; k < 200; k++) {
           const cur = useStore.getState().level!;
-          const rules = levelRules(s.gd, s.steps, cur, previewBuild(s.gd, s.steps, cur));
+          const rules = new BuildRules(s.gd, previewBuild(s.gd, s.steps, cur));
           if (rules.slotsLeft(levels) <= 0) break;
           const cands = rules.entries().filter((e) => rules.slotBlock(e, step.level, levels) === null);
           const e = cands[k % Math.max(1, cands.length)];
@@ -1300,9 +1193,8 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
         continue;
       }
       const pick = currentPick(s.steps, l);
-      const rules = levelRules(s.gd, s.steps, l);
-      // a forced respec offers the choice already made: keep it
-      let chosen = l.pendingPower ?? rules.setOptions(pick).flatMap((o) => o.powers).find((o) => o.state === 'available')?.power.id;
+      const rules = new BuildRules(s.gd, l.base);
+      let chosen = rules.setOptions(pick).flatMap((o) => o.powers).find((o) => o.state === 'available')?.power.id;
       if (chosen === undefined) {
         for (const c of rules.newSetChoices('pool', pick).filter((c) => !c.block)) {
           chosen = c.set.p.map((pid) => rules.powerOption(pid, pick)).find((o) => o.state === 'available')?.power.id;

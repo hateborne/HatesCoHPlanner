@@ -522,8 +522,9 @@ def forced_respec_warnings(live: LiveData, ex: Exporter) -> list[str]:
 
     The export leaves a class's LevelUpRespecs out: the planner (levelUpRespec in
     src/engine/rules.ts) takes it to be the level its specialization sets open at (SpecializeAt
-    + 1, 1-based), as it is for every class today (Arachnos Soldier and Widow: 24). A class where
-    the two differ needs the planner changed before its builds are planned right.
+    + 1, 1-based), as it is for every class today (Arachnos Soldier and Widow: 24), and plans
+    those classes as Respec builds only. A class where the two differ needs the planner changed
+    before its builds are planned right.
 
     @param live The decoded client.
     @param ex The exporter, after build() (its class categories).
