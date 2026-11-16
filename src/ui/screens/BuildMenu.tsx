@@ -135,6 +135,17 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
       ? "Couldn't save in this browser (it may be a private window, or out of space). Use Copy share link or Download Mids .mbd to keep the build."
       : "Couldn't delete that build: this browser's storage refused.");
   };
+  /** Save the open build in this browser, then remind the player that only this browser has it. */
+  const saveHere = (b: Build) =>
+    saveBuild(b).then(
+      () => {
+        void refresh();
+        say('Saved in this browser.');
+        // a tablet held sideways gets the desktop layout but has no Ctrl+D either
+        void useStore.getState().tell(saveReminder(phone || matchMedia('(pointer: coarse)').matches));
+      },
+      (e: unknown) => storageFailed(e, 'saved'),
+    );
   /**
    * The open build's own game data and Mids map, for exports: New Build's version picker may be
    * showing another version, and the build must be written out against the data it was made on.
@@ -276,21 +287,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           {build ? (
             <>
               <div style={btn(0, row(0))}>
-                <button
-                  className="info-button"
-                  style={{ position: 'static' }}
-                  onClick={() =>
-                    void saveBuild(build).then(
-                      () => {
-                        void refresh();
-                        say('Saved in this browser.');
-                        // a tablet held sideways gets the desktop layout but has no Ctrl+D either
-                        void useStore.getState().tell(saveReminder(phone || matchMedia('(pointer: coarse)').matches));
-                      },
-                      (e: unknown) => storageFailed(e, 'saved'),
-                    )
-                  }
-                >
+                <button className="info-button" style={{ position: 'static' }} onClick={() => void saveHere(build)}>
                   Save in this browser
                 </button>
               </div>
