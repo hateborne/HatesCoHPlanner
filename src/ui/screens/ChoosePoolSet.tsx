@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Power, Powerset } from '../../data/types.ts';
-import { BuildRules, patronArcNote } from '../../engine/rules.ts';
-import { currentPick, useStore } from '../../state/store.ts';
+import { patronArcNote } from '../../engine/rules.ts';
+import { currentPick, levelRules, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
@@ -39,7 +39,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
   useFreshHover(); // hover lives in useHover: hovering a bar redraws only the description box
   useEscape(() => closeSetPicker()); // back to the power list
   const pick = level ? currentPick(steps, level) : -1;
-  const rules = useMemo(() => (gd && level ? new BuildRules(gd, level.base) : null), [gd, level]);
+  const rules = useMemo(() => (gd && level ? levelRules(gd, steps, level) : null), [gd, steps, level]);
   const [setId, setSetId] = useState<number | undefined>(level?.pendingSet);
   const [power, setPower] = useState<number | undefined>(level?.pendingSet !== undefined ? level.pendingPower : undefined);
   const [tab, setTab] = useState(level?.pendingSet !== undefined ? 1 : 0);

@@ -146,7 +146,7 @@ describe('power picks', () => {
     expect(choices).not.toContain('Epic.Dark_Mastery');
   });
 
-  it('lists VEAT branches in their columns, greyed until level 24', () => {
+  it('lists VEAT branches in their columns, greyed while leveling until level 24', () => {
     const at = gd.archetypeByName.get('class_arachnos_soldier')!;
     const b = newBuild({
       dataVersion: '',
@@ -157,12 +157,13 @@ describe('power picks', () => {
       secondary: sid(gd, 'Training_Gadgets.Training_and_Gadgets'),
       pickCount: 24,
     });
-    const r = new BuildRules(gd, b);
-    // Like the client, the branch sets are always listed in their category's column (in data
-    // order, after the main set) but every power stays unavailable until level 24.
+    // the level-up screens judge a pick at the level the character has reached (its own)
+    const r = (pick: number) => new BuildRules(gd, b, gd.core.schedule.power[pick]);
+    // Like the client, the branch sets are listed in their category's column (in data order,
+    // after the main set) but every power stays unavailable until level 24.
     const avail = (pick: number, n: string) =>
-      r.setOptions(pick).find((s) => s.set.n === n)!.powers.filter((p) => p.state === 'available').length;
-    const before = r.setOptions(12);
+      r(pick).setOptions(pick).find((s) => s.set.n === n)!.powers.filter((p) => p.state === 'available').length;
+    const before = r(12).setOptions(12);
     expect(before.filter((s) => s.column === 0).map((s) => s.set.n)).toEqual([
       'Arachnos_Soldiers.Arachnos_Soldier',
       'Arachnos_Soldiers.Bane_Spider_Soldier',
