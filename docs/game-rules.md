@@ -98,14 +98,16 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   training to that level offers only "Respec and train up to next level"
   (`contactInteraction.c`, `class_IsRespecLevelUp` gives `TrainRespecNow` instead of `TrainNow`),
   and the respec runs to the new level (`uiReSpec.c`: `respec.maxLevel` is the level plus one),
-  so the branches are open from its first pick. New Build therefore plans those archetypes as
-  Respec builds only: picking one with Leveling set switches to Respec and says why
-  (`respecOnlyNote`), and Leveling is greyed for them. A leveling build of one from before that (a
-  link, a saved build, an import) that goes past 23 has chosen its powers and slots up to 24 again
-  in game, so it is judged as respecced there (`BuildRules.respecLevel`); one stopped before keeps
-  the branches shut. The export leaves `LevelUpRespecs` out; the planner takes it to be the level
-  the specialization sets open at (`levelUpRespec`), and the pipeline warns if a client breaks
-  that (`forced_respec_warnings`).
+  so the branches are open from its first pick. The planner therefore plans those archetypes as
+  Respec builds only, to 24 at least (`startBuild`): New Build shows Respec ticked and Leveling
+  greyed for them, and says why (`respecOnlyNote`) when Leveling was the choice; the /build_save
+  import doesn't offer Leveling for them. A leveling build of one (a link or saved build from before
+  that, or a Mids import) that holds a power picked at 24 or later has chosen its powers and slots
+  up to 24 again in game, so it is judged as respecced there (`BuildRules.respecLevel`). One that
+  stops before 24, and a leveling walk that hasn't got to 24 yet, keeps the branches shut. The
+  export leaves `LevelUpRespecs` out; the planner takes it to be the level the specialization sets
+  open at (`levelUpRespec`), and the pipeline warns if a client breaks that
+  (`forced_respec_warnings`, `pipeline/forced_respec.py`).
 
 ## Auto-issued powers
 

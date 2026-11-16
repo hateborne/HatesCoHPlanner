@@ -254,7 +254,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   /**
    * Import Homecoming's /build_save file. It is written by the live game, so it opens on the
    * newest version; the file holds no alignment and no slot levels, so the user picks the
-   * alignment and the build type (Leveling only when the slots could have come from leveling).
+   * alignment and the build type (Leveling only when the slots could have come from leveling, and
+   * never for an archetype planned as Respec only).
    */
   const importBuildTxt = async (t: string) => {
     const st = useStore.getState();

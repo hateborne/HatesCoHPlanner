@@ -208,6 +208,8 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   ids.json                   stable IDs (append-only)
   ids-thunderspy.json        Thunderspy's stable IDs (append-only)
   check_ids.py               every ids file well formed and only appended to (run by CI)
+  forced_respec.py           a class's forced level-up respec where the planner looks for it
+                             (its test, forced_respec_test.py, is run by CI)
   patch-watch.json           per server: newest patch seen (Thunderspy: release and MD5 of its
                              tspy/bin.pigg); game version id and label
   inputs/fonts/              vendored game fonts (never change)
@@ -363,7 +365,7 @@ character, written with internal names, and opens on the default version. It hol
 and no slot levels: the game never stores the level a slot was added at, nor whether the build
 came from a respec. So the import asks for the alignment and the build type in the dialog
 (`askChoices`). Leveling is offered only when `leveledSlotShortfall()` finds that the slots could
-have come from leveling. Either way each added slot takes the lowest free slot level at or after
+have come from leveling, and never for an archetype planned as Respec only (`respecOnlyNote`). Either way each added slot takes the lowest free slot level at or after
 its power's level (`lowestFreeLevels()`, the respec screen's rule).
 
 MidsReborn names 9 epic pools its own way (`Epic.Ice_Mastery_DefCorr` is the game's
@@ -431,8 +433,8 @@ level-up flow. The flow is a wizard from level 1 to 50, or one level reopened fr
 `Build.respecTo`) walks its own order instead (`respecSteps()` in `src/engine/schedule.ts`):
 every power first (level 1's secondary before its primary), then one slot screen where any power
 may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec order"). An
-Arachnos Soldier or Widow can only train to 24 through a respec, so New Build makes their builds
-Respec builds (`respecOnlyNote`; Leveling is greyed for them). Screens read the store with narrow
+Arachnos Soldier or Widow can only train to 24 through a respec, so their builds start as Respec
+builds to 24 at least (`startBuild`, `respecOnlyNote`; New Build greys Leveling for them). Screens read the store with narrow
 selectors (`useShallow`) and call its actions.
 
 **Stage.** Every screen draws on a fixed stage scaled to the window with CSS zoom:
@@ -488,7 +490,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test` (the release check); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test` (the release check, the forced respec check); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
@@ -578,6 +580,9 @@ When you hand back a pull request, say which bump it calls for, so the owner can
     to 50, slot levels compared too;
   - `boosted.spec.ts`: a build with its sets boosted, attuned, or boosted then attuned at random.
     It prints its seed; `HCP_E2E_SEED=<seed>` repeats a run.
+
+  `respeconly.spec.ts` drives New Build itself: an Arachnos archetype picked with Leveling ticked
+  switches to Respec and says why, and Finish starts a Respec to 24 at least.
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.

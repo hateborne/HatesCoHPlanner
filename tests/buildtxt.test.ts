@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checkBuild } from '../src/engine/validate.ts';
-import { BuildRules } from '../src/engine/rules.ts';
+import { BuildRules, respecOnlyNote } from '../src/engine/rules.ts';
 import { leveledSlotShortfall, lowestFreeLevels } from '../src/engine/schedule.ts';
 import { finishBuildTxt, isBuildTxt, parseBuildTxt, readBuildTxt } from '../src/io/buildtxt.ts';
 import { decodeShare, encodeShare } from '../src/io/share.ts';
@@ -139,6 +139,25 @@ describe('build.txt (/build_save)', () => {
     const { build, fixes } = checkBuild(gd, b);
     expect(fixes).toEqual([]);
     expect(new BuildRules(gd, build!).issues()).toEqual([]);
+  });
+
+  it('rules out leveling for an archetype planned as Respec only (Arachnos)', () => {
+    const txt = [
+      'Example Spider: Level 30 Science Class_Arachnos_Soldier',
+      '',
+      'Character Profile:',
+      '------------------',
+      'Level 1: Training_Gadgets Training_and_Gadgets Wolf_Spider_Armor',
+      '\tEMPTY',
+      'Level 1: Arachnos_Soldiers Arachnos_Soldier Single_Shot',
+      '\tEMPTY',
+      '------------------',
+      '',
+    ].join('\r\n');
+    const imp = readBuildTxt(gd, txt);
+    expect(gd.archetype(imp.build.at).n).toBe('Class_Arachnos_Soldier');
+    expect(imp.leveledBlock).toBe(respecOnlyNote(gd, gd.archetype(imp.build.at))!.text);
+    expect(readBuildTxt(gd, SAMPLE).leveledBlock).toBeNull(); // a Blaster may still level
   });
 
   it('rules out leveling when the slots could not have come from it', () => {

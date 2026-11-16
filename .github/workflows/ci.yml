@@ -65,9 +65,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m compileall -q pipeline tools
-      # the release check (no network: its manifests are written by the test)
-      - name: Release check tests
-        run: python -m unittest pipeline.watch_test
+      # the pipeline checks that need no game files (the rest run on the owner's machine): the
+      # release check (its manifests are written by the test, no network) and the forced respec check
+      - name: Pipeline unit tests
+        run: python -m unittest pipeline.watch_test pipeline.forced_respec_test
       # share links and saved builds store these ids: none may change or disappear
       - name: Stable IDs are only appended to
         env:
