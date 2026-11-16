@@ -156,15 +156,33 @@ export function setLevelRange(set: { minL: number; maxL: number }): [number, num
 }
 
 /**
+ * Whether an IO's level is the one it was crafted at: a set piece or a common IO (Crafted_X).
+ *
+ * The Going Rogue pre-order pieces (Generic_X: Might of the Empire, Clockwork Efficiency,
+ * Resistance Tactics, Syndicate Techniques, Will of the Seers) are IOs too, but they are handed
+ * out, not crafted: /build_save lists them at level 1, and Homecoming's client hides their level
+ * (BoostHideLevel). Attuned pieces follow the character.
+ *
+ * @param gd Game data.
+ * @param boost Enhancement power.
+ * @return True for a crafted (non-attuned) set piece or common IO.
+ */
+export function isCraftedIO(gd: GameData, boost: Power): boolean {
+  if (!boost.bie || boost.bup) return false;
+  return gd.boostSetOf.has(boost.id) || shortName(boost).startsWith('Crafted_');
+}
+
+/**
  * The levels an IO is made at (0-based), for enhancements whose level is chosen.
  *
  * @param gd Game data.
  * @param boost Enhancement power.
  * @return A set piece's set range, a common IO's 10 to its maximum; null for attuned pieces (they
- *   follow the character) and for enhancements without an IO level (TO/DO/SO, HOs, ...).
+ *   follow the character), for the handed-out pre-order pieces (see isCraftedIO) and for
+ *   enhancements without an IO level (TO/DO/SO, HOs, ...).
  */
 export function ioLevelRange(gd: GameData, boost: Power): [number, number] | null {
-  if (!boost.bie || boost.bup) return null;
+  if (!isCraftedIO(gd, boost)) return null;
   const ref = gd.boostSetOf.get(boost.id);
   return ref ? setLevelRange(ref.set) : [9, Math.min(49, (boost.maxBL ?? 50) - 1)];
 }
@@ -188,7 +206,8 @@ export function defaultLevel(gd: GameData, boost: Power): number | undefined {
   if (boost.bup) return undefined; // attuned: scales with the character
   const ref = gd.boostSetOf.get(boost.id);
   if (ref) return setLevelRange(ref.set)[1];
-  if (boost.bie) return Math.min(49, (boost.maxBL ?? 50) - 1);
+  // a handed-out pre-order piece comes at level 1 (isCraftedIO)
+  if (boost.bie) return isCraftedIO(gd, boost) ? Math.min(49, (boost.maxBL ?? 50) - 1) : 0;
   return undefined;
 }
 
