@@ -359,8 +359,10 @@ level-up flow. The flow is a wizard from level 1 to 50, or one level reopened fr
 (`mode: 'edit'`, Cancel restores the original). A Respec build (New Build's Build Type,
 `Build.respecTo`) walks its own order instead (`respecSteps()` in `src/engine/schedule.ts`):
 every power first (level 1's secondary before its primary), then one slot screen where any power
-may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec order"). Screens
-read the store with narrow selectors (`useShallow`) and call its actions.
+may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec order"). An
+Arachnos Soldier or Widow can only train to 24 through a respec, so New Build makes their builds
+Respec builds (`respecOnlyNote`; Leveling is greyed for them). Screens read the store with narrow
+selectors (`useShallow`) and call its actions.
 
 **Stage.** Every screen draws on a fixed stage scaled to the window with CSS zoom:
 

@@ -94,6 +94,56 @@ export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: st
 }
 
 /**
+ * The 0-based level an archetype's training forces a respec at (the class's LevelUpRespecs), or
+ * undefined when it never does.
+ *
+ * The export leaves LevelUpRespecs out, so it is read from the archetype's specialization sets:
+ * every class that has them (Arachnos Soldier and Widow, on Homecoming and Thunderspy) respecs on
+ * training to the level they open at (SpecializeAt 23, LevelUpRespecs 24), and no other class
+ * respecs. The pipeline warns if a client ever breaks that (forced_respec_warnings).
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @return The respec's level, or undefined.
+ */
+export function levelUpRespec(gd: GameData, at: Archetype): number | undefined {
+  let lv: number | undefined;
+  for (const cat of [at.cats.pri, at.cats.sec]) {
+    for (const s of gd.setsInCategory(cat)) if (s.spa && (lv === undefined || s.spa < lv)) lv = s.spa;
+  }
+  return lv;
+}
+
+/**
+ * Why New Build makes an archetype whose training forces a respec (levelUpRespec) a Respec build:
+ * in the game it trains to that level only through a respec (contactInteraction.c:
+ * class_IsRespecLevelUp offers TrainRespecNow instead of TrainNow), which chooses every power and
+ * slot up to it again, so the planner plans its builds as a respec from the start.
+ *
+ * Each path is named by its primary branch set, less the set's last word ("Crab Spider Soldier"
+ * is Crab Spider, "Night Widow Training" Night Widow), in the order the screens list them. The
+ * secondary sets can't name them: Night Widow's is "Widow Teamwork".
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @return The dialog's title and text, or null for an archetype that never respecs on training.
+ */
+export function respecOnlyNote(gd: GameData, at: Archetype): { title: string; text: string } | null {
+  const level = levelUpRespec(gd, at);
+  if (level === undefined) return null;
+  const names = gd
+    .setsInCategory(at.cats.pri)
+    .filter((s) => s.spa)
+    .map((s) => s.dn.replace(/\s+\S+$/, '') || s.dn);
+  const paths = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : (names[0] ?? 'a branch');
+  const n = level + 1;
+  return {
+    title: `Respec at Level ${n}`,
+    text: `${at.dn}s must Respec at level ${n} to select their archetype path, ${paths}. To avoid confusion, ${at.dn} builds will only be planned as a Respec build.`,
+  };
+}
+
+/**
  * The power sets a new character can start with in a category (New Build's lists).
  *
  * The game's own tests at level 1: SetRequires (false for a set the game hides, such as Wind
@@ -121,6 +171,7 @@ export class BuildRules {
   readonly pickLevels: number[];
   private grantedCache: Map<number, number> | null = null;
   private slottedCache: { counts: Map<string, number>; ctx: EvalContext } | null = null;
+  private forcedRespec: number | undefined | null = null; // levelUpRespec(), once looked up
 
   constructor(
     readonly gd: GameData,
@@ -287,7 +338,7 @@ export class BuildRules {
         return kind === 'pool' ? 'No more power pools at this level' : 'No epic pool at this level';
       }
     } else if (kind === 'branch') {
-      if (level < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
+      if (this.specLevel(level) < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
       if (!evalRequires(set.spr, ctx)) return 'Another specialization is chosen';
     } else if (kind !== 'primary' && kind !== 'secondary') {
       return 'Not available to this archetype';
@@ -324,8 +375,13 @@ export class BuildRules {
     if (av > level) return fail(`Available at level ${av + 1}`);
     const kind = this.setKind(ref.set);
     if (level === this.pickLevel(0) && (pickIndex === 0 || pickIndex === 1)) {
-      if (pickIndex === 0 && kind !== 'primary') return fail('Choose a primary power now');
-      if (pickIndex === 1 && kind !== 'secondary') return fail('Choose a secondary power now');
+      // the level-1 picks lock a column (category), not a set: a branch in the primary category
+      // (a respec at 24+) may take the primary pick, as its trunk may
+      const cat = this.gd.categoryOfSet.get(ref.set.id);
+      const isPri = kind === 'primary' || (kind === 'branch' && cat === this.at.cats.pri);
+      const isSec = kind === 'secondary' || (kind === 'branch' && cat === this.at.cats.sec);
+      if (pickIndex === 0 && !isPri) return fail('Choose a primary power now');
+      if (pickIndex === 1 && !isSec) return fail('Choose a secondary power now');
     }
     const block = this.newSetBlock(ref.set, pickIndex);
     if (block) return fail(block);
@@ -334,9 +390,13 @@ export class BuildRules {
   }
 
   /**
-   * Panels for the "Choose a New Power" screen at a pick: the primary and the other sets of its
-   * category (VEAT branches, always listed and greyed until they unlock, as the client lists
-   * every set the character has), the same for the secondary, then owned pool / epic sets.
+   * Panels for the "Choose a New Power" screen at a pick: the primary and the VEAT branches of its
+   * category, the same for the secondary, then owned pool / epic sets.
+   *
+   * A branch is listed while the character owns a power from it or may still specialize in it
+   * (uiLevelPower.c: character_WillBeAllowedToSpecializeInPowerSet checks SpecializeRequires, not
+   * the level): both branches show, greyed, until they open, and once one is chosen the other is
+   * gone.
    *
    * @param pickIndex Pick being made.
    */
@@ -344,6 +404,7 @@ export class BuildRules {
     const level = this.pickLevel(pickIndex);
     const owned = this.ownedAt(level, pickIndex);
     const ownedSets = this.ownedSets(owned);
+    const ctx = this.ctx(level, owned);
     const out: SetOption[] = [];
     // granted powers (Bio Armor's Adaptations, Jaunt, Kheldian form attacks) can't be bought,
     // so they are left off the lists
@@ -363,7 +424,7 @@ export class BuildRules {
       [this.b.secondary, this.at.cats.sec],
     ] as const) {
       add(this.gd.powerset(main));
-      for (const s of this.gd.setsInCategory(cat)) if (s.spa) add(s);
+      for (const s of this.gd.setsInCategory(cat)) if (s.spa && (ownedSets.has(s.id) || evalRequires(s.spr, ctx))) add(s);
     }
     for (const kind of ['pool', 'epic'] as const) {
       const cat = kind === 'pool' ? this.at.cats.pool : this.at.cats.epic;
@@ -503,11 +564,47 @@ export class BuildRules {
   }
 
   /**
+   * The level of the last respec the build's powers and slots up to it come from: a Respec
+   * build's own, or the one its archetype's training forces (levelUpRespec) when the build goes
+   * that far, whichever is higher.
+   *
+   * New Build makes those archetypes (Arachnos Soldier and Widow) Respec builds; a leveling build
+   * of one (from before that, a link or an import) that goes past 23 has chosen its powers and
+   * slots up to 24 again in game, so it is judged as respecced there.
+   *
+   * @return The 0-based level, or undefined for a leveling build that hasn't respecced.
+   */
+  respecLevel(): number | undefined {
+    if (this.forcedRespec === null) this.forcedRespec = levelUpRespec(this.gd, this.at);
+    const forced = this.forcedRespec;
+    const reached = forced !== undefined && this.lastLevel() >= forced ? forced : undefined;
+    if (this.b.respecTo === undefined) return reached;
+    return reached === undefined ? this.b.respecTo : Math.max(this.b.respecTo, reached);
+  }
+
+  /**
+   * The level a specialization (VEAT branch) set's SpecializeAt is checked against.
+   *
+   * The game checks the character's own level, never the level of the pick being made: the
+   * level-up screen passes the current level, and a respec its pre-respec level (uiReSpec.c
+   * powerLevelSelector with respec.maxLevel; character_respec.c with iExpLevel). So a respec at
+   * that level or above takes branch powers from its first pick, the branch powers keeping their
+   * own levels.
+   *
+   * @param level 0-based level of the pick.
+   * @return The pick's level, or the respec's level (respecLevel) when that is higher.
+   */
+  specLevel(level: number): number {
+    return Math.max(level, this.respecLevel() ?? level);
+  }
+
+  /**
    * @return Whether slots gained at this level may go on any power, even one taken after it: a
    *   respec's (Homecoming's respec places every slot on one screen; see respecSteps).
    */
   slotsAnyPower(level: number): boolean {
-    return this.b.respecTo !== undefined && level <= this.b.respecTo;
+    const r = this.respecLevel();
+    return r !== undefined && level <= r;
   }
 
   /** @return Slots granted at these levels and not yet placed. */

@@ -406,6 +406,28 @@ function dropsEnhancements(gd: GameData, b: Build, step: LevelStep, pick: number
   return count(after) < count(b);
 }
 
+/**
+ * A power offered again on its pick's screen (Back, a level reopened from the overview), with the
+ * pool or epic set it needs shown.
+ *
+ * The screen lists only the pool and epic sets the build owns without this pick, so a pick that
+ * was the build's only power from its set brings the set along, as one chosen on the set picker.
+ *
+ * @param gd Game data.
+ * @param base The build without the pick.
+ * @param pick The pick.
+ * @param power The power it held, if any.
+ * @return The flow's pending power, and its set when the screen wouldn't list it.
+ */
+function offerAgain(gd: GameData, base: Build, pick: number, power: number | undefined): Pick<LevelCtx, 'pendingPower' | 'pendingSet'> {
+  const set = power !== undefined ? gd.setOfPower.get(power)?.set : undefined;
+  if (!set) return { pendingPower: power };
+  const rules = new BuildRules(gd, base);
+  const kind = rules.setKind(set);
+  const listed = (kind !== 'pool' && kind !== 'epic') || rules.setOptions(pick).some((o) => o.set.id === set.id);
+  return listed ? { pendingPower: power } : { pendingPower: power, pendingSet: set.id };
+}
+
 const LOCKED = 'Remove enhancements first';
 
 /** @return The Music switch when the browser remembers none: off on phones (the phone layout), on elsewhere. */
@@ -886,9 +908,9 @@ export const useStore = create<Store>((set, get) => ({
       set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingSlots: pending, flow: level.flow } });
     } else {
       const pick = target.picks[pickInStep]!;
-      const pendingPower = committed.picks[pick]?.power;
       const base = withoutLevel(committed, target, pick, true, false, order);
-      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, pendingPower, pendingSlots: [], flow: level.flow } });
+      const offer = offerAgain(gd, base, pick, committed.picks[pick]?.power);
+      set({ build: base, level: { step, pickInStep, mode: 'wizard', sub, base, orig: base, ...offer, pendingSlots: [], flow: level.flow } });
     }
   },
 
@@ -913,6 +935,7 @@ export const useStore = create<Store>((set, get) => ({
     if (step < 0) return;
     const base = cloneBuild(build);
     base.picks[pickIndex] = null;
+    const power = build.picks[pickIndex]?.power;
     set({
       view: 'level',
       level: {
@@ -922,7 +945,7 @@ export const useStore = create<Store>((set, get) => ({
         sub: 'power',
         base,
         orig: build,
-        pendingPower: build.picks[pickIndex]?.power,
+        ...(gd ? offerAgain(gd, base, pickIndex, power) : { pendingPower: power }),
         pendingSlots: [],
       },
     });

@@ -4,7 +4,7 @@ import { useStage } from '../components/Stage.tsx';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
-import { pairProblem, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
+import { pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
@@ -106,6 +106,11 @@ export function Setup() {
   }, [align]);
   if (!gd) return null;
   const skin = SKINS[skinOf(align)];
+  // an archetype whose training forces a respec (Arachnos Soldier and Widow at 24) is planned as a
+  // Respec build: Leveling is greyed for it, with the reason
+  const respecOnly = archetype ? respecOnlyNote(gd, archetype) : null;
+  const type: BuildType = respecOnly ? 'respec' : buildType;
+  const levelingLocked = respecOnly?.text ?? null;
   // ids are stable across game versions, but a choice may not exist in the version picked here
   const ready = archetype !== undefined && priSet !== undefined && secSet !== undefined && !pairBlocked && gd.core.origins.some((o) => o.id === origin);
   /** @return A set's help text, after why it can't be chosen when it can't. */
@@ -127,13 +132,19 @@ export function Setup() {
       });
       if (!ok) return;
     }
-    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: buildType === 'respec' ? respecLevel(respecTo) - 1 : undefined });
+    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: type === 'respec' ? respecLevel(respecTo) - 1 : undefined });
   };
   const pickAt = (a: Archetype) => {
     if (a.id === at) return;
     setAt(a.id);
     setPri(undefined);
     setSec(undefined);
+    // a Leveling choice is cut over to Respec for an archetype that respecs on training, and says why
+    const note = buildType === 'leveling' ? respecOnlyNote(gd, a) : null;
+    if (note) {
+      setBuildType('respec');
+      void useStore.getState().tell(note);
+    }
   };
   /** Which game version's data the new build uses (each version keeps its own data on the site). */
   const versionPicker = (style: CSSProperties) => (
@@ -154,30 +165,39 @@ export function Setup() {
   );
   /** The Build Type bars (Leveling / Respec) from (x, y), `step` apart, `wd` wide. */
   const typeBars = (x: number, y: number, step: number, wd: number, scale?: number) =>
-    BUILD_TYPES.map((t, i) => (
-      <CheckBar
-        key={t.id}
-        testId={`buildtype:${t.id}`}
-        skin={skin}
-        x={x}
-        y={y + i * step}
-        wd={wd}
-        scale={scale}
-        text={t.label}
-        state={t.id === buildType ? 'selected' : 'standard'}
-        down={t.id === buildType}
-        clickSounds={SELECT}
-        hoverSounds
-        onClick={() => {
-          setBuildType(t.id);
-          setDesc({ text: t.help });
-        }}
-        onHover={(on) => setDesc(on ? { text: t.help } : null)}
-      />
-    ));
+    BUILD_TYPES.map((t, i) => {
+      const locked = t.id === 'leveling' ? levelingLocked : null;
+      return (
+        <CheckBar
+          key={t.id}
+          testId={`buildtype:${t.id}`}
+          skin={skin}
+          x={x}
+          y={y + i * step}
+          wd={wd}
+          scale={scale}
+          text={t.label}
+          state={locked ? 'unselectable' : t.id === type ? 'selected' : 'standard'}
+          down={t.id === type}
+          title={locked ?? undefined}
+          clickSounds={SELECT}
+          hoverSounds
+          onClick={
+            locked
+              ? undefined
+              : () => {
+                  setBuildType(t.id);
+                  setDesc({ text: t.help });
+                }
+          }
+          onHover={(on) => setDesc(on ? { text: locked ?? t.help } : null)}
+          onLongPress={locked ? () => setDesc({ text: locked }) : undefined}
+        />
+      );
+    });
   /** "Respec to level" and its field, shown while Respec is ticked; the label's left edge at x. */
   const levelField = (x: number, cy: number, size: number) =>
-    buildType === 'respec' ? (
+    type === 'respec' ? (
       <div className="abs body-text" style={{ left: x, top: cy - size, height: 2 * size, display: 'flex', alignItems: 'center', gap: size * 0.6, color: '#cfe8ff', fontSize: size, zIndex: 5 }}>
         <label htmlFor="respec-level">Respec to level</label>
         <input

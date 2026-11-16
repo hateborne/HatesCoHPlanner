@@ -53,7 +53,29 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   accolade check).
 - Specialization sets (`SpecializeAt != 0`, VEAT branches): offered alongside the trunk once
   `L >= SpecializeAt` and `SpecializeRequires` passes; only for sets in the class primary or
-  secondary category. Branches exclude each other through their requires.
+  secondary category. Branches exclude each other through their requires, so the first branch
+  power taken chooses the path. `L` is the character's level, never the pick's
+  (`character_IsAllowedToSpecializeInPowerSet`): the level-up screen passes the current level and
+  a respec its pre-respec level (`uiReSpec.c` `respec.maxLevel`, `character_respec.c`
+  `iExpLevel`). So a Respec build at 24 or above may take branch powers from its first pick
+  (`BuildRules.specLevel`); the branch powers keep their own levels. At level 1 the first two
+  picks lock a column (category), so a branch in it may take that pick as its trunk may.
+- The level-up screen lists a branch only while the character owns a power from it or may still
+  specialize in it (`uiLevelPower.c`, `character_WillBeAllowedToSpecializeInPowerSet`: the
+  requires, not the level). Before 24 both branches show, greyed; once one is chosen the other is
+  gone (`BuildRules.setOptions`).
+- Forced respec on training (`LevelUpRespecs` on the class; Arachnos Soldier and Widow: 24):
+  training to that level offers only "Respec and train up to next level"
+  (`contactInteraction.c`, `class_IsRespecLevelUp` gives `TrainRespecNow` instead of `TrainNow`),
+  and the respec runs to the new level (`uiReSpec.c`: `respec.maxLevel` is the level plus one),
+  so the branches are open from its first pick. New Build therefore plans those archetypes as
+  Respec builds only: picking one with Leveling set switches to Respec and says why
+  (`respecOnlyNote`), and Leveling is greyed for them. A leveling build of one from before that (a
+  link, a saved build, an import) that goes past 23 has chosen its powers and slots up to 24 again
+  in game, so it is judged as respecced there (`BuildRules.respecLevel`); one stopped before keeps
+  the branches shut. The export leaves `LevelUpRespecs` out; the planner takes it to be the level
+  the specialization sets open at (`levelUpRespec`), and the pipeline warns if a client breaks
+  that (`forced_respec_warnings`).
 
 ## Auto-issued powers
 
