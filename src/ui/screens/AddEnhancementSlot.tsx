@@ -261,7 +261,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   // a respec (uiReSpec.c respec_assignment) draws every power, greying the ones bought later
   const respec = !!level.flow;
   const later = (e: BuildEntry) => e.level > L;
-  // a respec's slot level reopened from the overview: its slots may still go on any power
+  // a respec's slot level reopened from the overview (a Respec build's, or one an Arachnos build
+  // had on training to 24): its slots may still go on any power
   const anyPower = respec || rules.slotsAnyPower(L);
   const entries = rules.entries().filter((e) => (anyPower || !later(e)) && rules.slottable(e.power) && e.power.sm !== 0);
   const remaining = rules.slotsLeft(levels);

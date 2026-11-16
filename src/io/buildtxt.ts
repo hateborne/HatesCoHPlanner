@@ -24,7 +24,7 @@ import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Power } from '../data/types.ts';
 import { slotsFor } from '../engine/actions.ts';
 import { cleanName, cloneBuild, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
-import { BuildRules } from '../engine/rules.ts';
+import { BuildRules, respecOnlyNote } from '../engine/rules.ts';
 import { leveledSlotShortfall, lowestFreeLevels } from '../engine/schedule.ts';
 import { ImportProblem, READABLE, readable, readablePower } from './importProblem.ts';
 
@@ -60,7 +60,7 @@ export interface TxtImport {
   build: Build; // Hero, built by leveling; every bought slot still at its power's level (see finishBuildTxt)
   level: number; // 0-based character level
   summary: string; // "Example Guy: level 12 Science Blaster, Fire Blast / Gadgets"
-  leveledBlock: string | null; // why the slots can't have come from leveling, or null when they can
+  leveledBlock: string | null; // why Leveling isn't offered (Respec only, or slots leveling can't give), or null
   warnings: string[];
 }
 
@@ -239,6 +239,8 @@ export function readBuildTxt(gd: GameData, text: string): TxtImport {
       late.length === 1 ? `${late[0]!.power.dn} (taken at level ${late[0]!.level + 1}) has ${short.need} added slots` : `Powers taken at level ${from} or later have ${short.need} added slots`;
     leveledBlock = `${who}, but leveling gives only ${short.have} slots from level ${from} on.`;
   }
+  // an archetype planned as Respec only (Arachnos Soldier and Widow) is never imported as leveling
+  leveledBlock = respecOnlyNote(gd, at)?.text ?? leveledBlock;
   const summary = `${cleanName(txt.name) || 'The character'}: level ${txt.level} ${origin.dn} ${at.dn}, ${pri.dn} / ${sec.dn}`;
   return { build: b, level, summary, leveledBlock, warnings: warn };
 }

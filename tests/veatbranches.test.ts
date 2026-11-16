@@ -4,14 +4,14 @@
  * plan them as Respec builds), the other branch hidden once one is chosen, and a power offered
  * again with its pool.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { setPick } from '../src/engine/actions.ts';
 import { newBuild, type Build } from '../src/engine/build.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { BuildRules, levelUpRespec, respecOnlyNote, startingSets } from '../src/engine/rules.ts';
 import { levelSteps } from '../src/engine/schedule.ts';
 import { currentPick, useStore } from '../src/state/store.ts';
-import { loadData, pid } from './helpers/data.ts';
+import { loadData, loadVersionIndex, pid } from './helpers/data.ts';
 
 const gd = loadData();
 const steps = levelSteps(gd.core);
@@ -39,6 +39,11 @@ function arachnos(atName: string, respecTo?: number): Build {
 
 const state = (b: Build, power: string, pick: number) => new BuildRules(gd, b).powerOption(pid(gd, power), pick);
 const listed = (r: BuildRules, pick: number) => r.setOptions(pick).map((o) => o.set.n);
+// a build that has trained to 24: it holds the level-24 pick (a trunk power)
+const trained = (b: Build) => setPick(gd, b, pickAt(AT24), pid(gd, 'Arachnos_Soldiers.Arachnos_Soldier.Single_Shot'));
+
+// the store tests leave no build or level behind for the next test
+afterEach(() => useStore.setState({ build: undefined, level: undefined, view: 'loading', confirm: null }));
 
 describe('Arachnos branches (open at level 24)', () => {
   it('come with a respec on training to 24 (LevelUpRespecs), for the Arachnos archetypes only', () => {
@@ -56,7 +61,32 @@ describe('Arachnos branches (open at level 24)', () => {
     expect(respecOnlyNote(gd, gd.archetypeByName.get('class_arachnos_widow')!)!.text).toBe(
       'Arachnos Widows must Respec at level 24 to select their archetype path, Night Widow or Fortunata. To avoid confusion, Arachnos Widow builds will only be planned as a Respec build.',
     );
+    expect(respecOnlyNote(gd, gd.archetypeByName.get('class_arachnos_soldier')!)!.text).toContain('path, Bane Spider or Crab Spider.');
     expect(respecOnlyNote(gd, gd.archetypeByName.get('class_blaster')!)).toBeNull();
+  });
+
+  it('name the same paths on every published version (each path is its primary branch set, less its last word)', () => {
+    for (const v of loadVersionIndex().versions) {
+      const vgd = loadData(v.id);
+      const note = (n: string) => respecOnlyNote(vgd, vgd.archetypeByName.get(n)!)!.text;
+      expect(note('class_arachnos_soldier'), v.id).toContain('path, Bane Spider or Crab Spider.');
+      expect(note('class_arachnos_widow'), v.id).toContain('path, Night Widow or Fortunata.');
+    }
+  });
+
+  it('start every build of those archetypes as a Respec, to 24 at least', () => {
+    const start = (atName: string, respecTo?: number) => {
+      const at = gd.archetypeByName.get(atName)!;
+      useStore.setState({ gd, steps, build: undefined, level: undefined, view: 'setup', confirm: null });
+      useStore.getState().startBuild({ name: 'x', at: at.id, origin: gd.core.origins[0]!.id, alignment: 'Villain', primary: startingSets(gd, at.cats.pri, at)[0]!.id, secondary: startingSets(gd, at.cats.sec, at)[0]!.id, respecTo });
+      return useStore.getState();
+    };
+    const leveling = start('class_arachnos_widow');
+    expect(leveling.build!.respecTo).toBe(49);
+    expect(leveling.level!.flow).toBeDefined();
+    expect(start('class_arachnos_soldier', 9).build!.respecTo).toBe(AT24);
+    expect(start('class_arachnos_soldier', 30).build!.respecTo).toBe(30);
+    expect(start('class_blaster').build!.respecTo).toBeUndefined();
   });
 
   it('open from the first pick of a respec at 24 or above, as the game checks the respec level', () => {
@@ -83,15 +113,30 @@ describe('Arachnos branches (open at level 24)', () => {
     expect(o.reason).toBe('Available at level 24');
   });
 
-  it('open from level 1 in a leveling build (a link or an import) that goes past 24, and stay shut in one stopped before', () => {
-    const b = arachnos('class_arachnos_soldier');
+  it('open from level 1 in a leveling build (a link or an import) that has trained to 24, and stay shut in one stopped before', () => {
+    const b = trained(arachnos('class_arachnos_soldier'));
     expect(state(b, CHANNELGUN, 0).state).toBe('available');
     expect(state({ ...b, endLevel: AT24 }, CHANNELGUN, 0).state).toBe('available');
     expect(state({ ...b, endLevel: 21 }, CHANNELGUN, 0).reason).toBe('Available at level 24');
     // a respec below 24 that levels on past it gets the training respec too
-    const continued = { ...arachnos('class_arachnos_soldier', 19), endLevel: undefined };
+    const continued = trained({ ...arachnos('class_arachnos_soldier', 19), endLevel: undefined });
     expect(new BuildRules(gd, continued).respecLevel()).toBe(AT24);
     expect(new BuildRules(gd, arachnos('class_arachnos_soldier', 19)).respecLevel()).toBe(19);
+  });
+
+  it('stay shut in a leveling walk short of 24, until it gets there', () => {
+    // the wizard's build holds only the picks before the one being made, and no stop level
+    const walk = setPick(gd, arachnos('class_arachnos_soldier'), 0, pid(gd, 'Arachnos_Soldiers.Arachnos_Soldier.Single_Shot'));
+    const at22 = pickAt(21);
+    expect(state(walk, CHANNELGUN, at22).reason).toBe('Available at level 24');
+    expect(new BuildRules(gd, walk).slotsAnyPower(4)).toBe(false);
+    // the level-24 pick itself is at 24, and once it is made the earlier levels count as respecced
+    expect(state(walk, CHANNELGUN, pickAt(AT24)).state).toBe('available');
+    expect(state(trained(walk), CHANNELGUN, at22).state).toBe('available');
+    // a respec below 24, continued: shut until the walk gets to 24
+    const continued = { ...arachnos('class_arachnos_soldier', 19), endLevel: undefined };
+    expect(new BuildRules(gd, continued).respecLevel()).toBe(19);
+    expect(state(continued, CHANNELGUN, at22).reason).toBe('Available at level 24');
   });
 
   it('take the path from the first branch power: the other branch closes, and is no longer listed', () => {
@@ -115,16 +160,16 @@ describe('Arachnos branches (open at level 24)', () => {
 
   it('pass the build checks with a branch power at level 1 in a build past 24, and flag it in one stopped before', () => {
     const power = pid(gd, CHANNELGUN);
-    for (const b of [setPick(gd, arachnos('class_arachnos_soldier', 49), 0, power), setPick(gd, arachnos('class_arachnos_soldier'), 0, power)]) {
+    for (const b of [setPick(gd, arachnos('class_arachnos_soldier', 49), 0, power), trained(setPick(gd, arachnos('class_arachnos_soldier'), 0, power))]) {
       expect(new BuildRules(gd, b).issues().filter((i) => i.key === 'pick:0')).toEqual([]);
       expect(checkBuild(gd, b).build?.picks[0]?.power).toBe(power);
     }
-    const stopped = { ...setPick(gd, arachnos('class_arachnos_soldier'), 0, power), endLevel: 21 };
+    const stopped = { ...trained(setPick(gd, arachnos('class_arachnos_soldier'), 0, power)), endLevel: 21 };
     expect(new BuildRules(gd, stopped).issues().find((i) => i.key === 'pick:0')?.message).toBe('Available at level 24');
   });
 
   it('let the slots up to 24 go on any power in a leveling build past 24', () => {
-    const b = arachnos('class_arachnos_soldier');
+    const b = trained(arachnos('class_arachnos_soldier'));
     expect(new BuildRules(gd, b).slotsAnyPower(4)).toBe(true);
     expect(new BuildRules(gd, b).slotsAnyPower(AT24 + 1)).toBe(false);
     expect(new BuildRules(gd, { ...b, endLevel: 21 }).slotsAnyPower(4)).toBe(false);
@@ -155,6 +200,9 @@ describe('a power offered again', () => {
       useStore.getState().choosePower(r.setOptions(currentPick(steps, l)).flatMap((o) => o.powers).find((o) => o.state === 'available')!.power.id);
       useStore.getState().finishLevel();
     }
+    // the walk stopped on the level-4 pick's power screen
+    expect(useStore.getState().level!.sub).toBe('power');
+    expect(currentPick(steps, useStore.getState().level!)).toBe(pick);
     const cj = pid(gd, 'Pool.Leaping.Combat_Jumping');
     const leaping = gd.setOfPower.get(cj)!.set.id;
     useStore.getState().closeSetPicker(leaping, cj);
@@ -163,7 +211,7 @@ describe('a power offered again', () => {
     expect(useStore.getState().level!.pendingPower).toBe(cj);
     expect(useStore.getState().level!.pendingSet).toBe(leaping);
     useStore.getState().finishLevel();
-    useStore.getState().stopHere(false);
+    useStore.getState().stopHere(/*openMenu=*/ false);
     useStore.getState().editPick(pick);
     expect(useStore.getState().level!.pendingSet).toBe(leaping);
     // a power from the primary needs no set brought along
