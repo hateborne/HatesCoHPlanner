@@ -204,6 +204,9 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
   watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
   watch_test.py              its tests (python -m unittest pipeline.watch_test; run by CI)
+  compare.py                 what another server's data does differently from Homecoming's
+                             (python -m pipeline.compare --server thunderspy)
+  compare_test.py            its tests (python -m unittest pipeline.compare_test; run by CI)
   config.py                  inputs, preflight checks, atomic writes
   ids.json                   stable IDs (append-only)
   ids-thunderspy.json        Thunderspy's stable IDs (append-only)
@@ -217,6 +220,8 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   report-<id>.md             report of a version that is not the default (pipeline.run), or what an
                              approximate version changed (overlay.py)
   report-thunderspy.md       Thunderspy's report (report-thunderspy-<id>.md for older versions)
+  report-thunderspy-diff.md  every difference of Thunderspy's data from Homecoming's, by internal
+                             name (pipeline.compare; to spot-check in game)
 tools/                       standard-library Python decoders for client file formats
 scripts/release-version.mjs  the version a deploy publishes (plain Node; run by pages.yml)
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
@@ -293,6 +298,16 @@ when something needs doing (2 when it can't check, a crash included). Once the r
 version, `python -m pipeline.watch --record` records it; it refuses unless the default version was
 made from the live `tspy/bin.pigg`.
 
+`python -m pipeline.compare --server thunderspy` writes `pipeline/report-thunderspy-diff.md`: where
+Thunderspy's default version differs from Homecoming's default, by internal name (player powers, power
+set orders and levels, archetype tables, the level schedule, boost effect, exemplar and diminishing
+returns, enhancement sets and their bonuses). It reads committed data only (no client), resolves ids,
+attribute offsets, damage and defense types, `Knock` / `Knockback` and power modes to names first so
+numbering differences are not reported, and compares per-level tables over levels 1-50. Effects show
+as counts only; `--effects N` writes `report-thunderspy-diff-full.md` (gitignored) with N differing
+effect lines a side per power. The owner uses it to know what to spot-check in the Thunderspy client. A Thunderspy `pipeline.run` summarises it in
+`report-thunderspy.md` ("Differences from Homecoming"); re-run it after a new release or a new
+Homecoming default.
 An older patch with no client files left can get an approximate version:
 `python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
 available level from the configured Mids database (its header names the issue and page). Review
@@ -479,6 +494,7 @@ npm run e2e          # Playwright browser tests (local only; uses the installed 
 npm run build        # type check + production build into dist/
 python -m pipeline.run --help
 python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
+python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -490,7 +506,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test` (the release check, the forced respec check); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test` (the release check, the forced respec check, the difference report); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
@@ -593,7 +609,7 @@ When you hand back a pull request, say which bump it calls for, so the owner can
 - One topic per pull request. Describe the user-visible effect and how it was verified (tests,
   screenshots of the screens touched).
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
-  `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/ids.json`) change only through a
+  `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/ids.json`) change only through a
   pipeline run, never by hand.
 
 ## Game-data notes for agents

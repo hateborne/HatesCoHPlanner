@@ -150,6 +150,9 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
                 if names:
                     L.append(f"- {what}, {kind} ({len(names)}): " + ", ".join(names))
         L.append("")
+    if not config.SERVER.shared_assets:
+        from pipeline import compare
+        L.extend(compare.report_section(config.SERVER.id, m["dataVersion"], exp["root"]))
     mm = exp.get("mids")
     if mm and mm.get("none"):
         L.append("## Mids map\n\nNone: MidsReborn has no database for this server.\n")
