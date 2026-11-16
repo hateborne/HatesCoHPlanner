@@ -81,6 +81,7 @@ export function readPetsFile(raw: unknown): PetsFile | null {
   if (!isRec(pets) || !Object.values(pets).every((cs) => Array.isArray(cs) && cs.every(isCreation))) return null;
   if (!isRec(powers) || !Object.values(powers).every(isPetPower)) return null;
   if (!Array.isArray(tables) || !tables.every(isNums)) return null;
+  if (!opt(raw.names, (n) => isRec(n) && Object.values(n).every(isStr))) return null;
   const isIndex = (i: unknown) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < tables.length;
   if (!isRec(classes) || !Object.values(classes).every((t) => isRec(t) && Object.values(t).every(isIndex))) return null;
   const file: PetsFile = {
@@ -90,5 +91,6 @@ export function readPetsFile(raw: unknown): PetsFile | null {
     tables: tables as number[][],
   };
   if (raw.plus !== undefined) file.plus = raw.plus as number;
+  if (raw.names !== undefined) file.names = bare(raw.names as Rec);
   return file;
 }

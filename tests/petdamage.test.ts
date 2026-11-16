@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GameData, loadGameData, PETS_FOLDER } from '../src/data/gamedata.ts';
 import { serverById } from '../src/data/servers.ts';
-import type { PetsFile } from '../src/data/types.ts';
+import type { Effect, Mod, PetsFile, Power } from '../src/data/types.ts';
 import { powerInfo, segText } from '../src/engine/powerinfo.ts';
 import { evalRequires, type EvalContext } from '../src/engine/requires.ts';
 import { dataDir, loadData, loadVersionIndex } from './helpers/data.ts';
@@ -228,6 +228,73 @@ describe("pseudo-pet effect lines (the client's power_AddPetEffects)", () => {
         expect(lines(gd, 'Class_Brute', BURN, null).some((l) => l.includes('Ticks'))).toBe(false);
       },
     );
+  });
+});
+
+describe("ExecutePower (the client's getTotalDamage counts what a power executes)", () => {
+  const gd = loadData('i28p4');
+  const EXEC = gd.attribByName.get('ExecutePower')!;
+  /** @return Average Damage of a power object (base and enhanced) for an archetype at 50. */
+  const avg = (at: string, p: Power, enh: Map<number, number> | null) =>
+    segText(powerInfo(gd, gd.archetypeByName.get(at.toLowerCase())!, p, L50, enh).stats.find((r) => r.label === 'Average Damage:')?.value ?? []);
+  /** @return A copy of a power's groups with each executing mod changed (null drops it). */
+  const mapExec = (effs: Effect[] | undefined, f: (m: Mod) => Mod | null): Effect[] | undefined =>
+    effs?.map((e) => ({
+      ...e,
+      m: e.m?.flatMap((m) => (m.a.includes(EXEC) ? (f(m) ?? []) : [m])),
+      sub: mapExec(e.sub, f),
+    }));
+  const HAYMAKER = gd.powerByName.get('brute_melee.super_strength.haymaker')!;
+  const SMASH = gd.powerByName.get('redirects.super_strength.smash')!;
+  const base = (s: string) => Number(s.replace(/^.*\(|\)$/g, ''));
+  const enhanced = (s: string) => Number(s.split(' ')[0]);
+
+  it("adds the executed power's own total, whatever the executing group's requirements", () => {
+    // Haymaker executes Smash under Unleash Might (a mode the planner never has on): counted anyway
+    const own = avg('Class_Brute', { ...HAYMAKER, eff: mapExec(HAYMAKER.eff, () => null), act: mapExec(HAYMAKER.act, () => null) }, damageEnh(gd));
+    const smash = avg('Class_Brute', SMASH, damageEnh(gd));
+    const all = avg('Class_Brute', HAYMAKER, damageEnh(gd));
+    expect(base(all)).toBeCloseTo(base(own) + base(smash), 1);
+    expect(enhanced(all)).toBeCloseTo(enhanced(own) + enhanced(smash), 1); // CopyBoosts: enhanced
+  });
+
+  it('counts its base damage only without CopyBoosts', () => {
+    const noCopy = (m: Mod): Mod => ({ ...m, fl: m.fl?.filter((f) => f !== 'CopyBoosts') });
+    const p = { ...HAYMAKER, eff: mapExec(HAYMAKER.eff, noCopy), act: mapExec(HAYMAKER.act, noCopy) };
+    const own = avg('Class_Brute', { ...HAYMAKER, eff: mapExec(HAYMAKER.eff, () => null), act: mapExec(HAYMAKER.act, () => null) }, damageEnh(gd));
+    expect(enhanced(avg('Class_Brute', p, damageEnh(gd)))).toBeCloseTo(enhanced(own) + base(avg('Class_Brute', SMASH, null)), 1);
+  });
+
+  it("runs what a pet's power executes as the pet, each activation", () => {
+    // Storm Cell's pet runs Lightning_Proc every second for 60s; each executes a lightning strike
+    const CELL = 'Blaster_Ranged.Storm_Blast.Storm_Cell';
+    const full = stats(gd, 'Class_Blaster', CELL, null)['Average Damage:']!;
+    expect(full).toBe('3753.79');
+    withPets(
+      gd,
+      (f) => ({ ...f, pets: { ...f.pets, [CELL]: f.pets[CELL]!.map((c) => ({ ...c, dur: 1 })) } }),
+      () => expect(Number(stats(gd, 'Class_Blaster', CELL, null)['Average Damage:'])).toBeCloseTo(Number(full) / 60, 1),
+    );
+  });
+
+  it('stops four executions deep, as the client does', () => {
+    const PROC = 'Redirects.Storm_Blast.Lightning_Proc';
+    withPets(
+      gd,
+      (f) => {
+        const pp = f.powers[PROC]!;
+        const self = (m: Mod): Mod => ({ ...m, pwn: [PROC] });
+        return { ...f, powers: { ...f.powers, [PROC]: { ...pp, eff: mapExec(pp.eff, self), act: mapExec(pp.act, self) } } };
+      },
+      () => expect(stats(gd, 'Class_Blaster', 'Blaster_Ranged.Storm_Blast.Storm_Cell', null)['Average Damage:']).toBeUndefined(),
+    );
+  });
+
+  it("names a pet's grant the version's own data lacks", () => {
+    // Storm Cell's Tempest grants In Storm Cell to its targets (Tide Pool's grants go to the pet
+    // itself, which the client doesn't list)
+    expect(gd.powerByName.has('temporary_powers.temporary_powers.stormblast_instormcell')).toBe(false);
+    expect(lines(gd, 'Class_Blaster', 'Blaster_Ranged.Storm_Blast.Storm_Cell', null)).toContain('Grants power In Storm Cell');
   });
 });
 

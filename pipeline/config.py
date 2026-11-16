@@ -99,8 +99,12 @@ class Server:
     pet_extra: int = 0       # its client's power info counts a pseudo-pet's power
                              # max(1, floor(Duration / ActivatePeriod) + this) times: Homecoming's 0,
                              # Thunderspy's 1 (both clients' getTotalDamage, decompiled)
-    pet_checked: tuple = ()  # SHA-1s of the client exes whose pet rules were read (pet_extra and
-                             # docs/game-rules.md, "Pseudo-pet damage"); another exe gets a warning
+    pet_skip_hidden: bool = True  # its client's power info lists nothing of a pseudo-pet whose
+                             # EntCreate mod is under a HideFromInfo group (Homecoming's; Thunderspy's
+                             # lists it)
+    pet_checked: tuple = ()  # SHA-1s of the client exes whose pet rules were read (pet_extra,
+                             # pet_skip_hidden and docs/game-rules.md, "Pseudo-pet damage"); another
+                             # exe gets a warning
 
 
 HOMECOMING = Server("homecoming", "COH_CLIENT", ("client",), "bin/win64/live/cityofheroes.exe",
@@ -113,7 +117,7 @@ HOMECOMING = Server("homecoming", "COH_CLIENT", ("client",), "bin/win64/live/cit
 THUNDERSPY = Server("thunderspy", "COH_CLIENT_THUNDERSPY", ("servers", "thunderspy", "client"),
                     "Thunderspy.exe", "tspy/bin.pigg", "tspy/bin.pigg", "piggs", "tspy", None,
                     "thunderspy", "ids-thunderspy.json", "report-thunderspy", False, False,
-                    version_prefix="ts", pet_extra=1,
+                    version_prefix="ts", pet_extra=1, pet_skip_hidden=False,
                     pet_checked=("160b199f38f021432bd69ce5085b4ac73cb4af5c",))  # release 9.6
 SERVERS = {s.id: s for s in (HOMECOMING, THUNDERSPY)}
 # Folder names under public/data that hold a server's data, never a game version (Rebirth's is

@@ -229,7 +229,8 @@ be picked at a level, what is auto-granted, where slots can go, what is wrong wi
 `totals.ts` and `enhance.ts` do the math with the game's own tables: enhancement curves,
 Enhancement Diversification, boosters and exemplar handicaps, set bonuses with the rule of 5,
 and archetype caps. The power info (`powerinfo.ts`) adds the damage of the pseudo-pets a power
-makes and lists their effects, as the live clients do (`docs/game-rules.md`, "Pseudo-pet damage").
+makes and of the powers it executes, and lists the pets' effects, as the live clients do
+(`docs/game-rules.md`, "Pseudo-pet damage").
 The engine is pure and synchronous; keep React and the DOM out of it.
 
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per

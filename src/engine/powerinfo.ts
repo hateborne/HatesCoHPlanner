@@ -472,6 +472,8 @@ function attribValueMarkup(
 // How many pets deep a pet's damage is followed (a pet whose power makes a pet ...): the data goes
 // one deep, and a loop in damaged data must still end.
 const MAX_PET_DEPTH = 4;
+// How many ExecutePower steps deep the client follows (a recursion counter it checks before each).
+const MAX_EXECUTE_DEPTH = 4;
 
 /**
  * Build the detailed-info content of a power, PvE, with enhanced and (base) values.
@@ -605,24 +607,35 @@ export function powerInfo(
   templates(power.act, 1, [], all);
 
   const hp = O['HitPoints'] ?? 80;
+  const EXECUTE = gd.attribByName.get('ExecutePower') ?? 512;
+
+  /** The class a power runs with: its tables, its requirement context, and whether it is a pet's. */
+  interface Runner {
+    cls: string;
+    table: (tbl: string) => number;
+    ec: EvalContext;
+    pet: boolean;
+  }
+
   /**
    * getTotalDamage: the average damage of a power's templates, base and enhanced, plus that of
-   * every pseudo-pet it creates (petDamage).
+   * every pseudo-pet it creates (petDamage) and every power it executes (execDamage).
    *
-   * @param name The power's full name (its pets are listed under it).
-   * @param tmpls Its templates, walked with its class's requirement context.
-   * @param table A mod table's value for the class running it, at the level shown.
-   * @param cls That class's name (a PseudoPet it creates runs with it).
+   * @param src The power: its full name (its pets are listed under it) and its effect groups.
+   * @param tmpls Its templates, walked with the runner's requirement context.
+   * @param run The class running it.
    * @param depth How many pets deep this power runs (0: the character's own).
+   * @param execDepth How many ExecutePower steps deep it runs.
    * @return Base and enhanced damage.
    */
   const totalDamage = (
-    name: string,
+    src: { n: string; eff?: Effect[]; act?: Effect[] },
     tmpls: readonly Tmpl[],
-    table: (tbl: string) => number,
-    cls: string,
+    run: Runner,
     depth: number,
+    execDepth: number,
   ): { base: number; total: number } => {
+    const table = run.table;
     let base = 0;
     let total = 0;
     for (const t of tmpls) {
@@ -651,8 +664,60 @@ export function powerInfo(
       base += -mag * n;
       total += -mag * n * (1 + boost);
     }
-    const pets = petDamage(name, cls, depth);
-    return { base: base + pets.base, total: total + pets.total };
+    const pets = petDamage(src.n, run.cls, depth, execDepth);
+    const exec = execDamage(src, run, depth, execDepth);
+    return { base: base + pets.base + exec.base, total: total + pets.total + exec.total };
+  };
+
+  /** @return Every mod of these groups (and the groups in them) that executes a power, once per such attribute. */
+  const executeMods = (effs: Effect[] | undefined, out: Mod[] = []): Mod[] => {
+    for (const e of effs ?? []) {
+      for (const m of e.m ?? []) for (const a of m.a) if (a === EXECUTE) out.push(m);
+      executeMods(e.sub, out);
+    }
+    return out;
+  };
+
+  /**
+   * The damage of the powers a power executes (ExecutePower), as the live client's getTotalDamage
+   * adds it (both clients, decompiled): each one's own total, run by the same class, with its
+   * enhanced damage only when the mod has CopyBoosts. Every executing mod counts, whatever its
+   * group's chance or requirements, as the client reads its whole template list; executions nest
+   * at most four deep.
+   *
+   * @param src The executing power.
+   * @param run The class running it.
+   * @param depth How many pets deep it runs.
+   * @param execDepth How many ExecutePower steps deep it runs.
+   * @return Base and enhanced damage.
+   */
+  const execDamage = (
+    src: { eff?: Effect[]; act?: Effect[] },
+    run: Runner,
+    depth: number,
+    execDepth: number,
+  ): { base: number; total: number } => {
+    let base = 0;
+    let total = 0;
+    if (execDepth >= MAX_EXECUTE_DEPTH) return { base, total };
+    for (const m of [...executeMods(src.eff), ...executeMods(src.act)]) {
+      // the character's powers name what they execute by id; a pet's (from the pets file) by name
+      const named = m.pwn?.map((n) => ({ n, pp: gd.pets?.powers[n] ?? gd.powerByName.get(n.toLowerCase()) })) ?? [];
+      const byId = m.pw?.map((id) => {
+        const pp = gd.powerById.get(id);
+        return { n: pp?.n ?? '', pp };
+      }) ?? [];
+      for (const { n, pp } of [...byId, ...named]) {
+        if (!pp) continue;
+        const tmpls: Tmpl[] = [];
+        templates(pp.eff, 1, [], tmpls, run.ec, run.pet);
+        templates(pp.act, 1, [], tmpls, run.ec, run.pet);
+        const r = totalDamage({ n, eff: pp.eff, act: pp.act }, tmpls, run, depth, execDepth + 1);
+        base += r.base;
+        total += m.fl?.includes('CopyBoosts') ? r.total : r.base;
+      }
+    }
+    return { base, total };
   };
 
   /**
@@ -669,13 +734,15 @@ export function powerInfo(
    * 4. Without CopyBoosts its enhanced damage is its base damage.
    * 5. Its templates follow the client's chance rules (templates, `pet`): a DoT at its tick
    *    chance, anything else at its own group's chance, HideFromInfo and PPM groups included.
+   * 6. What its powers execute runs as the pet too (execDamage).
    *
    * @param name The creating power's full name.
    * @param cls The class running the creating power.
    * @param depth How many pets deep the creating power runs.
+   * @param execDepth How many ExecutePower steps deep it runs.
    * @return Base and enhanced pet damage (none without the version's pet file).
    */
-  const petDamage = (name: string, cls: string, depth: number): { base: number; total: number } => {
+  const petDamage = (name: string, cls: string, depth: number, execDepth: number): { base: number; total: number } => {
     let base = 0;
     let total = 0;
     const file = gd.pets;
@@ -686,10 +753,10 @@ export function powerInfo(
       if (powers.some(([, pp]) => pp && pp.type !== 'Auto')) continue;
       const petCls = c.pseudo ? cls : c.cls;
       if (!petCls) continue;
-      const pctx = contextFor(petCls, cls);
+      const run: Runner = { cls: petCls, table: (tbl) => gd.classTable(petCls, tbl, level), ec: contextFor(petCls, cls), pet: true };
       for (const [pn, pp] of powers) {
         if (!pp) continue;
-        const r = totalDamage(pn, petTemplates(pp, pctx), (tbl) => gd.classTable(petCls, tbl, level), petCls, depth + 1);
+        const r = totalDamage({ n: pn, eff: pp.eff, act: pp.act }, petTemplates(pp, run.ec), run, depth + 1, execDepth);
         const ap = pp.ap ?? 0;
         const times = ap ? Math.max(1, Math.floor(Math.fround(Math.fround(c.dur ?? 0) / Math.fround(ap))) + plus) : 1;
         base += r.base * times;
@@ -699,7 +766,8 @@ export function powerInfo(
     return { base, total };
   };
 
-  const { base: dmgBase, total: dmgTotal } = totalDamage(power.n, all, (tbl) => gd.table(at, tbl, level), at.n, 0);
+  const own: Runner = { cls: at.n, table: (tbl) => gd.table(at, tbl, level), ec: ctx, pet: false };
+  const { base: dmgBase, total: dmgTotal } = totalDamage(power, all, own, 0, 0);
 
   // ---- base stats (power_AddBaseStats) ----
   const rechBoost = eff(O['RechargeTime']);
@@ -828,10 +896,17 @@ export function powerInfo(
       if (pet && m.tg === 'Caster') continue; // the client doesn't list what a pet does to itself
 
       if (offset === 481 || offset === 486 || offset === (gd.attribByName.get('GrantPower') ?? 481) || offset === (gd.attribByName.get('GrantBoostedPower') ?? 486)) {
-        const pw = m.pw?.[0] !== undefined ? gd.powerById.get(m.pw[0]) : m.pwn?.[0] !== undefined ? gd.powerByName.get(m.pwn[0].toLowerCase()) : undefined;
-        if (pw) {
+        // a pet's grant is named; one the version's own data lacks has its name in the pets file
+        const pn = m.pwn?.[0];
+        const dn =
+          m.pw?.[0] !== undefined
+            ? gd.powerById.get(m.pw[0])?.dn
+            : pn !== undefined
+              ? (gd.powerByName.get(pn.toLowerCase())?.dn ?? gd.pets?.names?.[pn])
+              : undefined;
+        if (dn) {
           out.push({
-            line: parseMarkup(`<color #52ff7d>${TXT.powerGrant.replace('{powerName}', pw.dn)}`),
+            line: parseMarkup(`<color #52ff7d>${TXT.powerGrant.replace('{powerName}', dn)}`),
             notes: [],
           });
         }

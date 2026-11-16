@@ -205,7 +205,7 @@ export interface PetCreation {
   boosts?: number; // 1: CopyBoosts, the pet's damage takes the caster's enhancements
   pseudo?: number; // 1: PseudoPet, the pet runs with its caster's class
   cls?: string; // otherwise the class it runs with (the mod's Class, else its villain def's)
-  hid?: number; // 1: the mod is under a HideFromInfo group (its damage counts, its effects aren't listed)
+  hid?: number; // 1: the client lists none of its effects (Homecoming's, for a mod under a HideFromInfo group); its damage counts
 }
 
 /** A pet's power: what its damage total needs. */
@@ -223,7 +223,8 @@ export interface PetPower {
 export interface PetsFile {
   plus?: number; // the server's client counts each pet power max(1, floor(dur / ap) + plus) times (Thunderspy's 1)
   pets: Record<string, PetCreation[]>; // creating power (full name) -> the pets its EntCreate mods make
-  powers: Record<string, PetPower>; // pet powers by full name
+  powers: Record<string, PetPower>; // pet powers by full name, and the powers they execute
+  names?: Record<string, string>; // display names of what pet powers grant that the version's own data lacks
   classes: Record<string, Record<string, number>>; // class -> lower-cased table name -> index into tables
   tables: number[][];
 }

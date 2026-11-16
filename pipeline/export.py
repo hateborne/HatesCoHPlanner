@@ -493,6 +493,10 @@ class Exporter:
         yield from walk(rec.get("Effect"), False)
         yield from walk(rec.get("ActivationEffect"), False)
 
+    def _special(self, name: str) -> int | None:
+        """@return The offset of the client's special attribute with this name, or None."""
+        return next((o for o, a in self.L.attribs.items() if a.get("kind") == "special" and a["name"] == name), None)
+
     def build_pets(self) -> dict:
         """The pseudo-pets whose damage the client's power info adds to the power that creates them.
 
@@ -511,16 +515,18 @@ class Exporter:
 
         @return {"pets": {creating power: [creation]}, "powers": {pet power: {"type", "ap"?,
             "eff"?, "act"?}}, "classes": {class: {table: index into tables}}, "tables": [values],
-            "summary": counts, "plus"?}, where a creation is {"p": [pet powers, as the client lists
-            them], "def"?: how many of them come from the villain def, "dur"?, "boosts"?: 1,
-            "pseudo"?: 1, "cls"?, "hid"?: 1 (its mod is under a HideFromInfo group)}, in the order
-            of the client's template list. A pet power's mods name granted powers by full name
-            ("pwn"). "classes" holds a villain class's tables, and only those tables of an
-            archetype that core.json lacks. "plus" is the server's client's extra activation
+            "summary": counts, "plus"?, "names"?}, where a creation is {"p": [pet powers, as the
+            client lists them], "def"?: how many of them come from the villain def, "dur"?,
+            "boosts"?: 1, "pseudo"?: 1, "cls"?, "hid"?: 1 (the client lists none of it: its mod is
+            under a HideFromInfo group and config.Server.pet_skip_hidden)}, in the order of the
+            client's template list. "powers" also holds what a pet's powers execute (ExecutePower:
+            the pet runs it, and its damage counts). A pet power's mods name granted powers by full
+            name ("pwn"), and "names" gives the display name of those the version's own data
+            lacks. "classes" holds a villain class's tables, and only those tables of an archetype
+            that core.json lacks. "plus" is the server's client's extra activation
             (config.Server.pet_extra), when it has one.
         """
-        ent = next((o for o, a in self.L.attribs.items()
-                    if a.get("kind") == "special" and a["name"] == "EntCreate"), None)
+        ent = self._special("EntCreate")
         villains = {v["Name"].lower(): v for v in self.L.villains}
         vclasses = {c["Name"].lower(): c for c in self.L.villain_classes}
         pclasses = {c["Name"].lower(): c for c in self.L.classes}
@@ -545,7 +551,7 @@ class Exporter:
             o: dict = {"p": names}
             if from_def:
                 o["def"] = from_def
-            if hidden:
+            if hidden and config.SERVER.pet_skip_hidden:
                 o["hid"] = 1
             if a.get("Duration"):
                 o["dur"] = num(a["Duration"])
@@ -564,24 +570,48 @@ class Exporter:
             o["cls"] = cls["Name"]
             return o
 
+        execute = self._special("ExecutePower")
+        grants = {o for o in (self._special("GrantPower"), self._special("GrantBoostedPower")) if o is not None}
         pets: dict[str, list] = {}
-        pet_names: set[str] = set()
-        todo = sorted(self.exported_names, reverse=True)
+        pet_names: set[str] = set()  # every power a pet runs: its powers and what they execute
+        frontier: list[str] = []
         seen: set[str] = set()
-        while ent is not None and todo:
-            name = todo.pop()
+
+        def creations_of(name: str) -> None:
             if name in seen:
-                continue
+                return
             seen.add(name)
             made = [c for c in (creation(a, h) for a, h in self.client_templates(self.pw[name])
                                 if ent in a["Attrib"]) if c]
             if made:
                 pets[name] = made
                 for c in made:
-                    pet_names.update(c["p"])
-                    todo.extend(sorted((n for n in c["p"] if n not in seen), reverse=True))
+                    for p in c["p"]:
+                        if p not in pet_names:
+                            pet_names.add(p)
+                            frontier.append(p)
+
+        def targets(rec: dict, attribs: set) -> list[str]:
+            """@return The powers a power's grant-style mods on these attributes name (resolved)."""
+            out = []
+            for a in self.walk_mods(rec):
+                if set(a["Attrib"]) & attribs:
+                    out += [n for n in (self.power_name(x) for x in param_power_names(a.get("Params"))) if n]
+            return out
+
+        if ent is not None:
+            for name in sorted(self.exported_names):
+                creations_of(name)
+            while frontier:  # a pet's power may make pets, or execute powers that the pet runs too
+                n = frontier.pop()
+                creations_of(n)
+                for t in targets(self.pw[n], {execute} if execute is not None else set()):
+                    if t not in pet_names:
+                        pet_names.add(t)
+                        frontier.append(t)
 
         kept_tables, kept_pvp = set(self.used_tables), self.report["pvp_effects_dropped"]
+        kept_text = Counter(self.report["missing_text"])
         powers: dict[str, dict] = {}
         tables: set[str] = set()
         for n in sorted(pet_names):
@@ -595,7 +625,12 @@ class Exporter:
                     o[dst] = effs
             powers[n] = o
             tables.update(a["Table"].lower() for a in self.walk_mods(r) if a.get("Table"))
+        # what a pet's power grants, by name, when the version's own data lacks it ("Grants power X")
+        names = {t: self.text(self.pw[t].get("DisplayName") or "") for n in pet_names
+                 for t in targets(self.pw[n], grants) if t not in self.exported_names}
+        names = {t: dn for t, dn in sorted(names.items()) if dn}
         self.used_tables, self.report["pvp_effects_dropped"] = kept_tables, kept_pvp
+        self.report["missing_text"] = kept_text
 
         pool: dict[tuple, int] = {}
         pool_list: list[list] = []
@@ -625,6 +660,8 @@ class Exporter:
                 if c["Name"] not in classes:
                     add(c, kept_tables)
         extra = {"plus": config.SERVER.pet_extra} if config.SERVER.pet_extra else {}
+        if names:
+            extra["names"] = names
         return {**extra, "pets": dict(sorted(pets.items())), "powers": powers,
                 "classes": dict(sorted(classes.items())), "tables": pool_list,
                 "summary": {"creators": len(pets), "pets": len(made), "powers": len(powers),

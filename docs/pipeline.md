@@ -27,7 +27,8 @@ folder holds `core.json`, `powersets.json`, `powers.json`, `boosts.json` and `mi
 Beside it the run writes the version's pseudo-pets, `public/data/pets/<version>.json`
 (Exporter.build_pets): the pets whose damage the client's power info adds to the power that makes
 them (Burn, Irradiated Ground, Rain of Fire, ...), with their powers, villain classes and the
-tables they read (villaindef.bin and villain_classes.bin are decoded for it). It is not part of the
+tables they read (villaindef.bin and villain_classes.bin are decoded for it), what their powers
+execute and the names of what they grant that the version lacks. It is not part of the
 version hash. `python -m pipeline.pets [--server S] [--game-version V]` writes only that file, for
 a version published before it existed, and refuses any client but the one the version was made
 from (`COH_CLIENT` pointing at a copy of an older client for an older version). The pet rules come

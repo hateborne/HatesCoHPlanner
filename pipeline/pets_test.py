@@ -77,8 +77,8 @@ def power(name: str, ptype: int, mods: list, ap: float = 0.0, hidden: list | Non
     group = lambda flags, ms, sub: {"Chance": 1.0, "Requires": [], "Flags": flags,  # noqa: E731
                                     "AttribMod": ms, "Effect": sub}
     sub = [group(32, [], [group(0, hidden, [])])] if hidden else []
-    return {"FullName": name, "Type": ptype, "ActivatePeriod": ap, "Effect": [group(0, mods, sub)],
-            "ActivationEffect": []}
+    return {"FullName": name, "DisplayName": name.rsplit(".", 1)[-1], "Type": ptype, "ActivatePeriod": ap,
+            "Effect": [group(0, mods, sub)], "ActivationEffect": []}
 
 
 ENT = 469
@@ -92,6 +92,7 @@ def live() -> LiveData:
     ent_real = params([1, 0, 0, 0, 0, 0, 0, 0, 0, 0], {0: "Pets_Henchman"})
     ent_bare = params([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1], {10: "Pets.Patch.Tick"})
     grant = params([0, 0, 1, 7], {3: "Pets.Patch.Tick"}, n=4)
+    execute = params([0, 0, 1, 7], {3: "Pets.Zap.Zap"}, n=4)
     powers = [
         power("Blaster_Ranged.Fire_Blast.Burn", 0, [mod(ENT, Params=ent_def), mod(ENT, Params=ent_real),
                                                     mod(ENT, Params=ent_bare)],
@@ -99,7 +100,8 @@ def live() -> LiveData:
         power("Pets.Patch.Tick", 1, [mod(8, Scale=0.1, Table="Melee_Pet_Only")], ap=0.8),
         power("Pets.Patch.Flash", 1, [mod(481, Params=grant)]),
         power("Pets.Puddle.Aura", 1, [mod(8, Scale=0.2)], ap=2.0),
-        power("Pets.Puddle.Ripple", 1, [mod(8, Scale=0.3)], ap=1.0),
+        power("Pets.Puddle.Ripple", 1, [mod(8, Scale=0.3), mod(512, Params=execute)], ap=1.0),
+        power("Pets.Zap.Zap", 0, [mod(16, Scale=0.5, Table="Ranged_Damage")]),
         power("Pets.Henchman.Punch", 0, [mod(0)]),
     ]
     sets = [{"FullName": "Blaster_Ranged.Fire_Blast", "Name": "Fire_Blast", "Powers": ["Blaster_Ranged.Fire_Blast.Burn"]},
@@ -130,6 +132,7 @@ def live() -> LiveData:
                    "Power": [{"PowerCategory": "Pets", "PowerSet": "Henchman", "Power": "Punch"}]}],
         villain_classes=[{"Name": "Class_Minion_Pets", "ModTable": [table("Melee_Damage", -20.0),
                                                                     table("Melee_Pet_Only", -4.0),
+                                                                    table("Ranged_Damage", -5.0),
                                                                     table("Unused", 1.0)]}],
         ent_create_layout=HC)
 
@@ -155,17 +158,34 @@ class BuildPetsTest(unittest.TestCase):
                          {"no class": 1, "not auto only (a real pet)": 1})
 
     def test_pet_powers_and_tables(self):
+        # what a pet's power executes is the pet's to run (its damage counts), whatever its type
         self.assertEqual(sorted(self.pets["powers"]),
-                         ["Pets.Patch.Flash", "Pets.Patch.Tick", "Pets.Puddle.Aura", "Pets.Puddle.Ripple"])
+                         ["Pets.Patch.Flash", "Pets.Patch.Tick", "Pets.Puddle.Aura", "Pets.Puddle.Ripple",
+                          "Pets.Zap.Zap"])
+        self.assertEqual(self.pets["powers"]["Pets.Zap.Zap"]["type"], "Click")
+        # a grant the version's own data lacks is named for its "Grants power" line
+        self.assertEqual(self.pets["names"], {"Pets.Patch.Tick": "Tick"})
         self.assertEqual(self.pets["powers"]["Pets.Patch.Tick"]["type"], "Auto")
         self.assertEqual(self.pets["powers"]["Pets.Patch.Tick"]["ap"], 0.8)
         # a pet's grants are named, not numbered: the pets file allocates no ids
         self.assertEqual(self.pets["powers"]["Pets.Patch.Flash"]["eff"][0]["m"][0]["pwn"], ["Pets.Patch.Tick"])
         self.assertNotIn("pw", self.pets["powers"]["Pets.Patch.Flash"]["eff"][0]["m"][0])
         # the villain class gets every table its pets read; an archetype only those core.json lacks
-        self.assertEqual(sorted(self.pets["classes"]["Class_Minion_Pets"]), ["melee_damage", "melee_pet_only"])
+        self.assertEqual(sorted(self.pets["classes"]["Class_Minion_Pets"]),
+                         ["melee_damage", "melee_pet_only", "ranged_damage"])
         self.assertEqual(sorted(self.pets["classes"]["Class_Blaster"]), ["melee_pet_only"])
         self.assertNotIn("plus", self.pets)  # Homecoming's client adds no activation
+
+    def test_hidden_pets_by_the_server_client(self):
+        # Thunderspy's client lists a pet under a HideFromInfo group; Homecoming's doesn't
+        ts = dataclasses.replace(config.SERVER, pet_skip_hidden=False)
+        with mock.patch.object(config, "SERVER", ts):
+            ex = Exporter(live())
+            ex.exported_names = {"Blaster_Ranged.Fire_Blast.Burn"}
+            ex.used_tables = {"melee_damage"}
+            made = ex.build_pets()["pets"]["Blaster_Ranged.Fire_Blast.Burn"]
+        self.assertNotIn("hid", made[0])
+        self.assertEqual(self.pets["pets"]["Blaster_Ranged.Fire_Blast.Burn"][0]["hid"], 1)
 
     def test_changes_nothing_the_version_exports(self):
         self.assertEqual(self.ex.used_tables, {"melee_damage"})

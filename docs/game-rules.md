@@ -300,9 +300,26 @@ Its damage (getTotalDamage):
 - Its enhanced damage takes the caster's enhancement strengths only with `CopyBoosts`; without it,
   the enhanced figure is the base.
 
+What a power executes (getTotalDamage's ExecutePower branch, both clients), for the character's own
+powers and pets' alike:
+
+- Each power an `ExecutePower` mod names adds its own total, run by the same class, with its
+  enhanced damage only when the mod has `CopyBoosts`. Every executing mod counts, whatever its
+  group's chance, requirements or flags: the client reads the whole template list here. So Brawl
+  adds the Plasmatic Taser and Friendly Fireworks it executes, Haymaker adds Unleash Might's Smash,
+  and Storm Cell's pet adds a full lightning strike each second of its 60 (3753.79 at level 50 for
+  a Blaster). @TODO compare Brawl and Storm Cell in game: if the game shows less, this branch reads
+  something the decompile didn't show.
+- Executions nest at most four deep (a counter the client checks before each).
+- What a pet's powers execute goes in the pets file too (the pet runs it).
+
 Its effect lines (the pet pass, then power_AddEffects for each pet power):
 
-- A pet whose `EntCreate` mod sits under a HideFromInfo group isn't listed (its damage counts).
+- Homecoming's client lists nothing of a pet whose `EntCreate` mod sits under a HideFromInfo group
+  (its damage counts); Thunderspy's lists it (`pet_skip_hidden` in `pipeline/config.py`; the pets
+  file marks such a pet `hid` only for a client that skips it).
+- A pet's grant names its power; one the version's own data lacks has its display name in the
+  pets file (`names`).
 - A pet power's lines show enhanced values whenever the power's do for the villain def's powers,
   and only with `CopyBoosts` for the mod's own `Power` list.
 - What the pet does to itself (target Caster) isn't listed.
