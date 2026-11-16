@@ -15,7 +15,7 @@
  */
 import { defaultServer, serverById, serverHref, serverOf } from '../data/servers.ts';
 import { LEGACY_GAME_VERSION } from '../data/versions.ts';
-import { toAlignment, type Build, type Slot } from '../engine/build.ts';
+import { MIN_REL_LEVEL, toAlignment, type Build, type Slot } from '../engine/build.ts';
 import { ByteReader, ByteWriter, fromBase64Url, streamBytes, toBase64Url } from './binary.ts';
 import { ImportProblem } from './importProblem.ts';
 
@@ -53,7 +53,8 @@ function writeSlots(w: ByteWriter, slots: Slot[]): void {
     const flags = (e.ioLevel !== undefined ? 1 : 0) | (e.rel ? 2 : 0) | (e.boosters ? 4 : 0);
     w.u8(flags);
     if (flags & 1) w.u8(e.ioLevel!);
-    if (flags & 2) w.u8(e.rel! + 8);
+    // one byte offset by 8: a lower (outleveled) level is kept at MIN_REL_LEVEL, never wrapped
+    if (flags & 2) w.u8(Math.max(MIN_REL_LEVEL, e.rel!) + 8);
     if (flags & 4) w.u8(e.boosters!);
   }
 }
