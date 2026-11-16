@@ -116,11 +116,20 @@ def param_power_names(params) -> list[str]:
 def load_member(pigg: Path, member: str) -> bytes:
     """Inflated bytes of `member` (e.g. 'bin/classes.bin') inside a .pigg.
 
+    The exact path is taken first; failing that, the one that differs only in case, as the client
+    opens files (Thunderspy's pigg names "bin/VillainDef.bin" where Homecoming's has
+    "bin/villaindef.bin").
+
     @raise ValueError When the member's bytes aren't the size the pigg directory gives (a short
         read or a damaged entry): decoding a short bin would silently drop its last records.
+    @raise StopIteration When the pigg has no such member.
     """
     with open(pigg, "rb") as f:
-        e = next(x for x in pex.read_directory(f) if x["path"].replace("\\", "/") == member)
+        entries = [x for x in pex.read_directory(f)]
+        paths = [x["path"].replace("\\", "/") for x in entries]
+        i = paths.index(member) if member in paths else \
+            next(j for j, p in enumerate(paths) if p.lower() == member.lower())
+        e = entries[i]
         f.seek(e["offset"])
         raw = f.read(e["packSize"]) if e["packSize"] else f.read(e["size"])
     if e["packSize"]:

@@ -27,6 +27,7 @@ export interface Mod {
   fl?: string[]; // flag names (IgnoreStrength, Boost, BoostIgnoreDiminishing, ...)
   bma?: number;
   pw?: number[]; // power ids for grant/revoke/execute mods
+  pwn?: string[]; // a pseudo-pet's power's grants, by full name (the pets file allocates no ids)
 }
 
 /** An effect group: chance, requirements and its mods. */
@@ -190,6 +191,41 @@ export interface Core {
     approximate?: { base: string; patch: string; midsDb: string; from: string };
     framesFrom?: string; // the version whose enhancement frames it borrowed (its client had none)
   };
+}
+
+/**
+ * A pseudo-pet one EntCreate mod creates, as the client's power info totals its damage
+ * (getTotalDamage's pet branch; see Exporter.build_pets). Only pets whose every power is Auto are
+ * listed, as only those count.
+ */
+export interface PetCreation {
+  p: string[]; // the pet's powers (keys of PetsFile.powers), in the order the client lists them
+  def?: number; // how many of them (the first) come from its villain def; the rest are the mod's own
+  dur?: number; // the mod's Duration: each pet power counts max(1, floor(dur / its ap) + PetsFile.plus) times
+  boosts?: number; // 1: CopyBoosts, the pet's damage takes the caster's enhancements
+  pseudo?: number; // 1: PseudoPet, the pet runs with its caster's class
+  cls?: string; // otherwise the class it runs with (the mod's Class, else its villain def's)
+  hid?: number; // 1: the mod is under a HideFromInfo group (its damage counts, its effects aren't listed)
+}
+
+/** A pet's power: what its damage total needs. */
+export interface PetPower {
+  type: string; // Click | Auto | Toggle | ...
+  ap?: number; // ActivatePeriod
+  eff?: Effect[];
+  act?: Effect[];
+}
+
+/**
+ * One game version's pseudo-pets (<server data>/pets/<version>.json), kept beside the version's
+ * folder so a published folder never changes. Optional: without it powers show no pet damage.
+ */
+export interface PetsFile {
+  plus?: number; // the server's client counts each pet power max(1, floor(dur / ap) + plus) times (Thunderspy's 1)
+  pets: Record<string, PetCreation[]>; // creating power (full name) -> the pets its EntCreate mods make
+  powers: Record<string, PetPower>; // pet powers by full name
+  classes: Record<string, Record<string, number>>; // class -> lower-cased table name -> index into tables
+  tables: number[][];
 }
 
 export interface BoostSetBonus {

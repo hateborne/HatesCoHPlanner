@@ -21,6 +21,13 @@ export interface EvalContext {
   ownsPowerNum?(name: string): number;
   /** @return A character property: archetype, origin, level (1-based), alignment, type. */
   prop(name: string): string | number;
+  /**
+   * A property of the entity's creator (`source.owner>`, `source.creator>`), for a pseudo-pet's
+   * powers, whose damage the power info totals: `arch source.owner> Class_Brute eq` reads the
+   * class of the character that made it. Absent for the character's own powers, which have no
+   * creator (the answer is then 0).
+   */
+  ownerProp?(name: string): string | number;
   /** @return Whether the character has earned this badge or accolade (`Owned?`); none when absent. */
   hasBadge?(name: string): boolean;
   /**
@@ -212,6 +219,13 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
         st.push(name === 'enttype' ? (ctx.targetEntType ?? 'critter') : 0);
         continue;
       }
+      case 'source.owner>':
+      case 'source.creator>':
+        if (ctx.ownerProp) {
+          st.push(ctx.ownerProp(popStr().toLowerCase()));
+          continue;
+        }
+        break; // no creator: answered 0 below, as before
       case 'mode?':
       case 'source.mode?':
       case 'target.mode?':

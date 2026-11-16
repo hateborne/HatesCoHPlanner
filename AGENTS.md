@@ -97,6 +97,12 @@ the project)
 - Each game version's data lives in its own folder, `public/data/<id>/` (for example `i28p4` for
   Issue 28, Page 4), listed in `public/data/versions.json`. Never edit or delete a published
   version folder: links made on that patch load it. A new patch gets a new folder.
+- A version's pseudo-pet file sits beside its folder, in the server's `pets/` folder
+  (`public/data/pets/<id>.json`, `public/data/thunderspy/pets/<id>.json`; the owner's choice, so a
+  published folder never changes). It only adds pet damage to the power info and changes no build,
+  so a published version may get one, made by `python -m pipeline.pets` from the very client the
+  version was made from. It is optional: the app never waits for it, and without it a power shows
+  no pet damage. `pets` is never a version id.
 - Game servers (`SERVERS` in `src/data/servers.ts`) keep their `id` (stored in builds) and `path`
   (the address segment, `/HatesCoHPlanner/Homecoming/`) forever. A build, saved build or link that
   names no server is Homecoming's, and Homecoming's data stays in `public/data/`; another server gets
@@ -159,6 +165,7 @@ src/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
+    pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
     types.ts                 shapes of the exported JSON
   engine/                    pure TypeScript build rules (no React, no DOM)
     build.ts                 Build / Pick / Slot model, newBuild()
@@ -195,6 +202,8 @@ e2e/                         Playwright browser tests (playwright.config.ts; loc
 public/data/<version>/       exported game data per game version (generated, committed)
 public/data/versions.json    version index {default, versions: [{id, label, hash, patch?, approx?}]}
 public/data/thunderspy/      Thunderspy's data: its own versions.json and version folders (no mids-map)
+public/data/pets/<version>.json  each version's pseudo-pets, beside the version folders (generated;
+                             Thunderspy's in public/data/thunderspy/pets/)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
@@ -202,6 +211,8 @@ public/favicon.png           the site icon (placed by hand)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
   run.py                     entry point: python -m pipeline.run
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
+  pets.py                    a published version's pseudo-pet file only (python -m pipeline.pets)
+  pets_test.py               the pseudo-pet export's tests (python -m unittest pipeline.pets_test; run by CI)
   watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
   watch_test.py              its tests (python -m unittest pipeline.watch_test; run by CI)
   compare.py                 what another server's data does differently from Homecoming's
@@ -236,6 +247,15 @@ docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 the client executable (for parse-table layouts and enum names), decodes powers, sets,
 archetypes, enhancements, tables and English text, and writes `public/data/<version>/`. That
 folder holds `core.json`, `powersets.json`, `powers.json`, `boosts.json` and `mids-map.json`.
+Beside it the run writes the version's pseudo-pets, `public/data/pets/<version>.json`
+(Exporter.build_pets): the pets whose damage the client's power info adds to the power that makes
+them (Burn, Irradiated Ground, Rain of Fire, ...), with their powers, villain classes and the
+tables they read (villaindef.bin and villain_classes.bin are decoded for it). It is not part of the
+version hash. `python -m pipeline.pets [--server S] [--game-version V]` writes only that file, for
+a version published before it existed, and refuses any client but the one the version was made
+from (`COH_CLIENT` pointing at a copy of an older client for an older version). The pet rules come
+from reading each client's code: an export from a client exe not listed in its server's
+`pet_checked` (`pipeline/config.py`) warns until someone reads it and adds its hash.
 
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
 `pipeline/report.md`. Safety rails:
@@ -316,7 +336,11 @@ available level from the configured Mids database (its header names the issue an
 **Loading.** The app fetches its game server's `versions.json` (Homecoming's is
 `public/data/versions.json`), then loads the game version the current build asks for (the default
 for a new build), with `?v=<hash>` against stale caches. The New Build screen's version picker
-switches versions; each version is fetched once per page.
+switches versions; each version is fetched once per page. The version's pseudo-pet file is fetched
+once those files have arrived and is never waited for (`loadGameData`): it is attached when it
+arrives (`GameData.setPets`, which takes it only when every part is well formed,
+`src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
+damaged or slow one only leaves pet damage out.
 
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
@@ -427,7 +451,10 @@ itself, so a new outside resource needs the policy changed with it.
 be picked at a level, what is auto-granted, where slots can go, what is wrong with the build.
 `totals.ts` and `enhance.ts` do the math with the game's own tables: enhancement curves,
 Enhancement Diversification, boosters and exemplar handicaps, set bonuses with the rule of 5,
-and archetype caps. The engine is pure and synchronous; keep React and the DOM out of it.
+and archetype caps. The power info (`powerinfo.ts`) adds the damage of the pseudo-pets a power
+makes and lists their effects, as the live clients do (`docs/game-rules.md`, "Pseudo-pet damage").
+The engine is pure and
+synchronous; keep React and the DOM out of it.
 
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per
 build): autos and toggles on, clicks off, except
@@ -505,6 +532,7 @@ npm run build        # type check + production build into dist/
 python -m pipeline.run --help
 python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
 python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
+python -m pipeline.pets --game-version i28p3     # a published version's pseudo-pet file (its own client)
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -516,7 +544,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test` (the release check, the forced respec check, the difference report); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test` (the release check, the forced respec check, the difference report, the pseudo-pet export); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub

@@ -96,21 +96,32 @@ class Server:
     version_prefix: str = "" # every game version id of its starts with this ("" for Homecoming:
                              # its ids are those no other prefix starts); the app reads a share
                              # code's server from it (versionPrefix in src/data/servers.ts)
+    pet_extra: int = 0       # its client's power info counts a pseudo-pet's power
+                             # max(1, floor(Duration / ActivatePeriod) + this) times: Homecoming's 0,
+                             # Thunderspy's 1 (both clients' getTotalDamage, decompiled)
+    pet_checked: tuple = ()  # SHA-1s of the client exes whose pet rules were read (pet_extra and
+                             # docs/game-rules.md, "Pseudo-pet damage"); another exe gets a warning
 
 
 HOMECOMING = Server("homecoming", "COH_CLIENT", ("client",), "bin/win64/live/cityofheroes.exe",
                     "assets/live/bin.pigg", "assets/live/bin_powers.pigg", "assets/issue24",
                     "assets/live", ("texture_gui.pigg", "texture_library.pigg"), "", "ids.json",
-                    "report", True, True)
+                    "report", True, True,
+                    pet_checked=("4e9278fdabdff26ed62dcb73c97dad98fb7f89bb",    # i28p4
+                                 "de4f9682f1a7e30a34ff3a1c9252112b525c3b26"))   # i28p3
 # Thunderspy keeps every bin, powers.bin included, in tspy/bin.pigg; its own art is in tspy/*.pigg
 THUNDERSPY = Server("thunderspy", "COH_CLIENT_THUNDERSPY", ("servers", "thunderspy", "client"),
                     "Thunderspy.exe", "tspy/bin.pigg", "tspy/bin.pigg", "piggs", "tspy", None,
                     "thunderspy", "ids-thunderspy.json", "report-thunderspy", False, False,
-                    version_prefix="ts")
+                    version_prefix="ts", pet_extra=1,
+                    pet_checked=("160b199f38f021432bd69ce5085b4ac73cb4af5c",))  # release 9.6
 SERVERS = {s.id: s for s in (HOMECOMING, THUNDERSPY)}
 # Folder names under public/data that hold a server's data, never a game version (Rebirth's is
 # reserved for when its data comes).
 SERVER_FOLDERS = frozenset({s.data for s in SERVERS.values() if s.data} | {"rebirth"})
+# The folder under a server's data folder that holds its pseudo-pet files (pets/<version>.json),
+# never a game version.
+PETS_FOLDER = "pets"
 
 
 def _local(keys: tuple) -> str | None:
@@ -220,15 +231,16 @@ def valid_version_id(v: str) -> bool:
     """Whether a game version id is safe as a data folder name on every system.
 
     Lower-case letters, digits, "-" and "_" only, starting with a letter or digit, at most 32
-    characters, and not a Windows device name or a server's data folder. Lower case only, because
-    Windows folders ignore case: "I28P4" would write into "i28p4" while versions.json treated them
-    as two versions. No dots either: Windows drops a trailing one, so "i28p4." would also land in
-    "i28p4" (Thunderspy's release 9.6 is "ts9-6").
+    characters, and not a Windows device name, a server's data folder or the pets folder. Lower
+    case only, because Windows folders ignore case: "I28P4" would write into "i28p4" while
+    versions.json treated them as two versions. No dots either: Windows drops a trailing one, so
+    "i28p4." would also land in "i28p4" (Thunderspy's release 9.6 is "ts9-6").
 
     @param v The id.
     @return True when it may name a folder under public/data.
     """
-    return bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", v)) and v not in _RESERVED and v not in SERVER_FOLDERS
+    return (bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", v)) and v not in _RESERVED
+            and v not in SERVER_FOLDERS and v != PETS_FOLDER)
 
 
 def version_server(version: str) -> Server:

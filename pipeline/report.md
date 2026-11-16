@@ -19,6 +19,8 @@ Generated 2026-11-09T18:20:14Z (UTC).
 | bin/exemplar_handicaps.bin | 1 | 1 | 0 |
 | bin/schedules.bin | 1 | 1 | 0 |
 | bin/origins.bin | 5 | 5 | 0 |
+| bin/villaindef.bin | 9055 | 9055 | 0 |
+| bin/villain_classes.bin | 56 | 56 | 0 |
 | bin/clientmessages-en.bin | 97883 | 97883 | 0 |
 
 **Gate: PASS** (0 partial records).
@@ -42,6 +44,12 @@ Generated 2026-11-09T18:20:14Z (UTC).
 | boosts.json | 3695528 |
 
 PvP-only effects dropped: 4113. Unresolved references: 0. New IDs: {'power': 0, 'powerset': 0, 'boostset': 0, 'archetype': 0, 'origin': 0}.
+
+Names and descriptions written into the data as text rather than as message keys (shown as written, as the client does): 83.
+
+## Pseudo-pets
+
+278 powers create 304 pseudo-pets whose damage the power info totals (217 pet powers, 18 classes' tables, 272956 bytes in pets/i28p4.json). EntCreate mods left out: not auto only (a real pet): 239.
 
 ## Mids map (MidsReborn is a reference, not a source of truth)
 

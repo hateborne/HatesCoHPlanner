@@ -8,7 +8,8 @@ Usage (from the repo root):
     python -m pipeline.run --server thunderspy --frames-from homecoming/i28p4
 
 The game version id names the data folder public/data/<id>/ (public/data/<server>/<id>/ for a
-server other than Homecoming). It defaults to "gameVersion" / "gameLabel" under the server's entry
+server other than Homecoming); the version's pseudo-pet file goes beside it, in pets/<id>.json
+(python -m pipeline.pets writes only that file, for a version already published). It defaults to "gameVersion" / "gameLabel" under the server's entry
 in pipeline/patch-watch.json. A version id names one server only: the run refuses an id another
 server already uses.
 
@@ -123,6 +124,13 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
     if rep["missing_text"].get("written as text"):
         L.append(f"Names and descriptions written into the data as text rather than as message keys "
                  f"(shown as written, as the client does): {rep['missing_text']['written as text']}.\n")
+    pt = exp.get("pets")
+    if pt:
+        skipped = "; ".join(f"{k}: {v}" for k, v in pt["skipped"].items()) or "none"
+        L.append("## Pseudo-pets\n")
+        L.append(f"{pt['creators']} powers create {pt['pets']} pseudo-pets whose damage the power info "
+                 f"totals ({pt['powers']} pet powers, {pt['classes']} classes' tables, {pt['bytes']} bytes "
+                 f"in pets/{m['dataVersion']}.json). EntCreate mods left out: {skipped}.\n")
     fr = exp.get("frames")
     if fr and fr.get("cross"):  # an older version of the same server reports as it always did
         L.append("## Enhancement frames\n")

@@ -259,6 +259,68 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   running powers counts once. Chance and PPM procs are left out, and a "Null" mod only carries a
   number for help text (Luck of the Gambler's recharge comes from its set's global bonus).
 
+## Pseudo-pet damage (power info)
+
+Powers such as Burn, Irradiated Ground, Rain of Fire and Lightning Rod deal their damage through a
+pet their `EntCreate` mod (attribute 469) makes. The client's power info adds that pet's damage to
+the power's "Average Damage" and the rows made from it (getTotalDamage), and lists the pet's effects
+before the power's own (power_AddEffects' pet pass, power_AddPetEffects). The live clients do both
+differently from the OuroV2 source's uiPowerInfo.c, so this follows their compiled code (Ghidra:
+Homecoming i28p4's getTotalDamage at 0x1404e0ab0, power_AddEffects at 0x1404e37e0 and its pet pass
+at 0x1404e5890; i28p3's the same; Thunderspy 9.6's getTotalDamage at 0x1404d6070 and
+power_AddEffects at 0x1404da680). Each client exe read is listed in `pet_checked`
+(`pipeline/config.py`); an export from another warns.
+
+Which pets, and how they run:
+
+- The mod's `Params` (param type 3) name the pet: a villain def (`EntityDef`) and/or a `Power`
+  list. The struct's layout is the client's own (Homecoming's has a `CostumeEffect` word
+  Thunderspy's lacks). Its powers are the def's `Power` refs, last first (`*` takes a whole set in
+  order; a category, set or power the client lacks is skipped), then the mod's list, last first.
+- The pet counts only when every one of those powers is Auto (`pet_IsAutoOnly`). Other pets (real
+  pets: henchmen, Fire Imps) are left out here. The client lists them in a section of their own
+  (`power_AddPets`), not ported.
+- Its class: the caster's when the mod has `PseudoPet` (Burn on Homecoming), else the mod's
+  `Class`, else the villain def's `Class` from `villain_classes.bin` (Irradiated Ground:
+  `Class_Minion_Pets`). Its powers read their tables from that class, and `arch source.owner>` /
+  `source.creator>` in their requirements read the caster's class.
+- The client's template list holds a power's `Effect` groups, then its `ActivationEffect` groups,
+  each group's sub-groups before its own mods. So activation effects count.
+
+Its damage (getTotalDamage):
+
+- Each pet power counts its own total (the same function, recursively) times
+  `max(1, floor(mod Duration / its ActivatePeriod))`, or once when its period is 0. Thunderspy's
+  client adds one: `max(1, floor(...) + 1)`. The division is single precision.
+- A pet power's templates count by the client's rules: a DoT at its tick chance, anything else at
+  its own group's chance (not its parents'), and HideFromInfo and PPM groups count too. An effect
+  group with chance 0 adds nothing (Burn's Fiery Embrace groups). @TODO the character's own powers
+  still follow the earlier port (group chances times tick chance, HideFromInfo and PPM groups left
+  out); move them to these rules once in-game screenshots confirm it.
+- Its enhanced damage takes the caster's enhancement strengths only with `CopyBoosts`; without it,
+  the enhanced figure is the base.
+
+Its effect lines (the pet pass, then power_AddEffects for each pet power):
+
+- A pet whose `EntCreate` mod sits under a HideFromInfo group isn't listed (its damage counts).
+- A pet power's lines show enhanced values whenever the power's do for the villain def's powers,
+  and only with `CopyBoosts` for the mod's own `Power` list.
+- What the pet does to itself (target Caster) isn't listed.
+- Its damage ticks for the pet's lifetime: `floor(Duration / its ActivatePeriod) + 1` ticks (both
+  clients; this is not the total's count). An effect that doesn't suppress itself lasts the
+  lifetime when it ticks, else as many of its own durations as fit in the lifetime plus one; every
+  pet effect with a duration says how long.
+- Its chance reads as its group's when it has no duration, else its tick chance unless it
+  `CancelOnMiss`.
+- @TODO the client also lists a tagged group with chance 0 (Fiery Embrace's) with the tag's note
+  ("FieryEmbraceMode"); neither the character's own powers nor pets list those yet.
+
+The pipeline writes each version's pets to `<server data>/pets/<version>.json`, beside the version
+folders (Exporter.build_pets, `python -m pipeline.pets` for a version already published); the
+engine parts are `petDamage` and `petLines` in `src/engine/powerinfo.ts`. Level 50 Brute: Burn
+130.13 (12 ticks of 0.14 plus the 1.44 front hit at Melee_Damage 41.7087; its lines show 13 ticks),
+Irradiated Ground 4.59 (one tick of 0.0825 at Class_Minion_Pets' 55.6599).
+
 ## Grants (Kheldian forms etc.)
 
 `kGrantPower`/`kGrantBoostedPower`/`kExecutePower` attribmods carry power names in their
