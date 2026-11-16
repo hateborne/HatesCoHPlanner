@@ -84,11 +84,16 @@ the project)
 - A second exception, also approved: an older client with no enhancement frame data (before the
   February 10, 2026 update) shows a newer version's frames (`--frames-from`, recorded as
   `framesFrom` in its manifest). Frames are artwork only; no number comes from the other version.
+  Thunderspy's client has none either and borrows Homecoming's (`--frames-from homecoming/i28p4`):
+  by internal name, and for a set piece Homecoming lacks, the pair Homecoming's set pieces use for
+  its conversion group (attuned or not), which matches every Homecoming set piece it answers when
+  tried on Homecoming's own sets one left out at a time (`borrow_frames` in `pipeline/export.py`).
 - Code that touches Mids data must survive it being missing or malformed: warn and carry on.
 
 **Stable IDs and old builds**
-- `pipeline/ids.json` assigns the numeric IDs that share links and saved builds use. It is
-  append-only: never renumber, reuse, reorder or delete entries.
+- `pipeline/ids.json` assigns the numeric IDs that share links and saved builds use; each other
+  server has its own file (`pipeline/ids-thunderspy.json`), so one server's ids never move
+  another's. They are append-only: never renumber, reuse, reorder or delete entries.
 - Each game version's data lives in its own folder, `public/data/<id>/` (for example `i28p4` for
   Issue 28, Page 4), listed in `public/data/versions.json`. Never edit or delete a published
   version folder: links made on that patch load it. A new patch gets a new folder.
@@ -99,8 +104,15 @@ the project)
   no server: the link's address does. An address that names a server the site doesn't carry is
   refused, never opened as Homecoming. Anything that makes a build from a server's data (imports,
   `checkBuild`, `newBuild`) stamps that server on it.
-- @TODO before a second server's data goes in: `pipeline/ids.json` is one namespace. Decide with the
-  owner whether the new server shares it (same internal names, same ids) or gets its own.
+- Every game version id names its server by its prefix: `versionPrefix` in `SERVERS` and
+  `version_prefix` in `pipeline/config.py`, kept in step (Thunderspy's start with `ts`, release 9.6
+  is `ts9-6`; Homecoming has none, and its ids are those no other prefix starts). The pipeline
+  refuses an id with the wrong prefix, or one another server's `versions.json` lists. A share code
+  names its version, so `shareServer` (`src/state/store.ts`, through `versionServer`) opens a bare
+  code on the server its version belongs to and refuses a code whose version is another server's
+  than the address names (`wrongServer`): a Thunderspy code is never read with Homecoming's ids.
+  It downloads nothing to decide, so a link never fails because another server's files won't load.
+  A new server gets a prefix no other starts with or is started by (`tests/shareserver.test.ts`).
 - The share-link format (`src/io/share.ts`) may only grow by optional trailing fields, and old
   links must keep decoding. Links without a version open as `LEGACY_GAME_VERSION` (`i28p4`).
 - Builds from outside the app (links, browser storage, saved builds, imports) always pass
@@ -141,7 +153,8 @@ the project)
 
 ```
 src/
-  main.tsx, App.tsx          entry; CrashGuard wraps the app; stage, toggles, dialogs
+  main.tsx, App.tsx          entry; CrashGuard wraps the app; stage, toggles, dialogs, footer
+  version.ts                 the planner's release version (stamped by the deploy)
   data/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
@@ -181,24 +194,40 @@ tests/                       vitest; tests/helpers/data.ts loads public/data lik
 e2e/                         Playwright browser tests (playwright.config.ts; local only)
 public/data/<version>/       exported game data per game version (generated, committed)
 public/data/versions.json    version index {default, versions: [{id, label, hash, patch?, approx?}]}
+public/data/thunderspy/      Thunderspy's data: its own versions.json and version folders (no mids-map)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
+public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
 public/favicon.png           the site icon (placed by hand)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
   run.py                     entry point: python -m pipeline.run
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
+  watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
+  watch_test.py              its tests (python -m unittest pipeline.watch_test; run by CI)
+  compare.py                 what another server's data does differently from Homecoming's
+                             (python -m pipeline.compare --server thunderspy)
+  compare_test.py            its tests (python -m unittest pipeline.compare_test; run by CI)
   config.py                  inputs, preflight checks, atomic writes
   ids.json                   stable IDs (append-only)
-  check_ids.py               ids.json well formed and only appended to (run by CI)
-  patch-watch.json           newest patch-notes post seen; game version id and label
+  ids-thunderspy.json        Thunderspy's stable IDs (append-only)
+  check_ids.py               every ids file well formed and only appended to (run by CI)
+  forced_respec.py           a class's forced level-up respec where the planner looks for it
+                             (its test, forced_respec_test.py, is run by CI)
+  patch-watch.json           per server: newest patch seen (Thunderspy: release and MD5 of its
+                             tspy/bin.pigg); game version id and label
   inputs/fonts/              vendored game fonts (never change)
   report.md                  validation report of the last run
   report-<id>.md             report of a version that is not the default (pipeline.run), or what an
                              approximate version changed (overlay.py)
+  report-thunderspy.md       Thunderspy's report (report-thunderspy-<id>.md for older versions)
+  report-thunderspy-diff.md  every difference of Thunderspy's data from Homecoming's, by internal
+                             name (pipeline.compare; to spot-check in game)
 tools/                       standard-library Python decoders for client file formats
+scripts/release-version.mjs  the version a deploy publishes (plain Node; run by pages.yml)
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
-.github/workflows/           ci.yml (pull request checks), pages.yml (deploy main, started by hand)
+.github/workflows/           ci.yml (pull request checks), pages.yml (tag a release and deploy main,
+                             started by hand)
 ```
 
 ## How it works
@@ -215,7 +244,9 @@ The run then exports icons, UI textures, fonts and sounds to `public/assets/` an
   it exactly (a wrong record count).
 - It refuses to rewrite a version folder made from a different client (other exe or pigg hashes)
   unless given `--overwrite-published`: a run that forgot `--game-version` after a patch, or one
-  pointed at another client copy, stops before writing anything.
+  pointed at another client copy, stops before writing anything. The same goes for a re-run whose
+  `--frames-from` differs from the folder's `framesFrom` (a forgotten flag would strip every
+  enhancement's frames).
 - It keeps an existing folder's `mids-map.json` unless given `--refresh-mids-map` (old Mids codes
   depend on it, and it isn't part of the version hash).
 - It refuses version ids other than lower-case letters, digits, `-` and `_`.
@@ -237,6 +268,46 @@ writes `pipeline/report-<id>.md` instead of `report.md`, and its asset export on
 `public/assets` lacks (it never overwrites, and leaves UI textures, fonts and sounds alone). Never
 run anything from the old install itself: copy the files, read the copy.
 
+**Thunderspy** (`--server thunderspy`) reads its own client (`COH_CLIENT_THUNDERSPY`, or
+`servers.thunderspy.client` in `pipeline/paths.local.json`): `Thunderspy.exe`, every bin in
+`tspy/bin.pigg`, base art in `piggs/`, its own art in `tspy/*.pigg`. Run
+`python -m pipeline.run --server thunderspy --game-version ts<release> --game-label "Release <x.y>"
+--frames-from homecoming/i28p4` (the release is the folder the live manifest,
+https://thunderspy.net/manifest/live.xml, gives `tspy/bin.pigg`: `9.6` is `ts9-6`). It writes
+`public/data/thunderspy/`, `pipeline/ids-thunderspy.json` and `pipeline/report-thunderspy.md`, no
+Mids map (MidsReborn has no Thunderspy database), and never touches the shared assets: it keeps
+its own copy of every icon it shows in `public/assets/thunderspy/icons/`, and the data names them
+`thunderspy:<name>` (the app's `icon()` resolves the prefix). Where its art matches the shared icon
+(`icon_difference`, a 32x32 comparison) the copy is the shared file's bytes, so the default art shows
+and Git stores the file once; a later Homecoming redraw can't change what Thunderspy shows. A newer
+Thunderspy release's default run does replace a redrawn icon for every Thunderspy version, as
+Homecoming's newest version does for the shared icons; an older Thunderspy version only adds files
+the folder lacks. Icons are decided before the run's checks and written after them
+(`plan_icon_overlay`, `write_icon_overlay`): a name that can't be a file stops the run before
+anything is written, a refused run writes nothing, and `--no-assets` writes no icon files. Every
+`tspy/*.pigg` is read for art, the last by file name winning; the report names any texture two of
+them draw differently (none in release 9.6), to check against the game.
+
+Thunderspy's download server keeps only the files its live manifest names, so a superseded release
+can't be fetched again: export each release while it is live, or keep a copy of its
+`tspy/bin.pigg` and `Thunderspy.exe`. `python -m pipeline.watch` says when one is live: it compares
+the release folder and MD5 the live manifest gives `tspy/bin.pigg` with `binRelease` and `binMd5` in
+`pipeline/patch-watch.json`, the installed client with the manifest, and the installed client with
+the default version's source hashes. It prints the export command for a new release and exits 1
+when something needs doing (2 when it can't check, a crash included). Once the release is exported as the default
+version, `python -m pipeline.watch --record` records it; it refuses unless the default version was
+made from the live `tspy/bin.pigg`.
+
+`python -m pipeline.compare --server thunderspy` writes `pipeline/report-thunderspy-diff.md`: where
+Thunderspy's default version differs from Homecoming's default, by internal name (player powers, power
+set orders and levels, archetype tables, the level schedule, boost effect, exemplar and diminishing
+returns, enhancement sets and their bonuses). It reads committed data only (no client), resolves ids,
+attribute offsets, damage and defense types, `Knock` / `Knockback` and power modes to names first so
+numbering differences are not reported, and compares per-level tables over levels 1-50. Effects show
+as counts only; `--effects N` writes `report-thunderspy-diff-full.md` (gitignored) with N differing
+effect lines a side per power. The owner uses it to know what to spot-check in the Thunderspy client. A Thunderspy `pipeline.run` summarises it in
+`report-thunderspy.md` ("Differences from Homecoming"); re-run it after a new release or a new
+Homecoming default.
 An older patch with no client files left can get an approximate version:
 `python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
 available level from the configured Mids database (its header names the issue and page). Review
@@ -256,19 +327,48 @@ with its `#b=` code (`notFoundRedirect`, written into the page and allowed by it
 CSP); anything else gets a "not found" page linking to the planner, so an unknown server's link is
 never opened as Homecoming. On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
-unless the address names another server. With no build, New
-Build opens on the server the address names; failing that, once `SERVERS` holds more than one, a
-first visit asks in the server list dialog (`askServer`; the default is highlighted, so Enter or
-Space takes it); otherwise on the only server. The address is then rewritten in place to the build's
+unless the address names another server. After a long break (`RETURN_AFTER`, 4 hours without a
+click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; only a recorded time
+counts, so none on record, a damaged one or blocked storage opens the build as before) the player's
+own build doesn't reopen unannounced: the remembered build, or a link holding
+its share code (a reloaded tab's address), opens the server list with a Continue button for it
+(`askServer`'s `resume`, answered `CONTINUE_BUILD`), highlighted so Enter takes it, and its data
+loads while the list is open. A tile starts New Build on its server instead; the build stays
+remembered until something replaces it, and whatever would while it isn't open (New Build's Finish,
+an import, a saved build, a link pasted into the address bar) asks first: go ahead, "Open it", or
+Cancel, which Escape and Enter take (`askOverRemembered`, `askThreeWay`). A link someone else sent
+opens at once; one pasted into the address bar while the load's server list is open starts the load
+over with it. With no build, New Build opens on the server the address names; failing that, a link
+refused for what it holds (damaged, a build `checkBuild` refuses) opens New Build on its own server
+(the default for a damaged code, as every link at the site root did before servers) and says why;
+failing that, once `SERVERS` holds more than one, a visit asks in the server list dialog
+(`askServer`). The server this browser last showed
+(`hcp.server`, `src/state/lastServer.ts`), else the default, starts highlighted, so Enter, Space or OK
+takes it, and its data starts loading while the list is open; hovering a tile doesn't move the
+highlight. Otherwise New Build opens on the only server. The address is then rewritten in place to the build's
 server (with no build, the server shown). The server logo (`ServerLogo`, in the desktop bottom bar
 and at the top of the phone menu) shows on every screen, but only New Build makes it the selector: it
 opens the same list there, and picking another server shows that server's data and clears the
-archetype and both power sets (another server's ids mean other archetypes and sets). A build is never
-moved to another server: a switch with a build in the background asks first (`askConfirm`), then
-clears that build (this tab's storage and its share code in the address), and `selectServer` is
-refused outside New Build. Import reads a pasted link's server
-from its address (`serverInLink`); a bare code is Homecoming's. A share code left in the address by
-a link that couldn't open is dropped once the address moves to another server.
+archetype and both power sets (another server's ids mean other archetypes and sets); the origin
+carries over by its internal name (`carryOrigin`). A build is never
+moved to another server: a switch with a build in the background asks first (`askConfirm`; a build
+with no work in it, `hasWork`, is cleared without asking), then clears that build (this tab's storage
+and its share code in the address), and `selectServer` is refused outside New Build; the list closes
+if a build opens behind it or a dialog opens over it. New Build only starts a build on the data its choices were made on
+(`startBuild` refuses ids the shown data lacks). Import reads a pasted link's server
+from its address (`serverInLink`); a bare code opens on the server its game version belongs to
+(Homecoming's for a code from before servers). A share code left in the address by a link that
+couldn't open is dropped once the address moves to another server, and the error screen leaves the
+address as it was, so Try again and a reload read the same link.
+
+What a server offers is in its `SERVERS` entry: `midsDb` (MidsReborn's name for its database; none
+for Thunderspy) and `buildSave` (its client writes `/build_save` files; Thunderspy's doesn't). Without
+them the build menu hides the Mids exports and the file button, and an import of Mids text or a
+`build.txt` is refused in words (`midsUnavailable`, `noBuildSave`) that name the server it belongs to;
+other text is refused naming only what that server reads (`notReadableOn`, `readableOn`).
+Thunderspy keeps the engine's rules (ported from Homecoming's client and the game source) wherever its
+data doesn't decide them; its staff-only sets (Organic Armor) stay off New Build because no player
+passes their powers' BuyRequires (`startingSets`).
 
 **Imports and patches.** A Mids build records only its Mids database version, so
 `midsMadeOn()` (`src/io/midsPatches.ts`) looks it up in the owner-confirmed table. An unlisted
@@ -289,7 +389,7 @@ character, written with internal names, and opens on the default version. It hol
 and no slot levels: the game never stores the level a slot was added at, nor whether the build
 came from a respec. So the import asks for the alignment and the build type in the dialog
 (`askChoices`). Leveling is offered only when `leveledSlotShortfall()` finds that the slots could
-have come from leveling. Either way each added slot takes the lowest free slot level at or after
+have come from leveling, and never for an archetype planned as Respec only (`respecOnlyNote`). Either way each added slot takes the lowest free slot level at or after
 its power's level (`lowestFreeLevels()`, the respec screen's rule).
 
 MidsReborn names 9 epic pools its own way (`Epic.Ice_Mastery_DefCorr` is the game's
@@ -299,8 +399,8 @@ every target exists and that the archetypes each name is for can take it.
 
 **Text from outside** (a link's build name or game version, a file's names) is never repeated as
 it came: build names go through `cleanName` (plain text, at most 40 characters), names from imported
-files through `readable`, and a missing game version is named as its patch or not at all
-(`missingVersionNote`). A crafted link must not make the planner's own notices say what it likes.
+files and a pasted link's unknown server name (`unknownServer`) through `readable`, and a missing game
+version is named as its patch or not at all (`missingVersionNote`). A crafted link must not make the planner's own notices say what it likes.
 Every navigation goes to a fixed address written in the planner's code: on this site, or an outside
 page opened in a new tab (the Support dialog's charities, the wiki page a dialog's `link` opens).
 None takes its target from a link, a build or a file.
@@ -356,8 +456,10 @@ level-up flow. The flow is a wizard from level 1 to 50, or one level reopened fr
 (`mode: 'edit'`, Cancel restores the original). A Respec build (New Build's Build Type,
 `Build.respecTo`) walks its own order instead (`respecSteps()` in `src/engine/schedule.ts`):
 every power first (level 1's secondary before its primary), then one slot screen where any power
-may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec order"). Screens
-read the store with narrow selectors (`useShallow`) and call its actions.
+may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec order"). An
+Arachnos Soldier or Widow can only train to 24 through a respec, so their builds start as Respec
+builds to 24 at least (`startBuild`, `respecOnlyNote`; New Build greys Leveling for them). Screens read the store with narrow
+selectors (`useShallow`) and call its actions.
 
 **Stage.** Every screen draws on a fixed stage scaled to the window with CSS zoom:
 
@@ -376,11 +478,14 @@ read the store with narrow selectors (`useShallow`) and call its actions.
 - The owner compares visuals with in-game screenshots taken at 3840x2160 (in `IGNORE/`).
 
 **Pop-ups and hovers.**
-- Every pop-up closes with Escape (`useEscape`).
-- Questions use `askConfirm` (or `askChoices` for rows of options); messages with one OK button
+- Every pop-up closes with Escape (`useEscape`). The one exception, the owner's choice: a `tell`
+  with `wait` (the "Invalid power sets" warning) takes neither OK nor Escape until its countdown
+  ends, and a dialog asked for while it is up waits for it to close instead of replacing it.
+- Questions use `askConfirm` (or `askChoices` for rows of options, `askThreeWay` for two ways
+  forward and Cancel; Cancel has the keyboard focus, so Escape and Enter stay); messages with one OK button
   use `tell` (its optional `link` makes one phrase open a fixed https page in a new tab, as the
-  hero Patron note links the wiki); refusals use `notify` or `flashLocked`. The server list is
-  `askServer`.
+  hero Patron note links the wiki; its optional `wait` greys OK for that many seconds, counted down
+  on the button); refusals use `notify` or `flashLocked`. The server list is `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
 
@@ -398,6 +503,8 @@ npm test             # vitest
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
 npm run build        # type check + production build into dist/
 python -m pipeline.run --help
+python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
+python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -409,12 +516,42 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test` (the release check, the forced respec check, the difference report); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
-Pages" -> Run workflow, or `gh workflow run pages.yml --ref main`); it publishes `main` only and runs
-one at a time.
+Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
+bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+
+## Versions and releases
+
+Every deploy is a release with a SemVer version, `vX.Y.Z`. The first public release (the site as
+deployed on November 13, 2026) is `v1.0.0`. The owner's rules for the bump:
+
+- **major**: massive feature changes or redesigns;
+- **minor**: a new server, or medium-sized work;
+- **patch**: fixes and small changes.
+
+When you hand back a pull request, say which bump it calls for, so the owner can pick it at deploy.
+
+- The git tags are the record. `package.json`'s `version` is not used.
+- The deploy picks the version (`scripts/release-version.mjs`): the newest `vX.Y.Z` tag, bumped as
+  picked. It refuses to run without a bump, and refuses before any version tag exists. A commit that
+  already carries a version deploys again under it, with no new tag (re-running an older release's
+  deploy puts that release back live). A new version goes only to main's newest commit, so re-running
+  an old deploy that failed before it was tagged is refused once main has moved on: start a new one.
+- The build gets the version from `HCP_VERSION` and the commit from `HCP_COMMIT`
+  (`vite.config.ts`, read through `src/version.ts`). Builds outside a deploy (dev server, tests,
+  pull request checks) are `dev`.
+- Before the site goes live, the deploy's `release` job tags the commit and publishes a GitHub
+  Release listing the pull requests merged since the last one, so a failed deploy can't let
+  another build take the same number. If that job fails, nothing was deployed: re-run all jobs (a
+  fresh build sees whether the tag was made, and reuses it if so; if main has moved on and no tag
+  was made, start a new deploy).
+- The footer names the version after the planner's name, as plain text. The crash page and the
+  browser console name it with its commit, and Mids exports carry it in `BuiltWith.Version`
+  (`0.0.0` from a dev build; imports ignore it). Each version's notes are on the repository's
+  GitHub Releases page.
 
 ## Coding standards
 
@@ -470,6 +607,9 @@ one at a time.
   - `boosted.spec.ts`: a build with its sets boosted, attuned, or boosted then attuned at random.
     It prints its seed; `HCP_E2E_SEED=<seed>` repeats a run.
 
+  `respeconly.spec.ts` drives New Build itself: an Arachnos archetype picked with Leveling ticked
+  switches to Respec and says why, and Finish starts a Respec to 24 at least.
+
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.
 
@@ -479,7 +619,7 @@ one at a time.
 - One topic per pull request. Describe the user-visible effect and how it was verified (tests,
   screenshots of the screens touched).
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
-  `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/ids.json`) change only through a
+  `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/ids.json`) change only through a
   pipeline run, never by hand.
 
 ## Game-data notes for agents

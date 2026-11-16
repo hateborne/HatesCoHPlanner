@@ -4,6 +4,36 @@ Source: `CityOfHeroes_OuroV2_Source` (the engine source checkout) (I24 engine; H
 decoded from the live client). Paths below are relative to that root. All levels in data are
 0-based (`Available[]`, schedules, `SpecializeAt`); the UI shows level + 1.
 
+Thunderspy's data is decoded from its own client the same way, and the same rules apply to it
+wherever its data doesn't decide them, except where its client's code is known to differ (see
+"Thunderspy's client" below). @TODO check the rules taken from Homecoming's live client (one-screen
+respec, three combines, the epic level gates) against Thunderspy's game.
+
+## Thunderspy's client (Thunderspy.exe, compared with Homecoming's client)
+
+Read from the two clients' compiled code (Ghidra, functions found from the boost table globals the
+`defs/boost_effect_*.def` loaders fill). Homecoming's client matches the source for all of these.
+
+- `boost_EffectivenessLevel` / `boost_Effectiveness`: the same in both. A TO/DO/SO-style piece
+  works while its level is within the `BoostEffectivenessAbove` / `Below` tables' length of the
+  character's, at the table's value. Thunderspy's tables are 50 entries of 1.0, so its TO/DO/SO
+  pieces work at any level at full strength (Homecoming's: 3 levels either way, +5% a level above,
+  -10% a level below).
+- `power_MinBoostUseLevel` for `BoostIgnoreEffectiveness` pieces (IOs, set pieces) differs.
+  Homecoming (and the source) take `MAX(MinSlotLevel, level - (above table length - 1))`, so an IO
+  works from 3 levels below its own. Thunderspy's takes `MAX(MinSlotLevel, level)`: an IO works only
+  at or above its own level. The planner takes this from the server entry (`ioLevelsAbove: 0` in
+  `src/data/servers.ts`, read by `levelsAbove` in `src/engine/enhance.ts`).
+- `power_MaxBoostUseLevel`: the same in both (`MaxSlotLevel` for IOs; for TO/DO/SO-style pieces
+  `MIN(MaxSlotLevel, level) + below table length - 1`).
+- Attribute names: Thunderspy's client calls Knock (offset 328) "Knockback", Homecoming's alias for
+  it. The planner reads it as Knock (`ATTRIB_CANON` in `src/data/gamedata.ts`), so knockback
+  protection counts.
+- @TODO not yet compared: Enhancement Diversification (`AggregateStrength`), attribute caps
+  (`ClampMax`), combat level scaling (`combatmod_Get`) and the combine limit
+  (`boost_IsValidCombination`). They have no strings or table globals of their own to find them
+  by in a stripped client.
+
 ## Requirement expressions (BuyRequires, SetBuyRequires, SpecializeRequires)
 
 Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.c`
@@ -53,7 +83,31 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   accolade check).
 - Specialization sets (`SpecializeAt != 0`, VEAT branches): offered alongside the trunk once
   `L >= SpecializeAt` and `SpecializeRequires` passes; only for sets in the class primary or
-  secondary category. Branches exclude each other through their requires.
+  secondary category. Branches exclude each other through their requires, so the first branch
+  power taken chooses the path. `L` is the character's level, never the pick's
+  (`character_IsAllowedToSpecializeInPowerSet`): the level-up screen passes the current level and
+  a respec its pre-respec level (`uiReSpec.c` `respec.maxLevel`, `character_respec.c`
+  `iExpLevel`). So a Respec build at 24 or above may take branch powers from its first pick
+  (`BuildRules.specLevel`); the branch powers keep their own levels. At level 1 the first two
+  picks lock a column (category), so a branch in it may take that pick as its trunk may.
+- The level-up screen lists a branch only while the character owns a power from it or may still
+  specialize in it (`uiLevelPower.c`, `character_WillBeAllowedToSpecializeInPowerSet`: the
+  requires, not the level). Before 24 both branches show, greyed; once one is chosen the other is
+  gone (`BuildRules.setOptions`).
+- Forced respec on training (`LevelUpRespecs` on the class; Arachnos Soldier and Widow: 24):
+  training to that level offers only "Respec and train up to next level"
+  (`contactInteraction.c`, `class_IsRespecLevelUp` gives `TrainRespecNow` instead of `TrainNow`),
+  and the respec runs to the new level (`uiReSpec.c`: `respec.maxLevel` is the level plus one),
+  so the branches are open from its first pick. The planner therefore plans those archetypes as
+  Respec builds only, to 24 at least (`startBuild`): New Build shows Respec ticked and Leveling
+  greyed for them, and says why (`respecOnlyNote`) when Leveling was the choice; the /build_save
+  import doesn't offer Leveling for them. A leveling build of one (a link or saved build from before
+  that, or a Mids import) that holds a power picked at 24 or later has chosen its powers and slots
+  up to 24 again in game, so it is judged as respecced there (`BuildRules.respecLevel`). One that
+  stops before 24, and a leveling walk that hasn't got to 24 yet, keeps the branches shut. The
+  export leaves `LevelUpRespecs` out; the planner takes it to be the level the specialization sets
+  open at (`levelUpRespec`), and the pipeline warns if a client breaks that
+  (`forced_respec_warnings`, `pipeline/forced_respec.py`).
 
 ## Auto-issued powers
 
@@ -101,7 +155,8 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   `MinSlotLevel <= level <= MaxSlotLevel` and `boost_Effectiveness > 0`. An IO works from 3 levels
   below its own (the `BoostEffectivenessAbove` table has 4 entries, +0..+3); an attuned piece from
   its `MinSlotLevel`. The planner tests the build's last level (its stop level, else 50), and the
-  picker offers IO levels up to that level + 3.
+  picker offers IO levels up to that level + 3. On Thunderspy an IO works only from its own level,
+  so the picker offers none above the character's (see "Thunderspy's client").
 - An enhancement's own settings:
   - Enhancement Boosters go on `BoostBoostable` pieces only (crafted set pieces and common IOs, not
     procs, attuned or superior pieces), at most 5 (`boost_IsBoostable`: the
@@ -117,10 +172,47 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
 
 ## Starting sets (New Build)
 
+- A primary and a secondary may forbid each other through their powers' `BuyRequires`. On
+  Homecoming, Shield Defense can't go with Claws, Dual Blades, Katana (Ninja Blade), Spines,
+  Staff Fighting or Titan Weapons (Brutes, Scrappers, Stalkers and Tankers): with both owned,
+  neither set has a level-1 power to buy. Issue 28, Page 3 also keeps Claws from Stone Armor
+  (Brutes and Tankers); Page 4 dropped that. These are the only pairs either version forbids.
+  The character creator buys the set chosen in one list before it lists the other, and greys every
+  set the character could then not have, with "This power set is unavailable due to the selection
+  of an incompatible power set." (`initPowerSetSelector` in `Game/src/UI/Hybrid/uiPower.c`, through
+  `character_IsAllowedToHavePowerSetHypothetically` in `Common/entity/character_base.c`: the
+  set's `SetBuyRequires` fails, or none of its powers available at the character's level passes
+  its `BuyRequires`). Only the listed set's own
+  requirements count, so a pair whose powers forbid each other one way only is greyed in one list
+  only. Clicking a greyed set in the game chooses none, so it greys nothing in the other list.
+  New Build greys the same sets, naming the set in the way (`setFitsWith` and `startingLocks` in
+  `src/engine/rules.ts`, reading requirements as the level-up screens do, origin and alignment
+  included); a greyed set takes no click, and a chosen set that is greyed (an older build's pair,
+  or a one-way clash) greys nothing in the other list (when both clash, the secondary is the one
+  greyed). Finish needs a pair where each set fits with the other (`setsGoTogether`), so level 1's
+  two picks can always be made. Unlike the game's test, the planner's skips auto-issued powers, as
+  level 1's picks can't take them (no Homecoming pair differs). A build that already holds such a
+  pair (a link, a saved build, an import) still opens as it is, its level-1 picks flagged. Each time
+  it opens (a reload too) an "Invalid power sets" message names the clash, its OK greyed and
+  counting down from 5 (`warnInvalidPair` in `src/state/store.ts`; any dialog asked for meanwhile
+  waits for it to close), and its overview title alternates with INVALID POWER SETS in red. Only a
+  clash counts (`pairProblem`): a set that can't start a build on its own (a staff-only set, hidden
+  by its powers' `BuyRequires`; no Homecoming set) fits with nothing, and gets no warning.
 - A primary or secondary is offered when its `SetRequires` and `SetBuyRequires` pass for a new
   character of the archetype at level 1, it has powers, and it is not a VEAT branch
   (`SpecializeAt`). The live data gives Wind Control (Controller and Dominator) `SetRequires 0`,
   so the game hides it, and so does New Build.
+- It also needs a level-1 power whose `BuyRequires` a player passes. Thunderspy's client has no
+  `SetRequires`; its staff-only sets (Organic Armor) ask `accesslevel char> 0 >` of their powers
+  instead, so no player can take them and New Build leaves them out. On Homecoming this changes no
+  list.
+- Thunderspy's data (ts9-6) forbids other pairs than Homecoming's: Shield Defense with Claws,
+  Dual Blades, Katana, Staff Fighting or Titan Weapons for Scrappers and Brutes (Spines is
+  allowed), and with Dual Blades, Staff Fighting, Titan Weapons or Pale Blade for Tankers (Pale
+  Blade's Lash forbids it, and Fetid Presence needs Lash). Brute Claws and Stone Armor clash one
+  way only: Claws' level-1 powers forbid Stone Armor, but Stone Armor keeps Stone Skin with
+  Claws, so New Build greys Claws once Stone Armor is chosen and not the reverse; Finish stays
+  locked for the pair all the same (`setsGoTogether`).
 
 ## Set bonuses
 

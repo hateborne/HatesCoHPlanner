@@ -5,9 +5,19 @@ Usage (from the repo root):
     python -m pipeline.run --force    # re-decode everything
     python -m pipeline.run --no-assets
     python -m pipeline.run --game-version i28p4 --game-label "Issue 28, Page 4" [--make-default]
+    python -m pipeline.run --server thunderspy --frames-from homecoming/i28p4
 
-The game version id names the data folder public/data/<id>/. It defaults to "gameVersion" /
-"gameLabel" under "homecoming" in pipeline/patch-watch.json.
+The game version id names the data folder public/data/<id>/ (public/data/<server>/<id>/ for a
+server other than Homecoming). It defaults to "gameVersion" / "gameLabel" under the server's entry
+in pipeline/patch-watch.json. A version id names one server only: the run refuses an id another
+server already uses.
+
+Another server (--server thunderspy) reads its own client (config.SERVERS: Thunderspy's
+Thunderspy.exe and tspy/bin.pigg), keeps its own ids file (pipeline/ids-<server>.json) and reports
+(pipeline/report-<server>.md), writes no Mids map when Mids has no database for it, and never
+touches the shared assets: it keeps its own copy of every icon it shows (public/assets/<server>/;
+the shared file itself where its art is the same).
+Its client has no enhancement frame data, so pass --frames-from homecoming/<version>.
 
 An older client (COH_CLIENT pointing at a copy of an older install) adds an older version beside
 the default one. For any version that is not the default, the run writes its report to
@@ -33,26 +43,44 @@ PATCH_WATCH = config.REPO / "pipeline" / "patch-watch.json"
 
 
 def default_game_version() -> tuple[str | None, str | None]:
-    """@return (gameVersion, gameLabel) from patch-watch.json's "homecoming" entry (None if absent)."""
+    """@return (gameVersion, gameLabel) from the selected server's patch-watch.json entry (None if absent)."""
     try:
-        h = json.loads(PATCH_WATCH.read_text(encoding="utf-8")).get("homecoming", {})
+        h = json.loads(PATCH_WATCH.read_text(encoding="utf-8")).get(config.SERVER.id, {})
     except (OSError, ValueError):
         return None, None
     return h.get("gameVersion"), h.get("gameLabel")
 
 
 def current_default() -> str | None:
-    """@return The default version id in public/data/versions.json (None if absent or unreadable)."""
+    """@return The default version id in the server's versions.json (None if absent or unreadable)."""
     try:
-        return json.loads((config.DATA_OUT / "versions.json").read_text(encoding="utf-8")).get("default") or None
-    except (OSError, ValueError):
+        return (config.version_index(config.SERVER.id) or {}).get("default") or None
+    except ValueError:
         return None
+
+
+def version_owner(version: str) -> str | None:
+    """@return The other server whose versions.json lists this version id, or None.
+
+    A share code names its game version and not its server, so the app tells a code pasted on the
+    wrong server by its version: every version id must belong to one server only.
+    """
+    for sid in config.SERVERS:
+        if sid == config.SERVER.id:
+            continue
+        try:
+            idx = config.version_index(sid) or {}
+        except ValueError:
+            continue
+        if any(isinstance(v, dict) and v.get("id") == version for v in idx.get("versions") or []):
+            return sid
+    return None
 
 
 def render_failure(data, reason: str) -> str:
     """Report for a run that aborted before writing anything."""
     L = ["# Pipeline report -- FAILED\n", f"**{reason}**\n",
-         "Nothing under public/ was written and pipeline/ids.json was not touched.\n",
+         f"Nothing under public/ was written and pipeline/{config.IDS_FILE.name} was not touched.\n",
          "## Decode health\n", "| Bin | Records | Clean | Partial |\n|---|---|---|---|"]
     for k, v in data.health.items():
         L.append(f"| {k} | {v['records']} | {v['clean']} | {v['partial']} |")
@@ -66,7 +94,8 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
     """Markdown summary of a pipeline run."""
     L = []
     m = exp["manifest"]
-    L.append(f"# Pipeline report -- data {m['dataVersion']}\n")
+    title = m["dataVersion"] if config.SERVER.shared_assets else f"{config.SERVER.id} {m['dataVersion']}"
+    L.append(f"# Pipeline report -- data {title}\n")
     L.append(f"Generated {m['generated']} (UTC).\n")
     if warnings:
         L.append("## Warnings\n")
@@ -91,8 +120,43 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
     L.append(f"\nPvP-only effects dropped: {rep['pvp_effects_dropped']}. "
              f"Unresolved references: {sum(rep['unresolved_refs'].values())}. "
              f"New IDs: {exp['ids_added']}.\n")
+    if rep["missing_text"].get("written as text"):
+        L.append(f"Names and descriptions written into the data as text rather than as message keys "
+                 f"(shown as written, as the client does): {rep['missing_text']['written as text']}.\n")
+    fr = exp.get("frames")
+    if fr and fr.get("cross"):  # an older version of the same server reports as it always did
+        L.append("## Enhancement frames\n")
+        L.append(f"The client has no frame data. Borrowed by name: {fr['by_name']}; by set type "
+                 f"(conversion group): {fr['by_set']}; none ({len(fr['none'])}): "
+                 f"{', '.join(fr['none']) or 'none'}\n")
+    ic = exp.get("icons")
+    if ic:
+        L.append("## Icons\n")
+        L.append("Every icon this server shows is its own copy (public/assets/<server>/), so a later "
+                 f"Homecoming redraw can't change it (this server's newest version sets the art for all "
+                 f"its versions). {ic['same']} are the same art as the shared icons "
+                 "(difference under 2 of 255) and copy the shared file; the rest:\n")
+        for kind, rows in ic["changed"].items():
+            if rows:
+                L.append(f"- Redrawn {kind} ({len(rows)}; difference in brackets, under 8 is worth a "
+                         "look): " + ", ".join(f"{n} ({d})" for n, d in rows))
+        for name, piggs in ic.get("conflicts", []):
+            L.append(f"- Different art in more than one pigg, {name}: {', '.join(piggs)} (the last "
+                     "is used; check which the game shows)")
+        for k, what in (("new", "Not in the shared icons"),
+                        ("shared_fallback", "No texture of its own, a copy of the shared icon"),
+                        ("missing", "No texture at all")):
+            for kind, names in ic[k].items():
+                if names:
+                    L.append(f"- {what}, {kind} ({len(names)}): " + ", ".join(names))
+        L.append("")
+    if not config.SERVER.shared_assets:
+        from pipeline import compare
+        L.extend(compare.report_section(config.SERVER.id, m["dataVersion"], exp["root"]))
     mm = exp.get("mids")
-    if mm and mm.get("skipped"):
+    if mm and mm.get("none"):
+        L.append("## Mids map\n\nNone: MidsReborn has no database for this server.\n")
+    elif mm and mm.get("skipped"):
         extra = (f" mids-map.json was carried forward from {mm['carried_from']} and may be stale."
                  if mm.get("carried_from") else "")
         L.append(f"## Mids map\n\nSkipped: {mm['skipped']}.{extra}\n")
@@ -156,6 +220,8 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--server", choices=sorted(config.SERVERS), default=config.HOMECOMING.id,
+                    help="game server whose client to read (default homecoming)")
     ap.add_argument("--force", action="store_true", help="ignore the decode cache")
     ap.add_argument("--no-assets", action="store_true")
     ap.add_argument("--no-validate", action="store_true")
@@ -164,22 +230,36 @@ def main() -> int:
     ap.add_argument("--make-default", action="store_true",
                     help="make this version the default in versions.json")
     ap.add_argument("--frames-from", metavar="VERSION",
-                    help="borrow enhancement frames from this version when the client has none")
+                    help="borrow enhancement frames from this version (<version> or <server>/<version>) "
+                         "when the client has none")
     ap.add_argument("--overwrite-published", action="store_true",
                     help="replace a version folder made from a different client (normally refused)")
     ap.add_argument("--refresh-mids-map", action="store_true",
                     help="replace an existing version folder's mids-map.json (normally kept)")
     args = ap.parse_args()
+    config.select_server(args.server)
 
     dv, dl = default_game_version()
     version = args.game_version or dv
     label = args.game_label or (dl if not args.game_version else None) or version
     if not version:
-        print("error: no game version: pass --game-version or set homecoming.gameVersion in "
+        print(f"error: no game version: pass --game-version or set {args.server}.gameVersion in "
               "pipeline/patch-watch.json")
         return 2
     if not config.valid_version_id(version):
-        print(f"error: invalid game version id {version!r} (lower-case letters, digits, '-' and '_')")
+        print(f"error: invalid game version id {version!r} (lower-case letters, digits, '-' and '_', "
+              "not a server's folder name)")
+        return 2
+    named = config.version_server(version)
+    if named.id != config.SERVER.id:
+        want = (f"start with {config.SERVER.version_prefix!r}" if config.SERVER.version_prefix
+                else f"not start with {named.version_prefix!r}")
+        print(f"error: game version id {version!r} reads as {named.id}'s: {args.server}'s ids must {want} "
+              "(the app tells a share code's server from its version id)")
+        return 2
+    owner = version_owner(version)
+    if owner:
+        print(f"error: game version id {version!r} is already {owner}'s; every version id names one server")
         return 2
 
     config.preflight()
@@ -187,14 +267,15 @@ def main() -> int:
     if cd is None and any((p / "core.json").is_file() for p in config.DATA_OUT.glob("*/")):
         # without the index this run can't tell the default from an older version, and an older
         # client taken for the default would overwrite the shared assets
-        print("error: public/data/versions.json is missing or unreadable while version folders exist; "
-              "restore it (git checkout public/data/versions.json) and re-run")
+        rel = config.DATA_OUT.relative_to(config.REPO).as_posix()
+        print(f"error: {rel}/versions.json is missing or unreadable while version folders exist; "
+              f"restore it (git checkout {rel}/versions.json) and re-run")
         return 2
     is_default = args.make_default or cd is None or cd == version
-    report_path = config.REPORT if is_default else config.REPO / "pipeline" / f"report-{version}.md"
+    report_path = config.report_path(version, is_default)
     from pipeline import export
     from pipeline.ids import IdRegistry
-    IdRegistry()  # refuses to run when ids.json is missing/empty but public/data holds data
+    IdRegistry()  # refuses to run when the ids file is missing/empty but the server's data exists
 
     data = live.load(force=args.force)
     # health gate: decide before anything is written
@@ -207,15 +288,17 @@ def main() -> int:
         return 1
 
     exp = export.write(data, version, args.frames_from, overwrite_published=args.overwrite_published,
-                       refresh_mids_map=args.refresh_mids_map)
+                       refresh_mids_map=args.refresh_mids_map, assets=not args.no_assets,
+                       add_only_icons=not is_default)
     warnings = list(exp["warnings"])
     root = exp["root"]
     assets = None
-    if not args.no_assets:
+    if not args.no_assets and config.SERVER.shared_assets:
         from pipeline.assets import export_assets
         assets = export_assets.run(root) if is_default else export_assets.add_missing_icons(root)
+    # (another server's icons were settled in export.write: they decide names in its data)
     val = None
-    if not args.no_validate:
+    if not args.no_validate and config.SERVER.mids:
         if config.mids_available():
             try:
                 from pipeline.validate import mids

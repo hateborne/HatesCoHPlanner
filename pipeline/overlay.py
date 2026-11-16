@@ -130,7 +130,7 @@ def main() -> int:
     head = mids_header()
     patch = PATCH_ID.format(**head)
     vid = args.id or f"{patch}m"
-    if not config.valid_version_id(vid) or vid == base:
+    if not config.valid_version_id(vid) or vid == base or config.version_server(vid).id != config.SERVER.id:
         print(f"error: invalid version id {vid!r}")
         return 2
     if (patch_order(patch) or (0, 0)) >= (patch_order(entry.get("patch", base)) or (0, 0)):

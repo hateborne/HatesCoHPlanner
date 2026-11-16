@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
 import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
+import type { GameData } from '../../data/gamedata.ts';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
-import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
-import { startingSets } from '../../engine/rules.ts';
-import { useStore } from '../../state/store.ts';
+import { ALIGNMENTS, carryOrigin, hasWork, skinOf, type Alignment } from '../../engine/build.ts';
+import { levelUpRespec, pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
+import { askOverRemembered, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -38,11 +39,20 @@ const BUILD_TYPES: { id: BuildType; label: string; help: string }[] = [
   },
 ];
 
-/** @return A typed respec level as a whole level from 1 to 50 (50 when it isn't a number). */
-const respecLevel = (raw: string) => {
+/** @return A typed respec level as a whole level from `min` to 50 (50 when it isn't a number). */
+const respecLevel = (raw: string, min = 1) => {
   const n = Math.round(Number(raw));
-  return Number.isFinite(n) && raw.trim() !== '' ? Math.min(50, Math.max(1, n)) : 50;
+  return Number.isFinite(n) && raw.trim() !== '' ? Math.min(50, Math.max(min, n)) : 50;
 };
+
+/**
+ * @return The lowest level (1-based) a Respec build of an archetype may run to: the level its
+ *   training forces a respec at (Arachnos Soldier and Widow: 24, levelUpRespec), else 1.
+ */
+function lowestRespec(gd: GameData | undefined, at: Archetype | undefined): number {
+  const forced = gd && at ? levelUpRespec(gd, at) : undefined;
+  return forced === undefined ? 1 : forced + 1;
+}
 
 /**
  * Build setup in the in-game style: origin and alignment, archetype, primary, secondary and a
@@ -63,52 +73,103 @@ export function Setup() {
   const [name, setName] = useState(build?.name ?? '');
   const [desc, setDesc] = useState<{ text: string; icon?: string } | null>(null);
   const [buildType, setBuildType] = useState<BuildType>(build?.respecTo !== undefined ? 'respec' : 'leveling');
-  const [respecTo, setRespecTo] = useState(String((build?.respecTo ?? 49) + 1)); // typed text, 1-based
+  // typed text, 1-based; an archetype planned as Respec only starts at its lowest respec level
+  const [respecTo, setRespecTo] = useState(() => String(Math.max((build?.respecTo ?? 49) + 1, lowestRespec(gd, own && gd?.archetypeById.get(own.at)))));
   const [tab, setTab] = useState(0);
   // switching servers (the logo) clears the archetype and both power sets; the rest stays, the
-  // origin only while the new server has it
-  const [seenServer, setSeenServer] = useState(gd?.server);
-  if (gd && gd.server !== seenServer) {
-    setSeenServer(gd.server);
-    setAt(undefined);
-    setPri(undefined);
-    setSec(undefined);
-    setDesc(null);
-    if (origin !== undefined && !gd.core.origins.some((o) => o.id === origin)) setOrigin(undefined);
+  // origin by its internal name while the new server has it (each server numbers origins on its own)
+  const [seenGd, setSeenGd] = useState(gd);
+  if (gd && gd !== seenGd) {
+    setSeenGd(gd);
+    if (gd.server !== seenGd?.server) {
+      setAt(undefined);
+      setPri(undefined);
+      setSec(undefined);
+      setDesc(null);
+      setOrigin(carryOrigin(origin, seenGd?.core.origins, gd.core.origins));
+    }
   }
   const stage = useStage();
   const { phone } = stage;
   const archetype = at !== undefined ? gd?.archetypeById.get(at) : undefined;
   const pris = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.pri, archetype) : []), [gd, archetype]);
   const secs = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.sec, archetype) : []), [gd, archetype]);
+  const priSet = pris.find((s) => s.id === pri);
+  const secSet = secs.find((s) => s.id === sec);
+  // sets that can't go with the set chosen in the other list, and why: the character creator greys
+  // them (a requirement may also read the origin and alignment chosen)
+  const clashes = useMemo(
+    () => (gd && archetype ? startingLocks(gd, archetype, pris, secs, priSet, secSet, { origin, alignment: align }) : new Map<number, string>()),
+    [gd, archetype, pris, secs, priSet, secSet, origin, align],
+  );
+  // whether level 1's picks can't be made with the chosen pair, and why when the sets clash
+  const { pairBlocked, problem } = useMemo(() => {
+    if (!gd || !archetype || !priSet || !secSet) return { pairBlocked: false, problem: null };
+    const who = { origin, alignment: align };
+    if (setsGoTogether(gd, archetype, priSet, secSet, who)) return { pairBlocked: false, problem: null };
+    return { pairBlocked: true, problem: pairProblem(gd, archetype, priSet, secSet, who) };
+  }, [gd, archetype, priSet, secSet, origin, align]);
+  // a choice that blocks the pair says why at once (a tapped set's help stays up on phones)
+  useEffect(() => {
+    if (pairBlocked) setDesc(null);
+  }, [pairBlocked]);
   useEffect(() => {
     setMusicSkin(skinOf(align));
     useStore.setState({ setupAlign: align });
   }, [align]);
+  // an archetype whose training forces a respec (Arachnos Soldier and Widow at 24) is planned as a
+  // Respec build: Leveling is greyed for it, with the reason, and the player's own Build Type
+  // comes back for another archetype
+  const respecOnly = gd && archetype ? respecOnlyNote(gd, archetype) : null;
+  const noteTitle = respecOnly?.title;
+  const noteText = respecOnly?.text;
+  // picked (or already picked when New Build opens) while Leveling is ticked: say why it is a Respec
+  useEffect(() => {
+    if (noteTitle && noteText && buildType === 'leveling') void useStore.getState().tell({ title: noteTitle, text: noteText });
+  }, [noteTitle, noteText, buildType]);
   if (!gd) return null;
   const skin = SKINS[skinOf(align)];
+  const type: BuildType = respecOnly ? 'respec' : buildType;
+  const levelingLocked = noteText ?? null;
+  const lowest = lowestRespec(gd, archetype);
   // ids are stable across game versions, but a choice may not exist in the version picked here
-  const ready =
-    archetype !== undefined && pris.some((s) => s.id === pri) && secs.some((s) => s.id === sec) && gd.core.origins.some((o) => o.id === origin);
+  const ready = archetype !== undefined && priSet !== undefined && secSet !== undefined && !pairBlocked && gd.core.origins.some((o) => o.id === origin);
+  /** @return A set's help text, after why it can't be chosen when it can't. */
+  const setHelp = (s: (typeof pris)[number]) => {
+    const lock = clashes.get(s.id);
+    return lock ? `${lock}.<br>${s.lh || s.sh}` : s.lh || s.sh;
+  };
+  // the description box's text while nothing is hovered
+  const pairNote = pairBlocked ? `${problem ?? "Level 1's powers can't be picked with these sets"}. Choose another primary or secondary power set.` : undefined;
   const ROW = 47;
   const finish = async () => {
     if (at === undefined || pri === undefined || sec === undefined || origin === undefined) return;
     // a new build replaces the current one (and this tab's address): ask first when it has any work
-    if (build && (build.picks.some((p) => p) || Object.values(build.granted).some((g) => g.slots.some((s) => s.enh)))) {
+    if (build && hasWork(build)) {
       const ok = await useStore.getState().askConfirm({
         title: 'Start a new build?',
         text: `This replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first (Saved builds / Import) if you want to keep it.`,
         okLabel: 'Start new',
       });
       if (!ok) return;
+    } else if (!build && (await askOverRemembered('Start a new build?', 'A new build', 'Start new')) !== 'go') {
+      // nothing open, but the browser still remembers a build (the return question's tile, another
+      // server's address): the player stayed, or opened that build instead
+      return;
     }
-    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: buildType === 'respec' ? respecLevel(respecTo) - 1 : undefined });
+    // the choices were made on this server's data: a server switch that finished while the question
+    // was open has cleared them (each server numbers its archetypes and sets on its own)
+    if (useStore.getState().gd?.server !== gd.server) return;
+    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: type === 'respec' ? respecLevel(respecTo, lowest) - 1 : undefined });
   };
   const pickAt = (a: Archetype) => {
     if (a.id === at) return;
     setAt(a.id);
     setPri(undefined);
     setSec(undefined);
+    // a respec level below the one the archetype's training forces moves up to it
+    const low = lowestRespec(gd, a);
+    if (low > 1) setRespecTo((t) => String(respecLevel(t, low)));
   };
   /** Which game version's data the new build uses (each version keeps its own data on the site). */
   const versionPicker = (style: CSSProperties) => (
@@ -129,42 +190,51 @@ export function Setup() {
   );
   /** The Build Type bars (Leveling / Respec) from (x, y), `step` apart, `wd` wide. */
   const typeBars = (x: number, y: number, step: number, wd: number, scale?: number) =>
-    BUILD_TYPES.map((t, i) => (
-      <CheckBar
-        key={t.id}
-        testId={`buildtype:${t.id}`}
-        skin={skin}
-        x={x}
-        y={y + i * step}
-        wd={wd}
-        scale={scale}
-        text={t.label}
-        state={t.id === buildType ? 'selected' : 'standard'}
-        down={t.id === buildType}
-        clickSounds={SELECT}
-        hoverSounds
-        onClick={() => {
-          setBuildType(t.id);
-          setDesc({ text: t.help });
-        }}
-        onHover={(on) => setDesc(on ? { text: t.help } : null)}
-      />
-    ));
+    BUILD_TYPES.map((t, i) => {
+      const locked = t.id === 'leveling' ? levelingLocked : null;
+      return (
+        <CheckBar
+          key={t.id}
+          testId={`buildtype:${t.id}`}
+          skin={skin}
+          x={x}
+          y={y + i * step}
+          wd={wd}
+          scale={scale}
+          text={t.label}
+          state={locked ? 'unselectable' : t.id === type ? 'selected' : 'standard'}
+          down={t.id === type}
+          title={locked ?? undefined}
+          clickSounds={SELECT}
+          hoverSounds
+          onClick={
+            locked
+              ? undefined
+              : () => {
+                  setBuildType(t.id);
+                  setDesc({ text: t.help });
+                }
+          }
+          onHover={(on) => setDesc(on ? { text: locked ?? t.help } : null)}
+          onLongPress={locked ? () => setDesc({ text: locked }) : undefined}
+        />
+      );
+    });
   /** "Respec to level" and its field, shown while Respec is ticked; the label's left edge at x. */
   const levelField = (x: number, cy: number, size: number) =>
-    buildType === 'respec' ? (
+    type === 'respec' ? (
       <div className="abs body-text" style={{ left: x, top: cy - size, height: 2 * size, display: 'flex', alignItems: 'center', gap: size * 0.6, color: '#cfe8ff', fontSize: size, zIndex: 5 }}>
         <label htmlFor="respec-level">Respec to level</label>
         <input
           id="respec-level"
           type="number"
-          min={1}
+          min={lowest}
           max={50}
           value={respecTo}
           onChange={(e) => setRespecTo(e.target.value)}
-          onBlur={() => setRespecTo(String(respecLevel(respecTo)))}
+          onBlur={() => setRespecTo(String(respecLevel(respecTo, lowest)))}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') setRespecTo(String(respecLevel(respecTo)));
+            if (e.key === 'Enter') setRespecTo(String(respecLevel(respecTo, lowest)));
           }}
           style={{ width: size * 4.2, height: size * 1.9, background: '#000', border: '2px solid #4f94ff', borderRadius: size, color: '#fff', fontSize: size, textAlign: 'center', boxSizing: 'border-box' }}
         />
@@ -226,9 +296,11 @@ export function Setup() {
       const val = tab === 2 ? pri : sec;
       const setv = tab === 2 ? setPri : setSec;
       if (!list.length) bars.push(<div key="x" className="desc-text abs" style={{ left: 20, top: 20, fontSize: 20 }}>Choose an archetype first.</div>);
-      list.forEach((s, i) =>
-        bars.push(<CheckBar key={s.id} testId={`set:${s.id}`} skin={skin} x={BX} y={44 + i * R} wd={BW} noBox text={s.dn} state={s.id === val ? 'selected' : 'standard'} down={s.id === val} clickSounds={SELECT} hoverSounds onClick={() => { setv(s.id); setDesc({ text: s.lh || s.sh }); }} />),
-      );
+      list.forEach((s, i) => {
+        // a locked set takes no tap; a long press says why (phones have no hover)
+        const lock = clashes.get(s.id);
+        bars.push(<CheckBar key={s.id} testId={`set:${s.id}`} skin={skin} x={BX} y={44 + i * R} wd={BW} noBox text={s.dn} state={lock ? 'unselectable' : s.id === val ? 'selected' : 'standard'} down={s.id === val} title={lock} clickSounds={SELECT} hoverSounds onClick={lock ? undefined : () => { setv(s.id); setDesc({ text: setHelp(s) }); }} onLongPress={lock ? () => setDesc({ text: setHelp(s) }) : undefined} />);
+      });
       end = 44 + Math.max(1, list.length) * R;
     }
     return (
@@ -244,7 +316,7 @@ export function Setup() {
         <GameScroll skin={skin} left={P.x + 4} top={P.y + 8} width={P.w - 8} height={P.h - 16} barX={P.x + P.w}>
           <div style={{ position: 'relative', height: end + 20 }}>{bars}</div>
         </GameScroll>
-        <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an origin and alignment, an archetype and its primary and secondary sets, then Finish.'} />
+        <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? pairNote ?? 'Choose an origin and alignment, an archetype and its primary and secondary sets, then Finish.'} />
         <NextButton skin={skin} dir="left" text="Back" locked={!hasPicks} onClick={toOverview} />
         <NextButton skin={skin} dir="right" text="Finish" locked={!ready} glow={ready} onClick={finish} />
       </>
@@ -317,18 +389,19 @@ export function Setup() {
                 scale={1}
                 noBox
                 text={s.dn}
-                state={s.id === val ? 'selected' : 'standard'}
+                state={clashes.has(s.id) ? 'unselectable' : s.id === val ? 'selected' : 'standard'}
                 down={s.id === val}
+                title={clashes.get(s.id)}
                 clickSounds={SELECT}
                 hoverSounds
-                onClick={() => set(s.id)}
-                onHover={(on) => setDesc(on ? { text: s.lh || s.sh } : null)}
+                onClick={clashes.has(s.id) ? undefined : () => set(s.id)}
+                onHover={(on) => setDesc(on ? { text: setHelp(s) } : null)}
               />
             ))}
           </div>
         </GameScroll>
       ))}
-      <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an origin and an alignment, an archetype and its primary and secondary power sets, then press Finish to pick your level 1 powers.'} />
+      <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? pairNote ?? 'Choose an origin and an alignment, an archetype and its primary and secondary power sets, then press Finish to pick your level 1 powers.'} />
       <NextButton skin={skin} dir="left" text="Back" locked={!hasPicks} onClick={toOverview} />
       <NextButton skin={skin} dir="right" text="Finish" locked={!ready} glow={ready} onClick={finish} />
     </>

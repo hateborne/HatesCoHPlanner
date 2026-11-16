@@ -465,7 +465,11 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
         else g.stats.set(st.label, { ...st });
       }
     };
-    walkEffects(bn.power.eff, ctx, (m) => m.tg === 'Caster' && take(m));
+    // a set bonus lands on its owner. Homecoming aims its effects at Caster (its Affected mods are
+    // the share for pets, ea MyPet); Thunderspy's +Damage bonuses are Affected mods of a power
+    // whose target is the caster, so they count by affectsSelf. A piece's global keeps to Caster:
+    // its other mods are what it does to others when it fires
+    walkEffects(bn.power.eff, ctx, (m) => (m.tg === 'Caster' || (!bn.global && affectsSelf(bn.power, m))) && take(m));
     walkEffects(bn.power.act, ctx, take);
     // a global's chance of a status effect at each tick is listed beside its line (walkChanceStatus)
     if (bn.global) walkChanceStatus(gd, bn.power.eff, ctx, (m, ch) => m.tg === 'Caster' && addChance(bn.power, m, ch, label));

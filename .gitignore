@@ -28,3 +28,6 @@ __pycache__/
 *.swp
 Thumbs.db
 .DS_Store
+
+# full difference reports (python -m pipeline.compare --effects N): too large to keep
+pipeline/report-*-diff-full.md

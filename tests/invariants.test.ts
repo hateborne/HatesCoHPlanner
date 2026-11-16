@@ -7,26 +7,40 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SERVER, SERVERS } from '../src/data/servers.ts';
 import type { BoostsFile, Core, Power, Powerset } from '../src/data/types.ts';
 import type { GameVersions } from '../src/data/versions.ts';
 import { BuildRules, startingSets } from '../src/engine/rules.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { decodeShare } from '../src/io/share.ts';
-import { loadData } from './helpers/data.ts';
+import { dataDir, loadData } from './helpers/data.ts';
 import { walkTo50 } from './helpers/walk.ts';
 
-const DATA = join(process.cwd(), 'public', 'data');
-const read = (...p: string[]) => readFileSync(join(DATA, ...p), 'utf-8');
-const versions = JSON.parse(read('versions.json')) as GameVersions;
 const FILES = ['core.json', 'powersets.json', 'powers.json', 'boosts.json'];
-const ids = JSON.parse(readFileSync(join(process.cwd(), 'pipeline', 'ids.json'), 'utf-8')) as Record<string, Record<string, number>>;
 
-describe('published game versions', () => {
+// each server keeps its own versions and stable ids (pipeline/ids.json, pipeline/ids-<server>.json)
+describe.each(SERVERS.map((s) => [s.label, s] as const))('published game versions: %s', (_, server) => {
+  const DATA = dataDir(server.id);
+  const read = (...p: string[]) => readFileSync(join(DATA, ...p), 'utf-8');
+  const versions = JSON.parse(read('versions.json')) as GameVersions;
+  const idsFile = server.id === DEFAULT_SERVER ? 'ids.json' : `ids-${server.id}.json`;
+  const ids = JSON.parse(readFileSync(join(process.cwd(), 'pipeline', idsFile), 'utf-8')) as Record<string, Record<string, number>>;
+
   it('has a folder for every listed version, and the default and latest.json name one of them', () => {
     const listed = versions.versions.map((v) => v.id);
     expect(listed).toContain(versions.default);
     expect(listed).toContain((JSON.parse(read('latest.json')) as { dataVersion: string }).dataVersion);
-    for (const id of listed) for (const f of [...FILES, 'mids-map.json']) expect(existsSync(join(DATA, id, f)), `${id}/${f}`).toBe(true);
+    // a Mids map only where MidsReborn has a database for the server
+    const files = server.midsDb ? [...FILES, 'mids-map.json'] : FILES;
+    for (const id of listed) for (const f of files) expect(existsSync(join(DATA, id, f)), `${id}/${f}`).toBe(true);
+    if (!server.midsDb) for (const id of listed) expect(existsSync(join(DATA, id, 'mids-map.json')), `${id}/mids-map.json`).toBe(false);
+  });
+
+  it('uses version ids no other server uses (a share code tells its server by its version)', () => {
+    for (const other of SERVERS.filter((s) => s.id !== server.id)) {
+      const theirs = new Set((JSON.parse(readFileSync(join(dataDir(other.id), 'versions.json'), 'utf-8')) as GameVersions).versions.map((v) => v.id));
+      expect(versions.versions.filter((v) => theirs.has(v.id)).map((v) => v.id), other.label).toEqual([]);
+    }
   });
 
   // pipeline/export.py content_hash: sha1 over core.json without its manifest.hash, then the other three files
@@ -41,12 +55,12 @@ describe('published game versions', () => {
   });
 
   // a renumbered or reused id would no longer match the (unchangeable) folders published with it
-  it.each(versions.versions)('$id agrees with pipeline/ids.json', (v) => {
+  it.each(versions.versions)(`$id agrees with pipeline/${idsFile}`, (v) => {
     const core = JSON.parse(read(v.id, 'core.json')) as Core;
     const boosts = JSON.parse(read(v.id, 'boosts.json')) as BoostsFile;
     const wrong: string[] = [];
     const check = (table: string, name: string, id: number) => {
-      if (ids[table]?.[name.toLowerCase()] !== id) wrong.push(`${table} ${name} = ${id}, ids.json ${ids[table]?.[name.toLowerCase()]}`);
+      if (ids[table]?.[name.toLowerCase()] !== id) wrong.push(`${table} ${name} = ${id}, ${idsFile} ${ids[table]?.[name.toLowerCase()]}`);
     };
     const powers = [...(JSON.parse(read(v.id, 'powers.json')) as Power[]), ...boosts.boosts, ...boosts.bonusPowers];
     for (const p of powers) check('power', p.n, p.id);
@@ -57,7 +71,7 @@ describe('published game versions', () => {
     expect(wrong.slice(0, 10)).toEqual([]);
   });
 
-  it('never gives two names the same id in pipeline/ids.json', () => {
+  it(`never gives two names the same id in pipeline/${idsFile}`, () => {
     for (const [table, m] of Object.entries(ids)) {
       const vals = Object.values(m);
       expect(new Set(vals).size, table).toBe(vals.length);

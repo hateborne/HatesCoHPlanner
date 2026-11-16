@@ -6,11 +6,14 @@
  *
  * Each set a power holds gets one treatment; the sets are shuffled with a seeded random number and
  * dealt the treatments in turn, so every run uses all three:
- * - boost: the crafted pieces, boosters +0, +1, +2, ... across the set's pieces (from a random start);
+ * - boost: the crafted pieces with boosters;
  * - attune: the attuned version of each piece;
- * - boost, then attune: the boosters chosen on the crafted piece first, then Attuned ticked. The
- *   game data marks attuned pieces as not boostable, so the planner must drop the boosters.
- * Common IOs and other pieces outside a set get boosters at random. Set HCP_E2E_SEED to repeat a run.
+ * - boost, then attune: +1 to +5 boosters chosen on the crafted piece first, then Attuned ticked.
+ *   The game data marks attuned pieces as not boostable, so the planner must drop the boosters.
+ * The sets with a boostable piece are dealt before the rest, so each treatment gets its share of
+ * them. Every boosted piece (common IOs and other pieces outside a set too), in a shuffled order,
+ * takes the next of +1, +2, +3, +4, +5, +0, so any run holds each of +1 to +5. Set HCP_E2E_SEED to
+ * repeat a run.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,6 +53,14 @@ function seeded(seed: number): () => number {
   };
 }
 
+/** Shuffle a list in place (Fisher-Yates) with a seeded random number generator. */
+function shuffle<T>(list: T[], rand: () => number): void {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [list[i], list[j]] = [list[j]!, list[i]!];
+  }
+}
+
 /** @return The crafted (variant 0) and attuned (variant 1) versions of a set piece, when it has them. */
 function versions(boost: number): { crafted: number; attuned?: number } {
   const ref = gd.boostSetOf.get(boost);
@@ -60,7 +71,8 @@ function versions(boost: number): { crafted: number; attuned?: number } {
 
 /**
  * Deal the treatments: group each power's enhancements by set, shuffle the groups that can be
- * attuned, give them the treatments in turn, and boost everything else.
+ * attuned (those with a boostable piece first), give them the treatments in turn, boost everything
+ * else, then deal the boosted pieces their boosters.
  *
  * @param b The imported build.
  * @param rand The seeded random number generator.
@@ -89,35 +101,44 @@ function plan(b: Build, rand: () => number): { want: Build; placements: Placemen
     });
     groups.push(...byName.values());
   }
-  // only sets with an attuned version can take every treatment; the rest are boosted (when they can be)
-  const attunable = groups.filter((g) => g.slots.some((i) => versions(enhOf.get(`${g.key}:${i}`)!.boost).attuned !== undefined));
-  for (let i = attunable.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [attunable[i], attunable[j]] = [attunable[j]!, attunable[i]!];
-  }
-  attunable.forEach((g, i) => (g.treatment = TREATMENTS[i % TREATMENTS.length]));
+  const versionsAt = (g: Group, i: number) => versions(enhOf.get(`${g.key}:${i}`)!.boost);
+  const boostable = (g: Group, i: number) => !!gd.power(versionsAt(g, i).crafted).bb;
+  // only sets with an attuned version can take every treatment; the rest are boosted (when they can
+  // be). Those with a boostable piece are dealt first, so boost and boost-then-attune both get some
+  const attunable = groups.filter((g) => g.slots.some((i) => versionsAt(g, i).attuned !== undefined));
+  const withBoostable = attunable.filter((g) => g.slots.some((i) => boostable(g, i)));
+  const others = attunable.filter((g) => !withBoostable.includes(g));
+  shuffle(withBoostable, rand);
+  shuffle(others, rand);
+  [...withBoostable, ...others].forEach((g, i) => (g.treatment = TREATMENTS[i % TREATMENTS.length]));
+
+  // the pieces placed crafted (as the loop below decides), and of those the boostable ones, which
+  // take the next of +1 .. +5, +0 in a shuffled order: any five of them hold each of +1 to +5
+  const staysCrafted = (g: Group, i: number) => (g.treatment ?? 'boost') === 'boost' || versionsAt(g, i).attuned === undefined;
+  const boosted = groups.flatMap((g) => g.slots.filter((i) => staysCrafted(g, i) && boostable(g, i)).map((i) => `${g.key}:${i}`));
+  shuffle(boosted, rand);
+  const boostersOf = new Map(boosted.map((k, n) => [k, (n + 1) % (MAX_BOOSTERS + 1)]));
 
   let want = b;
   const placements: Placement[] = [];
   const log: string[] = [];
   for (const g of groups) {
     const treatment = g.treatment ?? 'boost';
-    const start = Math.floor(rand() * (MAX_BOOSTERS + 1));
     const notes: string[] = [];
-    g.slots.forEach((i, n) => {
+    g.slots.forEach((i) => {
       const was = enhOf.get(`${g.key}:${i}`)!;
       const { crafted, attuned } = versions(was.boost);
       const piece = gd.power(crafted);
-      const boosters = (start + n) % (MAX_BOOSTERS + 1);
       let enh: SlottedEnh;
       let boostFirst: number | undefined;
       if (treatment === 'boost' || attuned === undefined) {
-        // the crafted piece at the build's level, boosted when the game allows it
-        enh = { ...was, boost: crafted, ioLevel: was.boost === crafted ? was.ioLevel : defaultLevel(gd, piece), boosters: piece.bb ? boosters : 0 };
+        // the crafted piece at the build's level, with its boosters when the game allows them
+        const boosters = boostersOf.get(`${g.key}:${i}`) ?? 0;
+        enh = { ...was, boost: crafted, ioLevel: was.boost === crafted ? was.ioLevel : defaultLevel(gd, piece), boosters };
         notes.push(piece.bb ? `+${boosters}` : 'not boostable');
       } else {
         enh = { boost: attuned };
-        if (treatment === 'boost, then attune' && piece.bb) boostFirst = boosters;
+        if (treatment === 'boost, then attune' && piece.bb) boostFirst = 1 + Math.floor(rand() * MAX_BOOSTERS);
         notes.push(boostFirst !== undefined ? `+${boostFirst} then attuned` : 'attuned');
       }
       want = setEnh(want, g.key, i, enh, 0);
@@ -135,12 +156,13 @@ test('Symphony / Dark Dominator, enhancements boosted and attuned at random', as
   const seed = Number(process.env.HCP_E2E_SEED) || Math.floor(Math.random() * 2 ** 31);
   info.annotations.push({ type: 'seed', description: String(seed) });
   const me = new Player(page, info.project.name === 'phone');
-  await page.goto('./');
+  await page.goto('./Homecoming/'); // the site root asks for a server once there is more than one
 
   const target = await me.importBuild(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', FILE), 'utf-8'));
   const { want, placements, log } = plan(target, seeded(seed));
   console.log(`[${info.project.name}] seed ${seed}\n  ${log.join('\n  ')}`);
-  // the plan has all of it: boosters from +1 to +5, attuned pieces, and boosters dropped by Attuned
+  // the plan has all of it, whatever the seed: boosters from +1 to +5, attuned pieces, and boosters
+  // dropped by Attuned
   expect(placements).toHaveLength(ENHANCEMENTS);
   const used = new Set(placements.map((p) => p.enh.boosters ?? 0));
   for (let n = 1; n <= MAX_BOOSTERS; n++) expect(used.has(n), `a piece with +${n}`).toBe(true);

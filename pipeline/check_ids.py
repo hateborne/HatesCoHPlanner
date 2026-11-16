@@ -1,11 +1,14 @@
-"""Check pipeline/ids.json: well formed, and only ever appended to.
+"""Check every game server's stable ids file (pipeline/ids.json, pipeline/ids-<server>.json, as
+config.SERVERS names them): well formed, only ever appended to, and never missing.
 
 Share links and saved builds store these ids, so an id that changes, disappears or is reused
-breaks every link that holds it. CI runs this against the pull request's base branch.
+breaks every link that holds it. CI runs this against the pull request's base branch; a file the
+base branch doesn't have yet (a new server's) is checked for its shape only. A file the base branch
+has, or one whose server already has data, must still be there.
 
 Usage (from the repo root):
-    python pipeline/check_ids.py                # the file is well formed
-    python pipeline/check_ids.py origin/main    # ... and keeps every id origin/main has
+    python pipeline/check_ids.py                # the files are well formed
+    python pipeline/check_ids.py origin/main    # ... and keep every id origin/main has
 """
 from __future__ import annotations
 
@@ -15,18 +18,20 @@ import sys
 from pathlib import Path
 
 KINDS = ("power", "powerset", "boostset", "archetype", "origin")
-REGISTRY = Path(__file__).resolve().parent / "ids.json"
+HERE = Path(__file__).resolve().parent
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))  # run as a script (CI): the repo root holds the pipeline package
 
 
 def problems(data: object) -> list[str]:
     """Everything wrong with one registry's shape.
 
-    @param data The parsed ids.json.
+    @param data The parsed ids file.
     @return One line per problem (empty when it is well formed): a kind missing or not an object,
         a key that isn't lower case, an id that isn't a positive whole number, an id used twice.
     """
     if not isinstance(data, dict):
-        return ["ids.json is not an object"]
+        return ["the file is not an object"]
     out = []
     for kind in KINDS:
         m = data.get(kind)
@@ -64,20 +69,56 @@ def changes(old: dict, new: dict) -> list[str]:
     return out
 
 
+def registries() -> list[tuple[Path, Path]]:
+    """@return Every server's (ids file, data folder), Homecoming's first, as config.SERVERS names them."""
+    from pipeline import config  # imported here: ids.py imports this module, and config is plain paths
+    return [(HERE / s.ids, config.data_dir(s.id)) for s in config.SERVERS.values()]
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    """@return The finished git command (output captured as text)."""
+    return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8")
+
+
 def main(argv: list[str]) -> int:
-    new = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    bad = problems(new)
-    if len(argv) > 1:
-        shown = subprocess.run(["git", "show", f"{argv[1]}:pipeline/ids.json"], capture_output=True, text=True, encoding="utf-8")
-        if shown.returncode != 0:
-            print(f"error: can't read pipeline/ids.json at {argv[1]}: {shown.stderr.strip()}")
-            return 2
-        bad += changes(json.loads(shown.stdout), new)
-    for line in bad:
-        print(f"error: {line}")
-    if not bad:
-        print("pipeline/ids.json: well formed" + (f", only appended to since {argv[1]}" if len(argv) > 1 else ""))
-    return 1 if bad else 0
+    base = argv[1] if len(argv) > 1 else None
+    if base and _git("rev-parse", "--verify", "--quiet", base + "^{commit}").returncode != 0:
+        print(f"error: can't read {base}: not a commit")
+        return 2
+    failed = False
+    for reg, data in registries():
+        name = f"pipeline/{reg.name}"
+        at_base = bool(base) and _git("cat-file", "-e", f"{base}:{name}").returncode == 0
+        if not reg.is_file():
+            # a server with published data, or a file the base branch has, can't lose its ids
+            if at_base:
+                print(f"error: {name} was deleted (it exists on {base}); every link to that server needs it")
+                failed = True
+            elif (data / "versions.json").is_file():
+                print(f"error: {name} is missing while {data.relative_to(HERE.parent).as_posix()} holds data")
+                failed = True
+            else:
+                print(f"{name}: none yet (no data for its server)")
+            continue
+        new = json.loads(reg.read_text(encoding="utf-8"))
+        bad = problems(new)
+        note = ""
+        if base:
+            if not at_base:
+                note = f", new since {base}"  # a new server's file: nothing to keep yet
+            else:
+                shown = _git("show", f"{base}:{name}")
+                if shown.returncode != 0:
+                    print(f"error: can't read {name} at {base}: {shown.stderr.strip()}")
+                    return 2
+                bad += changes(json.loads(shown.stdout), new)
+                note = f", only appended to since {base}"
+        for line in bad:
+            print(f"error: {name}: {line}")
+        if not bad:
+            print(f"{name}: well formed{note}")
+        failed = failed or bool(bad)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
