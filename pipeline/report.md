@@ -49,7 +49,7 @@ Names and descriptions written into the data as text rather than as message keys
 
 ## Pseudo-pets
 
-278 powers create 304 pseudo-pets whose damage the power info totals (221 pet powers, 18 classes' tables, 281950 bytes in pets/i28p4.json). EntCreate mods left out: not auto only (a real pet): 239.
+278 powers create 304 pseudo-pets whose damage the power info totals (217 pet powers, 6 more powers carried for what powers execute, 18 classes' tables, 282996 bytes in pets/i28p4.json). Powers whose PvP-only groups execute powers the damage total counts: 4. EntCreate mods left out: not auto only (a real pet): 239.
 
 ## Mids map (MidsReborn is a reference, not a source of truth)
 

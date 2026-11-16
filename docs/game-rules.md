@@ -307,10 +307,16 @@ powers and pets' alike:
   enhanced damage only when the mod has `CopyBoosts`. Every executing mod counts, whatever its
   group's chance, requirements or flags: the client reads the whole template list here. So Brawl
   adds the Plasmatic Taser and Friendly Fireworks it executes, Haymaker adds Unleash Might's Smash,
-  and Storm Cell's pet adds a full lightning strike each second of its 60 (3753.79 at level 50 for
-  a Blaster). @TODO compare Brawl and Storm Cell in game: if the game shows less, this branch reads
-  something the decompile didn't show.
+  and Storm Cell's pet adds a full lightning strike (both of its 0.5 energy groups) each second of
+  its 60. Confirmed in game (the owner's screenshots, November 16, 2026): a level 50 Blaster's
+  Brawl reads 122.83 (20.02 + the Taser's 102.81) and Storm Cell 3753.79 (60 x 2 x 31.28), with
+  the rows made from them.
+- The export drops PvP-only groups, so the executions they hold come from the pets file (`exec`,
+  Exporter._pvp_executions): Whirling Axe and Victory Rush today, both executing powers without
+  damage.
 - Executions nest at most four deep (a counter the client checks before each).
+- @TODO the client also lists an executed power's own effect lines (Storm Cell's "31.28 energy
+  damage on target"); the planner doesn't yet.
 - What a pet's powers execute goes in the pets file too (the pet runs it).
 
 Its effect lines (the pet pass, then power_AddEffects for each pet power):

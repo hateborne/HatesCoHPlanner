@@ -277,16 +277,44 @@ describe("ExecutePower (the client's getTotalDamage counts what a power executes
     );
   });
 
-  it('stops four executions deep, as the client does', () => {
+  it('counts four executions deep, no more, as the client does', () => {
+    // Storm Cell's pet power executes E1, which executes E2 ... E5; E(i) deals 2^(i-1) x 0.01 of the
+    // Blaster's Ranged_Damage, so the total says which of them counted: E1-E4 is 15 x 0.01
     const PROC = 'Redirects.Storm_Blast.Lightning_Proc';
+    const RANGED = 62.5631; // Blaster Ranged_Damage at 50
+    const step = (i: number): Effect[] => [
+      {
+        m: [
+          { a: [gd.attribByName.get('DamageType04')!], asp: 'Absolute', t: 'Magnitude', tg: 'Affected', tbl: 'Ranged_Damage', sc: 0.01 * 2 ** (i - 1) },
+          ...(i < 5 ? [{ a: [EXEC], asp: 'Strength', t: 'Magnitude', tg: 'Affected', tbl: 'Melee_Ones', sc: 0, pwn: [`T.Chain.E${i + 1}`], fl: ['CopyBoosts'] }] : []),
+        ],
+      },
+    ];
     withPets(
       gd,
       (f) => {
         const pp = f.powers[PROC]!;
-        const self = (m: Mod): Mod => ({ ...m, pwn: [PROC] });
-        return { ...f, powers: { ...f.powers, [PROC]: { ...pp, eff: mapExec(pp.eff, self), act: mapExec(pp.act, self) } } };
+        const chain = Object.fromEntries([1, 2, 3, 4, 5].map((i) => [`T.Chain.E${i}`, { type: 'Click', eff: step(i) }]));
+        const first = (m: Mod): Mod => ({ ...m, pwn: ['T.Chain.E1'] });
+        return { ...f, powers: { ...f.powers, ...chain, [PROC]: { ...pp, eff: mapExec(pp.eff, first), act: mapExec(pp.act, first) } } };
       },
-      () => expect(stats(gd, 'Class_Blaster', 'Blaster_Ranged.Storm_Blast.Storm_Cell', null)['Average Damage:']).toBeUndefined(),
+      () => {
+        const got = Number(stats(gd, 'Class_Blaster', 'Blaster_Ranged.Storm_Blast.Storm_Cell', null)['Average Damage:']);
+        expect(got).toBeCloseTo(60 * 0.15 * RANGED, 1); // 60 activations of E1-E4
+      },
+    );
+  });
+
+  it('counts what a PvP-only group executes (the export drops the group; the pets file keeps it)', () => {
+    // Whirling Axe executes a power with no damage, so its figure doesn't move: the real data only
+    // shows the file carries it
+    expect(gd.pets?.exec?.['Brute_Melee.Battle_Axe.Whirling_Axe']).toEqual([{ p: ['Redirects.Battle_Axe.Battle_Axe'] }]);
+    const own = Number(avg('Class_Brute', HAYMAKER, null));
+    const smash = Number(avg('Class_Brute', SMASH, null));
+    withPets(
+      gd,
+      (f) => ({ ...f, exec: { ...f.exec, [HAYMAKER.n]: [{ p: [SMASH.n], boosts: 1 }] } }),
+      () => expect(Number(avg('Class_Brute', HAYMAKER, null))).toBeCloseTo(own + smash, 1),
     );
   });
 

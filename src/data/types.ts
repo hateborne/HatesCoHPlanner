@@ -225,6 +225,9 @@ export interface PetsFile {
   pets: Record<string, PetCreation[]>; // creating power (full name) -> the pets its EntCreate mods make
   powers: Record<string, PetPower>; // pet powers by full name, and the powers they execute
   names?: Record<string, string>; // display names of what pet powers grant that the version's own data lacks
+  // per power, the executions its PvP-only groups hold (the export drops those groups; the client's
+  // damage total counts every execution): what each runs, and 1 when it copies boosts
+  exec?: Record<string, { p: string[]; boosts?: number }[]>;
   classes: Record<string, Record<string, number>>; // class -> lower-cased table name -> index into tables
   tables: number[][];
 }

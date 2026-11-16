@@ -493,6 +493,39 @@ class Exporter:
         yield from walk(rec.get("Effect"), False)
         yield from walk(rec.get("ActivationEffect"), False)
 
+    def _pvp_executions(self, rec: dict, execute: int) -> list[dict]:
+        """The ExecutePower mods of a power's PvP-only groups, which conv_effects drops.
+
+        The client's damage total counts every ExecutePower mod, whatever its group (its
+        getTotalDamage, decompiled), so the pets file keeps these for the version's own data.
+
+        @param rec A decoded power.
+        @param execute The ExecutePower attribute's offset.
+        @return One {"p": [executed powers], "boosts"?: 1 (CopyBoosts)} per executing mod and
+            attribute, in the client's template order.
+        """
+        out: list[dict] = []
+
+        def walk(effs, pvp: bool) -> None:
+            for e in effs or []:
+                req = e.get("Requires") or []
+                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or (
+                    contains_seq(req, PVP_ONLY) and not contains_seq(req, PVE_ONLY))
+                walk(e.get("Effect"), p)
+                if not p:
+                    continue
+                for a in e.get("AttribMod") or []:
+                    names = [n for n in (self.power_name(x) for x in param_power_names(a.get("Params"))) if n]
+                    for _ in range(a["Attrib"].count(execute) if names else 0):
+                        x: dict = {"p": names}
+                        if "CopyBoosts" in self.mod_flags(a.get("Flags") or []):
+                            x["boosts"] = 1
+                        out.append(x)
+
+        walk(rec.get("Effect"), False)
+        walk(rec.get("ActivationEffect"), False)
+        return out
+
     def _special(self, name: str) -> int | None:
         """@return The offset of the client's special attribute with this name, or None."""
         return next((o for o, a in self.L.attribs.items() if a.get("kind") == "special" and a["name"] == name), None)
@@ -515,15 +548,17 @@ class Exporter:
 
         @return {"pets": {creating power: [creation]}, "powers": {pet power: {"type", "ap"?,
             "eff"?, "act"?}}, "classes": {class: {table: index into tables}}, "tables": [values],
-            "summary": counts, "plus"?, "names"?}, where a creation is {"p": [pet powers, as the
+            "summary": counts, "plus"?, "names"?, "exec"?}, where a creation is {"p": [pet powers, as the
             client lists them], "def"?: how many of them come from the villain def, "dur"?,
             "boosts"?: 1, "pseudo"?: 1, "cls"?, "hid"?: 1 (the client lists none of it: its mod is
             under a HideFromInfo group and config.Server.pet_skip_hidden)}, in the order of the
             client's template list. "powers" also holds what a pet's powers execute (ExecutePower:
             the pet runs it, and its damage counts). A pet power's mods name granted powers by full
             name ("pwn"), and "names" gives the display name of those the version's own data
-            lacks. "classes" holds a villain class's tables, and only those tables of an archetype
-            that core.json lacks. "plus" is the server's client's extra activation
+            lacks. "exec" lists, per power, the executions its PvP-only groups hold (_pvp_executions;
+            what they execute is carried too). "classes" holds a villain class's tables, and only
+            those tables of an archetype that core.json lacks. "plus" is the server's client's extra
+            activation
             (config.Server.pet_extra), when it has one.
         """
         ent = self._special("EntCreate")
@@ -573,23 +608,38 @@ class Exporter:
         execute = self._special("ExecutePower")
         grants = {o for o in (self._special("GrantPower"), self._special("GrantBoostedPower")) if o is not None}
         pets: dict[str, list] = {}
-        pet_names: set[str] = set()  # every power a pet runs: its powers and what they execute
+        # every power the file carries: a pet's powers, what they execute, and what a dropped
+        # PvP-only group executes
+        pet_names: set[str] = set()
+        dropped: dict[str, list] = {}  # power -> the executions its dropped PvP-only groups hold
         frontier: list[str] = []
         seen: set[str] = set()
 
-        def creations_of(name: str) -> None:
+        def carry(name: str) -> None:
+            if name not in pet_names:
+                pet_names.add(name)
+                frontier.append(name)
+
+        def visit(name: str) -> None:
             if name in seen:
                 return
             seen.add(name)
-            made = [c for c in (creation(a, h) for a, h in self.client_templates(self.pw[name])
-                                if ent in a["Attrib"]) if c]
-            if made:
-                pets[name] = made
-                for c in made:
-                    for p in c["p"]:
-                        if p not in pet_names:
-                            pet_names.add(p)
-                            frontier.append(p)
+            rec = self.pw[name]
+            if ent is not None:
+                made = [c for c in (creation(a, h) for a, h in self.client_templates(rec)
+                                    if ent in a["Attrib"]) if c]
+                if made:
+                    pets[name] = made
+                    for c in made:
+                        for p in c["p"]:
+                            carry(p)
+            if execute is not None:
+                found = self._pvp_executions(rec, execute)
+                if found:
+                    dropped[name] = found
+                    for x in found:
+                        for t in x["p"]:
+                            carry(t)
 
         def targets(rec: dict, attribs: set) -> list[str]:
             """@return The powers a power's grant-style mods on these attributes name (resolved)."""
@@ -599,16 +649,13 @@ class Exporter:
                     out += [n for n in (self.power_name(x) for x in param_power_names(a.get("Params"))) if n]
             return out
 
-        if ent is not None:
-            for name in sorted(self.exported_names):
-                creations_of(name)
-            while frontier:  # a pet's power may make pets, or execute powers that the pet runs too
-                n = frontier.pop()
-                creations_of(n)
-                for t in targets(self.pw[n], {execute} if execute is not None else set()):
-                    if t not in pet_names:
-                        pet_names.add(t)
-                        frontier.append(t)
+        for name in sorted(self.exported_names):
+            visit(name)
+        while frontier:  # a carried power may make pets, or execute powers that run with it
+            n = frontier.pop()
+            visit(n)
+            for t in targets(self.pw[n], {execute} if execute is not None else set()):
+                carry(t)
 
         kept_tables, kept_pvp = set(self.used_tables), self.report["pvp_effects_dropped"]
         kept_text = Counter(self.report["missing_text"])
@@ -662,9 +709,12 @@ class Exporter:
         extra = {"plus": config.SERVER.pet_extra} if config.SERVER.pet_extra else {}
         if names:
             extra["names"] = names
+        if dropped:
+            extra["exec"] = dict(sorted(dropped.items()))
         return {**extra, "pets": dict(sorted(pets.items())), "powers": powers,
                 "classes": dict(sorted(classes.items())), "tables": pool_list,
                 "summary": {"creators": len(pets), "pets": len(made), "powers": len(powers),
+                            "pet_powers": len({p for c in made for p in c["p"]}), "exec": len(dropped),
                             "classes": len(classes), "skipped": dict(sorted(skipped.items())),
                             "no_entcreate": ent is None}}
 

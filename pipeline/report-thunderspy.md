@@ -53,7 +53,7 @@ Names and descriptions written into the data as text rather than as message keys
 
 ## Pseudo-pets
 
-248 powers create 285 pseudo-pets whose damage the power info totals (208 pet powers, 3 classes' tables, 242172 bytes in pets/ts9-6.json). EntCreate mods left out: not auto only (a real pet): 255.
+248 powers create 285 pseudo-pets whose damage the power info totals (208 pet powers, 0 more powers carried for what powers execute, 3 classes' tables, 242172 bytes in pets/ts9-6.json). Powers whose PvP-only groups execute powers the damage total counts: 0. EntCreate mods left out: not auto only (a real pet): 255.
 
 ## Enhancement frames
 

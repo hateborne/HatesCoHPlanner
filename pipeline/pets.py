@@ -75,7 +75,8 @@ def main() -> int:
     for w in export.pet_warnings(summary):
         print(w)
     print(f"wrote {export.data_rel(config.PETS_FOLDER, version + '.json')}: {summary['creators']} powers "
-          f"create {summary['pets']} pseudo-pets ({summary['powers']} pet powers, {summary['bytes']} "
+          f"create {summary['pets']} pseudo-pets ({summary['pet_powers']} pet powers, "
+          f"{summary['powers'] - summary['pet_powers']} more carried for what powers execute, {summary['bytes']} "
           f"bytes); EntCreate mods left out: {summary['skipped'] or 'none'}")
     return 0
 

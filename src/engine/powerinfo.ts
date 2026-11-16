@@ -682,17 +682,18 @@ export function powerInfo(
    * The damage of the powers a power executes (ExecutePower), as the live client's getTotalDamage
    * adds it (both clients, decompiled): each one's own total, run by the same class, with its
    * enhanced damage only when the mod has CopyBoosts. Every executing mod counts, whatever its
-   * group's chance or requirements, as the client reads its whole template list; executions nest
-   * at most four deep.
+   * group's chance, requirements or flags, as the client reads its whole template list: those of
+   * PvP-only groups, which the export drops, come from the pets file (`exec`). Executions nest at
+   * most four deep.
    *
-   * @param src The executing power.
+   * @param src The executing power (its full name finds its PvP-only executions).
    * @param run The class running it.
    * @param depth How many pets deep it runs.
    * @param execDepth How many ExecutePower steps deep it runs.
    * @return Base and enhanced damage.
    */
   const execDamage = (
-    src: { eff?: Effect[]; act?: Effect[] },
+    src: { n: string; eff?: Effect[]; act?: Effect[] },
     run: Runner,
     depth: number,
     execDepth: number,
@@ -700,7 +701,9 @@ export function powerInfo(
     let base = 0;
     let total = 0;
     if (execDepth >= MAX_EXECUTE_DEPTH) return { base, total };
-    for (const m of [...executeMods(src.eff), ...executeMods(src.act)]) {
+    const pvpOnly = (gd.pets?.exec?.[src.n] ?? []).map((x): Pick<Mod, 'pwn' | 'fl'> => ({ pwn: x.p, fl: x.boosts ? ['CopyBoosts'] : [] }));
+    const mods: Pick<Mod, 'pw' | 'pwn' | 'fl'>[] = [...executeMods(src.eff), ...executeMods(src.act), ...pvpOnly];
+    for (const m of mods) {
       // the character's powers name what they execute by id; a pet's (from the pets file) by name
       const named = m.pwn?.map((n) => ({ n, pp: gd.pets?.powers[n] ?? gd.powerByName.get(n.toLowerCase()) })) ?? [];
       const byId = m.pw?.map((id) => {

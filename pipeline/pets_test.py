@@ -72,11 +72,13 @@ def mod(attrib: int, **kw) -> dict:
     return m
 
 
-def power(name: str, ptype: int, mods: list, ap: float = 0.0, hidden: list | None = None) -> dict:
-    """@return A decoded power with one effect group, and `hidden` in a sub-group of a HideFromInfo group."""
+def power(name: str, ptype: int, mods: list, ap: float = 0.0, hidden: list | None = None,
+          pvp: list | None = None) -> dict:
+    """@return A decoded power with one effect group: `hidden` in a sub-group of a HideFromInfo group,
+    `pvp` in a PVPOnly group."""
     group = lambda flags, ms, sub: {"Chance": 1.0, "Requires": [], "Flags": flags,  # noqa: E731
                                     "AttribMod": ms, "Effect": sub}
-    sub = [group(32, [], [group(0, hidden, [])])] if hidden else []
+    sub = ([group(32, [], [group(0, hidden, [])])] if hidden else []) + ([group(2, pvp, [])] if pvp else [])
     return {"FullName": name, "DisplayName": name.rsplit(".", 1)[-1], "Type": ptype, "ActivatePeriod": ap,
             "Effect": [group(0, mods, sub)], "ActivationEffect": []}
 
@@ -93,10 +95,13 @@ def live() -> LiveData:
     ent_bare = params([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1], {10: "Pets.Patch.Tick"})
     grant = params([0, 0, 1, 7], {3: "Pets.Patch.Tick"}, n=4)
     execute = params([0, 0, 1, 7], {3: "Pets.Zap.Zap"}, n=4)
+    bolt = params([0, 0, 1, 7], {3: "Pets.Bolt.Bolt"}, n=4)
     powers = [
         power("Blaster_Ranged.Fire_Blast.Burn", 0, [mod(ENT, Params=ent_def), mod(ENT, Params=ent_real),
                                                     mod(ENT, Params=ent_bare)],
-              hidden=[mod(ENT, Duration=10.0, Flags=[0, COPY_BOOSTS | PSEUDO_PET], Params=ent_pow)]),
+              hidden=[mod(ENT, Duration=10.0, Flags=[0, COPY_BOOSTS | PSEUDO_PET], Params=ent_pow)],
+              pvp=[mod(512, Flags=[0, COPY_BOOSTS], Params=bolt)]),
+        power("Pets.Bolt.Bolt", 0, [mod(16, Scale=0.4)]),
         power("Pets.Patch.Tick", 1, [mod(8, Scale=0.1, Table="Melee_Pet_Only")], ap=0.8),
         power("Pets.Patch.Flash", 1, [mod(481, Params=grant)]),
         power("Pets.Puddle.Aura", 1, [mod(8, Scale=0.2)], ap=2.0),
@@ -124,7 +129,7 @@ def live() -> LiveData:
                "mod.Aspect": {32: "kAbsolute"}, "mod.Type": {1: "kMagnitude"}, "mod.Target": {4: "kAffected"},
                "mod.ApplicationType": {0: "kOnTick"}, "mod.StackType": {0: "kStack"},
                "mod.Flags": {34: "CopyBoosts", 35: "CopyCreatorMods", 37: "PseudoPet"},
-               "effect.Flags": {32: "HideFromInfo"}},
+               "effect.Flags": {2: "PVPOnly", 32: "HideFromInfo"}},
         villains=[{"Name": "Pets_Puddle", "Class": "Class_Minion_Pets",
                    "Power": [{"PowerCategory": "Pets", "PowerSet": "Puddle", "Power": "*"},
                              {"PowerCategory": "Pets", "PowerSet": "Patch", "Power": "Flash"}]},
@@ -160,8 +165,8 @@ class BuildPetsTest(unittest.TestCase):
     def test_pet_powers_and_tables(self):
         # what a pet's power executes is the pet's to run (its damage counts), whatever its type
         self.assertEqual(sorted(self.pets["powers"]),
-                         ["Pets.Patch.Flash", "Pets.Patch.Tick", "Pets.Puddle.Aura", "Pets.Puddle.Ripple",
-                          "Pets.Zap.Zap"])
+                         ["Pets.Bolt.Bolt", "Pets.Patch.Flash", "Pets.Patch.Tick", "Pets.Puddle.Aura",
+                          "Pets.Puddle.Ripple", "Pets.Zap.Zap"])
         self.assertEqual(self.pets["powers"]["Pets.Zap.Zap"]["type"], "Click")
         # a grant the version's own data lacks is named for its "Grants power" line
         self.assertEqual(self.pets["names"], {"Pets.Patch.Tick": "Tick"})
@@ -175,6 +180,12 @@ class BuildPetsTest(unittest.TestCase):
                          ["melee_damage", "melee_pet_only", "ranged_damage"])
         self.assertEqual(sorted(self.pets["classes"]["Class_Blaster"]), ["melee_pet_only"])
         self.assertNotIn("plus", self.pets)  # Homecoming's client adds no activation
+
+    def test_keeps_what_a_dropped_pvp_group_executes(self):
+        # the export drops PvP-only groups, but the client's damage total counts every execution
+        self.assertEqual(self.pets["exec"], {"Blaster_Ranged.Fire_Blast.Burn": [{"p": ["Pets.Bolt.Bolt"], "boosts": 1}]})
+        self.assertEqual(self.pets["summary"]["exec"], 1)
+        self.assertEqual(self.pets["summary"]["pet_powers"], 4)  # Flash, Tick, Aura, Ripple
 
     def test_hidden_pets_by_the_server_client(self):
         # Thunderspy's client lists a pet under a HideFromInfo group; Homecoming's doesn't
