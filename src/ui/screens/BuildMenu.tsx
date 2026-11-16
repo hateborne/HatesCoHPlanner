@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
-import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer } from '../../data/servers.ts';
+import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer, type GameServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
 import { ALIGNMENTS, cleanName, toAlignment, type Build } from '../../engine/build.ts';
 import { fitToPatch } from '../../engine/migrate.ts';
@@ -35,6 +35,37 @@ function approxNote(v: GameVersion, gd: GameData, all: GameVersion[]): string {
   const base = gd.core.manifest.approximate?.base;
   const baseLabel = all.find((x) => x.id === base)?.label ?? base ?? 'a later patch';
   return `Opened on ${v.label}: power levels from MidsReborn's database for that patch, everything else from ${baseLabel}.`;
+}
+
+/**
+ * The reminder shown after each "Save in this browser": the planner has no server, so a saved build
+ * lives only in this browser's site data, and clearing it (or a private window closing, or Safari's
+ * 7-day limit on sites not visited) loses it. The page's address holds the whole build, so a
+ * bookmark keeps it safe.
+ *
+ * @param touch Whether this is a phone or another touch screen (no keyboard shortcut to name there).
+ * @return The dialog's title and text.
+ */
+export function saveReminder(touch: boolean): { title: string; text: string } {
+  const how = touch ? "with your browser's menu" : '(Ctrl+D, or Cmd+D on a Mac)';
+  return {
+    title: 'Saved in this browser only',
+    text:
+      'This build is kept only in this browser on this device, not on any server. Clearing your browsing data (cookies and site data) erases it, and so can closing a private window, or Safari after 7 days without a visit.\n' +
+      `Bookmark this page now ${how}: its address holds the whole build. Bookmark it again after you change the build.`,
+  };
+}
+
+/**
+ * The status line when the browser refuses a save, naming only ways to keep the build that the
+ * menu offers for its server (Thunderspy has no Mids download).
+ *
+ * @param server The open build's server.
+ * @return The message.
+ */
+export function saveFailedText(server: GameServer): string {
+  const keep = server.midsDb ? 'Copy share link or Download Mids .mbd' : 'Copy share link';
+  return `Couldn't save in this browser (it may be a private window, or out of space). Use ${keep} to keep the build.`;
 }
 
 /** Save / load / share / Mids import-export, in the in-game skin. */
@@ -122,10 +153,19 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
    */
   const storageFailed = (e: unknown, what: 'saved' | 'deleted') => {
     console.error(`saved builds: ${what}`, e);
-    say(what === 'saved'
-      ? "Couldn't save in this browser (it may be a private window, or out of space). Use Copy share link or Download Mids .mbd to keep the build."
-      : "Couldn't delete that build: this browser's storage refused.");
+    say(what === 'saved' ? saveFailedText(ofBuild) : "Couldn't delete that build: this browser's storage refused.");
   };
+  /** Save the open build in this browser, then remind the player that only this browser has it. */
+  const saveHere = (b: Build) =>
+    saveBuild(b).then(
+      () => {
+        void refresh();
+        say('Saved in this browser.');
+        // a tablet held sideways gets the desktop layout but has no Ctrl+D either
+        void useStore.getState().tell(saveReminder(phone || matchMedia('(pointer: coarse)').matches));
+      },
+      (e: unknown) => storageFailed(e, 'saved'),
+    );
   /**
    * The open build's own game data and Mids map, for exports: New Build's version picker may be
    * showing another version, and the build must be written out against the data it was made on.
@@ -214,7 +254,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   /**
    * Import Homecoming's /build_save file. It is written by the live game, so it opens on the
    * newest version; the file holds no alignment and no slot levels, so the user picks the
-   * alignment and the build type (Leveling only when the slots could have come from leveling).
+   * alignment and the build type (Leveling only when the slots could have come from leveling, and
+   * never for an archetype planned as Respec only).
    */
   const importBuildTxt = async (t: string) => {
     const st = useStore.getState();
@@ -273,7 +314,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
           {build ? (
             <>
               <div style={btn(0, row(0))}>
-                <button className="info-button" style={{ position: 'static' }} onClick={() => void saveBuild(build).then(() => { void refresh(); say('Saved in this browser.'); }, (e: unknown) => storageFailed(e, 'saved'))}>
+                <button className="info-button" style={{ position: 'static' }} onClick={() => void saveHere(build)}>
                   Save in this browser
                 </button>
               </div>

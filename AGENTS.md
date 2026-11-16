@@ -26,8 +26,9 @@ Goals, in priority order:
    silent, from MidsReborn's GPL code).
 2. **Fidelity to the in-game screens.** Layout, sizes, fonts, colours, textures and sounds come
    from the client and its UI source. They are ported, not hand-tuned.
-3. **Builds never break.** Share links, saved builds and Mids exports made today must still open
-   after future patches.
+3. **Builds never break.** The planner is in production (since November 14, 2026). Share links,
+   saved builds and Mids exports made today must still open, as the same build, after every
+   future change and patch.
 4. **Privacy.** Nothing that identifies the owner or their machine goes into the repository.
 
 It is a non-profit fan tool, GPL-3.0, and not affiliated with NCSoft or Homecoming.
@@ -35,6 +36,23 @@ It is a non-profit fan tool, GPL-3.0, and not affiliated with NCSoft or Homecomi
 ## Hard rules
 
 Breaking any of these is a bug, whatever else the change does.
+
+**In production: links never break** (the owner's rule from November 14, 2026, for the life of
+the project)
+- The planner is in production. No change may break a link or change what it opens. A link that
+  opens today keeps opening the same build (the same server, game version, archetype, power sets,
+  picks, slots and enhancements) for as long as the project lives.
+- Links are share links (`#b=` codes, with or without a game version or a server in the address)
+  and the site's addresses (the root and every server's `/HatesCoHPlanner/<Server>/`, in any case).
+  What they open with is covered too: the ids files, the published version folders, `SERVERS`, the
+  decoder (`src/io/share.ts`), version and server resolution (`src/data/versions.ts`,
+  `src/data/servers.ts`, `shareServer`) and the load flow in `src/state/store.ts`.
+- A link must not fail where it opened before, in any condition: a slow or failed download of
+  another server's files included.
+- A change that touches any of the above shows that links made before it still open the same
+  build: tests that decode links made before the change, plus a check in the preview.
+- Never change what an old link opens, even to fix a bug in old data or ids. Corrections go into a
+  new game version. If a change seems to need it, stop and ask the owner.
 
 **Privacy**
 - Never commit personal data: real names, e-mail addresses (commits use the GitHub noreply
@@ -135,7 +153,8 @@ Breaking any of these is a bug, whatever else the change does.
 
 ```
 src/
-  main.tsx, App.tsx          entry; CrashGuard wraps the app; stage, toggles, dialogs
+  main.tsx, App.tsx          entry; CrashGuard wraps the app; stage, toggles, dialogs, footer
+  version.ts                 the planner's release version (stamped by the deploy)
   data/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
@@ -192,6 +211,8 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   ids.json                   stable IDs (append-only)
   ids-thunderspy.json        Thunderspy's stable IDs (append-only)
   check_ids.py               every ids file well formed and only appended to (run by CI)
+  forced_respec.py           a class's forced level-up respec where the planner looks for it
+                             (its test, forced_respec_test.py, is run by CI)
   patch-watch.json           per server: newest patch seen (Thunderspy: release and MD5 of its
                              tspy/bin.pigg); game version id and label
   inputs/fonts/              vendored game fonts (never change)
@@ -202,9 +223,11 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   report-thunderspy-diff.md  every difference of Thunderspy's data from Homecoming's, by internal
                              name (pipeline.compare; to spot-check in game)
 tools/                       standard-library Python decoders for client file formats
+scripts/release-version.mjs  the version a deploy publishes (plain Node; run by pages.yml)
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
-.github/workflows/           ci.yml (pull request checks), pages.yml (deploy main, started by hand)
+.github/workflows/           ci.yml (pull request checks), pages.yml (tag a release and deploy main,
+                             started by hand)
 ```
 
 ## How it works
@@ -305,12 +328,14 @@ CSP); anything else gets a "not found" page linking to the planner, so an unknow
 never opened as Homecoming. On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
 unless the address names another server. After a long break (`RETURN_AFTER`, 4 hours without a
-click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; none on record counts
-as a break) the player's own build doesn't reopen unannounced: the remembered build, or a link holding
+click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; only a recorded time
+counts, so none on record, a damaged one or blocked storage opens the build as before) the player's
+own build doesn't reopen unannounced: the remembered build, or a link holding
 its share code (a reloaded tab's address), opens the server list with a Continue button for it
 (`askServer`'s `resume`, answered `CONTINUE_BUILD`), highlighted so Enter takes it, and its data
 loads while the list is open. A tile starts New Build on its server instead; the build stays
-remembered until a new one starts. A link someone else sent opens at once. With no build, New
+remembered until a new one starts, and New Build's Finish asks first while it isn't open ("Start new"
+or "Open it", `rememberedBuild`). A link someone else sent opens at once. With no build, New
 Build opens on the server the address names; failing that, once `SERVERS` holds more than one, a
 visit asks in the server list dialog (`askServer`). The server this browser last showed
 (`hcp.server`, `src/state/lastServer.ts`), else the default, starts highlighted, so Enter, Space or OK
@@ -355,7 +380,7 @@ character, written with internal names, and opens on the default version. It hol
 and no slot levels: the game never stores the level a slot was added at, nor whether the build
 came from a respec. So the import asks for the alignment and the build type in the dialog
 (`askChoices`). Leveling is offered only when `leveledSlotShortfall()` finds that the slots could
-have come from leveling. Either way each added slot takes the lowest free slot level at or after
+have come from leveling, and never for an archetype planned as Respec only (`respecOnlyNote`). Either way each added slot takes the lowest free slot level at or after
 its power's level (`lowestFreeLevels()`, the respec screen's rule).
 
 MidsReborn names 9 epic pools its own way (`Epic.Ice_Mastery_DefCorr` is the game's
@@ -422,8 +447,10 @@ level-up flow. The flow is a wizard from level 1 to 50, or one level reopened fr
 (`mode: 'edit'`, Cancel restores the original). A Respec build (New Build's Build Type,
 `Build.respecTo`) walks its own order instead (`respecSteps()` in `src/engine/schedule.ts`):
 every power first (level 1's secondary before its primary), then one slot screen where any power
-may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec order"). Screens
-read the store with narrow selectors (`useShallow`) and call its actions.
+may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec order"). An
+Arachnos Soldier or Widow can only train to 24 through a respec, so their builds start as Respec
+builds to 24 at least (`startBuild`, `respecOnlyNote`; New Build greys Leveling for them). Screens read the store with narrow
+selectors (`useShallow`) and call its actions.
 
 **Stage.** Every screen draws on a fixed stage scaled to the window with CSS zoom:
 
@@ -442,11 +469,13 @@ read the store with narrow selectors (`useShallow`) and call its actions.
 - The owner compares visuals with in-game screenshots taken at 3840x2160 (in `IGNORE/`).
 
 **Pop-ups and hovers.**
-- Every pop-up closes with Escape (`useEscape`).
+- Every pop-up closes with Escape (`useEscape`). The one exception, the owner's choice: a `tell`
+  with `wait` (the "Invalid power sets" warning) takes neither OK nor Escape until its countdown
+  ends, and a dialog asked for while it is up waits for it to close instead of replacing it.
 - Questions use `askConfirm` (or `askChoices` for rows of options); messages with one OK button
   use `tell` (its optional `link` makes one phrase open a fixed https page in a new tab, as the
-  hero Patron note links the wiki); refusals use `notify` or `flashLocked`. The server list is
-  `askServer`.
+  hero Patron note links the wiki; its optional `wait` greys OK for that many seconds, counted down
+  on the button); refusals use `notify` or `flashLocked`. The server list is `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
 
@@ -477,12 +506,42 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.compare_test` (the release check and the difference report); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test` (the release check, the forced respec check, the difference report); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
-Pages" -> Run workflow, or `gh workflow run pages.yml --ref main`); it publishes `main` only and runs
-one at a time.
+Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
+bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+
+## Versions and releases
+
+Every deploy is a release with a SemVer version, `vX.Y.Z`. The first public release (the site as
+deployed on November 13, 2026) is `v1.0.0`. The owner's rules for the bump:
+
+- **major**: massive feature changes or redesigns;
+- **minor**: a new server, or medium-sized work;
+- **patch**: fixes and small changes.
+
+When you hand back a pull request, say which bump it calls for, so the owner can pick it at deploy.
+
+- The git tags are the record. `package.json`'s `version` is not used.
+- The deploy picks the version (`scripts/release-version.mjs`): the newest `vX.Y.Z` tag, bumped as
+  picked. It refuses to run without a bump, and refuses before any version tag exists. A commit that
+  already carries a version deploys again under it, with no new tag (re-running an older release's
+  deploy puts that release back live). A new version goes only to main's newest commit, so re-running
+  an old deploy that failed before it was tagged is refused once main has moved on: start a new one.
+- The build gets the version from `HCP_VERSION` and the commit from `HCP_COMMIT`
+  (`vite.config.ts`, read through `src/version.ts`). Builds outside a deploy (dev server, tests,
+  pull request checks) are `dev`.
+- Before the site goes live, the deploy's `release` job tags the commit and publishes a GitHub
+  Release listing the pull requests merged since the last one, so a failed deploy can't let
+  another build take the same number. If that job fails, nothing was deployed: re-run all jobs (a
+  fresh build sees whether the tag was made, and reuses it if so; if main has moved on and no tag
+  was made, start a new deploy).
+- The footer names the version after the planner's name, as plain text. The crash page and the
+  browser console name it with its commit, and Mids exports carry it in `BuiltWith.Version`
+  (`0.0.0` from a dev build; imports ignore it). Each version's notes are on the repository's
+  GitHub Releases page.
 
 ## Coding standards
 
@@ -537,6 +596,9 @@ one at a time.
     to 50, slot levels compared too;
   - `boosted.spec.ts`: a build with its sets boosted, attuned, or boosted then attuned at random.
     It prints its seed; `HCP_E2E_SEED=<seed>` repeats a run.
+
+  `respeconly.spec.ts` drives New Build itself: an Arachnos archetype picked with Leveling ticked
+  switches to Respec and says why, and Finish starts a Respec to 24 at least.
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.

@@ -1,6 +1,6 @@
 # Pipeline report -- data thunderspy ts9-6
 
-Generated 2026-11-14T15:32:33Z (UTC).
+Generated 2026-11-15T04:56:38Z (UTC).
 
 ## Warnings
 
@@ -40,12 +40,14 @@ Generated 2026-11-14T15:32:33Z (UTC).
 
 | File | Bytes |
 |---|---|
-| core.json | 893205 |
-| powersets.json | 179830 |
-| powers.json | 6897595 |
-| boosts.json | 3807947 |
+| core.json | 893587 |
+| powersets.json | 180742 |
+| powers.json | 6918872 |
+| boosts.json | 3808014 |
 
 PvP-only effects dropped: 4799. Unresolved references: 1. New IDs: {'power': 0, 'powerset': 0, 'boostset': 0, 'archetype': 0, 'origin': 0}.
+
+Names and descriptions written into the data as text rather than as message keys (shown as written, as the client does): 313.
 
 ## Enhancement frames
 

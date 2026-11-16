@@ -92,6 +92,62 @@ export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: st
   return gd.server === DEFAULT_SERVER ? { text, link: { phrase: 'Patron pool', href: PATRON_WIKI } } : { text };
 }
 
+// levelUpRespec() per archetype (undefined is kept too: the archetype never respecs on training)
+const forcedRespecs = new WeakMap<Archetype, number | undefined>();
+
+/**
+ * The 0-based level an archetype's training forces a respec at (the class's LevelUpRespecs), or
+ * undefined when it never does.
+ *
+ * The export leaves LevelUpRespecs out, so it is read from the archetype's specialization sets:
+ * every class that has them (Arachnos Soldier and Widow, on Homecoming and Thunderspy) respecs on
+ * training to the level they open at (SpecializeAt 23, LevelUpRespecs 24), and no other class
+ * respecs. The pipeline warns if a client ever breaks that (forced_respec_warnings). Each game
+ * version has its own Archetype objects, so the answer is kept per archetype.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @return The respec's level, or undefined.
+ */
+export function levelUpRespec(gd: GameData, at: Archetype): number | undefined {
+  if (forcedRespecs.has(at)) return forcedRespecs.get(at);
+  let lv: number | undefined;
+  for (const cat of [at.cats.pri, at.cats.sec]) {
+    for (const s of gd.setsInCategory(cat)) if (s.spa && (lv === undefined || s.spa < lv)) lv = s.spa;
+  }
+  forcedRespecs.set(at, lv);
+  return lv;
+}
+
+/**
+ * Why New Build makes an archetype whose training forces a respec (levelUpRespec) a Respec build:
+ * in the game it trains to that level only through a respec (contactInteraction.c:
+ * class_IsRespecLevelUp offers TrainRespecNow instead of TrainNow), which chooses every power and
+ * slot up to it again, so the planner plans its builds as a respec from the start.
+ *
+ * Each path is named by its primary branch set, less the set's last word ("Crab Spider Soldier"
+ * is Crab Spider, "Night Widow Training" Night Widow), in the order the screens list them. The
+ * secondary sets can't name them: Night Widow's is "Widow Teamwork".
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @return The dialog's title and text, or null for an archetype that never respecs on training.
+ */
+export function respecOnlyNote(gd: GameData, at: Archetype): { title: string; text: string } | null {
+  const level = levelUpRespec(gd, at);
+  if (level === undefined) return null;
+  const names = gd
+    .setsInCategory(at.cats.pri)
+    .filter((s) => s.spa)
+    .map((s) => s.dn.replace(/\s+\S+$/, '') || s.dn);
+  const paths = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : (names[0] ?? 'a branch');
+  const n = level + 1;
+  return {
+    title: `Respec at Level ${n}`,
+    text: `${at.dn}s must Respec at level ${n} to select their archetype path, ${paths}. To avoid confusion, ${at.dn} builds will only be planned as a Respec build.`,
+  };
+}
+
 /**
  * The power sets a new character can start with in a category (New Build's lists).
  *
@@ -202,54 +258,7 @@ export class BuildRules {
    * @param owned Power ids owned at that level.
    */
   ctx(level: number, owned: Set<number>): EvalContext {
-    const ownedSets = this.ownedSets(owned);
-    const origin = this.gd.core.origins.find((o) => o.id === this.b.origin);
-    const align = toAlignment(this.b.alignment).toLowerCase();
-    return {
-      ownsPower: (name) => {
-        const p = this.gd.powerByName.get(name.toLowerCase());
-        return !!p && owned.has(p.id);
-      },
-      hasBadge: (name) => PLANNED_BADGES.has(name.toLowerCase()),
-      ownsSet: (name) => {
-        const s = this.gd.setByName.get(name.toLowerCase());
-        return !!s && ownedSets.has(s.id);
-      },
-      ownsPowerNum: (name) => {
-        const n = name.toLowerCase();
-        const p = this.gd.powerByName.get(n);
-        if (p) return owned.has(p.id) ? 1 : 0;
-        let count = 0;
-        for (const pid of owned) {
-          const ref = this.gd.setOfPower.get(pid);
-          if (!ref) continue;
-          const cat = (this.gd.categoryOfSet.get(ref.set.id) ?? '').toLowerCase();
-          if (cat === n || ref.set.n.toLowerCase() === n) count++;
-        }
-        return count;
-      },
-      prop: (name) => {
-        // engine: anything starting with "arch" or "rank" is the class name ($archtype appears in data)
-        if (name.startsWith('arch') || name.startsWith('rank')) return this.at.n;
-        switch (name) {
-          case 'class':
-            return this.at.n;
-          case 'origin':
-            return origin?.n ?? '';
-          case 'level':
-            return level + 1;
-          case 'alignment':
-            return align === 'villain' ? 'villain' : 'hero';
-          case 'type':
-            return align === 'villain' ? 'villain' : 'hero';
-          case 'subtype':
-            return align === 'praetorian' ? 'paragon' : 'normal';
-          default:
-            return 0;
-        }
-      },
-      targetEntType: 'critter',
-    };
+    return characterContext(this.gd, this.at, this.b, level, owned, this.ownedSets(owned));
   }
 
   // ---- auto-granted powers ---------------------------------------------------------------------
@@ -335,8 +344,11 @@ export class BuildRules {
       if (have.size >= countForLevel(level, sched)) {
         return kind === 'pool' ? 'No more power pools at this level' : 'No epic pool at this level';
       }
+      // level 1's two picks are its primary and secondary power (powerOption), so a pool its
+      // schedule opens at level 1 (Thunderspy's) can't be chosen there
+      if (level === this.pickLevel(0) && (pickIndex === 0 || pickIndex === 1)) return 'Level 1 takes a primary and a secondary power';
     } else if (kind === 'branch') {
-      if (level < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
+      if (this.specLevel(level) < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
       if (!evalRequires(set.spr, ctx)) return 'Another specialization is chosen';
     } else if (kind !== 'primary' && kind !== 'secondary') {
       return 'Not available to this archetype';
@@ -373,8 +385,13 @@ export class BuildRules {
     if (av > level) return fail(`Available at level ${av + 1}`);
     const kind = this.setKind(ref.set);
     if (level === this.pickLevel(0) && (pickIndex === 0 || pickIndex === 1)) {
-      if (pickIndex === 0 && kind !== 'primary') return fail('Choose a primary power now');
-      if (pickIndex === 1 && kind !== 'secondary') return fail('Choose a secondary power now');
+      // the level-1 picks lock a column (category), not a set: a branch in the primary category
+      // (a respec at 24+) may take the primary pick, as its trunk may
+      const cat = this.gd.categoryOfSet.get(ref.set.id);
+      const isPri = kind === 'primary' || (kind === 'branch' && cat === this.at.cats.pri);
+      const isSec = kind === 'secondary' || (kind === 'branch' && cat === this.at.cats.sec);
+      if (pickIndex === 0 && !isPri) return fail('Choose a primary power now');
+      if (pickIndex === 1 && !isSec) return fail('Choose a secondary power now');
     }
     const block = this.newSetBlock(ref.set, pickIndex);
     if (block) return fail(block);
@@ -383,9 +400,13 @@ export class BuildRules {
   }
 
   /**
-   * Panels for the "Choose a New Power" screen at a pick: the primary and the other sets of its
-   * category (VEAT branches, always listed and greyed until they unlock, as the client lists
-   * every set the character has), the same for the secondary, then owned pool / epic sets.
+   * Panels for the "Choose a New Power" screen at a pick: the primary and the VEAT branches of its
+   * category, the same for the secondary, then owned pool / epic sets.
+   *
+   * A branch is listed while the character owns a power from it or may still specialize in it
+   * (uiLevelPower.c: character_WillBeAllowedToSpecializeInPowerSet checks SpecializeRequires, not
+   * the level): both branches show, greyed, until they open, and once one is chosen the other is
+   * gone.
    *
    * @param pickIndex Pick being made.
    */
@@ -393,6 +414,7 @@ export class BuildRules {
     const level = this.pickLevel(pickIndex);
     const owned = this.ownedAt(level, pickIndex);
     const ownedSets = this.ownedSets(owned);
+    const ctx = this.ctx(level, owned);
     const out: SetOption[] = [];
     // granted powers (Bio Armor's Adaptations, Jaunt, Kheldian form attacks) can't be bought,
     // so they are left off the lists
@@ -412,7 +434,7 @@ export class BuildRules {
       [this.b.secondary, this.at.cats.sec],
     ] as const) {
       add(this.gd.powerset(main));
-      for (const s of this.gd.setsInCategory(cat)) if (s.spa) add(s);
+      for (const s of this.gd.setsInCategory(cat)) if (s.spa && (ownedSets.has(s.id) || evalRequires(s.spr, ctx))) add(s);
     }
     for (const kind of ['pool', 'epic'] as const) {
       const cat = kind === 'pool' ? this.at.cats.pool : this.at.cats.epic;
@@ -552,11 +574,50 @@ export class BuildRules {
   }
 
   /**
+   * The level of the last respec the build's powers and slots up to it come from: a Respec
+   * build's own, or the one its archetype's training forces (levelUpRespec) once the build has
+   * trained to that level, whichever is higher.
+   *
+   * New Build makes those archetypes (Arachnos Soldier and Widow) Respec builds; a leveling build
+   * of one (from before that, a link or an import) that holds a power picked at 24 or later has
+   * chosen its powers and slots up to 24 again in game, so it is judged as respecced there. The
+   * picks decide it, not the stop level: a leveling walk short of 24 holds no later pick yet, so
+   * its branches stay shut until the walk gets there.
+   *
+   * @return The 0-based level, or undefined for a leveling build that hasn't respecced.
+   */
+  respecLevel(): number | undefined {
+    const forced = levelUpRespec(this.gd, this.at);
+    const trained = forced !== undefined && this.lastLevel() >= forced && this.b.picks.some((p, i) => !!p && this.pickLevel(i) >= forced);
+    const reached = trained ? forced : undefined;
+    if (this.b.respecTo === undefined) return reached;
+    return reached === undefined ? this.b.respecTo : Math.max(this.b.respecTo, reached);
+  }
+
+  /**
+   * The level a specialization (VEAT branch) set's SpecializeAt is checked against.
+   *
+   * The game checks the character's own level, never the level of the pick being made: the
+   * level-up screen passes the current level, and a respec its pre-respec level (uiReSpec.c
+   * powerLevelSelector with respec.maxLevel; character_respec.c with iExpLevel). So a respec at
+   * that level or above takes branch powers from its first pick, the branch powers keeping their
+   * own levels.
+   *
+   * @param level 0-based level of the pick.
+   * @return The pick's level, or the respec's level (respecLevel) when that is higher.
+   */
+  specLevel(level: number): number {
+    return Math.max(level, this.respecLevel() ?? level);
+  }
+
+  /**
    * @return Whether slots gained at this level may go on any power, even one taken after it: a
-   *   respec's (Homecoming's respec places every slot on one screen; see respecSteps).
+   *   respec's (Homecoming's respec places every slot on one screen; see respecSteps), the Respec
+   *   build's own or the one an Arachnos build had on training to 24 (respecLevel).
    */
   slotsAnyPower(level: number): boolean {
-    return this.b.respecTo !== undefined && level <= this.b.respecTo;
+    const r = this.respecLevel();
+    return r !== undefined && level <= r;
   }
 
   /** @return Slots granted at these levels and not yet placed. */
@@ -682,8 +743,8 @@ export class BuildRules {
    * Why a piece can't be used at the build's last level, if it can't (boost_IsValidToSlotAtLevel).
    *
    * The character's level must be within the piece's MinSlotLevel..MaxSlotLevel, and an IO works
-   * from 3 levels below its own (boost_Effectiveness); attuned pieces and TO/DO/SO-style pieces
-   * follow the character.
+   * from `levelsAbove` levels below its own (boost_Effectiveness: 3 on Homecoming, none on
+   * Thunderspy); attuned pieces and TO/DO/SO-style pieces follow the character.
    *
    * @param boost The piece.
    * @param ioLevel Its IO level when it has one; else the lowest level it is made at.
@@ -774,6 +835,205 @@ export class BuildRules {
     const classes = boost.slr.filter((t) => /^Class_/i.test(t)).map((t) => gd.archetypeByName.get(t.toLowerCase())?.dn ?? t);
     return classes.length ? `Only for ${classes.join(' or ')}` : 'Not slottable by this character';
   }
+}
+
+/** What a requirement expression can read about a character besides its powers and sets. */
+export interface CharacterTraits {
+  origin?: number; // origin id (unset on New Build before one is chosen)
+  alignment?: Build['alignment']; // unset reads as Hero
+}
+
+/**
+ * The engine's answers to a requirement expression's questions about a character: the powers and
+ * sets it owns, and its archetype, origin, alignment and level. BuildRules and New Build's pair
+ * test both use it, so they read the data alike.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param who Its origin and alignment.
+ * @param level 0-based level.
+ * @param owned Power ids owned.
+ * @param ownedSets Powerset ids owned.
+ * @return The context.
+ */
+function characterContext(gd: GameData, at: Archetype, who: CharacterTraits, level: number, owned: Set<number>, ownedSets: Set<number>): EvalContext {
+  const origin = gd.core.origins.find((o) => o.id === who.origin);
+  const align = toAlignment(who.alignment).toLowerCase();
+  return {
+    ownsPower: (name) => {
+      const p = gd.powerByName.get(name.toLowerCase());
+      return !!p && owned.has(p.id);
+    },
+    hasBadge: (name) => PLANNED_BADGES.has(name.toLowerCase()),
+    ownsSet: (name) => {
+      const s = gd.setByName.get(name.toLowerCase());
+      return !!s && ownedSets.has(s.id);
+    },
+    ownsPowerNum: (name) => {
+      const n = name.toLowerCase();
+      const p = gd.powerByName.get(n);
+      if (p) return owned.has(p.id) ? 1 : 0;
+      let count = 0;
+      for (const pid of owned) {
+        const ref = gd.setOfPower.get(pid);
+        if (!ref) continue;
+        const cat = (gd.categoryOfSet.get(ref.set.id) ?? '').toLowerCase();
+        if (cat === n || ref.set.n.toLowerCase() === n) count++;
+      }
+      return count;
+    },
+    prop: (name) => {
+      // engine: anything starting with "arch" or "rank" is the class name ($archtype appears in data)
+      if (name.startsWith('arch') || name.startsWith('rank')) return at.n;
+      switch (name) {
+        case 'class':
+          return at.n;
+        case 'origin':
+          return origin?.n ?? '';
+        case 'level':
+          return level + 1;
+        case 'alignment':
+          return align === 'villain' ? 'villain' : 'hero';
+        case 'type':
+          return align === 'villain' ? 'villain' : 'hero';
+        case 'subtype':
+          return align === 'praetorian' ? 'paragon' : 'normal';
+        default:
+          return 0;
+      }
+    },
+    targetEntType: 'critter',
+  };
+}
+
+/**
+ * Whether a new character of an archetype could start with a set while owning another: the
+ * character creator's test for each set it lists.
+ *
+ * Some sets forbid each other through their powers' BuyRequires (on Homecoming, Shield Defense with
+ * Claws, Dual Blades, Katana, Spines, Staff Fighting or Titan Weapons). The creator buys the set
+ * chosen in one list before it lists the other, and greys every set the character could then not
+ * have (initPowerSetSelector in Game/src/UI/Hybrid/uiPower.c, which asks
+ * character_IsAllowedToHavePowerSetHypothetically): its SetBuyRequires fails, or none of its
+ * level-1 powers' BuyRequires passes. Only the listed set's own requirements count, so a pair can
+ * fail one way only (a set whose powers forbid the other, while the other's don't forbid it).
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param set The set listed.
+ * @param other The set chosen in the other list; none tests the set on its own.
+ * @param who The character's origin and alignment, when known.
+ * @return True when `set` has a level-1 power to pick with both sets (and the inherent ones) owned.
+ */
+export function setFitsWith(gd: GameData, at: Archetype, set: Powerset, other?: Powerset, who: CharacterTraits = {}): boolean {
+  const owned = new Set([set.id]);
+  if (other) owned.add(other.id);
+  for (const n of INHERENT_SETS) {
+    const s = gd.setByName.get(n.toLowerCase());
+    if (s) owned.add(s.id);
+  }
+  // a new character: level 1, no powers bought yet
+  const ctx = characterContext(gd, at, who, 0, new Set(), owned);
+  // a power level 1 can pick: auto-issued powers come free (as in BuildRules.newSetBlock)
+  return (
+    evalRequires(set.sbr, ctx) &&
+    set.p.some((pid, i) => {
+      const p = gd.powerById.get(pid);
+      return !!p && set.av[i] === 0 && !p.auto && evalRequires(p.br, ctx);
+    })
+  );
+}
+
+/**
+ * Whether a set fits on its own but not with another: the other set is what keeps it out
+ * (setFitsWith both ways round).
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param set The set listed.
+ * @param other The set chosen in the other list.
+ * @param who The character's origin and alignment, when known.
+ * @return True when `other` is the reason `set` can't start a build.
+ */
+function setClashes(gd: GameData, at: Archetype, set: Powerset, other: Powerset, who?: CharacterTraits): boolean {
+  return !setFitsWith(gd, at, set, other, who) && setFitsWith(gd, at, set, undefined, who);
+}
+
+/**
+ * Whether a new character of an archetype can start with this primary and secondary: each fits
+ * with the other (setFitsWith), so level 1's two picks can be made.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param pri The primary.
+ * @param sec The secondary.
+ * @param who The character's origin and alignment, when known.
+ * @return True when the pair goes together.
+ */
+export function setsGoTogether(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset, who?: CharacterTraits): boolean {
+  return setFitsWith(gd, at, pri, sec, who) && setFitsWith(gd, at, sec, pri, who);
+}
+
+/**
+ * What stops a primary and secondary from starting a build because of each other, naming the set
+ * New Build greys: the secondary when it clashes with the primary, else the primary
+ * (startingLocks).
+ *
+ * A set that can't start a build on its own (a staff-only set, hidden by its powers' BuyRequires) is
+ * no clash: it fits with nothing, so the other set isn't to blame.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param pri The primary.
+ * @param sec The secondary.
+ * @param who The character's origin and alignment, when known.
+ * @return "<set> can't be taken with <other set>", or null when neither set keeps the other out.
+ */
+export function pairProblem(gd: GameData, at: Archetype, pri: Powerset, sec: Powerset, who?: CharacterTraits): string | null {
+  if (setClashes(gd, at, sec, pri, who)) return `${sec.dn} can't be taken with ${pri.dn}`;
+  if (setClashes(gd, at, pri, sec, who)) return `${pri.dn} can't be taken with ${sec.dn}`;
+  return null;
+}
+
+/**
+ * pairProblem for a build's own primary and secondary: a build from before New Build greyed such
+ * pairs (an older link, a saved build, an import) can hold one.
+ *
+ * @param gd The build's game data.
+ * @param b The build.
+ * @return What is wrong, or null when its sets go together (or aren't in this data).
+ */
+export function buildPairProblem(gd: GameData, b: Build): string | null {
+  const at = gd.archetypeById.get(b.at);
+  const pri = gd.setById.get(b.primary);
+  const sec = gd.setById.get(b.secondary);
+  return at && pri && sec ? pairProblem(gd, at, pri, sec, b) : null;
+}
+
+/**
+ * The sets New Build greys, and why: each offered primary or secondary that clashes with the set
+ * chosen in the other list (fits on its own, but not with that set).
+ *
+ * A chosen set that is greyed itself (an older build's pair, or a pair that clashes one way only)
+ * counts as none chosen, as a greyed set does in the game, so it greys nothing in the other list.
+ * When both clash, the primary keeps its place and the secondary is the one greyed.
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param pris The primaries offered (startingSets).
+ * @param secs The secondaries offered.
+ * @param pri The chosen primary, if any.
+ * @param sec The chosen secondary, if any.
+ * @param who The character's origin and alignment, when known.
+ * @return Map of greyed set id to the reason ("Can't be taken with <set>").
+ */
+export function startingLocks(gd: GameData, at: Archetype, pris: Powerset[], secs: Powerset[], pri?: Powerset, sec?: Powerset, who?: CharacterTraits): Map<number, string> {
+  const secOff = !!(pri && sec && setClashes(gd, at, sec, pri, who));
+  const priOff = !!(pri && sec && !secOff && setClashes(gd, at, pri, sec, who));
+  const out = new Map<number, string>();
+  if (pri && !priOff) for (const s of secs) if (setClashes(gd, at, s, pri, who)) out.set(s.id, `Can't be taken with ${pri.dn}`);
+  if (sec && !secOff) for (const s of pris) if (setClashes(gd, at, s, sec, who)) out.set(s.id, `Can't be taken with ${sec.dn}`);
+  return out;
 }
 
 export { GameData };

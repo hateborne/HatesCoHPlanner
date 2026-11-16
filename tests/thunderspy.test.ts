@@ -9,8 +9,9 @@ import { describe, expect, it } from 'vitest';
 import { serverById, SERVERS } from '../src/data/servers.ts';
 import type { Archetype, Powerset } from '../src/data/types.ts';
 import { carryOrigin, newBuild } from '../src/engine/build.ts';
-import { boostPog } from '../src/engine/enhance.ts';
-import { BuildRules, isPatronSet, patronArcNote, startingSets } from '../src/engine/rules.ts';
+import { boostPog, effectiveness, levelsAbove, setRarity } from '../src/engine/enhance.ts';
+import { BuildRules, buildPairProblem, isPatronSet, levelUpRespec, pairProblem, patronArcNote, respecOnlyNote, setFitsWith, setsGoTogether, startingLocks, startingSets } from '../src/engine/rules.ts';
+import { computeTotals } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { ImportProblem, noBuildSave, wrongServer } from '../src/io/importProblem.ts';
 import { loadMidsMap, midsUnavailable } from '../src/io/mids.ts';
@@ -106,17 +107,8 @@ describe('Thunderspy icons', () => {
   });
 });
 
-/**
- * Whether the game lets a primary go with a secondary: some sets forbid each other through their
- * powers' BuyRequires (Thunderspy's Katana, Staff Fighting and Titan Weapons with Shield Defense).
- */
-function goTogether(at: Archetype, pri: Powerset, sec: Powerset): boolean {
-  const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: pri.id, secondary: sec.id, pickCount: ts.core.schedule.power.length });
-  const r = new BuildRules(ts, b);
-  // level 1's first pick is from the primary, its second from the secondary
-  const free = (s: Powerset, pick: number) => s.p.some((p, i) => s.av[i] === 0 && r.powerOption(p, pick).state === 'available');
-  return free(pri, 0) && free(sec, 1);
-}
+/** @return Whether the game lets a primary go with a secondary on Thunderspy (setsGoTogether). */
+const goTogether = (at: Archetype, pri: Powerset, sec: Powerset) => setsGoTogether(ts, at, pri, sec);
 
 describe('Thunderspy builds', () => {
   // every set New Build offers, each primary and each secondary at least once, paired in turn (a
@@ -153,6 +145,183 @@ describe('Thunderspy builds', () => {
     expect(fixes).toEqual([]);
     expect(build!.server).toBe('thunderspy');
     expect(build!.picks).toEqual(b.picks);
+  });
+});
+
+describe('Thunderspy power set pairs', () => {
+  const set = (name: string) => ts.setByName.get(name.toLowerCase())!;
+  // the pairs ts9-6 forbids: Shield Defense with Claws, Dual Blades, Katana, Staff Fighting or Titan
+  // Weapons (Scrappers and Brutes; Spines is allowed, unlike Homecoming), with Dual Blades, Staff
+  // Fighting, Titan Weapons or Pale Blade (Tankers), and Brute Claws with Stone Armor (one way)
+  const FORBIDDEN = [
+    'Brute_Melee.Claws + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Claws + Brute_Defense.Stone_Armor',
+    'Brute_Melee.Dual_Blades + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Katana + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Staff_Fighting + Brute_Defense.Shield_Defense',
+    'Brute_Melee.Titan_Weapons + Brute_Defense.Shield_Defense',
+    'Scrapper_Melee.Claws + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Dual_Blades + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Katana + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Staff_Fighting + Scrapper_Defense.Shield_Defense',
+    'Scrapper_Melee.Titan_Weapons + Scrapper_Defense.Shield_Defense',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Dual_Blades',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Pale_Blade',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Staff_Fighting',
+    'Tanker_Defense.Shield_Defense + Tanker_Melee.Titan_Weapons',
+  ];
+
+  it('forbids exactly these pairs of the sets New Build offers, and the wizard agrees on every pair', () => {
+    const forbidden: string[] = [];
+    const disagree: string[] = [];
+    for (const at of ts.core.archetypes) {
+      for (const p of startingSets(ts, at.cats.pri, at)) {
+        for (const s of startingSets(ts, at.cats.sec, at)) {
+          const fits = setsGoTogether(ts, at, p, s);
+          if (!fits) forbidden.push(`${p.n} + ${s.n}`);
+          // the level-up wizard: some primary power at level 1, and after any of them a secondary one
+          const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: p.id, secondary: s.id, pickCount: ts.core.schedule.power.length });
+          const r0 = new BuildRules(ts, b);
+          const firsts = p.p.filter((x, i) => p.av[i] === 0 && r0.powerOption(x, 0).state === 'available');
+          const starts =
+            firsts.length > 0 &&
+            firsts.every((first) => {
+              const r = new BuildRules(ts, { ...b, picks: b.picks.map((x, i) => (i === 0 ? { power: first, level: 0, slots: [{ level: 0 }] } : x)) });
+              return s.p.some((x, i) => s.av[i] === 0 && r.powerOption(x, 1).state === 'available');
+            });
+          if (starts !== fits) disagree.push(`${p.n} + ${s.n}: setsGoTogether says ${fits}`);
+        }
+      }
+    }
+    expect(forbidden.sort()).toEqual([...FORBIDDEN].sort());
+    expect(disagree).toEqual([]);
+  }, 120_000);
+
+  it("Pale Blade can't go with Shield Defense: Lash forbids it, and Fetid Presence needs Lash", () => {
+    const at = ts.archetypeByName.get('class_tanker')!;
+    expect(setFitsWith(ts, at, set('Tanker_Melee.Pale_Blade'), set('Tanker_Defense.Shield_Defense'))).toBe(false);
+    expect(setFitsWith(ts, at, set('Tanker_Defense.Shield_Defense'), set('Tanker_Melee.Pale_Blade'))).toBe(false);
+  });
+
+  it('Brute Claws and Stone Armor clash one way: New Build greys Claws once Stone Armor is chosen, not the reverse', () => {
+    const at = ts.archetypeByName.get('class_brute')!;
+    const claws = set('Brute_Melee.Claws');
+    const stone = set('Brute_Defense.Stone_Armor');
+    // Claws' level-1 powers forbid Stone Armor; Stone Armor keeps Stone Skin with Claws
+    expect(setFitsWith(ts, at, claws, stone)).toBe(false);
+    expect(setFitsWith(ts, at, stone, claws)).toBe(true);
+    const pris = startingSets(ts, at.cats.pri, at);
+    const secs = startingSets(ts, at.cats.sec, at);
+    expect(startingLocks(ts, at, pris, secs, claws).has(stone.id)).toBe(false);
+    expect(startingLocks(ts, at, pris, secs, undefined, stone).get(claws.id)).toBe("Can't be taken with Stone Armor");
+    // a pair that can't start a build all the same: Finish stays locked
+    expect(setsGoTogether(ts, at, claws, stone)).toBe(false);
+  });
+
+  it('with both chosen, only Claws is greyed: a greyed choice greys nothing in the other list', () => {
+    const at = ts.archetypeByName.get('class_brute')!;
+    const claws = set('Brute_Melee.Claws');
+    const stone = set('Brute_Defense.Stone_Armor');
+    const pris = startingSets(ts, at.cats.pri, at);
+    const secs = startingSets(ts, at.cats.sec, at);
+    // Claws would grey Shield Defense, but greyed itself it counts as none chosen
+    expect(setFitsWith(ts, at, set('Brute_Defense.Shield_Defense'), claws)).toBe(false);
+    const locks = startingLocks(ts, at, pris, secs, claws, stone);
+    expect([...locks.keys()].map((id) => ts.powerset(id).n)).toEqual(['Brute_Melee.Claws']);
+    expect(pairProblem(ts, at, claws, stone)).toBe("Claws can't be taken with Stone Armor");
+  });
+
+  it("a staff-only set (Organic Armor) fits with nothing, so an older build holding it isn't warned of a clash", () => {
+    const at = ts.archetypeByName.get('class_tanker')!;
+    const organic = set('Tanker_Defense.Organic_Armor');
+    const ss = set('Tanker_Melee.Super_Strength');
+    // its powers need staff access: New Build doesn't offer it
+    expect(setFitsWith(ts, at, organic)).toBe(false);
+    expect(startingSets(ts, at.cats.pri, at).some((s) => s.id === organic.id)).toBe(false);
+    expect(setsGoTogether(ts, at, organic, ss)).toBe(false);
+    expect(pairProblem(ts, at, organic, ss)).toBeNull();
+    const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: organic.id, secondary: ss.id, pickCount: ts.core.schedule.power.length });
+    expect(buildPairProblem(ts, b)).toBeNull();
+  });
+});
+
+describe('Thunderspy totals', () => {
+  it("reads its client's Knockback as the engine's Knock, so knockback protection counts", () => {
+    // Homecoming's client calls offset 328 Knock (alias Knockback); Thunderspy's calls it Knockback
+    expect(ts.core.attribs['328']!.name).toBe('Knockback');
+    expect(ts.attribName.get(328)).toBe('Knock');
+    expect(ts.attribByName.get('Knockback')).toBe(328);
+    for (const gd of [hc, ts]) {
+      const at = gd.archetypeByName.get('class_blaster')!;
+      const b = newBuild({ dataVersion: gd.core.manifest.dataVersion, at: at.id, origin: gd.core.origins[0]!.id, alignment: 'Hero', primary: startingSets(gd, at.cats.pri, at)[0]!.id, secondary: startingSets(gd, at.cats.sec, at)[0]!.id, pickCount: gd.core.schedule.power.length });
+      const acro = gd.powerByName.get('pool.leaping.leap')!; // Acrobatics
+      b.picks[10] = { power: acro.id, level: gd.core.schedule.power[10]!, slots: [{ level: gd.core.schedule.power[10]! }] };
+      const prot = computeTotals(gd, new BuildRules(gd, b), b).lines.get('mezprot.Knock');
+      expect(prot?.value, gd.server).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('Thunderspy pools and set rarity', () => {
+  it("opens pools from level 2: level 1's two picks are its primary and secondary", () => {
+    const at = ts.archetypeByName.get('class_blaster')!;
+    const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: startingSets(ts, at.cats.pri, at)[0]!.id, secondary: startingSets(ts, at.cats.sec, at)[0]!.id, pickCount: ts.core.schedule.power.length });
+    const r = new BuildRules(ts, b);
+    expect(ts.core.schedule.pool[0]).toBe(0); // its schedule opens a pool at level 1
+    expect([0, 1].map((i) => r.canAddNewSet('pool', i))).toEqual([false, false]);
+    expect(r.newSetChoices('pool', 0)[0]?.block).toBe('Level 1 takes a primary and a secondary power');
+    expect(r.canAddNewSet('pool', 2)).toBe(true);
+  });
+
+  it('gives every enhancement set in a converter group a rarity on every server, Thunderspy\'s second archetype group too', () => {
+    // a set in no converter group (Thunderspy's Subaluwa) has no rarity in the game either
+    for (const gd of [hc, ts]) {
+      const unrated = gd.boostSets.filter((s) => (s.conv ?? []).length && !setRarity(s)).map((s) => s.n);
+      expect(unrated, gd.server).toEqual([]);
+    }
+  });
+});
+
+describe('Thunderspy set bonuses', () => {
+  it("counts its +Damage bonuses: Affected mods of a power aimed at the caster, not Caster mods", () => {
+    const at = ts.archetypeByName.get('class_blaster')!;
+    const b = newBuild({ dataVersion: ts.core.manifest.dataVersion, at: at.id, origin: ts.core.origins[0]!.id, alignment: 'Hero', primary: ts.setByName.get('blaster_ranged.fire_blast')!.id, secondary: ts.setByName.get('blaster_support.fire_manipulation')!.id, pickCount: ts.core.schedule.power.length });
+    const set = ts.boostSets.find((s) => s.n === 'Defiant_Barrage')!;
+    // two pieces in one power: the 2-piece bonus is Set_Bonus.Set_Bonus.Increased_Damage_3
+    const lv = [0, ts.core.schedule.slot[0]!]; // the power's own slot, then the first slot the schedule grants
+    b.picks[0] = { power: ts.powerByName.get('blaster_ranged.fire_blast.flares')!.id, level: 0, slots: [0, 1].map((l) => ({ level: lv[l]!, enh: { boost: set.slots[l]![0]! } })) };
+    const r = new BuildRules(ts, b);
+    expect(r.issues()).toEqual([]);
+    const t = computeTotals(ts, r, b);
+    expect(t.lines.get('dmg.00')?.value ?? 0).toBeGreaterThan(0);
+    expect(t.setGroups.find((g) => g.set.n === 'Defiant_Barrage')?.stats.map((s) => s.label)).toContain('Damage');
+  });
+});
+
+describe('Thunderspy enhancement levels (its client, not the source)', () => {
+  const io = (gd: typeof ts) => gd.powerByName.get('boosts.crafted_accuracy.crafted_accuracy')!;
+  const so = (gd: typeof ts) => gd.powerByName.get('boosts.magic_accuracy.magic_accuracy')!;
+
+  it('works an IO or set piece only at or above its own level (power_MinBoostUseLevel)', () => {
+    expect(levelsAbove(hc)).toBe(3);
+    expect(levelsAbove(ts)).toBe(0);
+    for (const [gd, at47] of [[hc, 1], [ts, 0]] as const) {
+      const b = io(gd);
+      expect(effectiveness(gd, b, { boost: b.id, ioLevel: 49 }, 46), gd.server).toBe(at47);
+      expect(effectiveness(gd, b, { boost: b.id, ioLevel: 49 }, 49), gd.server).toBe(1);
+    }
+  });
+
+  it("keeps TO/DO/SO-style pieces at full strength at any level: its tables are 50 flat entries", () => {
+    expect(ts.core.boostEffect.above).toHaveLength(50);
+    for (const rel of [-10, -3, 0, 3, 10]) {
+      const b = so(ts);
+      expect(effectiveness(ts, b, { boost: b.id, rel }, 30), String(rel)).toBe(1);
+    }
+    // Homecoming's: +/- 3 levels, 5% a level above, 10% a level below
+    const h = so(hc);
+    expect(effectiveness(hc, h, { boost: h.id, rel: 3 }, 30)).toBeCloseTo(1.15);
+    expect(effectiveness(hc, h, { boost: h.id, rel: -10 }, 30)).toBe(0);
   });
 });
 
@@ -199,5 +368,20 @@ describe('Thunderspy and the other server', () => {
     const note = patronArcNote(ts, { ...b, alignment: 'Hero' }, patron!);
     expect(note?.text).toContain('is a Patron pool');
     expect(note?.link).toBeUndefined();
+  });
+});
+
+describe('Thunderspy Arachnos respec', () => {
+  // its client's LevelUpRespecs: [24] for both Arachnos classes and none for any other (checked
+  // against the decoded client by the pipeline's forced_respec_warnings)
+  it('plans only Arachnos Soldier and Widow as Respec builds, from their respec at 24', () => {
+    const forced = ts.core.archetypes.filter((a) => levelUpRespec(ts, a) !== undefined).map((a) => a.n).sort();
+    expect(forced).toEqual(['Class_Arachnos_Soldier', 'Class_Arachnos_Widow']);
+    for (const n of forced) {
+      const at = ts.archetypeByName.get(n.toLowerCase())!;
+      expect(levelUpRespec(ts, at)).toBe(23); // 0-based level 24
+      expect(respecOnlyNote(ts, at)?.title).toBe('Respec at Level 24');
+    }
+    expect(respecOnlyNote(ts, ts.archetypeByName.get('class_primalist')!)).toBeNull();
   });
 });

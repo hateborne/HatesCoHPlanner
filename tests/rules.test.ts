@@ -156,10 +156,11 @@ describe('power picks', () => {
       primary: sid(gd, 'Arachnos_Soldiers.Arachnos_Soldier'),
       secondary: sid(gd, 'Training_Gadgets.Training_and_Gadgets'),
       pickCount: 24,
+      respecTo: 22, // a respec to 23: below 24, so the branches keep to their own level
     });
     const r = new BuildRules(gd, b);
-    // Like the client, the branch sets are always listed in their category's column (in data
-    // order, after the main set) but every power stays unavailable until level 24.
+    // Like the client, the branch sets are listed in their category's column (in data order,
+    // after the main set) but every power stays unavailable until level 24.
     const avail = (pick: number, n: string) =>
       r.setOptions(pick).find((s) => s.set.n === n)!.powers.filter((p) => p.state === 'available').length;
     const before = r.setOptions(12);

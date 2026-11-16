@@ -17,6 +17,12 @@ export interface RawData {
   boosts: BoostsFile;
 }
 
+// Attribute names the engine uses (Homecoming's client's), keyed by another name a server's client
+// gives the same attribute: Thunderspy's calls Knock (knockback) "Knockback", which Homecoming
+// lists as Knock's alias. Without this, Thunderspy's knockback protection and resistance would be
+// missing from the totals.
+const ATTRIB_CANON: Record<string, string> = { Knockback: 'Knock' };
+
 /**
  * Indexed, read-only view of the exported game data.
  *
@@ -76,12 +82,23 @@ export class GameData {
     for (const bs of raw.boosts.sets) {
       this.boostSetById.set(bs.id, bs);
       bs.slots.forEach((variants, letter) => {
-        variants.forEach((bid, variant) => this.boostSetOf.set(bid, { set: bs, letter, variant }));
+        variants.forEach((bid, variant) => {
+          this.boostSetOf.set(bid, { set: bs, letter, variant });
+          // a piece whose name the client's text lacks (Thunderspy's Scourging Blast proc) is
+          // shown by its set and letter, never as a blank tile
+          const p = this.powerById.get(bid);
+          if (p && !p.dn.trim()) p.dn = `${bs.dn}: Unnamed piece ${String.fromCharCode(65 + letter)}`;
+        });
       });
     }
+    const names = new Set(Object.values(raw.core.attribs).map((a) => a.name));
     for (const [off, info] of Object.entries(raw.core.attribs)) {
-      this.attribName.set(Number(off), info.name);
-      this.attribByName.set(info.name, Number(off));
+      // a server that calls an attribute by another of its names is read under the engine's name
+      const canon = ATTRIB_CANON[info.name];
+      const name = canon && !names.has(canon) ? canon : info.name;
+      this.attribName.set(Number(off), name);
+      this.attribByName.set(name, Number(off));
+      if (name !== info.name) this.attribByName.set(info.name, Number(off));
     }
   }
 
