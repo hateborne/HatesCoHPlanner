@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { GameData } from '../src/data/gamedata.ts';
 import { newBuild, type Build, type SlottedEnh } from '../src/engine/build.ts';
-import { effectiveness, enhValues, powerStrength } from '../src/engine/enhance.ts';
+import { defaultLevel, effectiveness, enhValues, ioLevelRange, powerStrength } from '../src/engine/enhance.ts';
 import { evalRequires, type EvalContext } from '../src/engine/requires.ts';
 import { BuildRules, startingSets } from '../src/engine/rules.ts';
 import { earnedBonuses } from '../src/engine/setbonus.ts';
@@ -221,6 +221,26 @@ describe('what a slotted enhancement may be (boost.c power_IsValidBoost, boost_I
   it("keeps an IO to its set's levels (Kismet is made at 10 to 30)", () => {
     expect(cj([{ ...io('Crafted_Kismet_A'), ioLevel: 29 }])).toEqual([]);
     expect(cj([io('Crafted_Kismet_A')])).toEqual(['Made at levels 10 to 30']);
+  });
+
+  it('gives the handed-out pre-order pieces no made level: level 1 as /build_save lists them, usable from 1 (MinSlotLevel 0)', () => {
+    const mote = pid(gd, 'Boosts.Generic_Might_of_the_Empire.Generic_Might_of_the_Empire');
+    const flares = (pieces: SlottedEnh[], endLevel?: number) => {
+      const b = blaster();
+      put(b, 0, 'Blaster_Ranged.Fire_Blast.Flares', pieces);
+      return pieceIssues({ ...b, endLevel }).map((x) => x.message);
+    };
+    expect(flares([{ boost: mote, ioLevel: 0 }])).toEqual([]);
+    expect(flares([{ boost: mote, ioLevel: 0 }], 4)).toEqual([]);
+    // a common IO is still made from level 10
+    expect(flares([{ ...io('Crafted_Damage'), ioLevel: 0 }])).toEqual(['Made at levels 10 to 50']);
+    // nothing to choose, and a new one is level 1
+    expect(ioLevelRange(gd, gd.power(mote))).toBeNull();
+    expect(defaultLevel(gd, gd.power(mote))).toBe(0);
+    // one the planner placed at level 50 before (old links) is judged at that level, as its totals are
+    expect(flares([{ boost: mote, ioLevel: 49 }], 20)).toEqual(['Usable from level 47']);
+    expect(effectiveness(gd, gd.power(mote), { boost: mote, ioLevel: 49 }, 20)).toBe(0);
+    expect(effectiveness(gd, gd.power(mote), { boost: mote, ioLevel: 0 }, 20)).toBe(1);
   });
 
   it('judges a build that stops early at its last level: an IO works from 3 levels below its own', () => {

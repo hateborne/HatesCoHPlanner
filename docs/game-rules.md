@@ -165,7 +165,11 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
     source allows 2 combines (`BOOST_MAX_COMBINES`, boost.h). Homecoming's client refuses only a
     4th (`boost_IsValidCombination` compares `iNumCombines` with 3), so a level-50 SO reaches
     50+3. With the effectiveness tables (+3 above, -3 below) the relative level runs -3..+3.
-  - An IO is made at its set's levels (a common IO from 10 to 50).
+  - An IO is made at its set's levels (a common IO from 10 to 50). The five Going Rogue pre-order
+    pieces (Might of the Empire, Clockwork Efficiency, Resistance Tactics, Syndicate Techniques,
+    Will of the Seers) are IOs that are handed out, not crafted: `/build_save` lists them at level
+    1 and Homecoming's client hides their level (`BoostHideLevel`). So they have no level to
+    choose, a new one is level 1, and it works from level 1 (`MinSlotLevel` 0).
 - The planner flags a piece that breaks any of these with the reason, and the picker leaves such
   pieces out. A value that isn't a whole number can't come from the app or an import, so
   `checkBuild` drops it.

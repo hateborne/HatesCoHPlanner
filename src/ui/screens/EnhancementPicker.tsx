@@ -133,7 +133,9 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   };
   const place = () => {
     if (!sel) return;
-    writeLast({ tab, set: tab === 'Sets' ? setId : undefined, ioLevel: sel.ioLevel ?? last?.ioLevel });
+    // remember a level only when it was chosen (a pre-order piece's fixed level 1 doesn't count)
+    const chosen = selBoost && rangeOf(selBoost) ? sel.ioLevel : undefined;
+    writeLast({ tab, set: tab === 'Sets' ? setId : undefined, ioLevel: chosen ?? last?.ioLevel });
     onPlace(sel);
   };
 

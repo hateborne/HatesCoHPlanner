@@ -118,6 +118,13 @@ describe('build.txt (/build_save)', () => {
     expect(imp.leveledBlock).toBeNull();
   });
 
+  it('keeps a pre-order piece at the level 1 the game lists, with nothing flagged', () => {
+    const imp = readBuildTxt(gd, SAMPLE.replace('\tCrafted_Accuracy (10)', '\tGeneric_Might_of_the_Empire (1)'));
+    const mote = pid(gd, 'Boosts.Generic_Might_of_the_Empire.Generic_Might_of_the_Empire');
+    expect(imp.build.picks[2]!.slots[0]!.enh).toEqual({ boost: mote, ioLevel: 0 });
+    expect(new BuildRules(gd, imp.build).issues().filter((x) => x.key === 'pick:2')).toEqual([]);
+  });
+
   it('gives a respec its slot levels, and keeps each power slot order', () => {
     const imp = readBuildTxt(gd, SAMPLE);
     const b = finishBuildTxt(gd, imp, { alignment: 'Villain', respec: true });
