@@ -10,7 +10,7 @@ import { serverById, SERVERS } from '../src/data/servers.ts';
 import type { Archetype, Powerset } from '../src/data/types.ts';
 import { carryOrigin, newBuild } from '../src/engine/build.ts';
 import { boostPog, effectiveness, levelsAbove, setRarity } from '../src/engine/enhance.ts';
-import { BuildRules, buildPairProblem, isPatronSet, pairProblem, patronArcNote, setFitsWith, setsGoTogether, startingLocks, startingSets } from '../src/engine/rules.ts';
+import { BuildRules, buildPairProblem, isPatronSet, levelUpRespec, pairProblem, patronArcNote, respecOnlyNote, setFitsWith, setsGoTogether, startingLocks, startingSets } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { ImportProblem, noBuildSave, wrongServer } from '../src/io/importProblem.ts';
@@ -368,5 +368,20 @@ describe('Thunderspy and the other server', () => {
     const note = patronArcNote(ts, { ...b, alignment: 'Hero' }, patron!);
     expect(note?.text).toContain('is a Patron pool');
     expect(note?.link).toBeUndefined();
+  });
+});
+
+describe('Thunderspy Arachnos respec', () => {
+  // its client's LevelUpRespecs: [24] for both Arachnos classes and none for any other (checked
+  // against the decoded client by the pipeline's forced_respec_warnings)
+  it('plans only Arachnos Soldier and Widow as Respec builds, from their respec at 24', () => {
+    const forced = ts.core.archetypes.filter((a) => levelUpRespec(ts, a) !== undefined).map((a) => a.n).sort();
+    expect(forced).toEqual(['Class_Arachnos_Soldier', 'Class_Arachnos_Widow']);
+    for (const n of forced) {
+      const at = ts.archetypeByName.get(n.toLowerCase())!;
+      expect(levelUpRespec(ts, at)).toBe(23); // 0-based level 24
+      expect(respecOnlyNote(ts, at)?.title).toBe('Respec at Level 24');
+    }
+    expect(respecOnlyNote(ts, ts.archetypeByName.get('class_primalist')!)).toBeNull();
   });
 });

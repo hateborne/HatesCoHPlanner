@@ -617,6 +617,36 @@ def borrow_frames(boosts: list[dict], sets: list[dict], donor: str) -> dict:
     return res
 
 
+def forced_respec_warnings(live: LiveData, ex: Exporter) -> list[str]:
+    """Check the planner's reading of each class's forced level-up respec against the client.
+
+    The export leaves a class's LevelUpRespecs out: the planner (levelUpRespec in
+    src/engine/rules.ts) takes it to be the level its specialization sets open at (SpecializeAt
+    + 1, 1-based), as it is for every class today (Arachnos Soldier and Widow: 24), and plans
+    those classes as Respec builds only. A class where the two differ needs the planner changed
+    before its builds are planned right.
+
+    @param live The decoded client.
+    @param ex The exporter, after build() (its class categories).
+    @return One warning per class that breaks the rule.
+    """
+    out = []
+    for c in live.classes:
+        cats = ex.class_cats.get(c["Name"])
+        if not cats:
+            continue
+        opens = sorted({ex.sets[s]["SpecializeAt"] + 1 for k in ("pri", "sec")
+                        for s in ex.cats[cats[k].lower()]["PowerSets"]
+                        if s in ex.sets and ex.sets[s].get("SpecializeAt")})
+        raw = c.get("LevelUpRespecs") or []   # an int array in the parse table (TOK_INTARRAY)
+        respecs = sorted(set(raw if isinstance(raw, list) else [raw]))
+        if respecs != opens[:1]:
+            out.append(f"WARNING: {c['Name']} respecs on training to {respecs or 'no level'}, but its "
+                       f"specialization sets open at {opens or 'no level'}: the planner assumes one "
+                       "respec, at the level they open (levelUpRespec in src/engine/rules.ts)")
+    return out
+
+
 def write(live: LiveData, version: str, frames_from: str | None = None, *,
           overwrite_published: bool = False, refresh_mids_map: bool = False,
           assets: bool = True, add_only_icons: bool = False) -> dict:
@@ -644,7 +674,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     """
     ex = Exporter(live)          # refuses to run if the ids file is gone while data exists
     out = ex.build()
-    warnings: list[str] = []
+    warnings: list[str] = forced_respec_warnings(live, ex)
     frames: dict | None = None
     if ex.report["no_frames"]:
         if frames_from:
