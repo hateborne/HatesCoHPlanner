@@ -50,10 +50,12 @@ describe('Arachnos branches (open at level 24)', () => {
   it('make New Build plan those archetypes as a Respec, and say why', () => {
     const soldier = respecOnlyNote(gd, gd.archetypeByName.get('class_arachnos_soldier')!)!;
     expect(soldier.title).toBe('Respec at Level 24');
-    expect(soldier.text).toContain('Arachnos Soldiers can only train to level 24 through a respec');
-    expect(soldier.text).toContain('Crab Spider Soldier');
-    expect(soldier.text).toContain('Bane Spider Training');
-    expect(respecOnlyNote(gd, gd.archetypeByName.get('class_arachnos_widow')!)!.text).toContain('Fortunata Training');
+    expect(soldier.text).toBe(
+      'Arachnos Soldiers must Respec at level 24 to select their archetype path, Bane Spider or Crab Spider. To avoid confusion, Arachnos Soldier builds will only be planned as a Respec build.',
+    );
+    expect(respecOnlyNote(gd, gd.archetypeByName.get('class_arachnos_widow')!)!.text).toBe(
+      'Arachnos Widows must Respec at level 24 to select their archetype path, Night Widow or Fortunata. To avoid confusion, Arachnos Widow builds will only be planned as a Respec build.',
+    );
     expect(respecOnlyNote(gd, gd.archetypeByName.get('class_blaster')!)).toBeNull();
   });
 

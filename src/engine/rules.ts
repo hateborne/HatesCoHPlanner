@@ -120,6 +120,10 @@ export function levelUpRespec(gd: GameData, at: Archetype): number | undefined {
  * class_IsRespecLevelUp offers TrainRespecNow instead of TrainNow), which chooses every power and
  * slot up to it again, so the planner plans its builds as a respec from the start.
  *
+ * Each path is named by its primary branch set, less the set's last word ("Crab Spider Soldier"
+ * is Crab Spider, "Night Widow Training" Night Widow), in the order the screens list them. The
+ * secondary sets can't name them: Night Widow's is "Widow Teamwork".
+ *
  * @param gd Game data.
  * @param at The archetype.
  * @return The dialog's title and text, or null for an archetype that never respecs on training.
@@ -127,12 +131,15 @@ export function levelUpRespec(gd: GameData, at: Archetype): number | undefined {
 export function respecOnlyNote(gd: GameData, at: Archetype): { title: string; text: string } | null {
   const level = levelUpRespec(gd, at);
   if (level === undefined) return null;
-  const names = [at.cats.pri, at.cats.sec].flatMap((c) => gd.setsInCategory(c).filter((s) => s.spa).map((s) => s.dn));
-  const sets = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? 'their branch sets');
+  const names = gd
+    .setsInCategory(at.cats.pri)
+    .filter((s) => s.spa)
+    .map((s) => s.dn.replace(/\s+\S+$/, '') || s.dn);
+  const paths = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : (names[0] ?? 'a branch');
   const n = level + 1;
   return {
     title: `Respec at Level ${n}`,
-    text: `${at.dn}s can only train to level ${n} through a respec, which chooses every power and slot up to ${n} again. So their builds are planned as a Respec from the start: set the level to respec to. From level ${n} on, ${sets} are open from level 1.`,
+    text: `${at.dn}s must Respec at level ${n} to select their archetype path, ${paths}. To avoid confusion, ${at.dn} builds will only be planned as a Respec build.`,
   };
 }
 

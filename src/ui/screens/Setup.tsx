@@ -110,7 +110,7 @@ export function Setup() {
   // Respec build: Leveling is greyed for it, with the reason
   const respecOnly = archetype ? respecOnlyNote(gd, archetype) : null;
   const type: BuildType = respecOnly ? 'respec' : buildType;
-  const levelingLocked = respecOnly ? `Leveling isn't offered for this archetype: ${respecOnly.text}` : null;
+  const levelingLocked = respecOnly?.text ?? null;
   // ids are stable across game versions, but a choice may not exist in the version picked here
   const ready = archetype !== undefined && priSet !== undefined && secSet !== undefined && !pairBlocked && gd.core.origins.some((o) => o.id === origin);
   /** @return A set's help text, after why it can't be chosen when it can't. */
