@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
 import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
+import type { GameData } from '../../data/gamedata.ts';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
-import { pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
+import { levelUpRespec, pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
@@ -38,11 +39,20 @@ const BUILD_TYPES: { id: BuildType; label: string; help: string }[] = [
   },
 ];
 
-/** @return A typed respec level as a whole level from 1 to 50 (50 when it isn't a number). */
-const respecLevel = (raw: string) => {
+/** @return A typed respec level as a whole level from `min` to 50 (50 when it isn't a number). */
+const respecLevel = (raw: string, min = 1) => {
   const n = Math.round(Number(raw));
-  return Number.isFinite(n) && raw.trim() !== '' ? Math.min(50, Math.max(1, n)) : 50;
+  return Number.isFinite(n) && raw.trim() !== '' ? Math.min(50, Math.max(min, n)) : 50;
 };
+
+/**
+ * @return The lowest level (1-based) a Respec build of an archetype may run to: the level its
+ *   training forces a respec at (Arachnos Soldier and Widow: 24, levelUpRespec), else 1.
+ */
+function lowestRespec(gd: GameData | undefined, at: Archetype | undefined): number {
+  const forced = gd && at ? levelUpRespec(gd, at) : undefined;
+  return forced === undefined ? 1 : forced + 1;
+}
 
 /**
  * Build setup in the in-game style: origin and alignment, archetype, primary, secondary and a
@@ -63,7 +73,8 @@ export function Setup() {
   const [name, setName] = useState(build?.name ?? '');
   const [desc, setDesc] = useState<{ text: string; icon?: string } | null>(null);
   const [buildType, setBuildType] = useState<BuildType>(build?.respecTo !== undefined ? 'respec' : 'leveling');
-  const [respecTo, setRespecTo] = useState(String((build?.respecTo ?? 49) + 1)); // typed text, 1-based
+  // typed text, 1-based; an archetype planned as Respec only starts at its lowest respec level
+  const [respecTo, setRespecTo] = useState(() => String(Math.max((build?.respecTo ?? 49) + 1, lowestRespec(gd, own && gd?.archetypeById.get(own.at)))));
   const [tab, setTab] = useState(0);
   // switching servers (the logo) clears the archetype and both power sets; the rest stays, the
   // origin only while the new server has it
@@ -104,13 +115,21 @@ export function Setup() {
     setMusicSkin(skinOf(align));
     useStore.setState({ setupAlign: align });
   }, [align]);
+  // an archetype whose training forces a respec (Arachnos Soldier and Widow at 24) is planned as a
+  // Respec build: Leveling is greyed for it, with the reason, and the player's own Build Type
+  // comes back for another archetype
+  const respecOnly = gd && archetype ? respecOnlyNote(gd, archetype) : null;
+  const noteTitle = respecOnly?.title;
+  const noteText = respecOnly?.text;
+  // picked (or already picked when New Build opens) while Leveling is ticked: say why it is a Respec
+  useEffect(() => {
+    if (noteTitle && noteText && buildType === 'leveling') void useStore.getState().tell({ title: noteTitle, text: noteText });
+  }, [noteTitle, noteText, buildType]);
   if (!gd) return null;
   const skin = SKINS[skinOf(align)];
-  // an archetype whose training forces a respec (Arachnos Soldier and Widow at 24) is planned as a
-  // Respec build: Leveling is greyed for it, with the reason
-  const respecOnly = archetype ? respecOnlyNote(gd, archetype) : null;
   const type: BuildType = respecOnly ? 'respec' : buildType;
-  const levelingLocked = respecOnly?.text ?? null;
+  const levelingLocked = noteText ?? null;
+  const lowest = lowestRespec(gd, archetype);
   // ids are stable across game versions, but a choice may not exist in the version picked here
   const ready = archetype !== undefined && priSet !== undefined && secSet !== undefined && !pairBlocked && gd.core.origins.some((o) => o.id === origin);
   /** @return A set's help text, after why it can't be chosen when it can't. */
@@ -132,19 +151,16 @@ export function Setup() {
       });
       if (!ok) return;
     }
-    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: type === 'respec' ? respecLevel(respecTo) - 1 : undefined });
+    startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: type === 'respec' ? respecLevel(respecTo, lowest) - 1 : undefined });
   };
   const pickAt = (a: Archetype) => {
     if (a.id === at) return;
     setAt(a.id);
     setPri(undefined);
     setSec(undefined);
-    // a Leveling choice is cut over to Respec for an archetype that respecs on training, and says why
-    const note = buildType === 'leveling' ? respecOnlyNote(gd, a) : null;
-    if (note) {
-      setBuildType('respec');
-      void useStore.getState().tell(note);
-    }
+    // a respec level below the one the archetype's training forces moves up to it
+    const low = lowestRespec(gd, a);
+    if (low > 1) setRespecTo((t) => String(respecLevel(t, low)));
   };
   /** Which game version's data the new build uses (each version keeps its own data on the site). */
   const versionPicker = (style: CSSProperties) => (
@@ -203,13 +219,13 @@ export function Setup() {
         <input
           id="respec-level"
           type="number"
-          min={1}
+          min={lowest}
           max={50}
           value={respecTo}
           onChange={(e) => setRespecTo(e.target.value)}
-          onBlur={() => setRespecTo(String(respecLevel(respecTo)))}
+          onBlur={() => setRespecTo(String(respecLevel(respecTo, lowest)))}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') setRespecTo(String(respecLevel(respecTo)));
+            if (e.key === 'Enter') setRespecTo(String(respecLevel(respecTo, lowest)));
           }}
           style={{ width: size * 4.2, height: size * 1.9, background: '#000', border: '2px solid #4f94ff', borderRadius: size, color: '#fff', fontSize: size, textAlign: 'center', boxSizing: 'border-box' }}
         />

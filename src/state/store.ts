@@ -8,7 +8,7 @@ import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, se
 import { loadVersions, missingVersionNote, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
 import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
 import { cleanName, cloneBuild, newBuild, type Alignment, type Build } from '../engine/build.ts';
-import { BuildRules, buildPairProblem } from '../engine/rules.ts';
+import { BuildRules, buildPairProblem, levelUpRespec, MAX_LEVEL } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { describeImportFailure, refusedBuild, unknownServer } from '../io/importProblem.ts';
@@ -424,7 +424,8 @@ function offerAgain(gd: GameData, base: Build, pick: number, power: number | und
   if (!set) return { pendingPower: power };
   const rules = new BuildRules(gd, base);
   const kind = rules.setKind(set);
-  const listed = (kind !== 'pool' && kind !== 'epic') || rules.setOptions(pick).some((o) => o.set.id === set.id);
+  // setOptions lists a pool or epic set exactly when the build owns it at the pick without the pick
+  const listed = (kind !== 'pool' && kind !== 'epic') || rules.ownedSets(rules.ownedAt(rules.pickLevel(pick), pick)).has(set.id);
   return listed ? { pendingPower: power } : { pendingPower: power, pendingSet: set.id };
 }
 
@@ -750,10 +751,15 @@ export const useStore = create<Store>((set, get) => ({
   startBuild(args) {
     const { gd } = get();
     if (!gd) return;
-    const b = newBuild({ ...args, server: gd.server, dataVersion: gd.core.manifest.dataVersion, pickCount: gd.core.schedule.power.length });
+    // an archetype whose training forces a respec (Arachnos Soldier and Widow) is planned as a
+    // Respec build only, to that level at least (respecOnlyNote)
+    const at = gd.archetypeById.get(args.at);
+    const forced = at ? levelUpRespec(gd, at) : undefined;
+    const respecTo = forced === undefined ? args.respecTo : Math.max(args.respecTo ?? MAX_LEVEL, forced);
+    const b = newBuild({ ...args, respecTo, server: gd.server, dataVersion: gd.core.manifest.dataVersion, pickCount: gd.core.schedule.power.length });
     persist(b);
     persistNotes(null, undefined);
-    const flow = args.respecTo !== undefined ? respecSteps(get().steps, args.respecTo) : undefined;
+    const flow = respecTo !== undefined ? respecSteps(get().steps, respecTo) : undefined;
     set({
       build: b,
       view: 'level',

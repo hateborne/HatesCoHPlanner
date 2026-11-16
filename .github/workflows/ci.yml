@@ -65,6 +65,9 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m compileall -q pipeline tools
+      # the pipeline checks that need no game files (the rest run on the owner's machine)
+      - name: Pipeline unit tests
+        run: python -m unittest pipeline.forced_respec_test
       # share links and saved builds store these ids: none may change or disappear
       - name: Stable IDs are only appended to
         env:
