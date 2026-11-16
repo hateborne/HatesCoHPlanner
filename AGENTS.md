@@ -334,10 +334,15 @@ own build doesn't reopen unannounced: the remembered build, or a link holding
 its share code (a reloaded tab's address), opens the server list with a Continue button for it
 (`askServer`'s `resume`, answered `CONTINUE_BUILD`), highlighted so Enter takes it, and its data
 loads while the list is open. A tile starts New Build on its server instead; the build stays
-remembered until a new one starts, and New Build's Finish asks first while it isn't open ("Start new"
-or "Open it", `rememberedBuild`). A link someone else sent opens at once. With no build, New
-Build opens on the server the address names; failing that, once `SERVERS` holds more than one, a
-visit asks in the server list dialog (`askServer`). The server this browser last showed
+remembered until something replaces it, and whatever would while it isn't open (New Build's Finish,
+an import, a saved build, a link pasted into the address bar) asks first: go ahead, "Open it", or
+Cancel, which Escape and Enter take (`askOverRemembered`, `askThreeWay`). A link someone else sent
+opens at once; one pasted into the address bar while the load's server list is open starts the load
+over with it. With no build, New Build opens on the server the address names; failing that, a link
+refused for what it holds (damaged, a build `checkBuild` refuses) opens New Build on its own server
+(the default for a damaged code, as every link at the site root did before servers) and says why;
+failing that, once `SERVERS` holds more than one, a visit asks in the server list dialog
+(`askServer`). The server this browser last showed
 (`hcp.server`, `src/state/lastServer.ts`), else the default, starts highlighted, so Enter, Space or OK
 takes it, and its data starts loading while the list is open; hovering a tile doesn't move the
 highlight. Otherwise New Build opens on the only server. The address is then rewritten in place to the build's
@@ -346,17 +351,21 @@ and at the top of the phone menu) shows on every screen, but only New Build make
 opens the same list there, and picking another server shows that server's data and clears the
 archetype and both power sets (another server's ids mean other archetypes and sets); the origin
 carries over by its internal name (`carryOrigin`). A build is never
-moved to another server: a switch with a build in the background asks first (`askConfirm`), then
-clears that build (this tab's storage and its share code in the address), and `selectServer` is
-refused outside New Build. Import reads a pasted link's server
+moved to another server: a switch with a build in the background asks first (`askConfirm`; a build
+with no work in it, `hasWork`, is cleared without asking), then clears that build (this tab's storage
+and its share code in the address), and `selectServer` is refused outside New Build; the list closes
+if a build opens behind it or a dialog opens over it. New Build only starts a build on the data its choices were made on
+(`startBuild` refuses ids the shown data lacks). Import reads a pasted link's server
 from its address (`serverInLink`); a bare code opens on the server its game version belongs to
 (Homecoming's for a code from before servers). A share code left in the address by a link that
-couldn't open is dropped once the address moves to another server.
+couldn't open is dropped once the address moves to another server, and the error screen leaves the
+address as it was, so Try again and a reload read the same link.
 
 What a server offers is in its `SERVERS` entry: `midsDb` (MidsReborn's name for its database; none
 for Thunderspy) and `buildSave` (its client writes `/build_save` files; Thunderspy's doesn't). Without
 them the build menu hides the Mids exports and the file button, and an import of Mids text or a
-`build.txt` is refused in words (`midsUnavailable`, `noBuildSave`) that name the server it belongs to.
+`build.txt` is refused in words (`midsUnavailable`, `noBuildSave`) that name the server it belongs to;
+other text is refused naming only what that server reads (`notReadableOn`, `readableOn`).
 Thunderspy keeps the engine's rules (ported from Homecoming's client and the game source) wherever its
 data doesn't decide them; its staff-only sets (Organic Armor) stay off New Build because no player
 passes their powers' BuyRequires (`startingSets`).
@@ -390,8 +399,8 @@ every target exists and that the archetypes each name is for can take it.
 
 **Text from outside** (a link's build name or game version, a file's names) is never repeated as
 it came: build names go through `cleanName` (plain text, at most 40 characters), names from imported
-files through `readable`, and a missing game version is named as its patch or not at all
-(`missingVersionNote`). A crafted link must not make the planner's own notices say what it likes.
+files and a pasted link's unknown server name (`unknownServer`) through `readable`, and a missing game
+version is named as its patch or not at all (`missingVersionNote`). A crafted link must not make the planner's own notices say what it likes.
 Every navigation goes to a fixed address written in the planner's code: on this site, or an outside
 page opened in a new tab (the Support dialog's charities, the wiki page a dialog's `link` opens).
 None takes its target from a link, a build or a file.
@@ -472,7 +481,8 @@ selectors (`useShallow`) and call its actions.
 - Every pop-up closes with Escape (`useEscape`). The one exception, the owner's choice: a `tell`
   with `wait` (the "Invalid power sets" warning) takes neither OK nor Escape until its countdown
   ends, and a dialog asked for while it is up waits for it to close instead of replacing it.
-- Questions use `askConfirm` (or `askChoices` for rows of options); messages with one OK button
+- Questions use `askConfirm` (or `askChoices` for rows of options, `askThreeWay` for two ways
+  forward and Cancel; Cancel has the keyboard focus, so Escape and Enter stay); messages with one OK button
   use `tell` (its optional `link` makes one phrase open a fixed https page in a new tab, as the
   hero Patron note links the wiki; its optional `wait` greys OK for that many seconds, counted down
   on the button); refusals use `notify` or `flashLocked`. The server list is `askServer`.

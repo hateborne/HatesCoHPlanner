@@ -13,8 +13,8 @@ import { boostPog, effectiveness, levelsAbove, setRarity } from '../src/engine/e
 import { BuildRules, buildPairProblem, isPatronSet, levelUpRespec, pairProblem, patronArcNote, respecOnlyNote, setFitsWith, setsGoTogether, startingLocks, startingSets } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
-import { ImportProblem, noBuildSave, wrongServer } from '../src/io/importProblem.ts';
-import { loadMidsMap, midsUnavailable } from '../src/io/mids.ts';
+import { ImportProblem, noBuildSave, READABLE, readableOn, wrongServer } from '../src/io/importProblem.ts';
+import { loadMidsMap, midsUnavailable, notReadableOn } from '../src/io/mids.ts';
 import { decodeShare, encodeShare } from '../src/io/share.ts';
 import { icon } from '../src/ui/skin/skin.ts';
 import { loadData, loadVersionIndex } from './helpers/data.ts';
@@ -355,6 +355,25 @@ describe('Thunderspy and the other server', () => {
     const p = noBuildSave(thunderspy, SERVERS.filter((s) => s.buildSave));
     expect(p.reason).toBe("a /build_save file comes from Homecoming's game client, not Thunderspy's");
     expect(p.fix).toBe('Switch to Homecoming on New Build, then import it there.');
+  });
+
+  it('names only what Thunderspy reads when pasted text is no build, and refuses Mids text as Mids', () => {
+    // Homecoming's sentence is unchanged; Thunderspy's names share links only
+    expect(readableOn(homecoming)).toBe(READABLE);
+    expect(readableOn(thunderspy)).toBe('On Thunderspy the planner reads share links from this site only.');
+    expect(readableOn({ label: 'X', midsDb: 'X' })).toBe('On X the planner reads share links from this site, Mids share codes (starting with |MBD; or |MxDz;) and Mids .mbd files.');
+    expect(readableOn({ label: 'X', buildSave: true })).toBe("On X the planner reads share links from this site and the game's /build_save file (build.txt).");
+    for (const junk of ['hello there', 'eJxjZGRk4BZjDwlWcMssSmWQmGXMwMDIwLDWCEzhAqwlxZa6ZgwAzpwFxw', '\u0000\u0001binary']) {
+      const p = notReadableOn(thunderspy, junk);
+      expect(p.reason).toBe("it isn't a build the planner recognizes");
+      expect(p.fix).toBe('On Thunderspy the planner reads share links from this site only.');
+    }
+    for (const mids of ['|MBD;123;456;789;BASE64;|abc', '|MxDz;1;2;3;HEX;|00', ' {"BuiltWith": {}}', '{ damaged']) {
+      expect(notReadableOn(thunderspy, mids).reason).toBe(midsUnavailable(thunderspy).reason);
+    }
+    // the limits every import has hold here too
+    expect(notReadableOn(thunderspy, '  ').reason).toBe("there's nothing to import");
+    expect(notReadableOn(thunderspy, 'x'.repeat(2_000_001)).reason).toBe("it's too long to be a build (over 2 MB of text)");
   });
 
   it("keeps the Patron note on Thunderspy, without Homecoming's wiki link", () => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_SERVER, defaultServer, serverById, serverOf, SERVERS, type GameServer } from '../../data/servers.ts';
-import { skinOf } from '../../engine/build.ts';
+import { hasWork, skinOf } from '../../engine/build.ts';
 import { lastServer } from '../../state/lastServer.ts';
 import { CONTINUE_BUILD, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
@@ -28,7 +28,8 @@ async function switchServer(): Promise<void> {
   const to = serverById(id ?? undefined);
   const { build, server, askConfirm, selectServer } = useStore.getState();
   if (!to || to.id === server) return;
-  if (build) {
+  // a build with nothing in it (left on its first power screen) is cleared without asking
+  if (build && hasWork(build)) {
     const from = serverById(serverOf(build))?.label ?? 'another server';
     const ok = await askConfirm({
       title: `Switch to ${to.label}?`,
@@ -94,7 +95,7 @@ export function ServerDialog() {
 /** The open server list (mounted per opening, so each starts on its own highlighted server). */
 function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; preselect: string; resume?: string }) {
   const { close, shown, alignment, hasBuild } = useStore(
-    useShallow((s) => ({ close: s.closeServerAsk, shown: s.server, alignment: s.build?.alignment, hasBuild: !!s.build })),
+    useShallow((s) => ({ close: s.closeServerAsk, shown: s.server, alignment: s.build?.alignment, hasBuild: !!s.build && hasWork(s.build) })),
   );
   const stage = useStage();
   const n = SERVERS.length;

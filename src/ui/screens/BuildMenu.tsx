@@ -2,16 +2,16 @@ import { useEffect, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer, type GameServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
-import { ALIGNMENTS, cleanName, toAlignment, type Build } from '../../engine/build.ts';
+import { ALIGNMENTS, cleanName, hasWork, toAlignment, type Build } from '../../engine/build.ts';
 import { fitToPatch } from '../../engine/migrate.ts';
 import type { Issue } from '../../engine/rules.ts';
 import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../../io/buildtxt.ts';
 import { describeImportFailure, noBuildSave, readBuildFile, unknownServer } from '../../io/importProblem.ts';
 import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/library.ts';
-import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, midsUnavailable, parseMidsText } from '../../io/mids.ts';
+import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, notReadableOn, parseMidsText } from '../../io/mids.ts';
 import { midsMadeOn } from '../../io/midsPatches.ts';
 import { decodeShare, shareLink } from '../../io/share.ts';
-import { shareServer, useStore } from '../../state/store.ts';
+import { askOverRemembered, shareServer, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { useStage } from '../components/Stage.tsx';
@@ -178,13 +178,20 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   };
   /** Mids is an untrusted reference: a failed export says so instead of failing silently. */
   const midsFailed = (e: unknown) => say(`Mids export failed: ${e instanceof Error ? e.message : String(e)}`);
-  /** Ask before a loaded or imported build replaces the current one (when it has any picks). */
+  /**
+   * Ask before a loaded or imported build replaces the player's work: the open build when it has
+   * any, or, with none open, the build this browser still remembers (askOverRemembered).
+   */
   const replaceOk = async (incoming: string) => {
-    if (!build || !build.picks.some((p) => p)) return true;
+    // an imported name isn't checked yet: shown as the planner would keep it
+    const loading = `Loading ${cleanName(incoming) ? `"${cleanName(incoming)}"` : 'this build'}`;
+    // the build open now: an import waits on other questions and downloads before it gets here
+    const current = useStore.getState().build;
+    if (!current) return (await askOverRemembered('Replace your last build?', loading, 'Replace')) === 'go';
+    if (!hasWork(current)) return true;
     return useStore.getState().askConfirm({
       title: 'Replace the current build?',
-      // an imported name isn't checked yet: shown as the planner would keep it
-      text: `Loading ${cleanName(incoming) ? `"${cleanName(incoming)}"` : 'this build'} replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+      text: `${loading} replaces ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
       okLabel: 'Replace',
     });
   };
@@ -214,10 +221,10 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
         return;
       }
       const st = useStore.getState();
-      // text that isn't Mids is refused as everywhere (what the planner reads); real Mids text on a
-      // server MidsReborn has no database for is refused as that
+      // a server MidsReborn has no database for reads share links only: Mids text is refused as
+      // that, anything else as text the planner doesn't read there
+      if (!shown.midsDb) throw notReadableOn(shown, t);
       const parsed = await parseMidsText(t);
-      if (!shown.midsDb) throw midsUnavailable(shown);
       const made = parsed.kind === 'mbd' ? midsMadeOn(parsed.mbd) : undefined;
       const { version, move } = versions ? importTarget(versions, made) : { version: undefined, move: false };
       const tgd = version ? await st.dataForVersion(version.id) : gd;
@@ -432,7 +439,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   {/* the list holds every server's builds: another server's archetype is named by its server instead */}
                   {s.name} <span style={{ color: '#8fa1b8', fontSize: 14 }}>({serverOf(s.build) === gd.server ? gd.archetypeById.get(s.at)?.dn : (serverById(serverOf(s.build))?.label ?? serverOf(s.build))}, {new Date(s.saved).toLocaleString()})</span>
                 </span>
-                <button className="info-button" style={listBtn} onClick={() => void replaceOk(s.name).then(async (ok) => { if (ok) { await loadBuild(s.build); say(`Loaded "${s.name}".`); } })}>
+                <button className="info-button" style={listBtn} onClick={() => void replaceOk(s.name).then(async (ok) => { if (ok && (await loadBuild(s.build))) say(`Loaded "${s.name}".`); })}>
                   Load
                 </button>
                 <button className="info-button" style={listBtn} onClick={() => void deleteBuild(s.id!).then(refresh, (e: unknown) => storageFailed(e, 'deleted'))}>

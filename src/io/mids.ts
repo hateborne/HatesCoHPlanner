@@ -11,7 +11,7 @@ import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { defaultOn, defaultsOf, exclusiveGroups } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
-import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readablePower } from './importProblem.ts';
+import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readableOn, readablePower } from './importProblem.ts';
 import { PLANNER_APP } from './midsPatches.ts';
 import { numericVersion } from '../version.ts';
 
@@ -39,6 +39,27 @@ const serverOfData = (gd: GameData): GameServer => serverById(gd.server) ?? defa
 /** @return The problem for Mids on a server MidsReborn has no database for. */
 export function midsUnavailable(s: GameServer): ImportProblem {
   return noMids(s, SERVERS.filter((x) => x.midsDb));
+}
+
+/** @return The problem to report for pasted text too long to be a build. */
+const TOO_LONG = () => new ImportProblem("it's too long to be a build (over 2 MB of text)", 'Check that it is the right text: a share code or build file is small.');
+
+/**
+ * The problem to report for pasted text on a server MidsReborn has no database for, which reads
+ * share links only: Mids text (a share code, or a .mbd file's JSON) is refused as Mids, anything
+ * else as text the planner doesn't read there.
+ *
+ * @param s The server.
+ * @param text The pasted text (no share link in it).
+ * @return The problem.
+ */
+export function notReadableOn(s: GameServer, text: string): ImportProblem {
+  const t = text.trim();
+  // the same limits as everywhere (parseMidsText), before anything looks at the text
+  if (!t) return new ImportProblem("there's nothing to import", 'Paste a share link.');
+  if (t.length > MAX_BUILD_FILE) return TOO_LONG();
+  if (/\|(MBD|MxDz);/.test(t) || t.startsWith('{')) return midsUnavailable(s);
+  return new ImportProblem("it isn't a build the planner recognizes", readableOn(s));
 }
 
 /**
@@ -691,7 +712,7 @@ export type MidsParsed = { kind: 'mbd'; mbd: Mbd } | { kind: 'mxdz'; raw: Uint8A
 export async function parseMidsText(text: string): Promise<MidsParsed> {
   const trimmed = text.trim();
   if (!trimmed) throw new ImportProblem("there's nothing to import", 'Paste a share link, a Mids share code or a build file, or drop a file on the box.');
-  if (trimmed.length > MAX_BUILD_FILE) throw new ImportProblem("it's too long to be a build (over 2 MB of text)", 'Check that it is the right text: a share code or build file is small.');
+  if (trimmed.length > MAX_BUILD_FILE) throw TOO_LONG();
   if (trimmed.startsWith('{')) {
     let json: unknown;
     try {

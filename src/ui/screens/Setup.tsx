@@ -4,9 +4,9 @@ import { useStage } from '../components/Stage.tsx';
 import type { GameData } from '../../data/gamedata.ts';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
-import { ALIGNMENTS, carryOrigin, cleanName, skinOf, type Alignment } from '../../engine/build.ts';
+import { ALIGNMENTS, carryOrigin, hasWork, skinOf, type Alignment } from '../../engine/build.ts';
 import { levelUpRespec, pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
-import { rememberedBuild, useStore } from '../../state/store.ts';
+import { askOverRemembered, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -145,31 +145,21 @@ export function Setup() {
   const finish = async () => {
     if (at === undefined || pri === undefined || sec === undefined || origin === undefined) return;
     // a new build replaces the current one (and this tab's address): ask first when it has any work
-    if (build && (build.picks.some((p) => p) || Object.values(build.granted).some((g) => g.slots.some((s) => s.enh)))) {
+    if (build && hasWork(build)) {
       const ok = await useStore.getState().askConfirm({
         title: 'Start a new build?',
         text: `This replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first (Saved builds / Import) if you want to keep it.`,
         okLabel: 'Start new',
       });
       if (!ok) return;
-    } else if (!build) {
+    } else if (!build && (await askOverRemembered('Start a new build?', 'A new build', 'Start new')) !== 'go') {
       // nothing open, but the browser still remembers a build (the return question's tile, another
-      // server's address): a new build replaces it, so offer it back first
-      const old = rememberedBuild();
-      if (old) {
-        const named = cleanName(old.name);
-        const ok = await useStore.getState().askConfirm({
-          title: 'Start a new build?',
-          text: `This browser still remembers your last build${named ? ` "${named}"` : ''}. A new build replaces it. Open it to keep working on it, or save it (Saved builds / Import).`,
-          okLabel: 'Start new',
-          cancelLabel: 'Open it',
-        });
-        if (!ok) {
-          await useStore.getState().loadBuild(old);
-          return;
-        }
-      }
+      // server's address): the player stayed, or opened that build instead
+      return;
     }
+    // the choices were made on this server's data: a server switch that finished while the question
+    // was open has cleared them (each server numbers its archetypes and sets on its own)
+    if (useStore.getState().gd?.server !== gd.server) return;
     startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: type === 'respec' ? respecLevel(respecTo, lowest) - 1 : undefined });
   };
   const pickAt = (a: Archetype) => {

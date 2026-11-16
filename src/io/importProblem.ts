@@ -27,6 +27,22 @@ export class ImportProblem extends Error {
 export const READABLE =
   'The planner reads share links from this site, Mids share codes (starting with |MBD; or |MxDz;), Mids .mbd files and the game\'s /build_save file (build.txt).';
 
+/**
+ * The formats the planner reads on one server, for messages that need to say so: share links on
+ * every server, Mids codes and files where MidsReborn has the server's database, and /build_save
+ * files where its game client writes them.
+ *
+ * @param s The server (the planner's own SERVERS entry).
+ * @return The sentence: READABLE on a server that takes them all.
+ */
+export function readableOn(s: { label: string; midsDb?: string; buildSave?: boolean }): string {
+  if (s.midsDb && s.buildSave) return READABLE;
+  const more = [...(s.midsDb ? ['Mids share codes (starting with |MBD; or |MxDz;)', 'Mids .mbd files'] : []), ...(s.buildSave ? ["the game's /build_save file (build.txt)"] : [])];
+  if (!more.length) return `On ${s.label} the planner reads share links from this site only.`;
+  const all = ['share links from this site', ...more];
+  return `On ${s.label} the planner reads ${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}.`;
+}
+
 /** What to say when a fault on the planner's side stops an import. */
 export const OUR_FAULT = 'Something went wrong on our side while importing this build. Please try again in a moment; if it keeps happening, let us know.';
 
@@ -73,7 +89,9 @@ export function refusedBuild(fixes: readonly string[]): ImportProblem {
  * @return The problem, worded for the user.
  */
 export function unknownServer(name: string): ImportProblem {
-  return new ImportProblem(`it was made for a game server the planner doesn't carry ("${name}")`, 'Check the link, or open the build on the site it was made with.');
+  // the name is the link's own address text: shown only as cleaned, so a crafted link can't make
+  // the planner's notice say what it likes
+  return new ImportProblem(`it was made for a game server the planner doesn't carry ("${readable(name)}")`, 'Check the link, or open the build on the site it was made with.');
 }
 
 /** A server as the messages below name it (the planner's own SERVERS entries, never imported text). */
