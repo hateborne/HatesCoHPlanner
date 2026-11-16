@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { notFoundRedirect, SERVERS } from './src/data/servers.ts';
+import { VERSION } from './scripts/release-version.mjs';
 
 /**
  * Give each game server's address (/HatesCoHPlanner/Homecoming/) a page of its own: a copy of the
@@ -105,10 +106,32 @@ const cspMeta: Plugin = {
   transformIndexHtml: () => [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' }],
 };
 
+/**
+ * The release this build shows: the deploy sets HCP_VERSION ("1.2.0", picked by
+ * scripts/release-version.mjs) and HCP_COMMIT (the commit's sha); local, test and pull request
+ * builds have neither and show "dev". A malformed value stops the build, as the version is shown on
+ * every screen and src/version.ts takes it as given.
+ *
+ * @return The version ("dev" when unset) and the commit's first 7 characters ("" when unset).
+ */
+function release(): { version: string; commit: string } {
+  const version = process.env.HCP_VERSION || 'dev';
+  if (version !== 'dev' && !VERSION.test(version)) {
+    throw new Error(`HCP_VERSION must be a version like 1.2.0, not ${JSON.stringify(version)}`);
+  }
+  const commit = process.env.HCP_COMMIT || '';
+  if (commit && !/^[0-9a-f]{40}$/.test(commit)) throw new Error(`HCP_COMMIT must be a full commit sha, not ${JSON.stringify(commit)}`);
+  return { version, commit: commit.slice(0, 7) };
+}
+
+const RELEASE = release();
+
 // Served from https://hateborne.github.io/HatesCoHPlanner/ so every asset URL is under this base.
 export default defineConfig({
   base: '/HatesCoHPlanner/',
   plugins: [react(), cspMeta, serverPages(), notFoundPage()],
+  // the release shown in the footer (src/version.ts)
+  define: { __HCP_VERSION__: JSON.stringify(RELEASE.version), __HCP_COMMIT__: JSON.stringify(RELEASE.commit) },
   // brotli-wasm locates its .wasm relative to its own module; pre-bundling breaks that in dev.
   optimizeDeps: { exclude: ['brotli-wasm'] },
   test: {

@@ -20,6 +20,7 @@ import { Setup } from './ui/screens/Setup.tsx';
 import { SKINS, type Skin } from './ui/skin/skin.ts';
 import { setMusicSkin } from './ui/sound.ts';
 import { TitleText } from './ui/components/GameText.tsx';
+import { versionLabel } from './version.ts';
 
 /**
  * A refused change ("Remove enhancements first"). Desktop: small red text at the bottom center
@@ -180,13 +181,16 @@ export function App() {
   );
 }
 
-/** The not-affiliated line along the bottom edge (two lines on a phone), naming the server shown. */
+/**
+ * The not-affiliated line along the bottom edge (two lines on a phone), naming the planner's
+ * version and the server shown.
+ */
 function Footer() {
   const { phone } = useStage();
   const server = useStore((s) => serverById(s.server) ?? defaultServer());
   return (
     <div className="abs notice" style={{ left: 10, right: 10, bottom: phone ? 3 : 4, textAlign: 'center', fontSize: phone ? 10.5 : 12, lineHeight: phone ? '12px' : undefined, opacity: 0.6 }}>
-      Hate&apos;s CoH Planner -- not affiliated with or endorsed by NCSoft or {server.label}. City of Heroes data and art belong to their owners.
+      Hate&apos;s CoH Planner {versionLabel()} -- not affiliated with or endorsed by NCSoft or {server.label}. City of Heroes data and art belong to their owners.
     </div>
   );
 }
