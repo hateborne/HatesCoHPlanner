@@ -93,6 +93,9 @@ export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: st
   };
 }
 
+// levelUpRespec() per archetype (undefined is kept too: the archetype never respecs on training)
+const forcedRespecs = new WeakMap<Archetype, number | undefined>();
+
 /**
  * The 0-based level an archetype's training forces a respec at (the class's LevelUpRespecs), or
  * undefined when it never does.
@@ -100,17 +103,20 @@ export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: st
  * The export leaves LevelUpRespecs out, so it is read from the archetype's specialization sets:
  * every class that has them (Arachnos Soldier and Widow, on Homecoming and Thunderspy) respecs on
  * training to the level they open at (SpecializeAt 23, LevelUpRespecs 24), and no other class
- * respecs. The pipeline warns if a client ever breaks that (forced_respec_warnings).
+ * respecs. The pipeline warns if a client ever breaks that (forced_respec_warnings). Each game
+ * version has its own Archetype objects, so the answer is kept per archetype.
  *
  * @param gd Game data.
  * @param at The archetype.
  * @return The respec's level, or undefined.
  */
 export function levelUpRespec(gd: GameData, at: Archetype): number | undefined {
+  if (forcedRespecs.has(at)) return forcedRespecs.get(at);
   let lv: number | undefined;
   for (const cat of [at.cats.pri, at.cats.sec]) {
     for (const s of gd.setsInCategory(cat)) if (s.spa && (lv === undefined || s.spa < lv)) lv = s.spa;
   }
+  forcedRespecs.set(at, lv);
   return lv;
 }
 
@@ -171,7 +177,6 @@ export class BuildRules {
   readonly pickLevels: number[];
   private grantedCache: Map<number, number> | null = null;
   private slottedCache: { counts: Map<string, number>; ctx: EvalContext } | null = null;
-  private forcedRespec: number | undefined | null = null; // levelUpRespec(), once looked up
 
   constructor(
     readonly gd: GameData,
@@ -565,19 +570,21 @@ export class BuildRules {
 
   /**
    * The level of the last respec the build's powers and slots up to it come from: a Respec
-   * build's own, or the one its archetype's training forces (levelUpRespec) when the build goes
-   * that far, whichever is higher.
+   * build's own, or the one its archetype's training forces (levelUpRespec) once the build has
+   * trained to that level, whichever is higher.
    *
    * New Build makes those archetypes (Arachnos Soldier and Widow) Respec builds; a leveling build
-   * of one (from before that, a link or an import) that goes past 23 has chosen its powers and
-   * slots up to 24 again in game, so it is judged as respecced there.
+   * of one (from before that, a link or an import) that holds a power picked at 24 or later has
+   * chosen its powers and slots up to 24 again in game, so it is judged as respecced there. The
+   * picks decide it, not the stop level: a leveling walk short of 24 holds no later pick yet, so
+   * its branches stay shut until the walk gets there.
    *
    * @return The 0-based level, or undefined for a leveling build that hasn't respecced.
    */
   respecLevel(): number | undefined {
-    if (this.forcedRespec === null) this.forcedRespec = levelUpRespec(this.gd, this.at);
-    const forced = this.forcedRespec;
-    const reached = forced !== undefined && this.lastLevel() >= forced ? forced : undefined;
+    const forced = levelUpRespec(this.gd, this.at);
+    const trained = forced !== undefined && this.lastLevel() >= forced && this.b.picks.some((p, i) => !!p && this.pickLevel(i) >= forced);
+    const reached = trained ? forced : undefined;
     if (this.b.respecTo === undefined) return reached;
     return reached === undefined ? this.b.respecTo : Math.max(this.b.respecTo, reached);
   }
@@ -600,7 +607,8 @@ export class BuildRules {
 
   /**
    * @return Whether slots gained at this level may go on any power, even one taken after it: a
-   *   respec's (Homecoming's respec places every slot on one screen; see respecSteps).
+   *   respec's (Homecoming's respec places every slot on one screen; see respecSteps), the Respec
+   *   build's own or the one an Arachnos build had on training to 24 (respecLevel).
    */
   slotsAnyPower(level: number): boolean {
     const r = this.respecLevel();
