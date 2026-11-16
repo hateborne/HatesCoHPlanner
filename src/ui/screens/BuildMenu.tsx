@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
-import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer } from '../../data/servers.ts';
+import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer, type GameServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
 import { ALIGNMENTS, cleanName, toAlignment, type Build } from '../../engine/build.ts';
 import { fitToPatch } from '../../engine/migrate.ts';
@@ -54,6 +54,18 @@ export function saveReminder(touch: boolean): { title: string; text: string } {
       'This build is kept only in this browser on this device, not on any server. Clearing your browsing data (cookies and site data) erases it, and so can closing a private window, or Safari after 7 days without a visit.\n' +
       `Bookmark this page now ${how}: its address holds the whole build. Bookmark it again after you change the build.`,
   };
+}
+
+/**
+ * The status line when the browser refuses a save, naming only ways to keep the build that the
+ * menu offers for its server (Thunderspy has no Mids download).
+ *
+ * @param server The open build's server.
+ * @return The message.
+ */
+export function saveFailedText(server: GameServer): string {
+  const keep = server.midsDb ? 'Copy share link or Download Mids .mbd' : 'Copy share link';
+  return `Couldn't save in this browser (it may be a private window, or out of space). Use ${keep} to keep the build.`;
 }
 
 /** Save / load / share / Mids import-export, in the in-game skin. */
@@ -141,9 +153,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
    */
   const storageFailed = (e: unknown, what: 'saved' | 'deleted') => {
     console.error(`saved builds: ${what}`, e);
-    say(what === 'saved'
-      ? "Couldn't save in this browser (it may be a private window, or out of space). Use Copy share link or Download Mids .mbd to keep the build."
-      : "Couldn't delete that build: this browser's storage refused.");
+    say(what === 'saved' ? saveFailedText(ofBuild) : "Couldn't delete that build: this browser's storage refused.");
   };
   /** Save the open build in this browser, then remind the player that only this browser has it. */
   const saveHere = (b: Build) =>
