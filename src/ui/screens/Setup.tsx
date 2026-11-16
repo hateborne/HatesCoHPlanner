@@ -4,7 +4,7 @@ import { useStage } from '../components/Stage.tsx';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
-import { startingSets } from '../../engine/rules.ts';
+import { pairProblem, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
 import { useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
@@ -81,6 +81,25 @@ export function Setup() {
   const archetype = at !== undefined ? gd?.archetypeById.get(at) : undefined;
   const pris = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.pri, archetype) : []), [gd, archetype]);
   const secs = useMemo(() => (gd && archetype ? startingSets(gd, archetype.cats.sec, archetype) : []), [gd, archetype]);
+  const priSet = pris.find((s) => s.id === pri);
+  const secSet = secs.find((s) => s.id === sec);
+  // sets that can't go with the set chosen in the other list, and why: the character creator greys
+  // them (a requirement may also read the origin and alignment chosen)
+  const clashes = useMemo(
+    () => (gd && archetype ? startingLocks(gd, archetype, pris, secs, priSet, secSet, { origin, alignment: align }) : new Map<number, string>()),
+    [gd, archetype, pris, secs, priSet, secSet, origin, align],
+  );
+  // whether level 1's picks can't be made with the chosen pair, and why when the sets clash
+  const { pairBlocked, problem } = useMemo(() => {
+    if (!gd || !archetype || !priSet || !secSet) return { pairBlocked: false, problem: null };
+    const who = { origin, alignment: align };
+    if (setsGoTogether(gd, archetype, priSet, secSet, who)) return { pairBlocked: false, problem: null };
+    return { pairBlocked: true, problem: pairProblem(gd, archetype, priSet, secSet, who) };
+  }, [gd, archetype, priSet, secSet, origin, align]);
+  // a choice that blocks the pair says why at once (a tapped set's help stays up on phones)
+  useEffect(() => {
+    if (pairBlocked) setDesc(null);
+  }, [pairBlocked]);
   useEffect(() => {
     setMusicSkin(skinOf(align));
     useStore.setState({ setupAlign: align });
@@ -88,8 +107,14 @@ export function Setup() {
   if (!gd) return null;
   const skin = SKINS[skinOf(align)];
   // ids are stable across game versions, but a choice may not exist in the version picked here
-  const ready =
-    archetype !== undefined && pris.some((s) => s.id === pri) && secs.some((s) => s.id === sec) && gd.core.origins.some((o) => o.id === origin);
+  const ready = archetype !== undefined && priSet !== undefined && secSet !== undefined && !pairBlocked && gd.core.origins.some((o) => o.id === origin);
+  /** @return A set's help text, after why it can't be chosen when it can't. */
+  const setHelp = (s: (typeof pris)[number]) => {
+    const lock = clashes.get(s.id);
+    return lock ? `${lock}.<br>${s.lh || s.sh}` : s.lh || s.sh;
+  };
+  // the description box's text while nothing is hovered
+  const pairNote = pairBlocked ? `${problem ?? "Level 1's powers can't be picked with these sets"}. Choose another primary or secondary power set.` : undefined;
   const ROW = 47;
   const finish = async () => {
     if (at === undefined || pri === undefined || sec === undefined || origin === undefined) return;
@@ -226,9 +251,11 @@ export function Setup() {
       const val = tab === 2 ? pri : sec;
       const setv = tab === 2 ? setPri : setSec;
       if (!list.length) bars.push(<div key="x" className="desc-text abs" style={{ left: 20, top: 20, fontSize: 20 }}>Choose an archetype first.</div>);
-      list.forEach((s, i) =>
-        bars.push(<CheckBar key={s.id} testId={`set:${s.id}`} skin={skin} x={BX} y={44 + i * R} wd={BW} noBox text={s.dn} state={s.id === val ? 'selected' : 'standard'} down={s.id === val} clickSounds={SELECT} hoverSounds onClick={() => { setv(s.id); setDesc({ text: s.lh || s.sh }); }} />),
-      );
+      list.forEach((s, i) => {
+        // a locked set takes no tap; a long press says why (phones have no hover)
+        const lock = clashes.get(s.id);
+        bars.push(<CheckBar key={s.id} testId={`set:${s.id}`} skin={skin} x={BX} y={44 + i * R} wd={BW} noBox text={s.dn} state={lock ? 'unselectable' : s.id === val ? 'selected' : 'standard'} down={s.id === val} title={lock} clickSounds={SELECT} hoverSounds onClick={lock ? undefined : () => { setv(s.id); setDesc({ text: setHelp(s) }); }} onLongPress={lock ? () => setDesc({ text: setHelp(s) }) : undefined} />);
+      });
       end = 44 + Math.max(1, list.length) * R;
     }
     return (
@@ -244,7 +271,7 @@ export function Setup() {
         <GameScroll skin={skin} left={P.x + 4} top={P.y + 8} width={P.w - 8} height={P.h - 16} barX={P.x + P.w}>
           <div style={{ position: 'relative', height: end + 20 }}>{bars}</div>
         </GameScroll>
-        <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an origin and alignment, an archetype and its primary and secondary sets, then Finish.'} />
+        <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? pairNote ?? 'Choose an origin and alignment, an archetype and its primary and secondary sets, then Finish.'} />
         <NextButton skin={skin} dir="left" text="Back" locked={!hasPicks} onClick={toOverview} />
         <NextButton skin={skin} dir="right" text="Finish" locked={!ready} glow={ready} onClick={finish} />
       </>
@@ -317,18 +344,19 @@ export function Setup() {
                 scale={1}
                 noBox
                 text={s.dn}
-                state={s.id === val ? 'selected' : 'standard'}
+                state={clashes.has(s.id) ? 'unselectable' : s.id === val ? 'selected' : 'standard'}
                 down={s.id === val}
+                title={clashes.get(s.id)}
                 clickSounds={SELECT}
                 hoverSounds
-                onClick={() => set(s.id)}
-                onHover={(on) => setDesc(on ? { text: s.lh || s.sh } : null)}
+                onClick={clashes.has(s.id) ? undefined : () => set(s.id)}
+                onHover={(on) => setDesc(on ? { text: setHelp(s) } : null)}
               />
             ))}
           </div>
         </GameScroll>
       ))}
-      <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? 'Choose an origin and an alignment, an archetype and its primary and secondary power sets, then press Finish to pick your level 1 powers.'} />
+      <DescBox skin={skin} iconSrc={desc?.icon} text={desc?.text ?? pairNote ?? 'Choose an origin and an alignment, an archetype and its primary and secondary power sets, then press Finish to pick your level 1 powers.'} />
       <NextButton skin={skin} dir="left" text="Back" locked={!hasPicks} onClick={toOverview} />
       <NextButton skin={skin} dir="right" text="Finish" locked={!ready} glow={ready} onClick={finish} />
     </>
