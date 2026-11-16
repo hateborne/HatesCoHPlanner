@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { GameData } from '../src/data/gamedata.ts';
 import { newBuild, type Build, type SlottedEnh } from '../src/engine/build.ts';
-import { defaultLevel, effectiveness, enhValues, ioLevelRange, powerStrength } from '../src/engine/enhance.ts';
+import { defaultLevel, effectiveness, enhLevelLabel, enhValues, ioLevelRange, powerStrength } from '../src/engine/enhance.ts';
 import { evalRequires, type EvalContext } from '../src/engine/requires.ts';
 import { BuildRules, startingSets } from '../src/engine/rules.ts';
 import { earnedBonuses } from '../src/engine/setbonus.ts';
@@ -210,12 +210,18 @@ describe('what a slotted enhancement may be (boost.c power_IsValidBoost, boost_I
     expect(cj([{ ...so('Science_Defense_Buff'), boosters: 1 }])).toEqual(['Takes no boosters']);
   });
 
-  it('keeps a TO/DO/SO within 3 levels of the character: 3 combines reach 50+3 (Homecoming client boost_IsValidCombination)', () => {
+  it('keeps a TO/DO/SO at most 3 levels above the character: 3 combines reach 50+3 (Homecoming client boost_IsValidCombination)', () => {
     expect(cj([so('Science_Defense_Buff', 3), so('Science_Defense_Buff', -3)])).toEqual([]);
-    expect(cj([so('Science_Defense_Buff', 4), so('Science_Defense_Buff', -4)])).toEqual([
-      'Relative level goes from -3 to +3',
-      'Relative level goes from -3 to +3',
-    ]);
+    expect(cj([so('Science_Defense_Buff', 4)])).toEqual(['Relative level goes up to +3']);
+  });
+
+  it('leaves an outleveled TO/DO/SO unflagged: it stays slotted, gives nothing and its level is red (boost_Effectiveness)', () => {
+    const sod = gd.power(so('Science_Defense_Buff').boost);
+    expect(cj([so('Science_Defense_Buff', -4), so('Science_Defense_Buff', -8)])).toEqual([]);
+    // the BoostEffectivenessBelow table runs 1, 0.9, 0.8, 0.7: nothing from 4 below
+    expect(effectiveness(gd, sod, so('Science_Defense_Buff', -3), 49)).toBeCloseTo(0.7, 6);
+    expect(effectiveness(gd, sod, so('Science_Defense_Buff', -4), 49)).toBe(0);
+    expect(enhLevelLabel(gd, sod, so('Science_Defense_Buff', -8), 49)).toEqual({ text: '42', top: false, tone: 'unusable' });
   });
 
   it("keeps an IO to its set's levels (Kismet is made at 10 to 30)", () => {

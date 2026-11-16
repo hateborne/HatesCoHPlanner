@@ -164,7 +164,11 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   - TO/DO/SO-style pieces (`BoostCombinable`) are combined to raise their level. The Ouroboros
     source allows 2 combines (`BOOST_MAX_COMBINES`, boost.h). Homecoming's client refuses only a
     4th (`boost_IsValidCombination` compares `iNumCombines` with 3), so a level-50 SO reaches
-    50+3. With the effectiveness tables (+3 above, -3 below) the relative level runs -3..+3.
+    50+3. With the effectiveness tables (+3 above, -3 below) the picker offers -3..+3. A piece the
+    character has outleveled by 4 or more stays slotted in the game and gives nothing
+    (effectiveness 0, its level drawn red); a `/build_save` can hold one, so it isn't flagged.
+    Share links keep a relative level in one byte offset by 8, so one lower than -8 is kept at -8
+    (`MIN_REL_LEVEL`), which gives nothing the same way.
   - An IO is made at its set's levels (a common IO from 10 to 50). The five Going Rogue pre-order
     pieces (Might of the Empire, Clockwork Efficiency, Resistance Tactics, Syndicate Techniques,
     Will of the Seers) are IOs that are handed out, not crafted: `/build_save` lists them at level

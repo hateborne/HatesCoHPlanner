@@ -433,7 +433,9 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
       return null;
     }
     const bp = gd.power(s.enh.boost);
-    const rel = bp.bie ? 4 + (s.enh.boosters ?? 0) : 4 + (s.enh.rel ?? 0);
+    // Mids goes down to -3: an outleveled piece (it gives nothing in the game) goes out at -3
+    if (!bp.bie && (s.enh.rel ?? 0) < -3) warn.push(`${bp.dn} is outleveled (it gives nothing); Mids has no level below -3, so it is exported at -3`);
+    const rel = bp.bie ? 4 + (s.enh.boosters ?? 0) : 4 + Math.max(-3, s.enh.rel ?? 0);
     return { Uid: m.entry.uid, Grade: m.grade, IoLevel: s.enh.ioLevel ?? 49, RelativeLevel: RELATIVE[rel] ?? 'Even', Obtained: false };
   };
   const entries = rules.entries();

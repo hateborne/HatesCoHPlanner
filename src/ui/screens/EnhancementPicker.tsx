@@ -299,9 +299,10 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                   <label>
                     Relative level{' '}
                     <select data-testid="picker:rel" value={sel?.rel ?? 0} onChange={(e) => setSel({ ...sel!, rel: Number(e.target.value) })} style={{ height: phone ? 44 : undefined, background: '#000', color: '#fff' }}>
-                      {[3, 2, 1, 0, -1, -2, -3].map((r) => (
+                      {/* -3..+3 to choose from, plus an imported outleveled piece's own level */}
+                      {[...new Set([3, 2, 1, 0, -1, -2, -3, sel?.rel ?? 0])].map((r) => (
                         <option key={r} value={r}>
-                          {r > 0 ? `+${r}` : r}
+                          {r > 0 ? `+${r}` : r < -3 ? `${r} (outleveled)` : r}
                         </option>
                       ))}
                     </select>

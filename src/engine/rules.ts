@@ -710,10 +710,12 @@ export class BuildRules {
    * Why an enhancement's own settings are impossible, if they are.
    *
    * Boosters go on boostable pieces only (attuned pieces, procs and TO/DO/SO take none), +5 at most
-   * (boost_IsBoostable: the boosters table). A TO/DO/SO-style piece works from 3 levels below the
-   * character to 3 above: Homecoming combines one 3 times (its client refuses a 4th), so a level-50
-   * SO reaches 50+3 (boost_IsValidCombination, boost_EffectivenessLevel). An IO is made only at its
-   * set's levels (a common IO from 10); a handed-out pre-order piece has no made level (isCraftedIO).
+   * (boost_IsBoostable: the boosters table). A TO/DO/SO-style piece reaches 3 levels above the
+   * character: Homecoming combines one 3 times (its client refuses a 4th), so a level-50 SO reaches
+   * 50+3 (boost_IsValidCombination, boost_EffectivenessLevel). One 4 or more levels below is
+   * outleveled, not impossible: the game keeps it slotted and it gives nothing (effectiveness 0,
+   * its level drawn red), so it isn't refused. An IO is made only at its set's levels (a common IO
+   * from 10); a handed-out pre-order piece has no made level (isCraftedIO).
    *
    * @param enh The enhancement as slotted.
    * @param boost Its enhancement power.
@@ -727,10 +729,8 @@ export class BuildRules {
       if (boosters < 0 || boosters > be.boosters.length - 1) return `Boosters go from +0 to +${be.boosters.length - 1}`;
     }
     if (!boost.bie) {
-      const rel = enh.rel ?? 0;
-      const lo = -(be.below.length - 1);
       const hi = be.above.length - 1;
-      if (rel < lo || rel > hi) return `Relative level goes from ${lo} to +${hi}`;
+      if ((enh.rel ?? 0) > hi) return `Relative level goes up to +${hi}`;
     }
     const range = ioLevelRange(this.gd, boost);
     if (range && enh.ioLevel !== undefined && (enh.ioLevel < range[0] || enh.ioLevel > range[1])) {

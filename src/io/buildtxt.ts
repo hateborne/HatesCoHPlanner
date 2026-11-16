@@ -23,7 +23,7 @@ import type { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Power } from '../data/types.ts';
 import { slotsFor } from '../engine/actions.ts';
-import { cleanName, cloneBuild, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
+import { cleanName, cloneBuild, MIN_REL_LEVEL, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { BuildRules, respecOnlyNote } from '../engine/rules.ts';
 import { leveledSlotShortfall, lowestFreeLevels } from '../engine/schedule.ts';
 import { ImportProblem, READABLE, readable, readablePower } from './importProblem.ts';
@@ -177,10 +177,11 @@ export function readBuildTxt(gd: GameData, text: string): TxtImport {
     }
     const out: SlottedEnh = { boost: bp.id };
     // an IO keeps its own level (attuned ones follow the character); a TO/DO/SO/HO is relative
-    // to the character; values the game wouldn't allow are kept and flagged by the build
+    // to the character, one outleveled further than MIN_REL_LEVEL kept there (it gives nothing
+    // either way); values the game wouldn't allow are kept and flagged by the build
     if (bp.bie) {
       if (!bp.bup) out.ioLevel = s.level - 1;
-    } else if (s.level !== txt.level) out.rel = s.level - txt.level;
+    } else if (s.level !== txt.level) out.rel = Math.max(MIN_REL_LEVEL, s.level - txt.level);
     if (s.boosters) out.boosters = s.boosters;
     return out;
   };

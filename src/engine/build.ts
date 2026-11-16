@@ -88,11 +88,16 @@ export function skinOf(a: string): 'hero' | 'villain' | 'praetorian' {
   return n === 'Villain' ? 'villain' : n === 'Praetorian' ? 'praetorian' : 'hero';
 }
 
+// The lowest relative level a TO/DO/SO keeps: share links hold it in one byte offset by 8. Any
+// piece 4 or more levels below the character is outleveled and gives nothing, so lower ones are
+// kept at this.
+export const MIN_REL_LEVEL = -8;
+
 /** An enhancement placed in a slot. */
 export interface SlottedEnh {
   boost: number; // enhancement power id
   ioLevel?: number; // 0-based enhancement level for IOs / set IOs (boostable or fixed)
-  rel?: number; // relative level for TO/DO/SO/HO style enhancements (-3..+3), default 0
+  rel?: number; // relative level for TO/DO/SO/HO style enhancements (MIN_REL_LEVEL..+3), default 0
   boosters?: number; // enhancement boosters applied (0..5)
 }
 

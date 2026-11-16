@@ -125,6 +125,16 @@ describe('build.txt (/build_save)', () => {
     expect(new BuildRules(gd, imp.build).issues().filter((x) => x.key === 'pick:2')).toEqual([]);
   });
 
+  it('keeps an outleveled SO unflagged, at most 8 levels below (what a share link holds)', () => {
+    // Caltrops' SO bought at level 2 on a level-12 character: 10 below, kept at 8 below
+    const imp = readBuildTxt(gd, SAMPLE.replace('\tScience_Damage (13)', '\tScience_Damage (2)'));
+    expect(imp.build.picks[1]!.slots[0]!.enh).toEqual({ boost: pid(gd, 'Boosts.Science_Damage.Science_Damage'), rel: -8 });
+    expect(new BuildRules(gd, imp.build).issues().filter((x) => x.key === 'pick:1')).toEqual([]);
+    // 3 below is kept as it is
+    const near = readBuildTxt(gd, SAMPLE.replace('\tScience_Damage (13)', '\tScience_Damage (9)'));
+    expect(near.build.picks[1]!.slots[0]!.enh?.rel).toBe(-3);
+  });
+
   it('gives a respec its slot levels, and keeps each power slot order', () => {
     const imp = readBuildTxt(gd, SAMPLE);
     const b = finishBuildTxt(gd, imp, { alignment: 'Villain', respec: true });

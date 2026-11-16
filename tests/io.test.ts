@@ -56,6 +56,16 @@ describe('share URL', () => {
     expect(code.length).toBeLessThan(300);
     expect(await decodeShare(code)).toEqual(b);
   });
+
+  it('keeps a relative level lower than -8 at -8 instead of wrapping it, and opens links made before as they were', async () => {
+    const b = sample();
+    b.picks[1]!.slots[0]!.enh!.rel = -10;
+    expect((await decodeShare(await encodeShare(b))).picks[1]!.slots[0]!.enh!.rel).toBe(-8);
+    // made by the encoder before this change: an SO at -3, -8 and -10 (the byte wrapped to +246)
+    const old = await decodeShare('eJxjZGRm4pbk9c9JUQj2V_BJLUvNKWaQYLhpzcDAzLCAjYmVaQEbEwOI-MeAA7BmGlkUmDAAAM2BCk8');
+    expect(old.name).toBe('Old SO Levels');
+    expect(old.picks[1]!.slots.map((s) => s.enh?.rel)).toEqual([-3, -8, 246]);
+  });
 });
 
 describe('Mids interop', () => {
@@ -69,6 +79,15 @@ describe('Mids interop', () => {
     expect(back.build.picks[0]?.slots[0]?.enh).toEqual(b.picks[0]?.slots[0]?.enh);
     expect(back.build.picks[1]?.slots[0]?.enh?.boost).toBe(b.picks[1]?.slots[0]?.enh?.boost);
     expect(back.build.picks[3]?.slots[0]?.enh?.boost).toBe(b.picks[3]?.slots[0]?.enh?.boost);
+  });
+
+  it('exports an outleveled SO at -3, the lowest Mids has, and says so', () => {
+    const b = sample();
+    b.picks[1]!.slots[0]!.enh!.rel = -8;
+    const { mbd, warnings } = exportMbd(gd, map, b);
+    const ring = mbd.PowerEntries.find((p) => p.PowerName.endsWith('Ring_of_Fire'));
+    expect(ring?.SlotEntries[0]?.Enhancement?.RelativeLevel).toBe('MinusThree');
+    expect(warnings).toEqual([expect.stringMatching(/outleveled.*below -3/)]);
   });
 
   it('round-trips the legacy MxDz chunk', async () => {
