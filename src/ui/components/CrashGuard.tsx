@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react';
+import { APP_COMMIT, versionLabel } from '../../version.ts';
 
 /**
  * Last line of defence: if rendering throws (a build the checks didn't catch, a data mismatch),
@@ -48,6 +49,11 @@ export class CrashGuard extends Component<{ children: ReactNode }, { error: Erro
             <button className="info-button" style={{ position: 'static' }} onClick={this.reset}>
               Clear remembered build
             </button>
+          </p>
+          {/* so a screenshot of this page says which release crashed */}
+          <p style={{ fontSize: 13, opacity: 0.6 }}>
+            Hate&apos;s CoH Planner {versionLabel()}
+            {APP_COMMIT ? ` (${APP_COMMIT})` : ''}
           </p>
         </div>
       </div>

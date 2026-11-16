@@ -13,6 +13,7 @@ import { defaultOn, defaultsOf, exclusiveGroups } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
 import { ImportProblem, MAX_BUILD_FILE, READABLE, readable, readablePower } from './importProblem.ts';
 import { PLANNER_APP } from './midsPatches.ts';
+import { numericVersion } from '../version.ts';
 
 export interface MidsMap {
   dbVersion: string;
@@ -428,7 +429,8 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     PowerEntries.push(entry(e.key, e.power.id, e.level, e.slots, e.on));
   }
   const mbd: Mbd = {
-    BuiltWith: { App: PLANNER_APP, Version: '0.1.0', Database: serverOfData(gd).midsDb, DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
+    // Version: the planner release, as X.Y.Z like the 0.1.0 it replaced
+    BuiltWith: { App: PLANNER_APP, Version: numericVersion(), Database: serverOfData(gd).midsDb, DatabaseVersion: map.dbVersion, GameVersion: gd.core.manifest.dataVersion },
     Level: '49',
     Class: at.n,
     Origin: origin.n,
