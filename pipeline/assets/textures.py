@@ -5,10 +5,14 @@ A `.texture` file is: TextureFileHeader {i32 headerSize, i32 fileSize, i32 width
 to a power of two, so the decoded image is cropped to the header's width x height.
 
 Sources, later ones override earlier ones (matched by lower-cased path under texture_library/):
-  1. I24 loose files: CityOfHeroes_OuroV2_Data/bin/data/texture_library/ (only when COH_SOURCE is set)
-  2. I24 client piggs (assets/issue24 texGui1/stage1b/stage2/stage3.pigg: the same content, used only when the loose
-     folder is not available, i.e. COH_SOURCE is unset)
-  3. live Homecoming overlay: assets/live/texture_gui.pigg (and texture_library.pigg if needed)
+  1. I24 loose files: CityOfHeroes_OuroV2_Data/bin/data/texture_library/ (only when COH_SOURCE is set;
+     Homecoming only)
+  2. I24 client piggs (Homecoming's assets/issue24 or Thunderspy's piggs/ texGui1/stage1b/stage2/stage3.pigg:
+     the same content, used only when the loose folder is not available)
+  3. the live overlay: Homecoming's assets/live/texture_gui.pigg (and texture_library.pigg), or every
+     Thunderspy tspy/*.pigg
+The pigg lists are the selected server's (config.BASE_TEX_PIGGS / LIVE_TEX_PIGGS), read when an
+index is built.
 """
 from __future__ import annotations
 
@@ -25,9 +29,11 @@ from pipeline.coh import p7reader as P  # noqa: F401  (puts the repo's tools/ on
 
 import pigg_extract as pex  # noqa: E402
 
-LOOSE_ROOT = config.OURO_DATA / "bin" / "data" / "texture_library" if config.OURO_DATA else None
-I24_PIGGS = [config.I24_ASSETS / n for n in ("texGui1.pigg", "stage1b.pigg", "stage2.pigg", "stage3.pigg")]
-LIVE_PIGGS = [config.LIVE_ASSETS / "texture_gui.pigg", config.LIVE_ASSETS / "texture_library.pigg"]
+
+
+def loose_root() -> Path | None:
+    """@return The loose OuroV2 texture_library folder of the selected server, or None."""
+    return config.OURO_DATA / "bin" / "data" / "texture_library" if config.OURO_DATA else None
 
 
 @dataclass
@@ -53,13 +59,18 @@ class TextureIndex:
 
     def __init__(self, gui_only: bool = True):
         self.by_rel: dict[str, TexSource] = {}
-        loose = LOOSE_ROOT is not None and LOOSE_ROOT.is_dir()
+        lr = loose_root()
+        loose = lr is not None and lr.is_dir()
         if loose:
-            root = LOOSE_ROOT / "GUI" if gui_only else LOOSE_ROOT
+            root = lr / "GUI" if gui_only else lr
             for f in root.rglob("*.texture"):
-                rel = f.relative_to(LOOSE_ROOT).with_suffix("").as_posix().lower()
+                rel = f.relative_to(lr).with_suffix("").as_posix().lower()
                 self.by_rel[rel] = TexSource(rel, file=f)
-        for pg in ([] if loose else I24_PIGGS) + LIVE_PIGGS:
+        # live-layer piggs that hold the same texture: the last (by file name for Thunderspy's
+        # tspy/*.pigg) wins, which may not be what the game shows, so they are kept for the report
+        self.overridden: dict[str, list[TexSource]] = {}
+        live = set(config.LIVE_TEX_PIGGS)
+        for pg in ([] if loose else config.BASE_TEX_PIGGS) + config.LIVE_TEX_PIGGS:
             if not pg.exists():
                 continue
             with open(pg, "rb") as fh:
@@ -70,10 +81,18 @@ class TextureIndex:
                     rel = path[len("texture_library/"):-len(".texture")]
                     if gui_only and not rel.startswith("gui/"):
                         continue
+                    prev = self.by_rel.get(rel)
+                    if pg in live and prev is not None and prev.pigg in live and prev.pigg != pg:
+                        self.overridden.setdefault(rel, [prev]).append(TexSource(rel, pigg=pg, entry=e))
                     self.by_rel[rel] = TexSource(rel, pigg=pg, entry=e)
         self.by_name: dict[str, list[TexSource]] = {}
         for src in self.by_rel.values():
             self.by_name.setdefault(src.rel.rsplit("/", 1)[-1], []).append(src)
+
+    def differing(self, rel: str) -> list[str]:
+        """@return The live piggs holding different art for a texture path (empty when they agree)."""
+        srcs = self.overridden.get(rel, [])
+        return [s.pigg.name for s in srcs] if len({s.read() for s in srcs}) > 1 else []
 
     def find(self, name: str, prefer: str = "") -> TexSource | None:
         """Texture by bare name (any extension stripped), preferring paths under `prefer`."""

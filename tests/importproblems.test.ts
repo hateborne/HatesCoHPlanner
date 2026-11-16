@@ -19,6 +19,7 @@ import {
   readablePower,
   readBuildFile,
   refusedBuild,
+  unknownServer,
 } from '../src/io/importProblem.ts';
 import { exportMbd, importMbd, importMidsText, MIDS_EPIC_POOLS, parseMidsText, type Mbd } from '../src/io/mids.ts';
 import { decodeShare, encodeShare } from '../src/io/share.ts';
@@ -139,6 +140,17 @@ describe('import problems: the message the user sees', () => {
   it('makes internal power names readable', () => {
     expect(readablePower('Epic.Ice_Mastery_DefCorr.Frozen_Armor')).toBe('Frozen Armor (Ice Mastery DefCorr)');
     expect(readablePower('Brawl')).toBe('Brawl');
+  });
+
+  it("shows a pasted link's unknown server only as cleaned text, never as written", () => {
+    // the address segment of a stranger's link, decoded: it must not write the planner's notice
+    const crafted = `Your save is corrupt.\u202e Download the fix at evil.example ${'x'.repeat(5000)}`;
+    const p = unknownServer(crafted);
+    const shown = /\("([^"]*)"\)/.exec(p.reason)![1]!;
+    expect(shown.length).toBeLessThanOrEqual(60);
+    expect(shown).not.toContain('\u202e');
+    expect(shown.endsWith('...')).toBe(true);
+    expect(unknownServer('Rebirth').reason).toBe('it was made for a game server the planner doesn\'t carry ("Rebirth")');
   });
 });
 

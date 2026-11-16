@@ -4,6 +4,36 @@ Source: `CityOfHeroes_OuroV2_Source` (the engine source checkout) (I24 engine; H
 decoded from the live client). Paths below are relative to that root. All levels in data are
 0-based (`Available[]`, schedules, `SpecializeAt`); the UI shows level + 1.
 
+Thunderspy's data is decoded from its own client the same way, and the same rules apply to it
+wherever its data doesn't decide them, except where its client's code is known to differ (see
+"Thunderspy's client" below). @TODO check the rules taken from Homecoming's live client (one-screen
+respec, three combines, the epic level gates) against Thunderspy's game.
+
+## Thunderspy's client (Thunderspy.exe, compared with Homecoming's client)
+
+Read from the two clients' compiled code (Ghidra, functions found from the boost table globals the
+`defs/boost_effect_*.def` loaders fill). Homecoming's client matches the source for all of these.
+
+- `boost_EffectivenessLevel` / `boost_Effectiveness`: the same in both. A TO/DO/SO-style piece
+  works while its level is within the `BoostEffectivenessAbove` / `Below` tables' length of the
+  character's, at the table's value. Thunderspy's tables are 50 entries of 1.0, so its TO/DO/SO
+  pieces work at any level at full strength (Homecoming's: 3 levels either way, +5% a level above,
+  -10% a level below).
+- `power_MinBoostUseLevel` for `BoostIgnoreEffectiveness` pieces (IOs, set pieces) differs.
+  Homecoming (and the source) take `MAX(MinSlotLevel, level - (above table length - 1))`, so an IO
+  works from 3 levels below its own. Thunderspy's takes `MAX(MinSlotLevel, level)`: an IO works only
+  at or above its own level. The planner takes this from the server entry (`ioLevelsAbove: 0` in
+  `src/data/servers.ts`, read by `levelsAbove` in `src/engine/enhance.ts`).
+- `power_MaxBoostUseLevel`: the same in both (`MaxSlotLevel` for IOs; for TO/DO/SO-style pieces
+  `MIN(MaxSlotLevel, level) + below table length - 1`).
+- Attribute names: Thunderspy's client calls Knock (offset 328) "Knockback", Homecoming's alias for
+  it. The planner reads it as Knock (`ATTRIB_CANON` in `src/data/gamedata.ts`), so knockback
+  protection counts.
+- @TODO not yet compared: Enhancement Diversification (`AggregateStrength`), attribute caps
+  (`ClampMax`), combat level scaling (`combatmod_Get`) and the combine limit
+  (`boost_IsValidCombination`). They have no strings or table globals of their own to find them
+  by in a stripped client.
+
 ## Requirement expressions (BuyRequires, SetBuyRequires, SpecializeRequires)
 
 Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.c`
@@ -125,7 +155,8 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   `MinSlotLevel <= level <= MaxSlotLevel` and `boost_Effectiveness > 0`. An IO works from 3 levels
   below its own (the `BoostEffectivenessAbove` table has 4 entries, +0..+3); an attuned piece from
   its `MinSlotLevel`. The planner tests the build's last level (its stop level, else 50), and the
-  picker offers IO levels up to that level + 3.
+  picker offers IO levels up to that level + 3. On Thunderspy an IO works only from its own level,
+  so the picker offers none above the character's (see "Thunderspy's client").
 - An enhancement's own settings:
   - Enhancement Boosters go on `BoostBoostable` pieces only (crafted set pieces and common IOs, not
     procs, attuned or superior pieces), at most 5 (`boost_IsBoostable`: the
@@ -171,6 +202,17 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   character of the archetype at level 1, it has powers, and it is not a VEAT branch
   (`SpecializeAt`). The live data gives Wind Control (Controller and Dominator) `SetRequires 0`,
   so the game hides it, and so does New Build.
+- It also needs a level-1 power whose `BuyRequires` a player passes. Thunderspy's client has no
+  `SetRequires`; its staff-only sets (Organic Armor) ask `accesslevel char> 0 >` of their powers
+  instead, so no player can take them and New Build leaves them out. On Homecoming this changes no
+  list.
+- Thunderspy's data (ts9-6) forbids other pairs than Homecoming's: Shield Defense with Claws,
+  Dual Blades, Katana, Staff Fighting or Titan Weapons for Scrappers and Brutes (Spines is
+  allowed), and with Dual Blades, Staff Fighting, Titan Weapons or Pale Blade for Tankers (Pale
+  Blade's Lash forbids it, and Fetid Presence needs Lash). Brute Claws and Stone Armor clash one
+  way only: Claws' level-1 powers forbid Stone Armor, but Stone Armor keeps Stone Skin with
+  Claws, so New Build greys Claws once Stone Armor is chosen and not the reverse; Finish stays
+  locked for the pair all the same (`setsGoTogether`).
 
 ## Set bonuses
 

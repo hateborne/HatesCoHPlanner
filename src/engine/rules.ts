@@ -4,6 +4,7 @@
  * A BuildRules instance is a read-only view over one Build: create a new one after every edit.
  */
 import { GameData } from '../data/gamedata.ts';
+import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Archetype, Power, Powerset } from '../data/types.ts';
 import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { canSlot, ioLevelRange, levelsAbove, shortName } from './enhance.ts';
@@ -82,15 +83,13 @@ export const PATRON_WIKI = 'https://homecoming.wiki/wiki/Patron_Power_Pools';
  * @param gd Game data.
  * @param b The build.
  * @param set The epic set chosen.
- * @return The note, with "Patron pool" linking to the wiki's page, or null when there is nothing
- *   to say (not a Patron pool, or not a hero).
+ * @return The note, or null when there is nothing to say (not a Patron pool, or not a hero). On
+ *   Homecoming "Patron pool" links to its wiki's page; the page describes Homecoming's game only.
  */
-export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: string; link: { phrase: string; href: string } } | null {
+export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: string; link?: { phrase: string; href: string } } | null {
   if (toAlignment(b.alignment) !== 'Hero' || !isPatronSet(gd, set)) return null;
-  return {
-    text: `${set.dn} is a Patron pool. In the game, Patron pools unlock by finishing a Patron story arc, a villain arc offered from level 35. Heroes have to switch to villain to run it; the pools stay unlocked after switching back.`,
-    link: { phrase: 'Patron pool', href: PATRON_WIKI },
-  };
+  const text = `${set.dn} is a Patron pool. In the game, Patron pools unlock by finishing a Patron story arc, a villain arc offered from level 35. Heroes have to switch to villain to run it; the pools stay unlocked after switching back.`;
+  return gd.server === DEFAULT_SERVER ? { text, link: { phrase: 'Patron pool', href: PATRON_WIKI } } : { text };
 }
 
 // levelUpRespec() per archetype (undefined is kept too: the archetype never respecs on training)
@@ -153,7 +152,8 @@ export function respecOnlyNote(gd: GameData, at: Archetype): { title: string; te
  * The power sets a new character can start with in a category (New Build's lists).
  *
  * The game's own tests at level 1: SetRequires (false for a set the game hides, such as Wind
- * Control) and SetBuyRequires. VEAT branches (SpecializeAt) and empty sets are left out.
+ * Control) and SetBuyRequires, and a level-1 power whose BuyRequires a player passes (Thunderspy
+ * hides its staff-only sets that way). VEAT branches (SpecializeAt) and empty sets are left out.
  *
  * @param gd Game data.
  * @param cat The category (the archetype's primary or secondary).
@@ -166,10 +166,12 @@ export function startingSets(gd: GameData, cat: string, at: Archetype): Powerset
     ownsSet: () => false,
     prop: (n: string) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0),
   };
+  // a level-1 power a player can buy: Thunderspy's client has no SetRequires, and hides its staff-only
+  // sets (Organic Armor) by their powers' BuyRequires ("accesslevel char> 0 >") instead
   return gd
     .setsInCategory(cat)
     .filter((s) => !s.spa && s.p.length > 0 && evalRequires(s.sr, ctx) && evalRequires(s.sbr, ctx))
-    .filter((s) => s.av.some((a) => a === 0));
+    .filter((s) => s.p.some((p, i) => s.av[i] === 0 && evalRequires(gd.power(p).br, ctx)));
 }
 
 export class BuildRules {
@@ -342,6 +344,9 @@ export class BuildRules {
       if (have.size >= countForLevel(level, sched)) {
         return kind === 'pool' ? 'No more power pools at this level' : 'No epic pool at this level';
       }
+      // level 1's two picks are its primary and secondary power (powerOption), so a pool its
+      // schedule opens at level 1 (Thunderspy's) can't be chosen there
+      if (level === this.pickLevel(0) && (pickIndex === 0 || pickIndex === 1)) return 'Level 1 takes a primary and a secondary power';
     } else if (kind === 'branch') {
       if (this.specLevel(level) < (set.spa ?? 0)) return `Available at level ${(set.spa ?? 0) + 1}`;
       if (!evalRequires(set.spr, ctx)) return 'Another specialization is chosen';
@@ -738,8 +743,8 @@ export class BuildRules {
    * Why a piece can't be used at the build's last level, if it can't (boost_IsValidToSlotAtLevel).
    *
    * The character's level must be within the piece's MinSlotLevel..MaxSlotLevel, and an IO works
-   * from 3 levels below its own (boost_Effectiveness); attuned pieces and TO/DO/SO-style pieces
-   * follow the character.
+   * from `levelsAbove` levels below its own (boost_Effectiveness: 3 on Homecoming, none on
+   * Thunderspy); attuned pieces and TO/DO/SO-style pieces follow the character.
    *
    * @param boost The piece.
    * @param ioLevel Its IO level when it has one; else the lowest level it is made at.

@@ -45,6 +45,28 @@ export const NAME_MAX = 40;
 // eslint-disable-next-line no-control-regex -- matching control characters is the point
 const HIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
 
+/** An origin as both servers' data name it: its id there and its internal name ("Science"). */
+interface OriginRef {
+  id: number; // the id in that server's data
+  n: string; // internal name
+}
+
+/**
+ * The origin New Build keeps when it switches to other game data: the same origin by internal name
+ * (each server numbers its origins on its own), or none when the new data lacks it.
+ *
+ * @param origin The chosen origin's id in the old data, if any.
+ * @param from The old data's origins (undefined: no old data, so the id is only checked).
+ * @param to The new data's origins.
+ * @return The origin's id in the new data, or undefined.
+ */
+export function carryOrigin(origin: number | undefined, from: readonly OriginRef[] | undefined, to: readonly OriginRef[]): number | undefined {
+  if (origin === undefined) return undefined;
+  if (!from) return to.some((o) => o.id === origin) ? origin : undefined;
+  const name = from.find((o) => o.id === origin)?.n.toLowerCase();
+  return name ? to.find((o) => o.n.toLowerCase() === name)?.id : undefined;
+}
+
 /** @return Text with control and invisible formatting characters removed. */
 export function stripHidden(text: string): string {
   return text.replace(HIDDEN_CHARS, '');
@@ -145,6 +167,27 @@ export function newBuild(args: {
     // a respec short of 50 ends there, like a build stopped while leveling
     ...(r !== undefined ? { respecTo: r, endLevel: r < 49 ? r : undefined } : {}),
   };
+}
+
+/**
+ * Whether a build holds any of the player's work: a power picked, or an enhancement in an
+ * auto-granted power's slot. A build without either (left on its first power screen) loses nothing
+ * when replaced, so nothing asks first.
+ *
+ * Safe on a remembered build read back from storage before checkBuild: a missing or malformed
+ * field counts as no work there.
+ *
+ * @param b The build.
+ * @return True when it holds work.
+ */
+export function hasWork(b: Build): boolean {
+  if (Array.isArray(b.picks) && b.picks.some((p) => p)) return true;
+  const granted: unknown = b.granted;
+  if (!granted || typeof granted !== 'object') return false;
+  return Object.values(granted as Record<string, unknown>).some((g) => {
+    const slots = (g as { slots?: unknown } | null)?.slots;
+    return Array.isArray(slots) && slots.some((s) => !!(s as { enh?: unknown } | null)?.enh);
+  });
 }
 
 /** Deep copy (builds are small plain objects). */

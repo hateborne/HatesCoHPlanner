@@ -19,7 +19,7 @@ test('Arachnos builds are planned as Respec builds only', async ({ page }, info)
   };
   const level = page.locator('#respec-level');
   const ok = me.button('OK');
-  await page.goto('./');
+  await page.goto('./Homecoming/'); // the site root asks for a server once there is more than one
 
   // Leveling ticked, then the Soldier: Respec, and the note says why
   await tab('Origin');

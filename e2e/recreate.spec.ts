@@ -30,7 +30,7 @@ test.describe('forum builds, recreated with a respec', () => {
   for (const { file, title, enhancements, version } of BUILDS) {
     test(title, async ({ page }, info) => {
       const me = new Player(page, info.project.name === 'phone');
-      await page.goto('./');
+      await page.goto('./Homecoming/'); // the site root asks for a server once there is more than one
 
       // the build to recreate, read through the planner's own import
       const target = await me.importBuild(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', file), 'utf-8'));

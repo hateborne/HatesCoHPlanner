@@ -1,7 +1,9 @@
 """Turn the raw live decode into the compact JSON the site loads.
 
-Output: public/data/<gameVersion>/{core,powersets,powers,boosts,mids-map}.json, then
-public/data/versions.json and latest.json (last).
+Output: <server data>/<gameVersion>/{core,powersets,powers,boosts,mids-map}.json, then
+<server data>/versions.json and latest.json (last). The server data folder is public/data for
+Homecoming and public/data/<server> for another (config.DATA_OUT); a server without a Mids
+database gets no mids-map.json.
 Only player-reachable data is exported: the 15 archetypes' primary/secondary categories, Pool,
 Epic and Inherent sets, every enhancement (Boosts.*) and IO set, the set-bonus powers they grant,
 and anything those powers redirect to or grant. PvP-only effects are dropped (PvP is out of v1).
@@ -11,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import re
 from pathlib import Path
 from collections import Counter
 
@@ -20,7 +23,9 @@ from pipeline.decode.live import LiveData, sha1
 from pipeline.forced_respec import forced_respec_warnings
 from pipeline.ids import IdRegistry
 
-GRANT_ATTRIBS = {481, 482, 486, 512}  # kGrantPower, kRevokePower, kGrantBoostedPower, kExecutePower
+# special attributes whose mods name powers in their Params (481, 482, 486, 512 on Homecoming and
+# Thunderspy; looked up by name so another client's numbering can't miss them)
+GRANT_NAMES = ("GrantPower", "RevokePower", "GrantBoostedPower", "ExecutePower")
 PVP_ONLY = ["enttype", "target>", "player", "eq"]
 PVE_ONLY = ["enttype", "target>", "critter", "eq"]
 
@@ -42,6 +47,19 @@ def contains_seq(seq: list, sub: list) -> bool:
     return any(seq[i:i + n] == sub for i in range(len(seq) - n + 1))
 
 
+def grant_attribs(attribs: dict) -> set[int]:
+    """The attribute offsets whose mods carry power names (kGrantPower and kin).
+
+    @param attribs LiveData.attribs ({offset: {"name", "aliases", "kind"}}).
+    @return Their offsets.
+    @raise RuntimeError When the client names none of them (granted powers would silently vanish).
+    """
+    out = {o for o, a in attribs.items() if a.get("kind") == "special" and a["name"] in GRANT_NAMES}
+    if len(out) != len(GRANT_NAMES):
+        raise RuntimeError(f"the client's special attributes lack some of {GRANT_NAMES} (found {sorted(out)})")
+    return out
+
+
 class Exporter:
     """Builds the site data from a LiveData decode."""
 
@@ -55,6 +73,7 @@ class Exporter:
         self.sets_lower = {k.lower(): k for k in self.sets}
         self.cats = {c["Name"].lower(): c for c in live.powercats}
         self.E = live.enums
+        self.grant_attribs = grant_attribs(live.attribs)
         # no_frames: enhancements left without frame art because the client has no frame columns
         self.report: dict = {"missing_text": Counter(), "unresolved_refs": Counter(),
                              "pvp_effects_dropped": 0, "no_frames": 0}
@@ -62,12 +81,25 @@ class Exporter:
 
     # ---- helpers ------------------------------------------------------------------------------
     def text(self, key: str) -> str:
+        """Display text for a message key.
+
+        A string that isn't a key in the message store is shown as written, as the client's
+        textStd does: Thunderspy's data writes some names straight into the field ("Earth Combat",
+        "Auto Turret", Primalist's help), where Homecoming's always gives a "P<number>" key. A
+        "P<number>" key the store lacks is missing text and stays empty.
+
+        @param key The field's value (a message key, or the text itself).
+        @return The text to show.
+        """
         if not key:
             return ""
         t = self.M.get(key)
         if t is None:
-            self.report["missing_text"][key[:1] if key.startswith("P") else "other"] += 1
-            return ""
+            if re.fullmatch(r"P\d+", key):
+                self.report["missing_text"]["P"] += 1
+                return ""
+            self.report["missing_text"]["written as text"] += 1
+            return key
         return t
 
     def power_name(self, name: str) -> str | None:
@@ -121,7 +153,7 @@ class Exporter:
             for r in rec.get("Redirect") or []:
                 stack.append((r["Power"], depth + 1))
             for a in self.walk_mods(rec):
-                if set(a["Attrib"]) & GRANT_ATTRIBS:
+                if set(a["Attrib"]) & self.grant_attribs:
                     for n in param_power_names(a["Params"]):
                         stack.append((n, depth + 1))
         self.export_powers = list(keep)
@@ -172,7 +204,7 @@ class Exporter:
             o["fl"] = names
         if a.get("BoostModAllowed"):
             o["bma"] = a["BoostModAllowed"]
-        if set(a["Attrib"]) & GRANT_ATTRIBS:
+        if set(a["Attrib"]) & self.grant_attribs:
             names = param_power_names(a["Params"])
             o["pw"] = [self.ids.get("power", self.power_name(n)) for n in names
                        if self.power_name(n)]
@@ -489,42 +521,112 @@ def content_hash(core: dict, others: list[str]) -> str:
 
 
 def newest_mids_map(exclude) -> "Path | None":
-    """@return The newest mids-map.json in a version folder other than `exclude`, or None."""
+    """@return The newest mids-map.json in another version folder of this server, or None."""
     found = [p for p in config.DATA_OUT.glob("*/mids-map.json") if p.parent.resolve() != exclude.resolve()]
     return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
 
-def borrow_frames(boosts: list[dict], donor: str) -> int:
-    """Give enhancements without frame art the frames the same enhancement has in another version.
+def donor_of(donor: str) -> tuple[str, Path]:
+    """The server and data folder --frames-from names: "<version>" or "<server>/<version>".
 
-    Older clients have no frame columns; the owner chose to show the donor version's frames
-    there (cosmetic only, recorded in the manifest as framesFrom).
+    @param donor The flag's value ("i28p4", "homecoming/i28p4").
+    @return (server id, the version folder); a bare version is the selected server's.
+    @raise SystemExit For a server the pipeline doesn't know or an invalid version id.
+    """
+    server, _, version = donor.rpartition("/")
+    if (server and server not in config.SERVERS) or not config.valid_version_id(version):
+        raise SystemExit(f"error: --frames-from {donor}: expected <version> or <server>/<version>")
+    server = server or config.SERVER.id
+    return server, config.data_dir(server) / version
+
+
+def data_rel(*parts: str) -> str:
+    """@return A path under the selected server's data folder as messages name it ("public/data/thunderspy/ts9-6")."""
+    return "/".join([config.DATA_OUT.relative_to(config.REPO).as_posix(), *parts])
+
+
+def _frame_flags(b: dict) -> tuple:
+    """@return The enhancement property besides its set that picks a frame: attuned (scales with the player's level).
+
+    Catalyst conversion and account binding don't: Homecoming gives every crafted set piece a
+    catalyst conversion, Thunderspy none, and Thunderspy binds its superior ATOs to the account.
+    """
+    return (bool(b.get("bup")),)
+
+
+def borrow_frames(boosts: list[dict], sets: list[dict], donor: str) -> dict:
+    """Give enhancements without frame art the frames the donor version draws for them.
+
+    Clients without frame columns (an older Homecoming, Thunderspy) choose frames in code. The owner
+    chose to show the donor's frame art instead (cosmetic only, recorded in the manifest as
+    framesFrom):
+
+    1. An enhancement the donor has by the same internal name gets its frames.
+    2. Only with a donor on another server (an older version of the same server keeps the frames
+       it was published with): a set enhancement the donor lacks gets the pair the donor's set
+       enhancements that are attuned as it is (or not) all use for one of its set's conversion
+       groups (ECUncommon, ECRare, ECSATO, ...). Only groups that fix a single pair across
+       the donor count, and they must agree. On Homecoming's own data this rule picks the right
+       pair for every set enhancement it answers (2054, left out one set at a time) and answers all
+       but 24.
+    3. Anything else keeps no frames.
 
     @param boosts This version's exported enhancements; changed in place.
-    @param donor Game version id whose boosts.json supplies the frames.
-    @return How many enhancements got frames.
+    @param sets This version's exported IO sets (slots hold enhancement ids).
+    @param donor The donor version: "<version>" or "<server>/<version>".
+    @return {"by_name": count, "by_set": count, "none": [names left without frames], "cross": the
+        donor is another server's}.
     @raise SystemExit When the donor version has no readable boosts.json.
     """
+    donor_server, root = donor_of(donor)
     try:
-        src = json.loads((config.DATA_OUT / donor / "boosts.json").read_text(encoding="utf-8"))
+        src = json.loads((root / "boosts.json").read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        raise SystemExit(f"error: --frames-from {donor}: no readable public/data/{donor}/boosts.json ({e})")
+        raise SystemExit(f"error: --frames-from {donor}: no readable boosts.json there ({e})")
     frames = {b["n"]: b["bf"] for b in src.get("boosts", []) if b.get("bf")}
-    n = 0
+    # (conversion group, flags) -> every frame pair the donor's set enhancements show for it
+    dby = {b["id"]: b for b in src.get("boosts", [])}
+    by_group: dict[tuple, set] = {}
+    for s in src.get("sets", []):
+        for pid in (p for slot in s["slots"] for p in slot):
+            b = dby.get(pid)
+            if b and b.get("bf"):
+                for c in s["conv"]:
+                    by_group.setdefault((c, _frame_flags(b)), set()).add(tuple(b["bf"]))
+    set_of = {pid: s for s in sets for slot in s["slots"] for pid in slot}
+    if donor_server == config.SERVER.id:
+        set_of = {}  # same server (however the flag names it): by name only
+    res: dict = {"by_name": 0, "by_set": 0, "none": [], "cross": donor_server != config.SERVER.id}
     for b in boosts:
-        if "bf" not in b and b["n"] in frames:
+        if "bf" in b:
+            continue
+        if b["n"] in frames:
             b["bf"] = frames[b["n"]]
-            n += 1
-    return n
+            res["by_name"] += 1
+            continue
+        s = set_of.get(b["id"])
+        picks = set()
+        for c in (s["conv"] if s else []):
+            pairs = by_group.get((c, _frame_flags(b)), set())
+            if len(pairs) == 1:
+                picks |= pairs
+        if len(picks) == 1:
+            b["bf"] = list(picks.pop())
+            res["by_set"] += 1
+        else:
+            res["none"].append(b["n"])
+    return res
 
 
 def write(live: LiveData, version: str, frames_from: str | None = None, *,
-          overwrite_published: bool = False, refresh_mids_map: bool = False) -> dict:
+          overwrite_published: bool = False, refresh_mids_map: bool = False,
+          assets: bool = True, add_only_icons: bool = False) -> dict:
     """Export the data set for game version `version` and return a summary for the report.
 
-    Order: build in memory (Mids map included, failures tolerated), check the folder may be
-    written, save ids.json, then write the data files atomically. The version index files are
-    written afterwards by write_indexes().
+    Order: build in memory (Mids map and another server's icon names included, failures
+    tolerated), check the folder may be written, save the ids file, write another server's icons,
+    then write the data files atomically. Nothing is written before the check. The version index
+    files are written afterwards by write_indexes().
 
     A version folder already made from a different client (other exe or pigg hashes) is refused
     unless `overwrite_published`: share links made on that patch load it, so a run that forgot
@@ -537,33 +639,47 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     @param frames_from Version to borrow enhancement frames from when the client has none.
     @param overwrite_published Replace a folder made from a different client.
     @param refresh_mids_map Replace an existing folder's mids-map.json.
+    @param assets Write another server's icon files (--no-assets: names only).
+    @param add_only_icons Write only icon files the server's folder lacks (an older version).
     @raise SystemExit When the folder was made from a different client and overwriting wasn't asked.
     """
-    ex = Exporter(live)          # refuses to run if ids.json is gone while data exists
+    ex = Exporter(live)          # refuses to run if the ids file is gone while data exists
     out = ex.build()
     warnings: list[str] = forced_respec_warnings(live.classes, ex.class_cats, ex.cats, ex.sets)
-    borrowed = 0
+    frames: dict | None = None
     if ex.report["no_frames"]:
         if frames_from:
-            borrowed = borrow_frames(out["boosts"]["boosts"], frames_from)
-            left = ex.report["no_frames"] - borrowed
-            warnings.append(f"NOTE: this client has no enhancement frame data; {borrowed} enhancements "
-                            f"show {frames_from}'s frames" + (f", {left} have none" if left else ""))
+            frames = borrow_frames(out["boosts"]["boosts"], out["boosts"]["sets"], frames_from)
+            got = frames["by_name"] + frames["by_set"]
+            left = len(frames["none"])
+            # a same-server donor reads as it always did (older versions' committed reports)
+            by_set = f" ({frames['by_set']} matched by set type)" if frames["cross"] else ""
+            warnings.append(f"NOTE: this client has no enhancement frame data; {got} enhancements "
+                            f"show {frames_from}'s frames{by_set}" + (f", {left} have none" if left else ""))
         else:
             warnings.append(f"WARNING: this client has no enhancement frame data; {ex.report['no_frames']} "
                             "enhancements have no frames (pass --frames-from <version> to borrow them)")
     elif frames_from:
         warnings.append(f"NOTE: --frames-from {frames_from} ignored: this client has its own frame data")
+    icon_plan = None
+    if not config.SERVER.shared_assets:
+        # another server's data names its own icons "<server>:<name>": decided before anything is
+        # hashed, written once the checks below pass
+        from pipeline.assets import export_assets
+        icon_plan = export_assets.plan_icon_overlay(out, config.SERVER.id)
     mids_text = None
-    try:
-        from pipeline import mids_map
-        _m, mids = mids_map.prepare(live, ex)
-        mids_text = mids.pop("text", None)
-    except Exception as e:  # noqa: BLE001 -- Mids is an untrusted reference; never fail the run
-        mids = {"skipped": f"Mids map failed: {type(e).__name__}: {e}"}
-        warnings.append(f"WARNING: Mids map skipped ({type(e).__name__}: {e})")
-    if mids.get("skipped") and not any("Mids map" in w for w in warnings):
-        warnings.append(f"WARNING: Mids map skipped ({mids['skipped']})")
+    if not config.SERVER.mids:
+        mids = {"none": True}  # no Mids database for this server: no map, and never another server's
+    else:
+        try:
+            from pipeline import mids_map
+            _m, mids = mids_map.prepare(live, ex)
+            mids_text = mids.pop("text", None)
+        except Exception as e:  # noqa: BLE001 -- Mids is an untrusted reference; never fail the run
+            mids = {"skipped": f"Mids map failed: {type(e).__name__}: {e}"}
+            warnings.append(f"WARNING: Mids map skipped ({type(e).__name__}: {e})")
+        if mids.get("skipped") and not any("Mids map" in w for w in warnings):
+            warnings.append(f"WARNING: Mids map skipped ({mids['skipped']})")
 
     root = config.DATA_OUT / version
     source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
@@ -577,13 +693,33 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     if old and old.get("source") and old["source"] != source:
         if not overwrite_published:
             raise SystemExit(
-                f"error: public/data/{version} was made from a different client (exe or pigg hashes "
+                f"error: {data_rel(version)} was made from a different client (exe or pigg hashes "
                 "differ). A new patch needs a new --game-version; to replace this published folder "
                 "on purpose, pass --overwrite-published. Nothing was written.")
-        warnings.append(f"WARNING: public/data/{version} was made from a different client and was "
+        warnings.append(f"WARNING: {data_rel(version)} was made from a different client and was "
                         "replaced (--overwrite-published)")
+    # the frame art a published folder shows is part of it: a re-run borrows from the same donor
+    new_frames = frames_from if frames and frames["by_name"] + frames["by_set"] else None
+    if old and old.get("framesFrom") != new_frames:
+        was = old.get("framesFrom")
+        flag = f"--frames-from {was}" if was else "no --frames-from"
+        if not overwrite_published:
+            raise SystemExit(
+                f"error: {data_rel(version)} was published with "
+                + (f"{was}'s enhancement frames" if was else "no borrowed enhancement frames")
+                + "; this run would " + (f"use {new_frames}'s" if new_frames else "leave them out")
+                + f". Re-run with {flag}, or pass --overwrite-published to change it on purpose. "
+                "Nothing was written.")
+        warnings.append(f"WARNING: {data_rel(version)}'s enhancement frames changed (was {flag}; "
+                        "--overwrite-published)")
 
     ex.ids.save()                # ids first, so a crash later never loses allocations
+    if icon_plan is not None:
+        if assets:
+            icon_plan["summary"]["written"] = export_assets.write_icon_overlay(icon_plan, add_only_icons)
+        else:
+            warnings.append("WARNING: --no-assets: this server's icon files were not written; its "
+                            "data names them, so run again without --no-assets before committing")
 
     manifest = {
         "dataVersion": version,
@@ -596,7 +732,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
                    "boostsets": len(out["boosts"]["sets"])},
         "files": ["core.json", "powersets.json", "powers.json", "boosts.json"],
     }
-    if borrowed:
+    if frames and frames["by_name"] + frames["by_set"]:
         manifest["framesFrom"] = frames_from  # enhancement frame art borrowed from that version
     out["core"]["manifest"] = manifest
     texts = {n: _dump(out[n]) for n in ("powersets", "powers", "boosts")}
@@ -614,7 +750,9 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
         sizes[name] = len(texts[name].encode("utf-8"))
 
     mids_path = root / "mids-map.json"
-    if mids_text is not None and mids_path.exists() and not refresh_mids_map:
+    if not config.SERVER.mids:
+        pass  # no Mids database for this server
+    elif mids_text is not None and mids_path.exists() and not refresh_mids_map:
         if mids_path.read_text(encoding="utf-8") != mids_text:
             warnings.append(f"NOTE: kept {version}'s existing mids-map.json (the Mids data gives a "
                             "different map; pass --refresh-mids-map to replace it)")
@@ -631,7 +769,8 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
             warnings.append("WARNING: no mids-map.json exists in any version folder; "
                             "Mids import/export will not work until the Mids map is built")
     return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added,
-            "mids": mids, "warnings": warnings, "version": version, "root": root}
+            "mids": mids, "warnings": warnings, "version": version, "root": root, "frames": frames,
+            "icons": icon_plan["summary"] if icon_plan else None}
 
 
 def write_indexes(version: str, label: str, content_hash_: str, make_default: bool, extra: dict | None = None) -> str:
@@ -653,7 +792,7 @@ def write_indexes(version: str, label: str, content_hash_: str, make_default: bo
     except OSError:
         idx, new_file = {"default": version, "versions": []}, True
     except ValueError as e:
-        raise SystemExit(f"error: public/data/versions.json is unreadable ({e}); fix or remove it")
+        raise SystemExit(f"error: {data_rel('versions.json')} is unreadable ({e}); fix or remove it")
     entry = {"id": version, "label": label, "hash": content_hash_, **(extra or {})}
     for i, v in enumerate(idx["versions"]):
         if v.get("id") == version:

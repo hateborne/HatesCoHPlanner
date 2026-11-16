@@ -4,6 +4,7 @@
  * character_mods.c (boost magnitude) and character_attribs.c (AggregateStrength / ED).
  */
 import type { GameData } from '../data/gamedata.ts';
+import { serverById } from '../data/servers.ts';
 import type { Archetype, BoostSet, DimReturnSet, Mod, Power } from '../data/types.ts';
 import type { SlottedEnh } from './build.ts';
 
@@ -118,6 +119,9 @@ const RARITY_BY_GROUP: Record<string, { kind: RarityKind; name: string }> = {
   ECPvP: { kind: 'pvp', name: 'PvP' },
   ECATO: { kind: 'archetype', name: 'Archetype Origin' },
   ECSATO: { kind: 'superiorArchetype', name: 'Superior Archetype Origin' },
+  // Thunderspy files its newer archetype sets (Defiant Barrage, Gauntleted Fist, ...) in a second group
+  ECATO2: { kind: 'archetype', name: 'Archetype Origin' },
+  ECSATO2: { kind: 'superiorArchetype', name: 'Superior Archetype Origin' },
   ECWinter: { kind: 'winter', name: 'Winter Pack' },
   ECSWinter: { kind: 'superiorWinter', name: 'Superior Winter Pack' },
   ECUniversalDamage: { kind: 'event', name: 'Event' },
@@ -165,9 +169,18 @@ export function ioLevelRange(gd: GameData, boost: Power): [number, number] | nul
   return ref ? setLevelRange(ref.set) : [9, Math.min(49, (boost.maxBL ?? 50) - 1)];
 }
 
-/** @return How many levels above the character an enhancement still works: 3 (boost_EffectivenessLevel). */
+/**
+ * How many levels above the character an IO or set piece still works (power_MinBoostUseLevel).
+ *
+ * Homecoming's client takes the boost effect table's length (3 levels). Thunderspy's client gives
+ * these pieces none (its table has 50 flat entries, which only TO/DO/SO-style pieces use), so its
+ * server entry says so (`ioLevelsAbove`).
+ *
+ * @param gd Game data (its server and boost effect tables).
+ * @return The number of levels.
+ */
 export function levelsAbove(gd: GameData): number {
-  return gd.core.boostEffect.above.length - 1;
+  return serverById(gd.server)?.ioLevelsAbove ?? gd.core.boostEffect.above.length - 1;
 }
 
 /** Default enhancement level for a newly placed enhancement (0-based). */
@@ -195,7 +208,7 @@ export function effectiveness(gd: GameData, boost: Power, e: SlottedEnh, charLev
     // power_MinBoostUseLevel / power_MaxBoostUseLevel
     const [minSlot, maxSlot] = boost.slot ?? [-3, 49];
     const lvl = boostLevel(boost, e, charLevel);
-    const minUse = boost.bup ? minSlot : Math.max(minSlot, lvl - (be.above.length - 1));
+    const minUse = boost.bup ? minSlot : Math.max(minSlot, lvl - levelsAbove(gd));
     if (charLevel < minUse || charLevel > maxSlot) return 0;
     return boost.bb ? (be.boosters[boosters] ?? 1) : 1;
   }

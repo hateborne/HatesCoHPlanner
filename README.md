@@ -1,6 +1,6 @@
 # Hate's CoH Planner
 
-A City of Heroes (Homecoming) character build planner that looks and plays like the in-game
+A City of Heroes (Homecoming and Thunderspy) character build planner that looks and plays like the in-game
 level-up screens: "Choose a New Power", "Choose a Pool Power Set" and "Add an Enhancement Slot",
 followed by a build overview with enhancements, IO set bonuses and totals. The build math
 (enhancement values, Enhancement Diversification, set bonuses with the rule of 5, totals) is
@@ -23,16 +23,21 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
   so saving reminds you to bookmark the build's address), MidsReborn `.mbd` import/export, Mids
   share codes (`|MBD;` and legacy `|MxDz;`), and import of a character saved in game with
   `/build_save` (the `Builds/build.txt` file in the game's account folder).
-- Game servers: Homecoming today. The server's logo shows in the bottom bar (the phone menu on
-  phones); on the New Build screen it opens the server list. Switching there clears the archetype
-  and power sets, and, after a warning, the current build (builds never move between servers). Once a second server is added, a first visit asks which one (Enter or
-  Space takes Homecoming).
+- Game servers: Homecoming and Thunderspy (`.../HatesCoHPlanner/Thunderspy/`). The server's logo
+  shows in the bottom bar (the phone menu on phones); on the New Build screen it opens the server
+  list. Switching there clears the archetype and power sets, and, after a warning, the current
+  build (builds never move between servers). A visit to the site root with no build open asks which one,
+  with the server you last used (at first Homecoming) highlighted: Enter or OK takes it. Coming back
+  after 4 hours or more away, the same list greets you with a button that continues your last build.
+  Thunderspy has no Mids import or export (MidsReborn has no Thunderspy
+  database) and no `/build_save` import (its client doesn't write one); its builds share by link.
 - Hero, villain and Praetorian skins by alignment; the game's UI sounds (with a mute switch);
   a one-panel-at-a-time layout on phones.
 
 ## Data
 
-All game data comes from the live Homecoming client files, decoded by the Python pipeline in
+All game data comes from the live game client files (Homecoming's, and Thunderspy's for its
+server), decoded by the Python pipeline in
 `pipeline/` with the decoders in `tools/`. MidsReborn's database is a **reference only**, never a
 source of truth (the one exception is an approximate older patch, below): it backs up or questions our numbers in the validation report
 (`pipeline/report.md`) and maps names for importing and exporting Mids build files. Without it the
@@ -49,7 +54,24 @@ first and names any missing setting.
 
 `pipeline/patch-watch.json` records the newest Homecoming patch-notes post the data was checked
 against (for a scheduled job that notices new patches) and the game version the next run exports
-(`homecoming.gameVersion`, e.g. `i28p4`, and `gameLabel`, e.g. `Issue 28, Page 4`).
+(`homecoming.gameVersion`, e.g. `i28p4`, and `gameLabel`, e.g. `Issue 28, Page 4`). For Thunderspy it
+records the release and MD5 of the `tspy/bin.pigg` the data was made from (`binRelease`, `binMd5`).
+
+**Thunderspy.** `python -m pipeline.run --server thunderspy --game-version ts9-6 --game-label
+"Release 9.6" --frames-from homecoming/i28p4` reads the Thunderspy client (`servers.thunderspy.client`
+in `pipeline/paths.local.json`, or `COH_CLIENT_THUNDERSPY`) and writes `public/data/thunderspy/`, its
+own ids (`pipeline/ids-thunderspy.json`) and report (`pipeline/report-thunderspy.md`). Its client has
+no enhancement frame data, so it shows Homecoming's frame art. It keeps its own copy of every icon
+it shows (`public/assets/thunderspy/`): Homecoming's file where the art is the same, its own where it
+differs, so a later Homecoming redraw doesn't change Thunderspy (a newer Thunderspy release's
+art does replace older Thunderspy versions' copies, as Homecoming's newest version does).
+Thunderspy's download server keeps only the current release's files, so export each release while
+it is live: `python -m pipeline.watch` checks the live manifest against `pipeline/patch-watch.json`,
+the installed client and the published data, and prints the command to export a new release (exit
+status 1 when something needs doing). `python -m pipeline.watch --record` records the release once
+it is exported as the default version. `python -m pipeline.compare --server thunderspy` writes
+`pipeline/report-thunderspy-diff.md`, every difference of Thunderspy's data from Homecoming's by
+internal name, from the committed data alone, to know what to spot-check in the Thunderspy client.
 
 Each game version lives in its own folder, `public/data/<id>/` (`core`, `powersets`, `powers`,
 `boosts`, `mids-map`). `public/data/versions.json` lists them (`{"default", "versions": [{id,

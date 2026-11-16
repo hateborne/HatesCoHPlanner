@@ -27,6 +27,22 @@ export class ImportProblem extends Error {
 export const READABLE =
   'The planner reads share links from this site, Mids share codes (starting with |MBD; or |MxDz;), Mids .mbd files and the game\'s /build_save file (build.txt).';
 
+/**
+ * The formats the planner reads on one server, for messages that need to say so: share links on
+ * every server, Mids codes and files where MidsReborn has the server's database, and /build_save
+ * files where its game client writes them.
+ *
+ * @param s The server (the planner's own SERVERS entry).
+ * @return The sentence: READABLE on a server that takes them all.
+ */
+export function readableOn(s: { label: string; midsDb?: string; buildSave?: boolean }): string {
+  if (s.midsDb && s.buildSave) return READABLE;
+  const more = [...(s.midsDb ? ['Mids share codes (starting with |MBD; or |MxDz;)', 'Mids .mbd files'] : []), ...(s.buildSave ? ["the game's /build_save file (build.txt)"] : [])];
+  if (!more.length) return `On ${s.label} the planner reads share links from this site only.`;
+  const all = ['share links from this site', ...more];
+  return `On ${s.label} the planner reads ${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}.`;
+}
+
 /** What to say when a fault on the planner's side stops an import. */
 export const OUR_FAULT = 'Something went wrong on our side while importing this build. Please try again in a moment; if it keeps happening, let us know.';
 
@@ -73,7 +89,60 @@ export function refusedBuild(fixes: readonly string[]): ImportProblem {
  * @return The problem, worded for the user.
  */
 export function unknownServer(name: string): ImportProblem {
-  return new ImportProblem(`it was made for a game server the planner doesn't carry ("${name}")`, 'Check the link, or open the build on the site it was made with.');
+  // the name is the link's own address text: shown only as cleaned, so a crafted link can't make
+  // the planner's notice say what it likes
+  return new ImportProblem(`it was made for a game server the planner doesn't carry ("${readable(name)}")`, 'Check the link, or open the build on the site it was made with.');
+}
+
+/** A server as the messages below name it (the planner's own SERVERS entries, never imported text). */
+interface ServerName {
+  label: string; // "Thunderspy"
+  path: string; // its address segment ("Thunderspy")
+}
+
+/**
+ * The problem to report for a share code made on one server's data opened at another server's
+ * address. Each server numbers its powers on its own, so the code would read as other powers.
+ *
+ * @param made The server whose game version the code names.
+ * @param named The server the link's address names.
+ * @return The problem, worded for the user.
+ */
+export function wrongServer(made: ServerName, named: ServerName): ImportProblem {
+  return new ImportProblem(
+    `the build was made on ${made.label}'s game data, but the link's address names ${named.label}`,
+    `Open it on ${made.label}: change "/${named.path}/" in the link to "/${made.path}/".`,
+  );
+}
+
+/**
+ * The problem to report for Mids on a server MidsReborn has no database for.
+ *
+ * @param s The server.
+ * @param withMids The servers that do have one (for the way out).
+ * @return The problem, worded for the user.
+ */
+export function noMids(s: ServerName, withMids: readonly ServerName[]): ImportProblem {
+  const other = withMids.map((x) => x.label).join(' or ');
+  return new ImportProblem(
+    `MidsReborn has no ${s.label} database, so ${s.label} builds can't come from or go to Mids`,
+    `Share ${s.label} builds with the planner's share links.${other ? ` A Mids build made for ${other} imports after switching to ${other} on New Build.` : ''}`,
+  );
+}
+
+/**
+ * The problem to report for a /build_save file on a server whose game client doesn't write them.
+ *
+ * @param s The server shown.
+ * @param writers The servers whose clients write them.
+ * @return The problem, worded for the user.
+ */
+export function noBuildSave(s: ServerName, writers: readonly ServerName[]): ImportProblem {
+  const w = writers.map((x) => x.label).join(' or ');
+  return new ImportProblem(
+    `a /build_save file comes from ${w || 'another server'}'s game client, not ${s.label}'s`,
+    w ? `Switch to ${w} on New Build, then import it there.` : '',
+  );
 }
 
 /** Largest file the import reads: build files are a few KB to a few hundred KB of text. */

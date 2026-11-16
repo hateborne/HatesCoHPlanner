@@ -113,7 +113,7 @@ describe('Patron Power Pools', () => {
     expect(note.text).toMatch(/^Mace Mastery is a Patron pool\..*switch to villain/);
     // "Patron pool" links to the wiki's page, the first time it appears
     expect(note.link).toEqual({ phrase: 'Patron pool', href: 'https://homecoming.wiki/wiki/Patron_Power_Pools' });
-    expect(note.text.indexOf(note.link.phrase)).toBe('Mace Mastery is a '.length);
+    expect(note.text.indexOf(note.link!.phrase)).toBe('Mace Mastery is a '.length);
     expect(patronArcNote(gd, { ...hero, alignment: 'Hero' }, fire)).toBeNull();
     expect(patronArcNote(gd, { ...hero, alignment: 'Villain' }, mace)).toBeNull();
     expect(patronArcNote(gd, { ...hero, alignment: 'Praetorian' }, mace)).toBeNull();

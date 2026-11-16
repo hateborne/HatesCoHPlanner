@@ -4,9 +4,9 @@ import { useStage } from '../components/Stage.tsx';
 import type { GameData } from '../../data/gamedata.ts';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
-import { ALIGNMENTS, skinOf, type Alignment } from '../../engine/build.ts';
+import { ALIGNMENTS, carryOrigin, hasWork, skinOf, type Alignment } from '../../engine/build.ts';
 import { levelUpRespec, pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
-import { useStore } from '../../state/store.ts';
+import { askOverRemembered, useStore } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -77,15 +77,17 @@ export function Setup() {
   const [respecTo, setRespecTo] = useState(() => String(Math.max((build?.respecTo ?? 49) + 1, lowestRespec(gd, own && gd?.archetypeById.get(own.at)))));
   const [tab, setTab] = useState(0);
   // switching servers (the logo) clears the archetype and both power sets; the rest stays, the
-  // origin only while the new server has it
-  const [seenServer, setSeenServer] = useState(gd?.server);
-  if (gd && gd.server !== seenServer) {
-    setSeenServer(gd.server);
-    setAt(undefined);
-    setPri(undefined);
-    setSec(undefined);
-    setDesc(null);
-    if (origin !== undefined && !gd.core.origins.some((o) => o.id === origin)) setOrigin(undefined);
+  // origin by its internal name while the new server has it (each server numbers origins on its own)
+  const [seenGd, setSeenGd] = useState(gd);
+  if (gd && gd !== seenGd) {
+    setSeenGd(gd);
+    if (gd.server !== seenGd?.server) {
+      setAt(undefined);
+      setPri(undefined);
+      setSec(undefined);
+      setDesc(null);
+      setOrigin(carryOrigin(origin, seenGd?.core.origins, gd.core.origins));
+    }
   }
   const stage = useStage();
   const { phone } = stage;
@@ -143,14 +145,21 @@ export function Setup() {
   const finish = async () => {
     if (at === undefined || pri === undefined || sec === undefined || origin === undefined) return;
     // a new build replaces the current one (and this tab's address): ask first when it has any work
-    if (build && (build.picks.some((p) => p) || Object.values(build.granted).some((g) => g.slots.some((s) => s.enh)))) {
+    if (build && hasWork(build)) {
       const ok = await useStore.getState().askConfirm({
         title: 'Start a new build?',
         text: `This replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first (Saved builds / Import) if you want to keep it.`,
         okLabel: 'Start new',
       });
       if (!ok) return;
+    } else if (!build && (await askOverRemembered('Start a new build?', 'A new build', 'Start new')) !== 'go') {
+      // nothing open, but the browser still remembers a build (the return question's tile, another
+      // server's address): the player stayed, or opened that build instead
+      return;
     }
+    // the choices were made on this server's data: a server switch that finished while the question
+    // was open has cleared them (each server numbers its archetypes and sets on its own)
+    if (useStore.getState().gd?.server !== gd.server) return;
     startBuild({ name, at, origin, alignment: align, primary: pri, secondary: sec, respecTo: type === 'respec' ? respecLevel(respecTo, lowest) - 1 : undefined });
   };
   const pickAt = (a: Archetype) => {

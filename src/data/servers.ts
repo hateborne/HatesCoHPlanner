@@ -4,6 +4,8 @@
  *
  * Homecoming came first, so a build, saved build or link that names no server is Homecoming's: its
  * data stays in data/ (published version folders never move), and builds for it store no server.
+ * Each server numbers its powers, sets and archetypes on its own (pipeline/ids-<server>.json), and
+ * every game version id belongs to one server only, so a share code tells its server by its version.
  * Pure (no DOM, no import.meta): vite.config.ts reads the address paths from here too.
  */
 
@@ -14,7 +16,10 @@ export interface GameServer {
   path: string; // the address segment, as written in links ("Homecoming"); read in any case
   data: string; // its data folder under the site base: versions.json and one folder per game version
   logo: string; // its logo under the site base (public/servers/)
-  midsDb: string; // the name Mids gives its database (BuiltWith.Database)
+  midsDb?: string; // the name Mids gives its database (BuiltWith.Database); none: Mids has no database for it
+  buildSave: boolean; // its game client writes /build_save files (build.txt) the planner can import
+  versionPrefix?: string; // every game version id of its starts with this (the pipeline enforces it); the default server has none
+  ioLevelsAbove?: number; // how far an IO or set piece's level may be above the character's and still work; omitted: the boost effect table's length - 1 (3, Homecoming's client)
 }
 
 /** The server new visitors start on (the most played), and the one builds without a server belong to. */
@@ -25,8 +30,28 @@ export const DEFAULT_SERVER = 'homecoming';
  * (public/servers/rebirth.webp); it gets an entry here once its data is exported (to data/rebirth/).
  */
 export const SERVERS: readonly GameServer[] = [
-  { id: 'homecoming', label: 'Homecoming', path: 'Homecoming', data: 'data/', logo: 'servers/homecoming.webp', midsDb: 'Homecoming' },
+  { id: 'homecoming', label: 'Homecoming', path: 'Homecoming', data: 'data/', logo: 'servers/homecoming.webp', midsDb: 'Homecoming', buildSave: true },
+  // Thunderspy's client has no /build_save, and MidsReborn has no Thunderspy database. Its
+  // power_MinBoostUseLevel gives an IO or set piece (BoostIgnoreEffectiveness) no levels below its
+  // own: MAX(MinSlotLevel, level), where Homecoming's takes level - 3 (seen in Thunderspy.exe)
+  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts', ioLevelsAbove: 0 },
 ];
+
+/**
+ * The server a game version id belongs to: the one whose `versionPrefix` it starts with, else the
+ * default server, whose ids carry none.
+ *
+ * A share code names its game version but not its server, and each server numbers its powers on its
+ * own. The pipeline gives every server's ids its prefix (Thunderspy's release 9.6 is "ts9-6") and
+ * refuses a Homecoming id that starts with another's, so the id alone tells the server: no server's
+ * version list has to be downloaded, and a link never fails because another server's files won't load.
+ *
+ * @param version The version id ("i28p4", "ts9-6").
+ * @return Its server.
+ */
+export function versionServer(version: string): GameServer {
+  return SERVERS.find((s) => s.versionPrefix && version.startsWith(s.versionPrefix)) ?? defaultServer();
+}
 
 /** @return The server with this id, or undefined when the site doesn't carry it. */
 export function serverById(id: string | undefined): GameServer | undefined {
@@ -36,6 +61,12 @@ export function serverById(id: string | undefined): GameServer | undefined {
 /** @return The default server. */
 export function defaultServer(): GameServer {
   return serverById(DEFAULT_SERVER)!;
+}
+
+/** @return The carried server whose Mids database has this name (any case), or undefined. */
+export function serverByMidsDb(db: string | undefined): GameServer | undefined {
+  const d = db?.toLowerCase();
+  return d ? SERVERS.find((s) => s.midsDb?.toLowerCase() === d) : undefined;
 }
 
 /** @return The server id a build belongs to (one that names none is Homecoming's). */

@@ -3,7 +3,8 @@
  * bookmark of the page (whose address holds the build) keeps it safe.
  */
 import { describe, expect, it } from 'vitest';
-import { saveReminder } from '../src/ui/screens/BuildMenu.tsx';
+import { serverById, SERVERS } from '../src/data/servers.ts';
+import { saveFailedText, saveReminder } from '../src/ui/screens/BuildMenu.tsx';
 
 describe('saveReminder', () => {
   it('says the build is not on a server and asks for a bookmark', () => {
@@ -20,5 +21,19 @@ describe('saveReminder', () => {
     expect(saveReminder(false).text).toContain('Ctrl+D');
     expect(saveReminder(true).text).not.toContain('Ctrl+D');
     expect(saveReminder(true).text).toContain("browser's menu");
+  });
+});
+
+describe('saveFailedText', () => {
+  it('names the Mids download only on a server whose menu offers it', () => {
+    expect(saveFailedText(serverById('homecoming')!)).toContain('Download Mids .mbd');
+    const thunderspy = serverById('thunderspy')!;
+    expect(thunderspy.midsDb).toBeUndefined();
+    expect(saveFailedText(thunderspy)).not.toMatch(/Mids/);
+    for (const s of SERVERS) {
+      const t = saveFailedText(s);
+      expect(t).toContain('Copy share link');
+      expect(t).toMatch(/^[\x20-\x7e]*$/); // ASCII only
+    }
   });
 });

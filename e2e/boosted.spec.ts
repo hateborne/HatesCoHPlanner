@@ -156,7 +156,7 @@ test('Symphony / Dark Dominator, enhancements boosted and attuned at random', as
   const seed = Number(process.env.HCP_E2E_SEED) || Math.floor(Math.random() * 2 ** 31);
   info.annotations.push({ type: 'seed', description: String(seed) });
   const me = new Player(page, info.project.name === 'phone');
-  await page.goto('./');
+  await page.goto('./Homecoming/'); // the site root asks for a server once there is more than one
 
   const target = await me.importBuild(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', FILE), 'utf-8'));
   const { want, placements, log } = plan(target, seeded(seed));

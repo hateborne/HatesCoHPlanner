@@ -18,9 +18,11 @@ import { useStage } from './Stage.tsx';
  * alignment and build type) gets a row of check bars per choice under the text; an option that
  * can't be picked is greyed, with its reason under the row. A message (tell: an import that failed or
  * left gaps) has one OK button; a countdown message (tell's `wait`: a build whose power sets can't
- * go together) shows the seconds left on it, greyed, until it unlocks.
- * Escape cancels (a countdown message: once OK unlocks); clicking outside does nothing, so a stray
- * click can't decide for you. It sits above the Build menu's overlay (100), which asks some of these
+ * go together) shows the seconds left on it, greyed, until it unlocks. A question with two ways
+ * forward (askThreeWay: start a new build or open the remembered one) has a third button between
+ * them and Cancel.
+ * Escape cancels (a countdown message: once OK unlocks), and Cancel starts with the keyboard focus;
+ * clicking outside does nothing, so a stray click can't decide for you. It sits above the Build menu's overlay (100), which asks some of these
  * questions.
  */
 /**
@@ -88,7 +90,8 @@ export function ConfirmDialog() {
   const listBottom = y0(stage.h, h) + h - (phone ? 100 : 90);
   const x = (stage.w - w) / 2;
   const y = (stage.h - h) / 2;
-  const btnW = Math.min(170, (w - 72) / 2);
+  // askThreeWay's three buttons share the row
+  const btnW = Math.min(170, confirm.altLabel !== undefined && !confirm.alert ? (w - 96) / 3 : (w - 72) / 2);
   const pad = phone ? 24 : 40;
   const rows: ReactElement[] = [];
   let top = y + choicesTop;
@@ -150,9 +153,14 @@ export function ConfirmDialog() {
         <button ref={okRef} className="info-button" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => closeConfirm(true)} aria-disabled={left > 0 || undefined} autoFocus={confirm.alert}>
           {left > 0 ? String(left) : (confirm.okLabel ?? 'Proceed')}
         </button>
+        {confirm.alert || confirm.altLabel === undefined ? null : (
+          <button className="info-button" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => closeConfirm('alt')}>
+            {confirm.altLabel}
+          </button>
+        )}
         {confirm.alert ? null : (
           <button className="info-button" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => closeConfirm(false)} autoFocus>
-            Cancel
+            {confirm.cancelLabel ?? 'Cancel'}
           </button>
         )}
       </div>
