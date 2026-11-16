@@ -6,7 +6,7 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverByMidsDb, SERVERS, type GameServer } from '../data/servers.ts';
-import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
+import { stripHidden, toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
 import { defaultOn, defaultsOf, exclusiveGroups } from '../engine/totals.ts';
@@ -607,7 +607,106 @@ function payloadAfterHeader(text: string, header: RegExpMatchArray): string {
   return text.slice((header.index ?? 0) + header[0].length).replace(/[|\s]/g, '');
 }
 
-async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise<{ mbd: Mbd; warnings: string[] }> {
+/** One power line of a posted Hero Plan: the level it was taken at (1-based) and its display name. */
+export interface PlanEntry {
+  level: number;
+  name: string;
+}
+
+// Limits on the Hero Plan text read above a chunk (it comes from a stranger)
+const PLAN_MAX_CHARS = 64_000;
+const PLAN_MAX_LINE = 400;
+const PLAN_MAX_ENTRIES = 200;
+const PLAN_MAX_NAME = 80;
+
+/**
+ * The power lines of a "Hero Plan by Mids' Hero Designer" post ("Level 8: Unyielding -- <enhancements>").
+ *
+ * @param head The text above the data chunk.
+ * @return The lines' levels and names, in order (a power with no enhancements has no "--").
+ */
+function parseHeroPlan(head: string): PlanEntry[] {
+  const out: PlanEntry[] = [];
+  for (const raw of head.slice(0, PLAN_MAX_CHARS).split('\n')) {
+    if (out.length >= PLAN_MAX_ENTRIES) break;
+    if (raw.length > PLAN_MAX_LINE) continue;
+    const m = /^\s*Level\s+(\d{1,2})\s*:\s*(.*)$/.exec(stripHidden(raw));
+    if (!m) continue;
+    const level = Number(m[1]);
+    const name = m[2]!.split(' -- ')[0]!.replace(/\s+/g, ' ').trim();
+    if (level < 1 || level > 50 || !name || name.length > PLAN_MAX_NAME) continue;
+    out.push({ level, name });
+  }
+  return out;
+}
+
+/**
+ * Name the chunk's unidentified powers from the Hero Plan text.
+ *
+ * For each, the unused plan lines at its level are matched against the powers a player picks in
+ * the chunk's own sets and the inherent sets (display name first, then the internal name's last
+ * part). It is named only when that is exactly one power the chunk hasn't already identified.
+ *
+ * @param gd Game data.
+ * @param t The translator.
+ * @param sets The chunk's power set names.
+ * @param cls The chunk's archetype name.
+ * @param plan The Hero Plan's power lines.
+ * @param known Powers the chunk identified itself (never reassigned).
+ * @param lost The unidentified entries (their Level is 1-based).
+ * @return The internal power name for each entry that could be named.
+ */
+function planNames(gd: GameData, t: Translator, sets: string[], cls: string, plan: readonly PlanEntry[], known: Set<number>, lost: MbdPower[]): Map<MbdPower, string> {
+  const ids = new Set<number>();
+  for (const n of sets) {
+    const id = n ? setIdFor(gd, t, n) : undefined;
+    if (id !== undefined) ids.add(id);
+  }
+  const inherent = gd.archetypeByName.get(cls.toLowerCase())?.cats.inherent;
+  for (const id of (inherent && gd.core.categories[inherent]) || []) ids.add(id);
+  const key = (x: string) => x.replace(/\s+/g, ' ').trim().toLowerCase();
+  const byDisplay = new Map<string, Set<number>>();
+  const byInternal = new Map<string, Set<number>>();
+  const add = (m: Map<string, Set<number>>, k: string, pid: number) => m.set(k, (m.get(k) ?? new Set()).add(pid));
+  for (const id of ids) {
+    const s = gd.setById.get(id);
+    s?.p.forEach((pid, i) => {
+      if ((s.av[i] ?? -1) < 0 || known.has(pid)) return; // only powers a player picks
+      const pw = gd.power(pid);
+      add(byDisplay, key(pw.dn), pid);
+      add(byInternal, key((pw.n.split('.').pop() ?? '').replace(/_/g, ' ')), pid);
+    });
+  }
+  const out = new Map<MbdPower, string>();
+  const usedLines = new Set<number>();
+  const taken = new Set<number>();
+  for (const e of lost) {
+    const found = new Map<number, number>(); // power id -> plan line, over the unused lines at its level
+    plan.forEach((pl, li) => {
+      if (pl.level !== e.Level || usedLines.has(li)) return;
+      const k = key(pl.name);
+      const hit = byDisplay.get(k) ?? byInternal.get(k);
+      for (const pid of hit ?? []) if (!taken.has(pid)) found.set(pid, li);
+    });
+    if (found.size !== 1) continue;
+    const [pid, li] = [...found][0]!;
+    usedLines.add(li);
+    taken.add(pid);
+    out.set(e, gd.power(pid).n);
+  }
+  return out;
+}
+
+/**
+ * Read a legacy |MxDz; chunk into a build file.
+ *
+ * @param gd Game data.
+ * @param map Mids map.
+ * @param bytes The inflated chunk.
+ * @param plan The Hero Plan lines posted above the chunk, naming powers its indexes can't identify.
+ * @return The build file and the warnings.
+ */
+async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array, plan: readonly PlanEntry[] = []): Promise<{ mbd: Mbd; warnings: string[] }> {
   const t = new Translator(gd, map);
   const warn: string[] = [];
   const r = new ByteReader(bytes);
@@ -654,6 +753,8 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     return { Uid: e.uid, IoLevel: a, RelativeLevel: RELATIVE[bb] ?? 'Even', Grade: 'None' };
   };
   const entries: MbdPower[] = [];
+  const knownPids = new Set<number>(); // powers the chunk itself identified
+  const lost: { entry: MbdPower; text: string }[] = []; // unidentified powers; text is '' when they'd be left out quietly
   for (let i = 0; i <= nPowers; i++) {
     let powerName = '';
     let level = -1;
@@ -665,6 +766,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
       const pid = qualified ? t.power(pname) : t.powerBySi.get(si);
       powerName = pid !== undefined ? gd.power(pid).n : '';
       unknown = pid === undefined;
+      if (pid !== undefined) knownPids.add(pid);
       level = r.i8() + 1;
       stat = r.bool();
       if (v310) r.bool();
@@ -693,14 +795,22 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     // as importMbd does: past the picks, an unknown power with no enhancements is one the game
     // grants that Mids names its own way (Afterburner) or the data lacks (Fast_Snipe), or one the
     // planner doesn't plan (Incarnate powers): nothing is lost, so it is left out without a warning
-    if (unknown && (i < picks || held)) warn.push(`A power couldn't be identified${pname ? ` (${readablePower(pname)})` : ''}, so it was left out`);
-    entries.push({ PowerName: powerName, Level: level, StatInclude: stat, SlotEntries: slots });
+    const entry: MbdPower = { PowerName: powerName, Level: level, StatInclude: stat, SlotEntries: slots };
+    if (unknown) lost.push({ entry, text: i < picks || held ? `A power couldn't be identified${pname ? ` (${readablePower(pname)})` : ''}, so it was left out` : '' });
+    entries.push(entry);
+  }
+  // the posted plan names what the chunk's indexes couldn't; a name that isn't exactly one power stays lost
+  const named = plan.length > 0 && lost.length > 0 ? planNames(gd, t, sets, cls, plan, knownPids, lost.filter((l) => l.entry.Level >= 1).map((l) => l.entry)) : new Map<MbdPower, string>();
+  for (const l of lost) {
+    const n = named.get(l.entry);
+    if (n) l.entry.PowerName = n;
+    else if (l.text) warn.push(l.text);
   }
   return { mbd: { Class: cls, Origin: origin, Alignment: align, Name: name, PowerSets: sets, PowerEntries: entries }, warnings: warn };
 }
 
 /** Mids text decoded into a build file, before it is matched against a game version's data. */
-export type MidsParsed = { kind: 'mbd'; mbd: Mbd } | { kind: 'mxdz'; raw: Uint8Array };
+export type MidsParsed = { kind: 'mbd'; mbd: Mbd } | { kind: 'mxdz'; raw: Uint8Array; plan?: PlanEntry[] };
 
 /**
  * Decode any Mids text: a .mbd JSON document, a |MBD; chunk, a raw MBD share string, or a legacy
@@ -730,7 +840,8 @@ export async function parseMidsText(text: string): Promise<MidsParsed> {
     const comp = new Uint8Array(hex.length / 2);
     for (let i = 0; i < comp.length; i++) comp[i] = parseInt(hex.substr(i * 2, 2), 16);
     try {
-      return { kind: 'mxdz', raw: await streamBytes(comp, 'deflate', false) };
+      const plan = parseHeroPlan(trimmed.slice(0, mxdHead.index ?? 0));
+      return { kind: 'mxdz', raw: await streamBytes(comp, 'deflate', false), ...(plan.length ? { plan } : {}) };
     } catch {
       throw DAMAGED_CODE();
     }
@@ -863,7 +974,7 @@ export async function importParsed(gd: GameData, map: MidsMap, p: MidsParsed): P
   if (p.kind === 'mbd') return importMbd(gd, map, p.mbd);
   let legacy: { mbd: Mbd; warnings: string[] };
   try {
-    legacy = await mxdzToMbd(gd, map, p.raw);
+    legacy = await mxdzToMbd(gd, map, p.raw, p.plan);
   } catch (e) {
     throw e instanceof EndOfData ? DAMAGED_CODE() : e; // the data ran out: a damaged code
   }

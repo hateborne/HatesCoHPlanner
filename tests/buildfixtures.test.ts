@@ -71,4 +71,55 @@ describe('forum build fixtures import', () => {
     expect(havoc?.slots.map((s) => s.level + 1)).toEqual([1, 3, 3, 5, 5, 7]);
     expect(new BuildRules(gd, build).issues()).toEqual([]);
   });
+
+  /** The Hero Plan lines of a retail post: level and display name (the plan lists powers by display name). */
+  const planOf = (text: string) =>
+    [...text.matchAll(/^Level (\d+): ([^\n]*?)(?: --.*)?\s*$/gm)].map((m) => ({ level: Number(m[1]), name: m[2]!.trim() })).filter((e) => e.name);
+
+  /** Every imported pick's display name is the plan's name at that level (a shared level: each name used once). */
+  const expectPicksMatchPlan = (text: string, build: ReturnType<typeof importMbd>['build']) => {
+    const plan = planOf(text);
+    for (const p of build.picks) {
+      if (!p) continue;
+      const pw = gd.power(p.power);
+      // a power the game renamed since (Afterburner is Evasive Maneuvers now) still has its old name in its internal name; every other pick matches by display name
+      const old = (pw.n.split('.').pop() ?? '').replace(/_/g, ' ');
+      const at = plan.findIndex((e) => e.level === p.level + 1 && (e.name === pw.dn || e.name === old));
+      expect(at, `${pw.dn} at level ${p.level + 1}`).toBeGreaterThanOrEqual(0);
+      plan.splice(at, 1);
+    }
+  };
+
+  // retail-era Mids (1.95x) posts: the Hero Plan text, then a legacy |MxDz; chunk whose power indexes
+  // the shipped map lacks for two powers; the posted plan names them
+  it('retail Fire/Kin Controller: Afterburner comes from the Hero Plan text', async () => {
+    const text = fixture('retail-fire-kin-controller.txt');
+    const { build, warnings } = await importMidsText(gd, map, text);
+    expect(gd.archetype(build.at).n).toBe('Class_Controller');
+    expect(gd.powerset(build.primary).n).toBe('Controller_Control.Fire_Control');
+    expect(gd.powerset(build.secondary).n).toBe('Controller_Buff.Kinetics');
+    expect(build.picks.filter(Boolean)).toHaveLength(24);
+    expect(warnings).toEqual([]);
+    const afterburner = build.picks.find((p) => p?.power === pid(gd, 'Pool.Flight.Afterburner'));
+    expect(afterburner?.level).toBe(29); // level 30
+    expectPicksMatchPlan(text, build);
+    expect(new BuildRules(gd, build).issues().map((i) => i.message)).toEqual([]);
+  });
+
+  it('retail Inv/SS Tanker: Unyielding comes from the Hero Plan text', async () => {
+    const text = fixture('retail-inv-ss-tanker.txt');
+    const { build, warnings } = await importMidsText(gd, map, text);
+    expect(gd.archetype(build.at).n).toBe('Class_Tanker');
+    expect(gd.powerset(build.primary).n).toBe('Tanker_Defense.Invulnerability');
+    expect(gd.powerset(build.secondary).n).toBe('Tanker_Melee.Super_Strength');
+    expect(build.picks.filter(Boolean)).toHaveLength(24);
+    expect(warnings).toEqual([]);
+    const unyielding = build.picks.find((p) => p?.power === pid(gd, 'Tanker_Defense.Invulnerability.Unyeilding_Stance'));
+    expect(unyielding?.level).toBe(7); // level 8
+    expectPicksMatchPlan(text, build);
+    // Knockout Blow at level 20 is flagged: Homecoming moved it to level 24 (the build is legal on retail)
+    const issues = new BuildRules(gd, build).issues();
+    expect(issues.map((i) => i.message)).toEqual(['Available at level 24']);
+    expect(gd.power(build.picks.find((p) => p?.level === 19)!.power).dn).toBe('Knockout Blow');
+  });
 });
