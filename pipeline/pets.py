@@ -70,9 +70,10 @@ def main() -> int:
         print(f"error: decode health gate failed ({', '.join(bad)}); nothing was written")
         return 1
     ex = export.Exporter(data)
+    ex.use_pvp_test(made.get("pvpTest", 1))  # the PvP-only test the version was made with
     powers = json.loads((config.DATA_OUT / version / "powers.json").read_text(encoding="utf-8"))
-    if not ex.match_pvp_test(powers):
-        print(f"error: {rel}'s effect groups match neither PvP-only test the export has used (the "
+    if not ex.reproduces(powers):
+        print(f"error: {rel}'s effect groups differ from what its PvP-only test makes now (the "
               "pipeline changed since it was made?); nothing was written")
         return 2
     ex.build()                   # what the version exports; its ids are never saved here

@@ -22,7 +22,7 @@ from pipeline.coh.p7reader import param_power_names
 from pipeline.decode.live import LiveData, sha1
 from pipeline.forced_respec import forced_respec_warnings
 from pipeline.ids import IdRegistry
-from pipeline.pvp import pvp_requires, pvp_requires_v1
+from pipeline.pvp import PVP_TEST, PVP_TESTS
 
 # special attributes whose mods name powers in their Params (481, 482, 486, 512 on Homecoming and
 # Thunderspy; looked up by name so another client's numbering can't miss them)
@@ -110,8 +110,10 @@ class Exporter:
         self.report: dict = {"missing_text": Counter(), "unresolved_refs": Counter(),
                              "pvp_effects_dropped": 0, "no_frames": 0}
         self.used_tables: set[str] = set()
-        # the PvP-only test by requirement: pvp_requires, or a published version's own (match_pvp_test)
-        self.pvp_test = pvp_requires
+        # the PvP-only test by requirement (pipeline/pvp.py): the current one, or a published
+        # version's own (use_pvp_test)
+        self.pvp_test_id = PVP_TEST
+        self.pvp_test = PVP_TESTS[PVP_TEST]
 
     # ---- helpers ------------------------------------------------------------------------------
     def text(self, key: str) -> str:
@@ -267,31 +269,43 @@ class Exporter:
         en = self.E.get("effect.Flags", {})
         return [n for bit, n in sorted(en.items()) if v & bit]
 
-    def match_pvp_test(self, powers: list[dict]) -> bool:
-        """Take the PvP-only test a published version was made with: the one whose groups are the
-        version's own, so a file remade beside it (its pets file) agrees with it.
+    def use_pvp_test(self, test_id) -> None:
+        """Make the groups with one of the PvP-only tests (pvp.PVP_TESTS): a published version's
+        own, as its manifest records it (pvpTest; none: 1), so remaking it or a file beside it gives
+        what was published.
 
-        Run before build(); the tables and report counts the trial conversions touch are put back.
+        @param test_id The test's number.
+        @raise SystemExit For a number this pipeline doesn't know (nothing is written).
+        """
+        if test_id not in PVP_TESTS:
+            raise SystemExit(f"error: the version was made with PvP-only test {test_id!r}, which this "
+                             "pipeline doesn't know. Nothing was written.")
+        self.pvp_test_id = test_id
+        self.pvp_test = PVP_TESTS[test_id]
+
+    def reproduces(self, powers: list[dict]) -> bool:
+        """Whether the groups made now are a published version's own, so a file remade beside it
+        agrees with it.
+
+        Run before build(): the trial conversions leave nothing behind (the tables and report
+        counts they touch, the ids they allocate are all put back).
 
         @param powers The version's power records as written (powers.json).
-        @return Whether a test matched (then it is taken); False leaves pvp_requires.
+        @return Whether every power's groups are the written ones.
         """
         tables = set(self.used_tables)
         counted = {k: (Counter(v) if isinstance(v, Counter) else v) for k, v in self.report.items()}
-        found = False
-        for test in (pvp_requires, pvp_requires_v1):
-            self.pvp_test = test
-            if all((self.conv_effects(self.pw[p["n"]].get("Effect")),
+        maps = {k: dict(v) for k, v in self.ids.maps.items()}
+        added = dict(self.ids.added)
+        same = all((self.conv_effects(self.pw[p["n"]].get("Effect")),
                     self.conv_effects(self.pw[p["n"]].get("ActivationEffect")))
-                   == (p.get("eff") or [], p.get("act") or []) for p in powers if p["n"] in self.pw):
-                found = True
-                break
-        if not found:
-            self.pvp_test = pvp_requires
+                   == (p.get("eff") or [], p.get("act") or []) for p in powers if p["n"] in self.pw)
         self.used_tables = tables
         self.report.clear()
         self.report.update(counted)
-        return found
+        self.ids.maps = maps
+        self.ids.added = added
+        return same
 
     def conv_effects(self, effs, ids: bool = True) -> list:
         """Effect groups in the site's short form, PvP-only groups dropped.
@@ -1000,19 +1014,31 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     @raise SystemExit When the folder was made from a different client and overwriting wasn't asked.
     """
     ex = Exporter(live)          # refuses to run if the ids file is gone while data exists
-    # a published folder is remade with the PvP-only test it was made with, so a run from its own
-    # client reproduces it (pipeline/pvp.py); the newer test reaches only a new version
+    root = config.DATA_OUT / version
+    source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
+              "bin_powers.pigg": sha1(config.POWERS_PIGG)}
+    old = None
     try:
-        published = json.loads((config.DATA_OUT / version / "powers.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        published = None
-    matched = published is None or ex.match_pvp_test(published)
+        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
+    except (OSError, ValueError, KeyError):
+        pass
+    # the PvP-only test (pipeline/pvp.py): a folder published from this client keeps the one it was
+    # made with (its manifest's pvpTest; none: 1), so a run reproduces it; anything else gets the
+    # current one, which the manifest records
+    same_client = bool(old) and old.get("source") == source
+    ex.use_pvp_test(old.get("pvpTest", 1) if same_client else PVP_TEST)
+    reproduced = True
+    if same_client:
+        try:
+            reproduced = ex.reproduces(json.loads((root / "powers.json").read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            pass
     out = ex.build()
     pets = ex.build_pets()       # beside the version folder; changes nothing build() made
     warnings: list[str] = forced_respec_warnings(live.classes, ex.class_cats, ex.cats, ex.sets)
-    if not matched:
-        warnings.append(f"WARNING: {data_rel(version)}'s effect groups match neither PvP-only test "
-                        "(pipeline.pvp); this run makes them with pvp_requires")
+    if not reproduced:
+        warnings.append(f"WARNING: {data_rel(version)}'s effect groups differ from what its PvP-only test "
+                        f"({ex.pvp_test_id}) makes now: the pipeline changed since it was made?")
     frames: dict | None = None
     if ex.report["no_frames"]:
         if frames_from:
@@ -1048,15 +1074,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
         if mids.get("skipped") and not any("Mids map" in w for w in warnings):
             warnings.append(f"WARNING: Mids map skipped ({mids['skipped']})")
 
-    root = config.DATA_OUT / version
-    source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
-              "bin_powers.pigg": sha1(config.POWERS_PIGG)}
     # nothing is written yet: a folder made from another client stops the run here
-    old = None
-    try:
-        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
-    except (OSError, ValueError, KeyError):
-        pass
     if old and old.get("source") and old["source"] != source:
         if not overwrite_published:
             raise SystemExit(
@@ -1101,6 +1119,8 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     }
     if frames and frames["by_name"] + frames["by_set"]:
         manifest["framesFrom"] = frames_from  # enhancement frame art borrowed from that version
+    if ex.pvp_test_id != 1:
+        manifest["pvpTest"] = ex.pvp_test_id  # the PvP-only test its groups were made with (pipeline/pvp.py)
     out["core"]["manifest"] = manifest
     texts = {n: _dump(out[n]) for n in ("powersets", "powers", "boosts")}
     others = [texts["powersets"], texts["powers"], texts["boosts"]]

@@ -16,7 +16,7 @@ from pipeline import config, export
 from pipeline.coh import p7reader as P
 from pipeline.decode.live import LiveData, ent_create_layout_of
 from pipeline.export import Exporter, ent_create_param
-from pipeline.pvp import pvp_requires, pvp_requires_v1
+from pipeline.pvp import PVP_TEST, PVP_TESTS
 
 # Homecoming's EntCreate param struct (CostumeEffect included) and Thunderspy's (without it)
 HC = [("EntityDef", False), ("Class", False), ("Costume", False), ("DisplayName", False),
@@ -204,28 +204,41 @@ class BuildPetsTest(unittest.TestCase):
         self.assertEqual(dict(self.ex.ids.added), {k: 0 for k in self.ex.ids.added})
 
 
-class MatchPvpTestTest(unittest.TestCase):
-    def test_takes_the_test_the_version_was_made_with(self):
-        # Burn gains a group for bosses "or players": the old test dropped it, pvp_requires keeps it
-        def data():
-            d = live()
-            req = ["arch", "target>", "Class_Boss_Grunt", "eq", "enttype", "target>", "player", "eq", "||"]
-            d.powers[0]["Effect"][0]["Effect"].append(
-                {"Chance": 1.0, "Requires": req, "Flags": 0, "AttribMod": [mod(16, Scale=0.7)], "Effect": []})
-            return d
+class PvpTestTest(unittest.TestCase):
+    """A version's own PvP-only test (its manifest's pvpTest) and the check that it reproduces it."""
+
+    @staticmethod
+    def data() -> LiveData:
+        # Burn gains a group for bosses "or players" that grants a power with no id yet: the first
+        # test dropped the group, the current one keeps it
+        d = live()
+        req = ["arch", "target>", "Class_Boss_Grunt", "eq", "enttype", "target>", "player", "eq", "||"]
+        grant = params([0, 0, 1, 7], {3: "Pets.Zap.Zap"}, n=4)
+        d.powers[0]["Effect"][0]["Effect"].append(
+            {"Chance": 1.0, "Requires": req, "Flags": 0, "AttribMod": [mod(481, Params=grant)], "Effect": []})
+        return d
+
+    def test_reproduces_a_version_with_its_own_test(self):
         burn = "Blaster_Ranged.Fire_Blast.Burn"
-        for test in (pvp_requires, pvp_requires_v1):
-            maker = Exporter(data())
-            maker.pvp_test = test
+        for test_id in (1, 2):
+            maker = Exporter(self.data())
+            maker.use_pvp_test(test_id)
             written = [{"n": burn, "eff": maker.conv_effects(maker.pw[burn]["Effect"])}]
-            ex = Exporter(data())
-            self.assertTrue(ex.match_pvp_test(written))
-            self.assertIs(ex.pvp_test, test)
-            self.assertEqual(ex.used_tables, set())  # the trial conversions leave nothing behind
-            self.assertEqual(ex.report["pvp_effects_dropped"], 0)
-        ex = Exporter(data())
-        self.assertFalse(ex.match_pvp_test([{"n": burn, "eff": []}]))
-        self.assertIs(ex.pvp_test, pvp_requires)
+            for other in (1, 2):
+                ex = Exporter(self.data())
+                ex.use_pvp_test(other)
+                self.assertEqual(ex.reproduces(written), other == test_id, (test_id, other))
+                # the trial conversions leave nothing behind: tables, report counts, ids
+                self.assertEqual(ex.used_tables, set())
+                self.assertEqual(ex.report["pvp_effects_dropped"], 0)
+                self.assertEqual(ex.ids.added, {k: 0 for k in ex.ids.added})
+                self.assertNotIn("pets.zap.zap", ex.ids.maps["power"])
+
+    def test_refuses_a_test_it_does_not_know(self):
+        with self.assertRaises(SystemExit):
+            Exporter(self.data()).use_pvp_test(99)
+        ex = Exporter(self.data())
+        self.assertIs(ex.pvp_test, PVP_TESTS[PVP_TEST])  # a new version gets the current test
 
 
 class PetWarningsTest(unittest.TestCase):
