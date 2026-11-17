@@ -427,10 +427,16 @@ Shield and Quantum Shield list the effects under their "not in Nova form" parent
 - Its operators work on those 0/1 values, so `entref target> entref source> eq !` ("not on itself")
   reads false: such groups are neither listed nor counted (Liquid Nitrogen's pet).
 - A group the check passes counts towards the damage total unless the client writes a requirement
-  note for it (getRequiresString, `requiresNotes`). Its note patterns don't match Homecoming's
-  `kHitPoints%` and `kEndurance%` tokens, so Scourge and Charged Bolts' Zapping groups carry no note
-  and count in full. @TODO confirm in game (a Corruptor's Dark Blast reads 83.42, Blaster Charged
-  Bolts 75.08).
+  note for it (getRequiresString, `requiresNotes`). Each note looks for an exact run of tokens, as
+  in the source. They don't match Homecoming's `kHitPoints%` and `kEndurance%` tokens, so Scourge
+  and Charged Bolts' Zapping groups carry no note and count in full; nor Homecoming's own Containment
+  groups, which open with `kTerrorized` where the note expects `kImmobilized ... kHeld ... || kSleep
+  ... || kStunned ... ||`. Confirmed in game (the owner's checks, November 17, 2026, Homecoming,
+  level 50): a Corruptor's Dark Blast 83.42 with two bare 41.71 lines, Blaster Charged Bolts 75.08,
+  Liquid Nitrogen 423.02 (211.51 per activation), Brute Shadow Maul 97.88.
+- Thunderspy's power info doesn't test a group's PvE/PvP flags at all, so it lists PvP-only groups
+  too (its Twilight Shield's second set of knock protections and 93.42% status resistances, in
+  game). @TODO the export drops PvP-only groups (5 Thunderspy powers carry some, none with damage).
 
 ## Power info wording
 
@@ -442,7 +448,8 @@ From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p
 - A line whose attribute the client can't name (AttrUnknown) is left out. It names only the first
   ten damage types, so Homecoming's Vulnerability lists "resistance to all damage" but none of its
   radiation, electrical, sonic or quantum resistance (in game). Those types only ever come with the
-  other eight.
+  other eight. Likewise the first ten defense types: Evasive Maneuvers lists "+10.50% strength to
+  all defense" but no toxic defense (in game). The Attack Types row still names every type.
 - The Effect Area row: Single Target, Cone, AoE (Sphere), Location, and "Chain -- 15.00 ft. jump
   distance" with its jump radius (Homecoming's Vulnerability, in game), each with "(N targets max)"
   when the power has a target cap. A Map power gets no row.

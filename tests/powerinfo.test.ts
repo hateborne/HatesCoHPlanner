@@ -152,3 +152,44 @@ describe("powerInfo: the client's wording and rows (Homecoming, the owner's scre
     expect(rows(v.target)['Effect Area:']).toBe('Chain -- 15.00 ft. jump distance (5 targets max)');
   });
 });
+
+describe("powerInfo: the owner's second round of checks (Homecoming, level 50, November 17, 2026)", () => {
+  const info = (cls: string, name: string) => powerInfo(gd, gd.archetypeByName.get(cls)!, gd.powerByName.get(name)!, 49, null);
+  const lines = (i: ReturnType<typeof info>) => i.effects.map((e) => [segText(e.line), ...e.notes.map(segText)].join(' / '));
+
+  it("counts Liquid Nitrogen's Containment damage: the client's note needs one exact run of tokens", () => {
+    const s = rows(info('class_controller', 'controller_control.arsenal_control.liquid_nitrogen').stats);
+    expect([s['Average Damage:'], s['Damage Per Activation Time:']]).toEqual(['423.02', '211.51']);
+  });
+
+  it('lists Evasive Maneuvers without a toxic defense line', () => {
+    expect(lines(info('class_blaster', 'pool.flight.afterburner'))).toEqual([
+      '8.30 immobilize protection on self / Ignores buffs and enhancements / Unresistable',
+      '48.44% resistance to knockup on self / Ignores buffs and enhancements / Unresistable',
+      '48.44% resistance to knockback on self / Ignores buffs and enhancements / Unresistable',
+      '+10.50% strength to all defense on self / Unresistable',
+    ]);
+  });
+
+  it("shows Charged Brawl's 20% on the sleep only: the recovery debuff has a duration of its own", () => {
+    expect(lines(info('class_blaster', 'blaster_support.electricity_manipulation.charged_brawl')).slice(0, 7)).toEqual([
+      '53.39 smashing damage on target',
+      '55.61 energy damage on target',
+      '-7.00% endurance on target',
+      '20.00% chance for 3.00 magnitude sleep for 11.92s on target after 0.25s delay',
+      '-100.00% recovery rate for 2.00s on target',
+      '30.00% chance for 5.09 endurance on self / Unresistable',
+      '+5.50% strength to all damage for 8.33s on self / Ignores buffs and enhancements / Unresistable',
+    ]);
+  });
+
+  it("lists a Corruptor's Scourge hit as a second bare line", () => {
+    const i = info('class_corruptor', 'corruptor_ranged.dark_blast.dark_blast');
+    expect(rows(i.stats)['Average Damage:']).toBe('83.42');
+    expect(lines(i)).toEqual(['41.71 negative energy damage on target', '41.71 negative energy damage on target', '-7.50% to hit for 6.00s on target']);
+  });
+
+  it('still names a toxic attack type', () => {
+    expect(rows(info('class_tanker', 'tanker_melee.radiation_melee.atom_smasher').target)['Attack Types:']).toBe('AoE defense, toxic defense');
+  });
+});

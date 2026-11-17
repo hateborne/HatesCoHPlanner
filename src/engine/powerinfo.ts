@@ -444,7 +444,9 @@ function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean): stri
     if (has('kStealthsource>0.5>')) add('Only while domination is active');
     if (has('kHitPointstarget>10-100*5010-/0100minmaxrand100*'))
       add('2.5% chance per every percentage point targets health is below 50%');
-    if (has('kImmobilizedtarget>0>') && has('kHeldtarget>0>') && has('kStunnedtarget>0>'))
+    // one exact run of tokens, as the client and the source test it: Homecoming's own Containment
+    // groups (kTerrorized first) carry no note, and their damage counts (Liquid Nitrogen, in game)
+    if (has('kImmobilizedtarget>0>kHeldtarget>0>||kSleeptarget>0>||kStunnedtarget>0>||'))
       add('Only against immobilized, held, sleeping or stunned targets');
     if (has('originsource>')) {
       const origins: string[] = [];
@@ -606,19 +608,25 @@ export function powerInfo(
     // can't name (AttrUnknown), so Vulnerability lists no radiation, electrical, sonic or quantum
     // resistance beside "all damage", as in game
     if (offset >= 0 && offset < 80) return DAMAGE_NAMES[offset / 4] ?? null;
+    // likewise the first ten defense types only: Evasive Maneuvers lists no toxic defense beside
+    // "all defense", as in game (the Attack Types row names them all: defenseTypeName)
     const d0 = O['DefenseType00'] ?? 104;
-    if (offset >= d0 && offset < d0 + 80) {
-      const i = (offset - d0) / 4;
-      const nm = DEFENSE_NAMES[i];
-      if (nm) return nm;
-      const dn = gd.core.attribNames.Defense[i]?.dn;
-      return dn ? dn.replace(/_/g, ' ').toLowerCase() : 'unique';
-    }
+    if (offset >= d0 && offset < d0 + 80) return DEFENSE_NAMES[(offset - d0) / 4] ?? null;
     const raw = gd.attribName.get(offset);
     if (!raw) return null;
     const known = ATTR_NAMES[raw];
     if (known) return known;
     return raw.replace(/([a-z])([A-Z0-9])/g, '$1 $2').toLowerCase();
+  };
+
+  /** @return A defense type's name for the Attack Types row (toxic past the first ten), or null. */
+  const defenseTypeName = (offset: number): string | null => {
+    const i = (offset - (O['DefenseType00'] ?? 104)) / 4;
+    if (i < 0 || i >= 20) return null;
+    const nm = DEFENSE_NAMES[i];
+    if (nm) return nm;
+    const dn = gd.core.attribNames.Defense[i]?.dn;
+    return dn ? dn.replace(/_/g, ' ').toLowerCase() : 'unique';
   };
 
   const eff = (off: number | undefined) => str(off);
@@ -956,9 +964,9 @@ export function powerInfo(
   }
   if (power.atk && power.atk.length) {
     const names = power.atk.map((o) => {
-      const n = attrName(o);
-      const d0 = O['DefenseType00'] ?? 104;
-      return n && o >= d0 && o < d0 + 80 ? `${n} defense` : (n ?? String(o));
+      const d = defenseTypeName(o);
+      if (d) return `${d} defense`;
+      return attrName(o) ?? String(o);
     });
     target.push(row(TXT.attackTypes, `<color #ffffff>${names.join(', ')}`));
   }
