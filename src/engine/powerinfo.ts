@@ -497,7 +497,8 @@ interface Tmpl {
   shown: number; // 0..1, the group chance its line reads: `chance`, or its group's tag mode's chance
   mode: string | null; // a tag mode's note (tagMode): its line is listed whatever its chance
   tick: number; // 0..1, the mod's tick chance
-  hide: boolean; // a pet's HideFromInfo or PPM group: counted in its damage, not listed
+  hide: boolean; // a HideFromInfo or PPM group: not listed
+  counted: boolean; // its damage counts in the total (a pet's hidden groups' does, the character's own don't)
   delay: number;
   reqs: string[][];
   tags: string[];
@@ -717,8 +718,9 @@ export function powerInfo(
    * Each template keeps its own group's chance and its tick chance apart: the live client's
    * getTotalDamage and power_AddEffects read only the template's own group's chance, never a parent
    * group's (decompiled; confirmed in game: Executioner's Shot's crits, Thunder Strike's team crits).
-   * A pseudo-pet's power (`pet`) is walked as getTotalDamage reads every template: its HideFromInfo
-   * and PPM groups count too (marked `hide`, as they aren't listed).
+   * HideFromInfo and PPM groups are walked too (marked `hide`, as they aren't listed): the client's
+   * markAllTypes counts them, and so does a pseudo-pet's damage (`pet`; the character's own powers'
+   * stay out of the total, the owner's decision).
    *
    * A group with a tag mode (tagMode) shows the mode's chance on its own lines in place of its own;
    * the damage total keeps the group's own chance.
@@ -744,8 +746,8 @@ export function powerInfo(
     const owner = ec.ownerProp ? String(ec.ownerProp('archetype')) : null;
     for (const e of effs ?? []) {
       if (e.fl?.includes('PVPOnly')) continue;
+      // a hidden group is walked too: the client's markAllTypes counts it, and a pet's damage does
       const hide = hidden || !!e.fl?.includes('HideFromInfo') || !!e.ppm;
-      if (hide && !pet) continue;
       const chance = e.ch ?? 1;
       // the requirements its line and damage read: Homecoming's client reads every group above too
       // (its check and its notes walk the parents), Thunderspy's the group's own only
@@ -770,6 +772,7 @@ export function powerInfo(
           mode: mode?.note ?? null,
           tick: tc,
           hide,
+          counted: pet || !hide,
           delay: m.del ?? e.del ?? 0,
           reqs: rq,
           tags: e.tag ?? [],
@@ -823,7 +826,7 @@ export function powerInfo(
     let base = 0;
     let total = 0;
     for (const t of tmpls) {
-      if (t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs') continue;
+      if (!t.counted || t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs') continue;
       if (requiresNotes(t.reqs, true).length) continue;
       const { mag, dur } = magAndDur(table(t.m.tbl), t.m);
       if (!(mag < 0)) continue;

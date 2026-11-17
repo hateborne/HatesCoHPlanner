@@ -447,9 +447,9 @@ From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p
   (Homecoming's Hail of Bullets, in game). Both clients do it.
 - "All damage" and "all defense" (markAllTypes in the source; Homecoming 0x1404e1540 and
   Thunderspy 0x1404d6af0, which walk each effect's attribute list; `markAllTypes` in
-  `src/engine/powerinfo.ts`). For each target, kind
-  and aspect the client walks the power's effects in order: a damage type (offsets 0..79) or defense
-  type (the 20 typed defenses) of that aspect must carry the same Magnitude + Scale as the group's
+  `src/engine/powerinfo.ts`). For each target, kind and aspect the client walks all the power's
+  effects in order, hidden ones included: a damage type (offsets 0..79) or defense type (the 20
+  typed defenses) of that aspect must carry the same Magnitude + Scale as the group's
   first, else the rest of that effect is passed over; each adds its type's bit, and whenever the mask
   holds exactly smashing, lethal, fire, cold, energy, negative energy, psionic and toxic (the first
   ten defense types) one more group counts and the value clears. On the lines, a group's first type

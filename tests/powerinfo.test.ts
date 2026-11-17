@@ -221,6 +221,13 @@ describe('powerInfo: "all damage" and "all defense" groups (markAllTypes, both c
     expect(lines([res([...EIGHT, 40], 1), res(EIGHT, 2)])).toEqual(['resistance to all damage on self']);
   });
 
+  it('counts a hidden effect towards a group, as the client walks every effect', () => {
+    // the toxic type sits in a HideFromInfo group: not listed, yet it completes the group
+    const p = { ...base, act: undefined, eff: [{ m: [res(EIGHT.slice(0, 7), 1)] }, { fl: ['HideFromInfo'], m: [res([36], 1)] }] };
+    const got = powerInfo(gd, at, p, 49, null).effects.map((e) => segText(e.line).replace(/^\+?[\d.]+% /, ''));
+    expect(got).toEqual(['resistance to all damage on self']);
+  });
+
   it('keeps a lone toxic defense line (no group): Invincibility, Homecoming', () => {
     const inv = powerInfo(gd, gd.archetypeByName.get('class_tanker')!, gd.powerByName.get('tanker_defense.invulnerability.invincibility')!, 49, null);
     expect(inv.effects.some((e) => segText(e.line).includes('toxic defense'))).toBe(true);
