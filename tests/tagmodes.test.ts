@@ -83,11 +83,13 @@ describe('tag modes on Homecoming', () => {
     expect(stats['Average Damage:']).toBe('189.22');
   });
 
-  it('changes only the lines of a group with a mode: an untagged sub-group keeps its chances', () => {
-    // Lightning Clap's ASTeamCrit group (0.07) has no mods; its untagged sub-groups deal the damage
+  it("reads only a line's own group's chance: a mode's parent group lends its sub-groups none", () => {
+    // Thunder Strike's ASTeamCrit group (0.07) has no mods; its untagged sub-groups (chance 1) deal
+    // the damage, and the game shows them without a chance (the owner's screenshot, November 17, 2026)
     const { lines } = info(gd, 'Class_Stalker', 'Stalker_Melee.Electrical_Melee.Lightning_Clap');
-    expect(lines).toContain('7.00% chance for 142.37 energy damage on target');
-    expect(lines).toContain('7.00% chance for 23.36 special damage on target');
+    expect(lines.filter((l) => l === '142.37 energy damage on target')).toHaveLength(2);
+    expect(lines).toContain('23.36 special damage on target');
+    expect(lines.some((l) => l.includes('7.00% chance'))).toBe(false);
   });
 
   it("reads a tagged group's parents' first tags, passing over parents without tags", () => {
@@ -114,9 +116,9 @@ describe('tag modes on Homecoming', () => {
     expect(info(gd, 'Class_Blaster', p).lines).toEqual([]);
   });
 
-  it('still leaves out an untagged group of chance 0 (the earlier port; the live client lists it: @TODO)', () => {
+  it('lists an untagged group of chance 0, as the client does (it skips only a tagged one)', () => {
     const p = madeUp(gd, [fireGroup(gd, { ch: 0 })]);
-    expect(info(gd, 'Class_Blaster', p).lines).toEqual([]);
+    expect(info(gd, 'Class_Blaster', p).lines).toEqual(['0.00% chance for 62.56 fire damage on target']);
   });
 });
 
