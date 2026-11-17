@@ -190,7 +190,8 @@ one older than every listed version was made before the oldest listed patch, and
 every listed version is unknown and opens on the default version (it may be any later patch, so
 today's Mids builds never land on older data). The planner's own exports
 name their game version (`BuiltWith.GameVersion`, which Mids ignores). Old `|MxDz;` codes record
-nothing and open on the default version. `importTarget()` (`src/data/versions.ts`) then opens the
+nothing and open on the default version; their layout follows the save version they carry (a
+power's ProcInclude from 3.10, the inherent-slot fields only from 3.20: `mxdzToMbd`). `importTarget()` (`src/data/versions.ts`) then opens the
 build on its own patch when the site carries it, exact data before approximate. Otherwise it
 offers the nearest newer patch, or the newest. A move first lists the swaps `fitToPatch()` makes
 in the confirm dialog: picks trade places, slots trade the levels they were gained at, nothing is
