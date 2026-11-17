@@ -380,6 +380,17 @@ Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d
   its own keeps the earlier port's chances (Lightning Clap's ASTeamCrit sub-groups: 7%), so no line
   without a mode changes.
 - Damage totals keep each group's own chance: getTotalDamage reads no modes.
+- The client walks its template list, where each group's sub-groups come before its own mods, so
+  the lines do too (`templates`): Crushing Uppercut's knockup comes last, Executioner's Shot's
+  defense debuff after its Standard Ammo hits.
+- The client keeps the last mode's note in a variable it sets only for a tagged group and never
+  clears within a power, so it repeats that note under the lines of untagged groups that follow
+  (Thunder Strike's recovery, endurance, stun and knock read "Only using Fiery Embrace"). The planner
+  doesn't copy this: the note would be false (the owner's decision, November 17, 2026).
+- Confirmed in game (the owner's screenshots, November 17, 2026, level 50): Crushing Uppercut's
+  "0.00% chance for 176.85 smashing damage", Executioner's Shot's "1.66 magnitude knock" with no
+  chance, Hail of Bullets' 10%, 40% and 60% lines, Shadow Field's 5% and 20% holds (raw Duration
+  rule), and Burn's three Fiery Embrace lines.
 - @TODO the character's own lines without a mode still follow the earlier port: group chances times
   tick chance, a group of chance 0 or under one left out. The live client reads only the group's
   own chance and its tick chance apart (as above), and doesn't leave out an untagged group of chance

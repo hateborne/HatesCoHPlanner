@@ -629,6 +629,9 @@ export function powerInfo(
   /**
    * Walk effect groups (PvE, visible, requirements met), yielding one template per mod x attribute.
    *
+   * The templates come in the client's template-list order: each group's sub-groups before its
+   * own mods (its loader, decompiled), so the lines read in the game's order.
+   *
    * A pseudo-pet's power (`pet`) is walked as the live client's getTotalDamage reads every
    * template: its HideFromInfo and PPM groups count too (marked `hide`, as they aren't listed), and
    * each template keeps its own group's chance and its tick chance apart.
@@ -663,6 +666,8 @@ export function powerInfo(
       const chance = pet ? (e.ch ?? 1) : chain * (e.ch ?? 1);
       const rq = e.req && e.req.length ? [...reqs, e.req] : reqs;
       if (!rq.every((r) => evalRequires(r, ec))) continue;
+      // the client's template list: a group's sub-groups first, then its own mods
+      if (e.sub?.length) templates(e.sub, chance, rq, out, ec, pet, hide, [e, ...parents]);
       const mode = tagMode(e, parents, ownTagModes);
       for (const m of e.m ?? []) {
         if (m.t === 'SkillMagnitude') continue;
@@ -694,7 +699,6 @@ export function powerInfo(
         }
         for (const a of m.a) if (rest.has(a)) out.push({ ...base, attrib: a });
       }
-      if (e.sub?.length) templates(e.sub, chance, rq, out, ec, pet, hide, [e, ...parents]);
     }
   };
   /** @return A pseudo-pet's power's templates, walked with the pet's requirement context. */

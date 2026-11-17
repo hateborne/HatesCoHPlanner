@@ -84,3 +84,29 @@ describe('powerInfo: enhanced values', () => {
     expect(segText(info.effects[1]!.line)).toBe('3.00 magnitude immobilize for 30.09s(20.06s) on target');
   });
 });
+
+describe("powerInfo: the client's line order", () => {
+  /** @return A power's lines at level 50, unenhanced, with their notes. */
+  const lines = (cls: string, name: string) =>
+    powerInfo(gd, gd.archetypeByName.get(cls)!, gd.powerByName.get(name)!, 49, null).effects.map((e) =>
+      [segText(e.line), ...e.notes.map(segText)].join(' / '),
+    );
+
+  it("lists a group's sub-groups before its own mods (Crushing Uppercut's knockup comes last, as in game)", () => {
+    const got = lines('class_stalker', 'stalker_melee.brawling.crushing_uppercut');
+    expect(got.at(-1)).toBe('6.23 magnitude knockup on target');
+    expect(got.indexOf('176.85 smashing damage on target / Only at Combo Level 0')).toBeLessThan(got.length - 1);
+  });
+
+  it('puts an ammo group\'s own debuff after the hits of its sub-groups (Executioner\'s Shot, in game)', () => {
+    const got = lines('class_sentinel', 'sentinel_ranged.dual_pistols.executioners_shot');
+    expect(got.slice(0, 4)).toEqual([
+      '129.69 lethal damage on target / Only using Standard Ammo',
+      '0.00% chance for 51.87 lethal damage on target / Only using Standard Ammo',
+      '-8.75% defense for 8.00s on target / Only using Standard Ammo',
+      '1.66 magnitude knockback on target / Only using Standard Ammo',
+    ]);
+    const cold = got.indexOf('0.00% chance for 51.87 cold damage on target / Only using Cryo Ammo');
+    expect(got[cold + 1]).toBe('-15.00% run speed for 10.00s on target / Only using Cryo Ammo');
+  });
+});
