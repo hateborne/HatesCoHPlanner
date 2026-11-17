@@ -209,6 +209,16 @@ describe('powerInfo: "all damage" and "all defense" groups (markAllTypes, both c
   it('lists each type when a value differs or a ninth type joins before the group is whole', () => {
     expect(lines([res(EIGHT.slice(0, 7), 1), res([36], 2)])).toHaveLength(8);
     expect(lines([res([0, 4, 8, 12, 16, 20, 24, 28, 36], 1)])).toHaveLength(9); // healing (28) comes before toxic
+    // offsets 40 to 79 (radiation on) count as damage too, but lie outside the mask: never whole
+    expect(lines([res([0, 4, 8, 12, 16, 20, 24, 40, 36], 1)])).toHaveLength(9);
+  });
+
+  it('keeps counting groups after one is whole, as the client does (its mask is never cleared)', () => {
+    // Homecoming's markAllTypes (0x1404e1540) clears only the value once the mask is whole, so a
+    // later damage type of that target counts another group, at any value: its line reads "all"
+    const all = 'resistance to all damage on self';
+    expect(lines([res(EIGHT, 1), res([8], 1)])).toEqual([all, all]);
+    expect(lines([res(EIGHT, 1), res([8], 2)])).toEqual([all, all]);
   });
 
   it('shows a second group for a second effect with every type', () => {

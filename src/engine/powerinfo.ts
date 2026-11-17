@@ -382,8 +382,6 @@ const ASPECT: Record<string, AType> = {
   Absolute: 'Abs',
 };
 
-// Damage types that count as "all damage" (offset/4 bits 639) and defense types (1023).
-
 // ---- helpers -----------------------------------------------------------------------------------
 
 /**
