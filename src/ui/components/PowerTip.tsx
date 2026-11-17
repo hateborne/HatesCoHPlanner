@@ -57,31 +57,26 @@ function newestTall(): { box: ShownBox; el: HTMLDivElement } | null {
   return null;
 }
 
-// The z-index of the floating boxes' layer (Floating); pop-ups and dialogs are drawn above it.
-const FLOAT_Z = 65;
-
 /**
- * Whether a pop-up or dialog is open: a layer over (nearly) the whole stage drawn above the
- * floating boxes, as every pop-up's click-catcher is. A tooltip left under or over one takes no
- * wheel turn or Page key then.
+ * Whether a pop-up or dialog is open: a layer marked POPUP_LAYER is on screen. A tooltip left
+ * under or over one takes no wheel turn or Page key then.
  *
  * @return Whether one is open.
  */
 function popupOpen(): boolean {
-  const stage = document.querySelector('.stage')?.getBoundingClientRect();
-  if (!stage?.width) return false;
-  for (const el of document.querySelectorAll<HTMLElement>('[style*="z-index"]')) {
-    if ((parseInt(el.style.zIndex, 10) || 0) <= FLOAT_Z) continue;
-    const r = el.getBoundingClientRect();
-    if (r.width >= stage.width * 0.9 && r.height >= stage.height * 0.9) return true;
-  }
-  return false;
+  return document.querySelector('[data-popup]') !== null;
+}
+
+/** @return Whether a box is still shown and cut short (a wheel latch to it lasts only that long). */
+function stillTall(b: ShownBox): boolean {
+  const el = b.ref.current;
+  return shownBoxes.includes(b) && !!el && isCut(el);
 }
 
 /** The window's wheel listener while a floating box is shown (routeWheel decides where a turn goes). */
 function onBoxWheel(e: WheelEvent): void {
   const tall = newestTall();
-  const route = routeWheel(e, performance.now(), wheelLatch, tall && { box: tall.box, scroll: tall.el }, (b) => shownBoxes.includes(b));
+  const route = routeWheel(e, performance.now(), wheelLatch, tall && { box: tall.box, scroll: tall.el }, stillTall);
   wheelLatch = route.latch;
   const el = route.box?.ref.current;
   if (!route.box || !el || popupOpen()) return;
