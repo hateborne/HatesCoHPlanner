@@ -151,6 +151,10 @@ export function App() {
   useEffect(() => {
     void load();
   }, [load]);
+  // the set finder's pane belongs to the overview: leaving it closes the pane, so it can't come back on return
+  useEffect(() => {
+    if (view !== 'overview') closeSetFinder();
+  }, [view]);
   const skin = SKINS[build ? skinOf(build.alignment) : 'hero'];
   // the setup screen picks its own track from the alignment being chosen
   useEffect(() => {

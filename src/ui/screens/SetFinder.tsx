@@ -356,6 +356,7 @@ interface ResultRowProps {
 function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: ResultRowProps) {
   const id = swapId(swap);
   const name = `${gd.boostSetById.get(swap.set)?.dn ?? 'Set'} into ${gd.powerById.get(swap.power)?.dn ?? 'a power'}`;
+  const warned = swap.warnings.length ? `${swap.warnings.length} ${swap.warnings.length === 1 ? 'warning' : 'warnings'}` : '';
   // phones have no pointer to hover with: a tap would leave a hover behind that never clears
   const hover = phone
     ? {}
@@ -383,12 +384,12 @@ function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: 
         onChange={onKeep}
         style={{ flexShrink: 0, width: phone ? 28 : 20, height: phone ? 28 : 20, margin: 0 }}
       />
-      {/* the keyboard's way to the row: Enter on it shows the swap, as a click anywhere on the row does */}
-      <div {...pressKeys(onSelect, undefined, `${name}: show its gains and losses`)} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+      {/* the keyboard's way to the row: Enter on it shows the swap, as a click anywhere on the row does (its name stands in for its text, so it says the warnings too) */}
+      <div {...pressKeys(onSelect, undefined, `${name}${warned ? `, ${warned}` : ''}: show its gains and losses`)} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
         <SwapLine gd={gd} swap={swap} phone={phone} />
         {swap.warnings.length ? (
           <div title={swap.warnings.map((w) => warningText(gd, w)).join('\n')} style={{ marginLeft: 'auto', flexShrink: 0, color: WARN, fontSize: phone ? 17 : 14 }}>
-            {swap.warnings.length} {swap.warnings.length === 1 ? 'warning' : 'warnings'}
+            {warned}
           </div>
         ) : null}
       </div>
@@ -401,7 +402,7 @@ function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: 
  * best placement and its other placements folded under it.
  */
 function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; hasSlots: boolean }) {
-  const { result, busy, kept, selected, select, keep, drop, problem, loading, query, searched } = useFinder(
+  const { result, busy, kept, selected, select, keep, drop, problem, loading, query, searched, searchedKept } = useFinder(
     useShallow((s) => ({
       result: s.result,
       busy: s.progress !== null,
@@ -414,26 +415,36 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
       loading: s.loading,
       query: s.query,
       searched: s.searched,
+      searchedKept: s.searchedKept,
     })),
   );
   const [more, setMore] = useState<ReadonlySet<number>>(new Set());
   const keptIds = useMemo(() => new Set(kept.map(swapId)), [kept]);
-  const sets = useMemo(() => bySet(result?.swaps ?? []), [result]);
+  // a kept swap shows under Kept only (a list not ranked again since it was kept still holds it)
+  const sets = useMemo(() => bySet((result?.swaps ?? []).filter((s) => !keptIds.has(swapId(s)))), [result, keptIds]);
   if (loading) return <div className="desc-text">Loading the build statistics...</div>;
   if (problem) return <div className="desc-text">{problem}</div>;
-  if (result?.problem) return <div className="desc-text">{result.problem}</div>;
 
+  /** Tick or untick a swap's box. Its row then moves between the lists with no mouseleave, so the hover it leaves behind is cleared. */
+  const toggle = (s: RankedSwap, isKept: boolean) => {
+    const before = useFinder.getState().kept;
+    if (isKept) drop(s.key);
+    else keep(s);
+    if (useFinder.getState().kept !== before) useHover.setState({ swap: null });
+  };
   const row = (s: RankedSwap) => {
     const id = swapId(s);
     const isKept = keptIds.has(id);
-    return <ResultRow key={id} gd={gd} swap={s} kept={isKept} selected={selected === id} phone={phone} busy={busy} onKeep={() => (isKept ? drop(s.key) : keep(s))} onSelect={() => select(selected === id ? null : id)} />;
+    return <ResultRow key={id} gd={gd} swap={s} kept={isKept} selected={selected === id} phone={phone} busy={busy} onKeep={() => toggle(s, isKept)} onSelect={() => select(selected === id ? null : id)} />;
   };
   const fold = (set: number) => setMore(new Set(more.has(set) ? [...more].filter((x) => x !== set) : [...more, set]));
   const small: CSSProperties = { fontSize: phone ? 16 : 13 };
   let results: ReactNode;
   if (!result) {
     results = <div className="desc-text">{busy ? <SearchLabel idle="" /> : (queryProblem(query) ?? 'Press Search to rank the sets this build could slot.')}</div>;
-  } else if (!sets.length) {
+  } else if (result.problem) {
+    results = <div className="desc-text">{result.problem}</div>;
+  } else if (!result.swaps.length) {
     results = <div className="desc-text">{hasSlots ? 'Nothing found. Try another priority, or let more kinds of sets in.' : 'This build has no enhancement slots a set could go into yet.'}</div>;
   } else {
     results = sets.map((g) => (
@@ -448,6 +459,9 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
       </div>
     ));
   }
+  // the form changed since the list was ranked, or a ranking after a kept swap changed never finished
+  const outOfDate =
+    !result || busy ? null : searched !== query ? 'The search has changed since this list was made.' : searchedKept !== kept ? 'Your kept swaps have changed since this list was made.' : null;
   return (
     <div>
       <Note />
@@ -458,10 +472,9 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
           <TitleText style={{ fontSize: 18, marginTop: 10 }}>Results</TitleText>
         </div>
       ) : null}
-      {/* the form changed since these were ranked */}
-      {result && searched !== query ? (
+      {outOfDate ? (
         <div className="body-text" data-testid="finder:outofdate" style={{ ...small, color: WARN, marginBottom: 6 }}>
-          The search has changed since this list was made. Press Search to update it.
+          {outOfDate} Press Search to update it.
         </div>
       ) : null}
       <div style={{ opacity: busy && result ? 0.5 : 1 }}>{results}</div>

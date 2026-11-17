@@ -341,28 +341,38 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   phone menu, both for Homecoming builds only. They set `finderOpen.ts`'s flag; `App.tsx`
   (`FinderPane`) then downloads the pane and the finder's engine as their own chunk, so neither
   is in the page's first download. A failed download closes the pane with a notice and the next
-  opening tries again.
+  opening tries again. Leaving the overview closes the pane (`App.tsx`), so it never comes back
+  on its own.
 - **State** (`src/state/finder.ts`, not saved, never in a link): the statistics
   (`loadFinderStats`, fetched once from the data folder and shape-checked), the search as the form
   holds it, the last result, the kept swaps, and a share link to the build with them in. A search
   runs the engine's generator in slices of about 12 ms on timers, so the page keeps responding,
   and a newer search makes an older one give up; so does closing the pane. Keeping or letting go
-  of a swap ranks again. While a search runs the list on screen is the old one, so nothing in it
-  can be kept, and a swap is only kept when the game would take every kept swap together
-  (`swapsLegal`); a refusal, or a link that could not be written, shows as a red line in the pane
-  (`note`). Any change to the build (an edit, another build, the swaps applied) clears the
-  results and the kept swaps: they belonged to the build as it was. The form is kept, less what
-  the new build's lists can't show (`fitQuery`).
+  of a swap ranks the list again (`rerank`), for the search the list was made with, or the one
+  being worked on while a search runs; with no list yet, nothing is ranked. The form may have
+  changed since, even to one that can't be searched, and only Search takes the form. A list
+  names the search and the kept swaps it was made with (`searched`, `searchedKept`) only once it
+  is shown, so a search given up or failed leaves the old list marked out of date. While a search
+  runs the list on screen is the old one, so nothing in it can be kept, and a swap is only kept
+  when the game would take every kept swap together (`swapsLegal`); a refusal, a search that
+  failed (details in the console; the pane never stays "Searching"), or a link that could not be
+  written shows as a red line in the pane (`note`). Any change to the build (an edit, another
+  build, the swaps applied) clears the results and the kept swaps: they belonged to the build as
+  it was. The form is kept, less what the new build's lists can't show (`fitQuery`; a bonus the
+  new list names by another key of the same kind is carried over to that key).
 - **Lists.** The kept swaps come first, each with its box ticked (untick to let it go), then the
   results: each set shows its best placement, the others folded under it. A line says so when the
-  form has changed since the list was made. Pointing at a swap (tapping it, on a phone) shows its
-  net gains and losses from `buildDiff`: what a result would change on top of the kept swaps, or
-  what a kept swap is adding. The hovered row is in `hover.ts` (`swap`, desktop only), so only
-  the gains and losses pane redraws; the search's progress redraws only its own label. With
-  nothing pointed at, the pane shows the kept swaps together against the build as it is. Figures
-  are written as the totals pane writes them (mph, ft, per second).
+  form, or the kept swaps (a ranking given up or failed), have changed since the list was made.
+  Pointing at a swap (tapping it, on a phone) shows its net gains and losses from `buildDiff`:
+  what a result would change on top of the kept swaps, or what a kept swap is adding. The hovered
+  row is in `hover.ts` (`swap`, desktop only), so only the gains and losses pane redraws; ticking
+  a box clears it, as the row moves to the other list with no mouseleave. The search's progress
+  redraws only its own label. With nothing pointed at, the pane shows the kept swaps together
+  against the build as it is. Figures are written as the totals pane writes them (mph, ft, per
+  second).
 - **Applying.** "Apply to this build" asks first (`askConfirm`, naming how many enhancements are
-  replaced), then `setBuild`. "Open as new build" is a plain link to the share link the store
+  replaced), then `setBuild`; if the kept swaps changed while the question was up, nothing is
+  applied and the note says so. "Open as new build" is a plain link to the share link the store
   wrote (`target="_blank"`, the player's own click, an address the code built), so the build in
   hand is left alone and no pop-up blocker is involved.
 - A build whose game version has no statistics, or another server's build, gets a plain sentence

@@ -79,6 +79,41 @@ describe('finder: lists for the screens', () => {
     expect(fitQuery(q, sections, []).goals).toBe(q.goals);
   });
 
+  it('lists a bonus of several stats under one key, and carries a search over to the key a list has', () => {
+    const grouped = (at: string) =>
+      bonusChoices(gd, stats, at)
+        .flatMap((s) => s.stats)
+        .filter((c) => c.same)
+        .map((c) => `${c.label}: ${c.key}`);
+    const blaster = grouped('Class_Blaster');
+    expect(blaster.map((l) => l.split(':')[0])).toEqual(expect.arrayContaining(['Damage', 'Status resistance', 'Knockback protection', 'Slow resistance']));
+    // with these statistics every archetype's list names them by the same keys
+    for (const at of Object.keys(stats.groups)) expect(grouped(at), at).toEqual(blaster);
+    const all = bonusChoices(gd, stats, 'Class_Blaster').flatMap((s) => s.stats);
+    expect(all.find((c) => c.label === 'Knockback protection')!.same).toEqual(['mezprot.Knockup']);
+    const damage = all.find((c) => c.label === 'Damage')!;
+    expect(damage.same!.length).toBeGreaterThan(3);
+    expect(damage.same).not.toContain(all.find((c) => c.label === 'Healing')!.key);
+    expect(all.find((c) => c.label === 'Recharge')!.same).toBeUndefined();
+    // a list that names the bonus by another of its keys (another archetype's statistics could): carried over, not dropped
+    const sections = [
+      {
+        title: 'Status',
+        stats: [
+          { key: 'mezprot.Knockup', label: 'Knockback protection', same: ['mezprot.Knock'] },
+          { key: 'recov', label: 'Recovery' },
+        ],
+      },
+    ];
+    const q: FinderQuery = { goals: [], tags: [], main: { stat: 'mezprot.Knock', depth: '2-3' }, extra: ['recov'] };
+    expect(fitQuery(q, sections, [])).toEqual({ ...q, main: { stat: 'mezprot.Knockup', depth: '2-3' } });
+    expect(fitQuery({ goals: [], tags: [], extra: ['mezprot.Knock', 'recov'] }, sections, []).extra).toEqual(['mezprot.Knockup', 'recov']);
+    // the same bonus asked for twice under two keys is asked for once
+    expect(fitQuery({ ...q, extra: ['mezprot.Knockup', 'recov'] }, sections, []).extra).toEqual(['recov']);
+    const fits: FinderQuery = { goals: [], tags: [], main: { stat: 'mezprot.Knockup', depth: 'any' }, extra: ['recov'] };
+    expect(fitQuery(fits, sections, [])).toBe(fits);
+  });
+
   it('groups ranked swaps by set, best placement first', () => {
     const swap = (set: number, key: string, score: number) => ({ set, key, score }) as RankedSwap;
     const grouped = bySet([swap(7, 'pick:1', 9), swap(3, 'pick:2', 8), swap(7, 'pick:4', 5), swap(7, 'pick:5', 2)]);

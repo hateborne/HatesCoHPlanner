@@ -24,7 +24,8 @@ export interface FinderStore {
   loading: boolean; // the statistics are on their way
   problem: string | null; // why the finder can't work on this build, in plain words
   query: FinderQuery; // the search as the form holds it
-  searched: FinderQuery | null; // the search the results shown were made with (another object than `query`: the form changed since)
+  searched: FinderQuery | null; // the search the list shown was made with (another object than `query`: the form changed since)
+  searchedKept: RankedSwap[] | null; // the kept swaps the list shown was ranked on top of (another array than `kept`: the ranking after a change was given up or failed)
   result: FinderResult | null; // what the last search found
   progress: number | null; // 0..1 while a search runs
   kept: RankedSwap[]; // the swaps kept so far, one per power
@@ -37,13 +38,13 @@ export interface FinderStore {
   setQuery(patch: Partial<FinderQuery>): void;
   /** Search with the form's query, against the build with the kept swaps in. */
   search(): void;
-  /** Give up the running search (the pane closed). */
+  /** Give up the running search (the pane closed). The list it would have replaced stays, marked out of date. */
   stop(): void;
   /** Show a swap's gains and losses (null: none). */
   select(id: string | null): void;
-  /** Keep a swap (it replaces the one its power had) and rank again. Refused while a search runs: the list is on its way out. */
+  /** Keep a swap (it replaces the one its power had) and rank the list again. Refused while a search runs: the list is on its way out. */
   keep(swap: RankedSwap): void;
-  /** Let a power's kept swap go and rank again. */
+  /** Let a power's kept swap go and rank the list again. */
   drop(key: string): void;
   /** Put every kept swap into the build the planner holds, after the player agrees. */
   apply(): Promise<void>;
@@ -64,6 +65,8 @@ const EMPTY_QUERY: FinderQuery = { goals: [], tags: [], extra: [] };
 // each search and each link request gets a number; a newer one makes the older give up
 let searchRun = 0;
 let linkRun = 0;
+// the search the running slices are working on (null: none runs)
+let running: FinderQuery | null = null;
 
 export const useFinder = create<FinderStore>((set, get) => {
   /** Work out the new-build link again (the kept swaps changed). */
@@ -83,12 +86,70 @@ export const useFinder = create<FinderStore>((set, get) => {
       });
   };
 
+  /**
+   * Rank the swaps for a search, in slices, against the build with the kept swaps in.
+   *
+   * The list on screen stays as it is until this one is whole: `searched` and `searchedKept` name
+   * what a list was made with only once it is shown, so a search given up or failed leaves the
+   * old list marked out of date.
+   *
+   * @param query The search to rank for.
+   */
+  const rank = (query: FinderQuery): void => {
+    const { gd, build } = useStore.getState();
+    const { stats, kept } = get();
+    if (!gd || !build || !stats) return;
+    const run = ++searchRun;
+    const steps = searchSwaps({ gd, stats, build, kept, query });
+    running = query;
+    set({ progress: 0, note: null });
+    const slice = (): void => {
+      if (run !== searchRun) return;
+      const until = performance.now() + SLICE_MS;
+      let step: IteratorResult<number, FinderResult>;
+      try {
+        step = steps.next();
+        while (!step.done && performance.now() < until) step = steps.next();
+      } catch (e) {
+        // never leave the pane saying "Searching": say it stopped, details in the console
+        console.warn('set finder: the search failed', e);
+        running = null;
+        set({ progress: null, note: "The search couldn't finish. Press Search to try again." });
+        return;
+      }
+      if (!step.done) {
+        set({ progress: step.value });
+        setTimeout(slice, 0);
+        return;
+      }
+      const result = step.value;
+      running = null;
+      const left = result.stale.length ? get().kept.filter((k) => !result.stale.includes(k.key)) : get().kept;
+      const ids = new Set([...left, ...result.swaps].map(swapId));
+      set({ result, searched: query, searchedKept: left, progress: null, kept: left, selected: ids.has(get().selected ?? '') ? get().selected : null });
+      if (left.length !== kept.length) relink();
+    };
+    setTimeout(slice, 0);
+  };
+
+  /**
+   * Rank the list again after the kept swaps changed.
+   *
+   * It ranks for the search the list was made with (or the one being worked on), not the form's:
+   * the form may have changed since, even to one that can't be searched, and only Search takes it.
+   */
+  const rerank = (): void => {
+    const query = running ?? (get().result ? get().searched : null);
+    if (query) rank(query);
+  };
+
   return {
     stats: null,
     loading: false,
     problem: null,
     query: EMPTY_QUERY,
     searched: null,
+    searchedKept: null,
     result: null,
     progress: null,
     kept: [],
@@ -128,33 +189,12 @@ export const useFinder = create<FinderStore>((set, get) => {
     },
 
     search() {
-      const { gd, build } = useStore.getState();
-      const { stats, query, kept } = get();
-      if (!gd || !build || !stats) return;
-      const run = ++searchRun;
-      const steps = searchSwaps({ gd, stats, build, kept, query });
-      set({ progress: 0, searched: query, note: null });
-      const slice = (): void => {
-        if (run !== searchRun) return;
-        const until = performance.now() + SLICE_MS;
-        let step = steps.next();
-        while (!step.done && performance.now() < until) step = steps.next();
-        if (!step.done) {
-          set({ progress: step.value });
-          setTimeout(slice, 0);
-          return;
-        }
-        const result = step.value;
-        const left = result.stale.length ? get().kept.filter((k) => !result.stale.includes(k.key)) : get().kept;
-        const ids = new Set([...left, ...result.swaps].map(swapId));
-        set({ result, progress: null, kept: left, selected: ids.has(get().selected ?? '') ? get().selected : null });
-        if (left.length !== kept.length) relink();
-      };
-      setTimeout(slice, 0);
+      rank(get().query);
     },
 
     stop() {
       searchRun++;
+      running = null;
       if (get().progress !== null) set({ progress: null });
     },
 
@@ -173,13 +213,13 @@ export const useFinder = create<FinderStore>((set, get) => {
       }
       set({ kept, selected: null, note: null });
       relink();
-      if (get().result) get().search();
+      rerank();
     },
 
     drop(key) {
       set({ kept: get().kept.filter((k) => k.key !== key), note: null });
       relink();
-      if (get().result) get().search();
+      rerank();
     },
 
     async apply() {
@@ -195,7 +235,12 @@ export const useFinder = create<FinderStore>((set, get) => {
         okLabel: 'Apply',
       });
       // the build may have changed while the question was up: the kept swaps were cleared with it
-      if (!ok || useStore.getState().build !== build || get().kept !== kept) return;
+      if (!ok || useStore.getState().build !== build) return;
+      // so may the kept swaps (a ranking that ended meanwhile found one out of date): the question named others
+      if (get().kept !== kept) {
+        set({ note: 'Your kept swaps changed while the question was up, so nothing was applied.' });
+        return;
+      }
       closeSetFinder();
       main.setBuild(applySwaps(build, kept));
     },
@@ -210,7 +255,8 @@ const unsubscribe = useStore.subscribe((s) => {
   lastBuild = s.build;
   searchRun++;
   linkRun++;
-  useFinder.setState({ searched: null, result: null, progress: null, kept: [], selected: null, link: null, note: null });
+  running = null;
+  useFinder.setState({ searched: null, searchedKept: null, result: null, progress: null, kept: [], selected: null, link: null, note: null });
   if (!s.build) closeSetFinder();
 });
 // a dev server swapping this module in again must not leave the old one listening too
