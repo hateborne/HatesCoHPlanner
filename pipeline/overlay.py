@@ -4,7 +4,7 @@ This is the one place the planner takes game data from MidsReborn (AGENTS.md, "M
 untrusted reference"). When no client files exist for an older patch, builds made on it can still
 open on rules close to that patch's. Only the level at which each power becomes available (and so
 the order of each set's powers) comes from Mids' database for that patch. Everything else, every
-number included, is the base version's.
+number included, is the base version's (its pseudo-pet file, pets/<base>.json, is copied too).
 
 Usage (from the repo root):
     python -m pipeline.overlay                  # base = the default version in versions.json
@@ -167,6 +167,9 @@ def main() -> int:
                        ("powers.json", text["powers.json"]), ("boosts.json", text["boosts.json"]),
                        ("mids-map.json", text["mids-map.json"])):
         config.atomic_write(dst / name, body)
+    pets = config.DATA_OUT / config.PETS_FOLDER / f"{base}.json"
+    if pets.is_file():  # the base's pseudo-pets: only power levels differ
+        config.atomic_write(config.DATA_OUT / config.PETS_FOLDER / f"{vid}.json", pets.read_bytes())
     export.write_indexes(vid, label, m["hash"], False, {"patch": patch, "approx": True})
 
     L = [f"# Approximate version {vid} -- {label}\n",
