@@ -16,6 +16,7 @@ import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from './OriginAlign.tsx'
 import { ServerLogo } from './Servers.tsx';
 import { useStage } from './Stage.tsx';
 import { SupportDialog } from './SupportDialog.tsx';
+import { POPUP_LAYER } from '../floating.ts';
 
 /** A rounded planner button (not game chrome): the sound / music / tooltip switches, Support, View Build. */
 function Pill({ x, y, w, h, fontSize, dim, title, onClick, children }: { x: number; y: number; w: number; h: number; fontSize: number; dim?: boolean; title?: string; onClick: () => void; children: ReactNode }) {
@@ -245,7 +246,7 @@ function PhoneMenu({ skin }: { skin: Skin }) {
       </div>
       {open ? (
         <>
-          <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
+          <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
           {/* on whole device pixels, so the bars inside tile without seams */}
           <div className="abs" style={{ left: snap(stage.w - PANE.right - paneW), top: snap(paneTop), width: paneW, height: paneH, zIndex: 71 }}>
             <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />

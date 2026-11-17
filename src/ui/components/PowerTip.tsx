@@ -10,7 +10,7 @@ import { smf } from '../smf.tsx';
 import { gameText, MenuFrame } from './Chrome.tsx';
 import { Sprite } from './Sprite.tsx';
 import { useStage } from './Stage.tsx';
-import { placeFloating, toStage } from '../floating.ts';
+import { floatingRoom, isCut, pageKeyStep, placeFloating, routeWheel, scrollRoom, toStage, WHEEL_LATCH_MS, wheelScrollsBox, wheelStep, type WheelLatch } from '../floating.ts';
 
 /**
  * The last pointer position in stage px. Captured on the window, so a hover handler that runs
@@ -37,27 +37,151 @@ export function usePointer(): React.MutableRefObject<{ x: number; y: number }> {
   return mouse;
 }
 
+/** A floating box on screen: its scrolling element and the stage height it is drawn on. */
+interface ShownBox {
+  ref: React.RefObject<HTMLDivElement>;
+  stageH: React.MutableRefObject<number>; // read at each turn, so a resize keeps the box's place
+}
+
+// The floating boxes on screen, oldest first (useTallWheel), and what the wheel is latched to.
+const shownBoxes: ShownBox[] = [];
+let wheelLatch: WheelLatch<ShownBox> | null = null;
+
+/** @return The newest shown box that is cut short, with its element. */
+function newestTall(): { box: ShownBox; el: HTMLDivElement } | null {
+  for (let i = shownBoxes.length - 1; i >= 0; i--) {
+    const box = shownBoxes[i]!;
+    const el = box.ref.current;
+    if (el && isCut(el)) return { box, el };
+  }
+  return null;
+}
+
+/**
+ * Whether a pop-up or dialog is open: a layer marked POPUP_LAYER is on screen. A tooltip left
+ * under or over one takes no wheel turn or Page key then.
+ *
+ * @return Whether one is open.
+ */
+function popupOpen(): boolean {
+  return document.querySelector('[data-popup]') !== null;
+}
+
+/** @return Whether a box is still shown and cut short (a wheel latch to it lasts only that long). */
+function stillTall(b: ShownBox): boolean {
+  const el = b.ref.current;
+  return shownBoxes.includes(b) && !!el && isCut(el);
+}
+
+/** The window's wheel listener while a floating box is shown (routeWheel decides where a turn goes). */
+function onBoxWheel(e: WheelEvent): void {
+  const tall = newestTall();
+  const route = routeWheel(e, performance.now(), wheelLatch, tall && { box: tall.box, scroll: tall.el }, stillTall);
+  wheelLatch = route.latch;
+  const el = route.box?.ref.current;
+  if (!route.box || !el || popupOpen()) return;
+  e.preventDefault(); // a box keeps its gesture even at its end
+  if (!wheelScrollsBox(e, el)) return;
+  const wrap = document.querySelector('.stage')?.parentElement?.getBoundingClientRect();
+  el.scrollTop += wheelStep(e, wrap?.height ? route.box.stageH.current / wrap.height : 1, el.clientHeight);
+}
+
+/**
+ * Page Up / Page Down scroll the newest cut-short box while it is shown and can move that way; at
+ * its end, while typing, or with a pop-up open, the key does what it would anyway.
+ */
+function onBoxKey(e: KeyboardEvent): void {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const t = e.target instanceof HTMLElement ? e.target : null;
+  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  const tall = newestTall();
+  const step = tall ? pageKeyStep(e.key, tall.el.clientHeight) : 0;
+  if (!tall || !step || !wheelScrollsBox({ deltaY: step, ctrlKey: false }, tall.el) || popupOpen()) return;
+  e.preventDefault();
+  tall.el.scrollTop += step;
+}
+
+/**
+ * The wheel while no floating box is shown: a turn latches the gesture to the screen, so a tall
+ * tooltip that appears under the pointer as a list scrolls doesn't stop the list (routeWheel,
+ * step 2). Sideways movement keeps a latch going too.
+ */
+function onScreenWheel(e: WheelEvent): void {
+  if (!shownBoxes.length && !e.ctrlKey && (e.deltaY || e.deltaX)) wheelLatch = { box: null, until: performance.now() + WHEEL_LATCH_MS };
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('wheel', onScreenWheel, { capture: true, passive: true });
+  // the dev server reloads this file in place: take the old copy's listener away with it
+  import.meta.hot?.dispose(() => window.removeEventListener('wheel', onScreenWheel, { capture: true }));
+}
+
+/**
+ * Scroll a floating box with the mouse wheel, and Page Up / Page Down, while it is cut short
+ * (taller than floatingRoom).
+ *
+ * The box lets the pointer through, so it never takes the hover from the bar under it, and the
+ * wheel goes to the screen below. A wheel gesture that starts while the newest cut-short box can
+ * move that way scrolls the box instead, and stays with it until the wheel rests; one that starts
+ * past the box's end, or on the list before the box appeared, scrolls the list (routeWheel).
+ *
+ * @param ref The box (its scrolling element).
+ * @param stageH The stage's height in stage px.
+ */
+function useTallWheel(ref: React.RefObject<HTMLDivElement>, stageH: number): void {
+  const height = useRef(stageH);
+  useLayoutEffect(() => {
+    height.current = stageH;
+  }, [stageH]);
+  useEffect(() => {
+    const entry: ShownBox = { ref, stageH: height };
+    shownBoxes.push(entry);
+    if (shownBoxes.length === 1) {
+      window.addEventListener('wheel', onBoxWheel, { capture: true, passive: false });
+      window.addEventListener('keydown', onBoxKey, true);
+    }
+    return () => {
+      shownBoxes.splice(shownBoxes.indexOf(entry), 1);
+      if (!shownBoxes.length) {
+        window.removeEventListener('wheel', onBoxWheel, { capture: true });
+        window.removeEventListener('keydown', onBoxKey, true);
+      }
+    };
+  }, [ref]);
+}
+
 /**
  * A floating box under a point (or above it, or beside the hovered bar: placeFloating), kept on
  * screen and sized to its content. `left` is where the box starts relative to x; `pad` reserves room on the left for
  * anything drawn outside the box (the description tip's icon ring); `avoid` is the hovered bar
- * (window px), which the box keeps clear of (placeFloating).
+ * (window px), which the box keeps clear of (placeFloating). The box gets `maxH` (floatingRoom):
+ * one that is taller is cut to it and scrolls with the wheel (useTallWheel). While it is cut short
+ * it also gets `bar` and `gutter` (scrollRoom): the box widens by `bar` and pads its right side by
+ * `gutter`, so its text keeps its width and doesn't rewrap. The scrollbar only shows there is more
+ * (the box lets the pointer through, so it can't be dragged). Give each item its own `key`, so a
+ * new one starts at the top.
  */
-function Floating({ x, y, w, gap, left = -140, pad = 0, avoid, render }: { x: number; y: number; w: number; gap: number; left?: number; pad?: number; avoid?: DOMRect; render: (box: { x: number; y: number; h: number }, measure: React.RefObject<HTMLDivElement>) => ReactNode }) {
+function Floating({ x, y, w, gap, left = -140, pad = 0, avoid, render }: { x: number; y: number; w: number; gap: number; left?: number; pad?: number; avoid?: DOMRect; render: (box: { x: number; y: number; h: number; maxH: number; bar: number; gutter: number }, measure: React.RefObject<HTMLDivElement>) => ReactNode }) {
   const stage = useStage();
   const ref = useRef<HTMLDivElement>(null);
-  const [h, setH] = useState(0);
-  // measured after every render on purpose (the content changes size); it settles once h matches
+  const [size, setSize] = useState({ h: 0, bar: 0, gutter: 0 });
+  // measured after every render on purpose (the content changes size); it settles once it matches
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    const v = ref.current?.offsetHeight ?? 0;
-    if (v !== h) setH(v);
+    const el = ref.current;
+    if (!el) return;
+    const cs = getComputedStyle(el);
+    const borders = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0);
+    const { bar, gutter } = scrollRoom(isCut(el), Math.max(0, el.offsetWidth - el.clientWidth - borders));
+    if (el.offsetHeight !== size.h || bar !== size.bar || gutter !== size.gutter) setSize({ h: el.offsetHeight, bar, gutter });
   });
-  const { x: bx, y: by } = placeFloating({ x, y, w, h, gap, left, pad }, stage, toStage(avoid, stage));
+  useTallWheel(ref, stage.h);
+  const { h, bar, gutter } = size;
+  const { x: bx, y: by } = placeFloating({ x, y, w: w + bar, h, gap, left, pad }, stage, toStage(avoid, stage));
   return (
     // over the side Totals tab and pane (60), under the phone menu, notices and dialogs
     <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, zIndex: 65, pointerEvents: 'none' }}>
-      {render({ x: bx, y: by, h }, ref)}
+      {render({ x: bx, y: by, h, maxH: floatingRoom(stage), bar, gutter }, ref)}
     </div>
   );
 }
@@ -76,6 +200,7 @@ export function DescTip({ skin, power, x, y, avoid, hint }: { skin: Skin; power:
   const w = 900;
   return (
     <Floating
+      key={power.id}
       x={x}
       y={y}
       w={w}
@@ -91,8 +216,8 @@ export function DescTip({ skin, power, x, y, avoid, hint }: { skin: Skin; power:
             <Sprite src={icon('powers', power.icon || 'power_missing')} x={b.x - 16 * S} y={b.y + h / 2 - 16 * S} w={32 * S} h={32 * S} z={4} />
             <div
               ref={ref}
-              className="abs"
-              style={{ left: b.x + ring / 2 + pad, top: b.y, width: w - ring / 2 - 2 * pad, padding: `${pad}px 0`, color: skin.desc, fontFamily: "'Montreal'", fontSize: px, lineHeight: `${Math.round(1.255 * px)}px`, zIndex: 5 }}
+              className="abs scroll-y"
+              style={{ left: b.x + ring / 2 + pad, top: b.y, width: w - ring / 2 - 2 * pad + b.bar, maxHeight: b.maxH, boxSizing: 'border-box', padding: `${pad}px ${b.gutter}px ${pad}px 0`, color: skin.desc, fontFamily: "'Montreal'", fontSize: px, lineHeight: `${Math.round(1.255 * px)}px`, zIndex: 5 }}
             >
               {smf(power.lh || power.sh)}
               {hint ? <div style={{ marginTop: 6, color: '#8fa1b8', fontSize: px * 0.8 }}>{SHIFT_HINT}</div> : null}
@@ -147,6 +272,7 @@ export function SlotDetails({ gd, power, longColor }: { gd: GameData; power: Pow
 export function SlotTip({ gd, power, x, y, avoid, hint, advanced, w = 640 }: { gd: GameData; power: Power; x: number; y: number; avoid?: DOMRect; hint?: boolean; advanced?: ReactNode; w?: number }) {
   return (
     <Floating
+      key={power.id}
       x={x}
       y={y}
       w={advanced ? 760 : w}
@@ -156,8 +282,8 @@ export function SlotTip({ gd, power, x, y, avoid, hint, advanced, w = 640 }: { g
       render={(b, ref) => (
         <div
           ref={ref}
-          className="abs"
-          style={{ left: b.x, top: b.y, width: advanced ? 760 : w, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: TIP.text }}
+          className="abs scroll-y"
+          style={{ left: b.x, top: b.y, width: (advanced ? 760 : w) + b.bar, maxHeight: b.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + b.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: TIP.text }}
         >
           <SlotDetails gd={gd} power={power} />
           {advanced ? (
@@ -247,7 +373,8 @@ function RarityText({ r }: { r: SetRarity }) {
 
 /**
  * The game's enhancement tooltip (uiEnhancementFormatText + uiEnhancementGetInfoText) as a
- * floating box under the pointer; the text is EnhDetails.
+ * floating box under the pointer; the text is EnhDetails. Give it a `key` naming the power and
+ * slot (as the overview does), so a tall one starts at the top for each slot.
  *
  * @param props.slots The power's slots (which pieces of the set are in it).
  * @param props.slot Index of the hovered slot.
@@ -257,6 +384,7 @@ export function EnhTip({ gd, at, slots, slot, level, x, y }: { gd: GameData; at:
   if (!slots[slot]?.enh) return null;
   return (
     <Floating
+      key={`${slot}:${slots[slot]?.enh?.boost}`}
       x={x}
       y={y}
       w={620}
@@ -265,8 +393,8 @@ export function EnhTip({ gd, at, slots, slot, level, x, y }: { gd: GameData; at:
       render={(box, ref2) => (
         <div
           ref={ref2}
-          className="abs"
-          style={{ left: box.x, top: box.y, width: 620, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: '#ffffff' }}
+          className="abs scroll-y"
+          style={{ left: box.x, top: box.y, width: 620 + box.bar, maxHeight: box.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + box.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: '#ffffff' }}
         >
           <EnhDetails gd={gd} at={at} slots={slots} slot={slot} level={level} />
         </div>

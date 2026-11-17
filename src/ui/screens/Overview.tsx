@@ -33,6 +33,7 @@ import { EnhancementPicker } from './EnhancementPicker.tsx';
 import { useEscape } from '../escape.ts';
 import { clearHover, useFreshHover, useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
+import { POPUP_LAYER } from '../floating.ts';
 
 const COLS = [
   { x: 33, w: 480, column: 0 },
@@ -168,7 +169,7 @@ function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Ski
       />
       {open ? (
         <>
-          <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
+          <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
           {/* on whole device pixels, so the bars inside tile without seams */}
           <div className="abs" style={{ left: snap(8), top: snap(paneTop), width: paneW, height: paneH, zIndex: 71 }}>
             <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
@@ -255,7 +256,7 @@ function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; buil
   const hint = useShiftHint();
   return (
     <>
-      {ringTip && tipLevel !== 'off' ? <EnhTip gd={gd} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
+      {ringTip && tipLevel !== 'off' ? <EnhTip key={`${ringTip.entry.key}:${ringTip.slot}`} gd={gd} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
       {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} hint={hint} /> : null}
       {tip && tipLevel === 'advanced' ? (
         <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
@@ -564,7 +565,7 @@ export function Overview({ skin }: { skin: Skin }) {
         {canContinue ? <InfoButton skin={skin} x={cx + w / 2 + 8} y={cy} w={w} h={h} text={respecLeft ? 'Continue Respec' : 'Continue Leveling'} onClick={continueLeveling} /> : null}
         {oaOpen ? (
           <>
-            <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOaOpen(false)} />
+            <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOaOpen(false)} />
             <div className="abs" style={{ left: oaX - (PW * POP) / 2, top: cy + h / 2 + 6, width: PW * POP, height: PH * POP, zIndex: 71 }}>
               <div className="abs" style={{ left: 0, top: 0, width: PW, height: PH, zoom: POP }}>
                 <MenuFrame x={0} y={0} w={PW} h={PH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
