@@ -1,10 +1,14 @@
-"""Check every game server's stable ids file (pipeline/ids.json, pipeline/ids-<server>.json, as
-config.SERVERS names them): well formed, only ever appended to, and never missing.
+"""Check every game server's stable ids file (pipeline/ids.json, pipeline/ids-<server>.json): well
+formed, only ever appended to, and never missing.
 
 Share links and saved builds store these ids, so an id that changes, disappears or is reused
 breaks every link that holds it. CI runs this against the pull request's base branch; a file the
 base branch doesn't have yet (a new server's) is checked for its shape only. A file the base branch
 has, or one whose server already has data, must still be there.
+
+The files checked are the ones config.SERVERS names and every ids file the base branch holds, so a
+branch that drops a server from config.SERVERS (or names another file for it) can't take that
+server's ids out of the check with the same change.
 
 Usage (from the repo root):
     python pipeline/check_ids.py                # the files are well formed
@@ -75,6 +79,27 @@ def registries() -> list[tuple[Path, Path]]:
     return [(HERE / s.ids, config.data_dir(s.id)) for s in config.SERVERS.values()]
 
 
+def is_ids_file(name: str) -> bool:
+    """Whether a file in pipeline/ is a stable ids file by its name.
+
+    @param name The file's name (no folder).
+    @return True for ids.json and ids-<server>.json.
+    """
+    return name == "ids.json" or (name.startswith("ids-") and name.endswith(".json") and len(name) > len("ids-.json"))
+
+
+def base_registries(base: str) -> list[Path] | None:
+    """The ids files the base branch holds, whatever this branch's config.SERVERS says.
+
+    @param base The base commit.
+    @return Their paths in this checkout, by name; None when the base's pipeline/ can't be listed.
+    """
+    listed = _git("ls-tree", "--name-only", f"{base}:pipeline")
+    if listed.returncode != 0:
+        return None
+    return [HERE / n for n in sorted(listed.stdout.splitlines()) if is_ids_file(n)]
+
+
 def _git(*args: str) -> subprocess.CompletedProcess:
     """@return The finished git command (output captured as text)."""
     return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8")
@@ -86,7 +111,16 @@ def main(argv: list[str]) -> int:
         print(f"error: can't read {base}: not a commit")
         return 2
     failed = False
-    for reg, data in registries():
+    checked: list[tuple[Path, Path | None]] = list(registries())
+    if base:
+        held = base_registries(base)
+        if held is None:
+            print(f"error: can't list pipeline/ at {base}")
+            return 2
+        named = {reg.name for reg, _ in checked}
+        # the base's ids files this branch's config no longer names: still checked (no data folder known)
+        checked += [(reg, None) for reg in held if reg.name not in named]
+    for reg, data in checked:
         name = f"pipeline/{reg.name}"
         at_base = bool(base) and _git("cat-file", "-e", f"{base}:{name}").returncode == 0
         if not reg.is_file():
@@ -94,7 +128,7 @@ def main(argv: list[str]) -> int:
             if at_base:
                 print(f"error: {name} was deleted (it exists on {base}); every link to that server needs it")
                 failed = True
-            elif (data / "versions.json").is_file():
+            elif data is not None and (data / "versions.json").is_file():
                 print(f"error: {name} is missing while {data.relative_to(HERE.parent).as_posix()} holds data")
                 failed = True
             else:

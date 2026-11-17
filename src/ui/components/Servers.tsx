@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_SERVER, defaultServer, serverById, serverOf, SERVERS, type GameServer } from '../../data/servers.ts';
 import { hasWork, skinOf } from '../../engine/build.ts';
 import { lastServer } from '../../state/lastServer.ts';
-import { CONTINUE_BUILD, useStore } from '../../state/store.ts';
+import { CONTINUE_BUILD, useStore, type ResumeLabel } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { pressKeys } from '../press.ts';
 import { SKINS } from '../skin/skin.ts';
@@ -94,7 +94,7 @@ export function ServerDialog() {
 }
 
 /** The open server list (mounted per opening, so each starts on its own highlighted server). */
-function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; preselect: string; resume?: string }) {
+function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; preselect: string; resume?: ResumeLabel }) {
   const { close, shown, alignment, hasBuild } = useStore(
     useShallow((s) => ({ close: s.closeServerAsk, shown: s.server, alignment: s.build?.alignment, hasBuild: !!s.build && hasWork(s.build) })),
   );
@@ -209,12 +209,15 @@ function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; 
             ref={resumeRef}
             className={`info-button server-continue${hi === n ? ' on' : ''}`}
             data-testid="server:continue"
-            title={resume}
+            title={`${resume.build} ${resume.server}`}
+            aria-label={`${resume.build} ${resume.server}`}
             style={{ position: 'static', maxWidth: w - 2 * pad, padding: '0 28px' }}
             onFocus={() => setHi(n)}
             onClick={() => pick(n)}
           >
-            {resume}
+            {/* a long build name is cut short; the server it continues on always shows */}
+            <span className="server-continue-build">{resume.build}</span>
+            <span className="server-continue-server">{resume.server}</span>
           </button>
         ) : (
           <button className="info-button" data-testid="server:ok" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => pick(hi)}>

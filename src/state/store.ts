@@ -68,7 +68,7 @@ interface Store {
    * @return Whether it is shown (the build is cleared only then).
    */
   selectServer(id: string): Promise<boolean>;
-  serverAsk: { cancellable: boolean; preselect: string; resume?: string; resolve: (id: string | null) => void } | null; // the server list dialog, while open
+  serverAsk: { cancellable: boolean; preselect: string; resume?: ResumeLabel; resolve: (id: string | null) => void } | null; // the server list dialog, while open
   /**
    * Ask which game server to use, in the server list dialog.
    *
@@ -79,7 +79,7 @@ interface Store {
    *   long break); it starts highlighted then.
    * @return The picked server's id, CONTINUE_BUILD for the resume button, or null when cancelled.
    */
-  askServer(cancellable: boolean, preselect: string, resume?: string): Promise<string | null>;
+  askServer(cancellable: boolean, preselect: string, resume?: ResumeLabel): Promise<string | null>;
   /** Close the server list dialog with a pick, or with null as cancelled. */
   closeServerAsk(id: string | null): void;
   gd?: GameData; // the data of the version being shown (the build's, or the one picked on New Build)
@@ -191,6 +191,15 @@ interface Store {
 
 const STORAGE_KEY = 'hcp.current';
 const NOTES_KEY = 'hcp.patchNotes';
+
+/**
+ * The resume button's label, in the two parts the button keeps apart: a long build name is cut
+ * short to fit, the server it continues on never is.
+ */
+export interface ResumeLabel {
+  build: string; // 'Continue "Fire Guy"', or 'Continue your last build' for one without a name
+  server: string; // 'on Thunderspy'
+}
 
 /** What the server list answers when its resume button (continue the last build) is used. */
 export const CONTINUE_BUILD = ':continue';
@@ -455,10 +464,10 @@ function hasPicks(b: Build): boolean {
   return Array.isArray(b.picks) && b.picks.some((p) => p);
 }
 
-/** @return The resume button's label for a build ('Continue "Fire Guy" on Thunderspy'). */
-function resumeLabel(b: Build, server: GameServer): string {
+/** @return The resume button's label for a build ('Continue "Fire Guy"', 'on Thunderspy'). */
+function resumeLabel(b: Build, server: GameServer): ResumeLabel {
   const name = cleanName(b.name).trim();
-  return `${name ? `Continue "${name}"` : 'Continue your last build'} on ${server.label}`;
+  return { build: name ? `Continue "${name}"` : 'Continue your last build', server: `on ${server.label}` };
 }
 
 // selectServer calls in flight: only the newest may show its server

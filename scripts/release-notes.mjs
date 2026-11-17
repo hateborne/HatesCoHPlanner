@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchTag } from './release-version.mjs';
 
 export const CHANGELOG = 'CHANGELOG.md';
 export const UPCOMING = 'Unreleased';
@@ -81,21 +82,9 @@ function main() {
   const previous = process.argv[2] ?? '';
   if (!TAG.test(previous)) throw new Error(`Name the release before this one (vX.Y.Z) to read the changelog since (got "${previous}").`);
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
-  const has = (...args) => {
-    try {
-      git(...args);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const ref = `refs/tags/${previous}`;
-  // the deploy's checkout holds main's tip only: fetch the previous release's commit to read its
-  // copy of the file (one commit deep in a shallow checkout; a full clone is never made shallow)
-  if (!has('rev-parse', '--verify', '--quiet', `${ref}^{commit}`)) {
-    const shallow = git('rev-parse', '--is-shallow-repository').trim() === 'true';
-    git('fetch', '--quiet', '--no-tags', ...(shallow ? ['--depth', '1'] : []), 'origin', `${ref}:${ref}`);
-  }
+  // the deploy's checkout holds main's tip only: the previous release's commit is fetched to read
+  // its copy of the file
+  const ref = fetchTag(previous);
   // a release from before the changelog has no copy: every line is new then
   const had = git('ls-tree', '--name-only', ref, '--', CHANGELOG).trim() !== '';
   const before = had ? git('show', `${ref}:${CHANGELOG}`) : '';

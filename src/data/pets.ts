@@ -29,7 +29,9 @@ function isMod(v: unknown): boolean {
     isStr(v.tbl) &&
     isNum(v.sc) &&
     opt(v.tg, isStr) &&
-    ['dur', 'mag', 'del', 'per', 'tc'].every((k) => opt(v[k], isNum)) &&
+    ['dur', 'mag', 'del', 'tc'].every((k) => opt(v[k], isNum)) &&
+    // a tick period divides the duration: none or a damaged one (0, negative) is no period at all
+    opt(v.per, (p) => isNum(p) && p > 0) &&
     ['fl', 'mx', 'pwn'].every((k) => opt(v[k], isStrs)) &&
     opt(v.pw, isNums) &&
     opt(v.sup, Array.isArray)

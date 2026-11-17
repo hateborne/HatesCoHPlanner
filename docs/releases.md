@@ -1,14 +1,15 @@
 # Versions and releases
 
-How a deploy picks, tags and stamps a version, and how the players' changelog feeds its notes. The
-bump rules are in `AGENTS.md`.
+How a deploy picks, tags and stamps a version, which changes make a new one, and how the players'
+changelog feeds its notes. The bump rules are in `AGENTS.md`.
 
-Every deploy is a release with a SemVer version, `vX.Y.Z`. The first public release (the site as
-deployed on November 13, 2026) is `v1.0.0`. The owner's rules for the bump:
+Every deploy that changes the site is a release with a SemVer version, `vX.Y.Z`. The first public
+release (the site as deployed on November 13, 2026) is `v1.0.0`. The owner's rules for the bump:
 
 - **major**: massive feature changes or redesigns;
 - **minor**: a new server, or medium-sized work;
-- **patch**: fixes and small changes.
+- **patch**: fixes and small changes;
+- **none**: a change to nothing the site is built from (below).
 
 When you hand back a pull request, say which bump it calls for, so the owner can pick it at deploy.
 
@@ -18,6 +19,8 @@ When you hand back a pull request, say which bump it calls for, so the owner can
   already carries a version deploys again under it, with no new tag (re-running an older release's
   deploy puts that release back live). A new version goes only to main's newest commit, so re-running
   an old deploy that failed before it was tagged is refused once main has moved on: start a new one.
+- A deploy of changes the site is not built from keeps the newest version, whatever bump was picked:
+  no new tag, no release, the same number in the footer (next section).
 - The build gets the version from `HCP_VERSION` and the commit from `HCP_COMMIT`
   (`vite.config.ts`, read through `src/version.ts`). Builds outside a deploy (dev server, tests,
   pull request checks) are `dev`.
@@ -34,6 +37,27 @@ When you hand back a pull request, say which bump it calls for, so the owner can
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
 bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+
+## What counts as a new version
+
+The version names the application players use, so only a change to what the site is built from
+makes a new one (the owner's rule: docs, tests and CI are not the application). The deploy compares
+main's tip with the newest version's commit, file by file (`affectsSite` in
+`scripts/release-version.mjs`; `tests/releaseversion.test.ts`):
+
+- **Counts:** `src/`, `public/` (the game data and assets with it), `index.html`, `vite.config.ts`,
+  `package.json`, `package-lock.json`, the build's `tsconfig` files, and any path not listed below.
+  A file nobody thought of errs toward a new version, never toward a changed site under an old
+  number.
+- **Doesn't count:** `docs/` and every `.md` file outside `src/` and `public/`; `tests/` and `e2e/`
+  with their configuration; `.github/` (CI and the deploy workflow); `scripts/`; the pipeline's and
+  the build research's own code, ids files and reports (`pipeline/`, `tools/`, `research/`: what
+  they make lands in `public/`, which counts); `.claude/`; the lint configuration, `.gitignore`, `.gitattributes`, `LICENSE`.
+- With only such changes since the newest version, the deploy publishes main under that version
+  again: the run says so, the bump picked is ignored, and the `release` job is skipped. The pull
+  requests show up in the next real release's notes.
+- The two commits' files are compared, not their history: a change and its revert are no change.
+- A pull request of only such changes calls for no bump ("Bump: none"), and adds no changelog line.
 
 ## The changelog
 

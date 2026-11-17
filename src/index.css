@@ -540,9 +540,22 @@ button {
 .server-continue {
   box-shadow: none;
   filter: brightness(0.8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   white-space: nowrap;
   overflow: hidden;
+}
+/* the build's name gives way (with an ellipsis) so the server after it is never cut off */
+.server-continue-build {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+}
+.server-continue-server {
+  flex: none;
+  margin-left: 0.3em;
 }
 .server-continue.on {
   filter: none;

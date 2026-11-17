@@ -144,7 +144,7 @@ describe('a page load after a long break', () => {
     const { useStore, CONTINUE_BUILD, done } = await visit({ build: sample('Fire Guy'), lastUsed: away });
     const ask = useStore.getState().serverAsk!;
     expect(ask.cancellable).toBe(false);
-    expect(ask.resume).toBe('Continue "Fire Guy" on Homecoming');
+    expect(ask.resume).toEqual({ build: 'Continue "Fire Guy"', server: 'on Homecoming' });
     expect(ask.preselect).toBe('homecoming');
     useStore.getState().closeServerAsk(CONTINUE_BUILD);
     await done;
@@ -172,12 +172,12 @@ describe('a page load after a long break', () => {
 
   it('names an unnamed build plainly, and an untrusted name only as cleaned', async () => {
     const unnamed = await visit({ build: { ...sample(''), name: undefined } as unknown as Build, lastUsed: away });
-    expect(unnamed.useStore.getState().serverAsk?.resume).toBe('Continue your last build on Homecoming');
+    expect(unnamed.useStore.getState().serverAsk?.resume).toEqual({ build: 'Continue your last build', server: 'on Homecoming' });
     unnamed.useStore.getState().closeServerAsk(null);
     await unnamed.done;
     vi.unstubAllGlobals();
     const long = await visit({ build: sample(`${'N'.repeat(NAME_MAX)}${'x'.repeat(60)}`), lastUsed: away });
-    expect(long.useStore.getState().serverAsk?.resume).toBe(`Continue "${'N'.repeat(NAME_MAX)}" on Homecoming`);
+    expect(long.useStore.getState().serverAsk?.resume).toEqual({ build: `Continue "${'N'.repeat(NAME_MAX)}"`, server: 'on Homecoming' });
     long.useStore.getState().closeServerAsk(null);
     await long.done;
   });
@@ -202,7 +202,7 @@ describe('a page load after a long break', () => {
     const mine = sample('Fire Guy');
     const code = await encodeShare(mine);
     const { useStore, history, done } = await visit({ build: mine, lastUsed: away, path: `${BASE}Homecoming/`, hash: `#b=${code}` });
-    expect(useStore.getState().serverAsk?.resume).toBe('Continue "Fire Guy" on Homecoming');
+    expect(useStore.getState().serverAsk?.resume).toEqual({ build: 'Continue "Fire Guy"', server: 'on Homecoming' });
     useStore.getState().closeServerAsk('homecoming');
     await done;
     expect(useStore.getState().view).toBe('setup');

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Archetype, Power } from '../../data/types.ts';
 import { allowedSetCategories, allowedTypes, boostHelpText, setRarity, type RarityKind, type SetRarity } from '../../engine/enhance.ts';
@@ -165,16 +165,28 @@ function Floating({ x, y, w, gap, left = -140, pad = 0, avoid, render }: { x: nu
   const stage = useStage();
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ h: 0, bar: 0, gutter: 0 });
-  // measured after every render on purpose (the content changes size); it settles once it matches
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => {
+  // the box's height and, while it is cut short, its scrollbar's room; it settles once they match
+  const measure = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const cs = getComputedStyle(el);
     const borders = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0);
     const { bar, gutter } = scrollRoom(isCut(el), Math.max(0, el.offsetWidth - el.clientWidth - borders));
-    if (el.offsetHeight !== size.h || bar !== size.bar || gutter !== size.gutter) setSize({ h: el.offsetHeight, bar, gutter });
-  });
+    const h = el.offsetHeight;
+    setSize((s) => (s.h === h && s.bar === bar && s.gutter === gutter ? s : { h, bar, gutter }));
+  }, []);
+  // measured after every render on purpose (the content changes size)
+  useLayoutEffect(() => measure());
+  // and when the box resizes without this component rendering: a part inside it that redraws on
+  // its own (the Advanced info, when the version's pets or info file arrives) would otherwise leave
+  // the box where its shorter height put it, and without its scrollbar's room
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const watch = new ResizeObserver(() => measure());
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [measure]);
   useTallWheel(ref, stage.h);
   const { h, bar, gutter } = size;
   const { x: bx, y: by } = placeFloating({ x, y, w: w + bar, h, gap, left, pad }, stage, toStage(avoid, stage));

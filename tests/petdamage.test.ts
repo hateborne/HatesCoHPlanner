@@ -363,6 +363,9 @@ describe('the pets file is taken only whole and well formed', () => {
       (f) => ((f.classes as Record<string, Record<string, number>>)['Class_Minion_Pets']!['melee_damage'] = 99999),
       (f) => (f.tables = [[1, 'x']]),
       (f) => (f.plus = '1'),
+      // a tick period of 0 (or less) would have the power info count ticks without end
+      (f) => ((f.powers as Record<string, { eff: { m: { per: unknown }[] }[] }>)['Redirects.Fiery_Aura.FieryBurn']!.eff[0]!.m[0]!.per = 0),
+      (f) => ((f.powers as Record<string, { eff: { m: { per: unknown }[] }[] }>)['Redirects.Fiery_Aura.FieryBurn']!.eff[0]!.m[0]!.per = -0.5),
     ];
     for (const b of breaks) {
       const gd = fresh();

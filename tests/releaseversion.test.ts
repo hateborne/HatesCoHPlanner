@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { BUMPS, nextRelease, VERSION } from '../scripts/release-version.mjs';
+import { affectsSite, BUMPS, nextRelease, VERSION } from '../scripts/release-version.mjs';
 
 // commits as full shas
 const A = 'a'.repeat(40);
@@ -71,6 +72,70 @@ describe('nextRelease', () => {
   it('refuses to pick any version before the first one is tagged', () => {
     expect(() => nextRelease('', A, 'patch')).toThrow(/v1\.0\.0/);
     expect(() => nextRelease(remote([A, 'refs/tags/release-1'], main(A)), A, 'major')).toThrow(/v1\.0\.0/);
+  });
+});
+
+describe('a deploy of changes the site is not built from', () => {
+  const tags = remote([A, 'refs/tags/v1.1.0'], [C, 'refs/tags/v1.0.0'], main(B));
+
+  it('keeps the newest version, whatever bump was picked, and tags nothing', () => {
+    const only = ['docs/releases.md', 'AGENTS.md', 'tests/rules.test.ts', '.github/workflows/ci.yml', 'pipeline/export.py', 'scripts/audit-dev.mjs'];
+    for (const bump of ['patch', 'minor', 'major', 'pick one']) {
+      expect(nextRelease(tags, B, bump, () => only)).toEqual({ version: '1.1.0', fresh: false, previous: null, unchanged: true });
+    }
+    // nothing differs at all (a change and its revert)
+    expect(nextRelease(tags, B, 'patch', () => [])).toEqual({ version: '1.1.0', fresh: false, previous: null, unchanged: true });
+  });
+
+  it('takes a new version as soon as one changed file is part of the site', () => {
+    expect(nextRelease(tags, B, 'patch', () => ['docs/releases.md', 'src/App.tsx'])).toEqual({ version: '1.1.1', fresh: true, previous: 'v1.1.0' });
+    expect(() => nextRelease(tags, B, 'pick one', () => ['package-lock.json'])).toThrow(/Pick a version bump/);
+  });
+
+  it('compares with the newest version, and only for an untagged tip of main', () => {
+    const asked: { name: string; commit: string }[] = [];
+    const changed = (release: { name: string; commit: string }) => {
+      asked.push(release);
+      return ['README.md'];
+    };
+    nextRelease(tags, B, 'patch', changed);
+    expect(asked).toEqual([{ name: 'v1.1.0', commit: A }]);
+    // a commit with a tag of its own, and one that isn't main's tip, are settled before any comparing
+    expect(nextRelease(tags, A, 'patch', changed)).toEqual({ version: '1.1.0', fresh: false, previous: null });
+    expect(() => nextRelease(remote([A, 'refs/tags/v1.1.0'], main(C)), B, 'patch', changed)).toThrow(/not main's newest/);
+    expect(asked).toHaveLength(1);
+  });
+});
+
+describe('affectsSite', () => {
+  it('counts everything the site is built from', () => {
+    const site = ['src/App.tsx', 'src/engine/rules.ts', 'public/data/i28p4/core.json', 'public/data/versions.json', 'public/assets/icons/x.png', 'index.html', 'vite.config.ts', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json'];
+    for (const p of site) expect(affectsSite(p), p).toBe(true);
+  });
+
+  it('leaves out docs, tests, CI, the pipeline and tooling', () => {
+    const not = [
+      ...['README.md', 'AGENTS.md', 'CLAUDE.md', 'CHANGELOG.md', 'LICENSE', 'docs/releases.md', 'docs/img/screen.png'],
+      ...['tests/rules.test.ts', 'tests/fixtures/builds/README.md', 'tests/fixtures/builds/x.txt', 'e2e/boosted.spec.ts', 'playwright.config.ts', 'tsconfig.e2e.json'],
+      ...['.github/workflows/ci.yml', '.github/workflows/pages.yml', '.github/CODEOWNERS', 'scripts/release-version.mjs', 'scripts/audit-dev.mjs', 'eslint.config.js'],
+      ...['pipeline/export.py', 'pipeline/ids.json', 'pipeline/report.md', 'tools/coh_exe.py', 'research/corpus.ts', 'research/vitest.config.ts', '.claude/launch.json', '.gitignore', '.gitattributes'],
+    ];
+    for (const p of not) expect(affectsSite(p), p).toBe(false);
+  });
+
+  it('counts a file inside the site whatever its name, and any path nobody listed', () => {
+    for (const p of ['public/notes.md', 'src/ui/README.md', 'public/docs/x.json', 'src/tests/x.ts', 'newtool.config.js', 'Dockerfile', 'assets/logo.png', 'docsite/index.html']) expect(affectsSite(p), p).toBe(true);
+    // as Windows and "./" write the same paths
+    expect(affectsSite(String.raw`docs\releases.md`)).toBe(false);
+    expect(affectsSite('./src/App.tsx')).toBe(true);
+  });
+
+  it('agrees with every file and folder the repository tracks at its top level', () => {
+    // a new top-level file or folder has to be put on one side here on purpose
+    const site = ['index.html', 'package-lock.json', 'package.json', 'public', 'src', 'tsconfig.app.json', 'tsconfig.json', 'tsconfig.node.json', 'vite.config.ts'];
+    const list = (...args: string[]) => execFileSync('git', ['ls-tree', ...args, '--name-only', 'HEAD'], { encoding: 'utf8' }).split('\n').filter(Boolean);
+    const folders = new Set(list('-d'));
+    expect(list().filter((n) => affectsSite(folders.has(n) ? `${n}/x` : n)).sort()).toEqual(site);
   });
 });
 

@@ -671,6 +671,21 @@ function attribValueMarkup(
 const MAX_PET_DEPTH = 4;
 // How many ExecutePower steps deep the client follows (a recursion counter it checks before each).
 const MAX_EXECUTE_DEPTH = 4;
+// The most ticks one effect is counted for. Real effects tick a few hundred times at the very most
+// (Rain of Fire: 76); the cap only keeps a damaged tick period (0, or next to it) from making the
+// averages below count without end.
+export const MAX_TICKS = 100_000;
+
+/**
+ * How many times an effect with a duration ticks: the client's floor(duration / period) + 1.
+ *
+ * @param dur The effect's duration in seconds.
+ * @param per Its tick period in seconds (none: 1).
+ * @return The ticks, MAX_TICKS at most.
+ */
+export function tickCount(dur: number, per: number | undefined): number {
+  return Math.min(MAX_TICKS, Math.floor(dur / (per ?? 1)) + 1);
+}
 
 /**
  * Build the detailed-info content of a power, PvE, with enhanced and (base) values.
@@ -881,7 +896,7 @@ export function powerInfo(
   const expectedHits = (t: Tmpl, dur: number): number => {
     const chance = dur ? t.tick : t.chance;
     if (!dur) return chance;
-    const ticks = Math.floor(dur / (t.m.per ?? 1)) + 1;
+    const ticks = tickCount(dur, t.m.per);
     if (!t.m.fl?.includes('CancelOnMiss')) return ticks * chance;
     let avg = 0;
     let k = 1;
@@ -1258,7 +1273,7 @@ export function powerInfo(
       let iTicks = 0;
       if (isDamageOff(offset) && eType === 'Abs') {
         if (pet && pet.dur && ap) iTicks = Math.floor(Math.fround(Math.fround(pet.dur) / Math.fround(ap))) + 1;
-        else if (fDuration) iTicks = Math.floor(fDuration / (m.per ?? 1)) + 1;
+        else if (fDuration) iTicks = tickCount(fDuration, m.per);
         if (iTicks > 1) {
           pchTicks = TXT.ticksOf.replace('{ticks}', String(iTicks));
           if (off100(fTick) && cancelOnMiss) pchChance2 = chanceText(fTick);

@@ -7,7 +7,9 @@
 # Each deploy is a release (AGENTS.md, "Versions and releases"): the bump picked here makes the next
 # vX.Y.Z (scripts/release-version.mjs), the build shows it in the footer, and the release job tags it
 # and publishes its notes before the site goes live, so a failed deploy can't let another build take
-# the same number. A commit that already carries a version deploys again under it, with no new tag.
+# the same number. A commit that already carries a version deploys again under it, with no new tag,
+# and so does one that changes nothing the site is built from since the newest version (docs, tests,
+# CI, tooling: docs/releases.md, "What counts as a new version").
 name: Deploy to GitHub Pages
 
 on:

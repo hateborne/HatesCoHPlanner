@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { powerInfo, segText } from '../src/engine/powerinfo.ts';
+import { MAX_TICKS, powerInfo, segText, tickCount } from '../src/engine/powerinfo.ts';
 import { loadData } from './helpers/data.ts';
 
 const gd = loadData();
@@ -241,5 +241,21 @@ describe('powerInfo: "all damage" and "all defense" groups (markAllTypes, both c
   it('keeps a lone toxic defense line (no group): Invincibility, Homecoming', () => {
     const inv = powerInfo(gd, gd.archetypeByName.get('class_tanker')!, gd.powerByName.get('tanker_defense.invulnerability.invincibility')!, 49, null);
     expect(inv.effects.some((e) => segText(e.line).includes('toxic defense'))).toBe(true);
+  });
+});
+
+describe('tickCount', () => {
+  it("counts the client's floor(duration / period) + 1", () => {
+    expect(tickCount(15, 0.2)).toBe(76); // Rain of Fire's pet
+    expect(tickCount(10, undefined)).toBe(11);
+    expect(tickCount(0.5, 1)).toBe(1);
+  });
+
+  it('stops at MAX_TICKS for a period of 0 or next to it, so no average loops without end', () => {
+    expect(tickCount(10, 0)).toBe(MAX_TICKS);
+    expect(tickCount(10, 1e-12)).toBe(MAX_TICKS);
+    expect(tickCount(1e300, 1)).toBe(MAX_TICKS);
+    // no real effect comes near it
+    expect(MAX_TICKS).toBeGreaterThan(10_000);
   });
 });
