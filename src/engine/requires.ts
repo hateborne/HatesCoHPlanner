@@ -275,3 +275,93 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
   }
   return toNum(st[st.length - 1]);
 }
+
+// First characters the client's power-info check reads as a two-operand operator (0x1404dfdd0's
+// bit set 0xc000ac2000000000): % * + - / > ?
+const INFO_BINARY_FIRST = new Set(['%', '*', '+', '-', '/', '>', '?']);
+
+/**
+ * The live client's power-info requirement check: whether the power info lists an effect group,
+ * and whether its damage counts (requiresArchetypePvPEval in the source's uiPowerInfo.c; Homecoming
+ * i28p4 0x1404dfdd0 and Thunderspy 9.6 0x1404d4cc0, called by power_AddEffects and getTotalDamage;
+ * decompiled, both as the source).
+ *
+ * It is not the game's evaluator (evalRequires) but a cut-down stack machine that only tells the
+ * caster's archetype, the creator's archetype, a critter target from a player one, and PvP maps
+ * apart. Everything else reads as true: a value, a comparison, `source.ownPower?` (and the `!`
+ * after it), `Source.Mode?`, `target.HasTag?`. So the game lists every Combo Level line and the
+ * "Only if hidden" lines, and leaves out what another archetype or PvP gets.
+ *
+ * 1. `arch source> X` pushes whether the caster's class is X, `arch source.owner> X` (or
+ *    `source.creator>`) whether the creator's is, any other `arch` 1; then 1. Three tokens.
+ * 2. `enttype target> X` pushes whether X is "critter" (PvE), any other `enttype` 1; then 1.
+ * 3. `isPVPMap?` pushes 0 in PvE.
+ * 4. `source.ownPower?` / `target.ownPower?` replace their operand with 1 and swallow a `!` after.
+ * 5. A token ending in `>` replaces its operand with 1; `<`, `<=`, `>=`, a token starting with one
+ *    of % * + - / > ? or ending in `?` pops two and pushes 1; `minmax` pops three and pushes 1.
+ * 6. `&&`, `||`, `!`, `eq` and `==` work on the 0/1 values; any other token pushes 1.
+ * 7. A pop from an empty stack reads 0; the answer is the bottom of the stack.
+ *
+ * @param tokens One group's requirement tokens.
+ * @param cls The caster's class (Class_Stalker; the pet's for a pet's power).
+ * @param owner The creator's class for a pet's power, else null.
+ * @param pvp Whether PvP effects are shown (the planner shows PvE).
+ * @return Whether the client counts the requirement as met.
+ */
+export function infoRequires(tokens: readonly string[], cls: string, owner: string | null, pvp = false): boolean {
+  const st: number[] = [];
+  const pop = (): number => (st.length ? st.pop()! : 0);
+  const is = (a: string | undefined, b: string | null): boolean => a !== undefined && b !== null && a.toLowerCase() === b.toLowerCase();
+  for (let i = 0; i < tokens.length; ) {
+    const t = tokens[i]!;
+    const lt = t.toLowerCase();
+    if (lt === 'arch') {
+      const who = tokens[i + 1]?.toLowerCase();
+      if (who === 'source>') st.push(is(tokens[i + 2], cls) ? 1 : 0);
+      else if (who === 'source.owner>' || who === 'source.creator>') st.push(is(tokens[i + 2], owner) ? 1 : 0);
+      else st.push(1);
+      st.push(1);
+      i += 3;
+    } else if (lt === 'source.ownpower?' || lt === 'target.ownpower?') {
+      pop();
+      st.push(1);
+      if (i < tokens.length - 1 && tokens[i + 1] === '!') i++;
+      i++;
+    } else if (lt === 'enttype') {
+      st.push(tokens[i + 1]?.toLowerCase() === 'target>' ? (is(tokens[i + 2], pvp ? 'player' : 'critter') ? 1 : 0) : 1);
+      st.push(1);
+      i += 3;
+    } else if (lt === 'ispvpmap?') {
+      st.push(pvp ? 1 : 0);
+      i++;
+    } else {
+      if (t.length > 1 && t.endsWith('>')) {
+        pop();
+      } else if (t === '<' || t === '<=' || t === '>=' || INFO_BINARY_FIRST.has(t[0] ?? '') || t.endsWith('?')) {
+        pop();
+        pop();
+      } else if (t === '&&' || t === '||') {
+        const a = pop();
+        const b = pop();
+        st.push(t === '&&' ? (a && b ? 1 : 0) : a || b ? 1 : 0);
+        i++;
+        continue;
+      } else if (t === '!') {
+        st.push(pop() ? 0 : 1);
+        i++;
+        continue;
+      } else if (lt === 'eq' || t === '==') {
+        st.push(pop() === pop() ? 1 : 0);
+        i++;
+        continue;
+      } else if (lt === 'minmax') {
+        pop();
+        pop();
+        pop();
+      }
+      st.push(1);
+      i++;
+    }
+  }
+  return (st[0] ?? 0) !== 0;
+}

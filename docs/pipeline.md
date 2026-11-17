@@ -35,6 +35,22 @@ from (`COH_CLIENT` pointing at a copy of an older client for an older version). 
 from reading each client's code: an export from a client exe not listed in its server's
 `pet_checked` (`pipeline/config.py`) warns until someone reads it and adds its hash.
 
+Beside them it writes the version's power-info extras, `public/data/info/<version>.json`
+(Exporter.build_info): what the client's power info reads from fields the version's own files
+don't carry. Each mod's own note (its Messages.DisplayInfo, translated: "Within 20ft radius",
+"Main Target Only", "Opportunity", "Overpower"), laid out as the power's groups; the granted powers
+whose grant the client doesn't list (ShowInInventory 0); the "Aggro Type" row (AIReport 1 or 2;
+Thunderspy reads HitAggro for 2, `hit_aggro`); the attribute names as the client writes them (the
+message "Attr" + the field name: "knock", "defense debuff", Thunderspy's "knockback"); the client's
+texts for the notes the planner writes ("unresistable"); and, on a server whose client lists
+PvP-only groups (Thunderspy, `info_lists_pvp`), the groups of each power with one only its PVPOnly
+flag marks. A power's notes are written only when its groups, made again from the client, are the
+very groups the version's files hold and its notes line up with them group by group and mod by mod
+(else it is named in a warning), so a note never lands on another mod; a PvP-only group is listed
+only when the version's files carry every table it scales by. The file names its version
+(`"version"`), and the app refuses one that names another. `python -m pipeline.info [--server S] [--game-version V]` writes only that file, for a
+version published before it existed, from the version's own client and after its pets file.
+
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
 `pipeline/report.md`. Safety rails:
 
@@ -108,7 +124,8 @@ effect lines a side per power. The owner uses it to know what to spot-check in t
 Homecoming default.
 An older patch with no client files left can get an approximate version:
 `python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
-available level from the configured Mids database (its header names the issue and page). Review
+available level from the configured Mids database (its header names the issue and page). The
+base's pets and info files are copied too (the info file renamed for the new version). Review
 `pipeline/report-<id>.md`, then commit `public/data` and the report through a pull request.
 
 ## Recipes and salvage (the set finder's shopping list)

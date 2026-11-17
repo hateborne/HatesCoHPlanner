@@ -105,6 +105,11 @@ class Server:
     pet_checked: tuple = ()  # SHA-1s of the client exes whose pet rules were read (pet_extra,
                              # pet_skip_hidden and docs/game-rules.md, "Pseudo-pet damage"); another
                              # exe gets a warning
+    info_lists_pvp: bool = False  # its client's power info lists PvP-only effect groups too (it
+                             # tests no group flags: Thunderspy.exe power_AddEffects 0x1404da680);
+                             # the info file then carries those powers' groups (Exporter.build_info)
+    hit_aggro: bool = False  # its client's "Aggro Type" row reads HitAggro for AIReport 2 (Thunderspy's
+                             # power_AddTargetInfo 0x1404d89d0); Homecoming's reads NoAggro for 1 and 2
 
 
 HOMECOMING = Server("homecoming", "COH_CLIENT", ("client",), "bin/win64/live/cityofheroes.exe",
@@ -117,7 +122,8 @@ HOMECOMING = Server("homecoming", "COH_CLIENT", ("client",), "bin/win64/live/cit
 THUNDERSPY = Server("thunderspy", "COH_CLIENT_THUNDERSPY", ("servers", "thunderspy", "client"),
                     "Thunderspy.exe", "tspy/bin.pigg", "tspy/bin.pigg", "piggs", "tspy", None,
                     "thunderspy", "ids-thunderspy.json", "report-thunderspy", False, False,
-                    version_prefix="ts", pet_extra=1, pet_skip_hidden=False,
+                    version_prefix="ts", pet_extra=1, pet_skip_hidden=False, info_lists_pvp=True,
+                    hit_aggro=True,
                     pet_checked=("160b199f38f021432bd69ce5085b4ac73cb4af5c",))  # release 9.6
 SERVERS = {s.id: s for s in (HOMECOMING, THUNDERSPY)}
 # Folder names under public/data that hold a server's data, never a game version (Rebirth's is
@@ -126,11 +132,14 @@ SERVER_FOLDERS = frozenset({s.data for s in SERVERS.values() if s.data} | {"rebi
 # The folder under a server's data folder that holds its pseudo-pet files (pets/<version>.json),
 # never a game version.
 PETS_FOLDER = "pets"
+# The folder beside it that holds each version's power-info extras (info/<version>.json,
+# Exporter.build_info), never a game version either.
+INFO_FOLDER = "info"
 # Likewise its recipe files (recipes/<version>.json, pipeline.recipes) and the set finder's build
 # statistics (finder/stats.json, the build research): never game versions either.
 RECIPES_FOLDER = "recipes"
 FINDER_FOLDER = "finder"
-SIDE_FOLDERS = frozenset({PETS_FOLDER, RECIPES_FOLDER, FINDER_FOLDER})
+SIDE_FOLDERS = frozenset({PETS_FOLDER, INFO_FOLDER, RECIPES_FOLDER, FINDER_FOLDER})
 
 
 def _local(keys: tuple) -> str | None:
@@ -241,10 +250,10 @@ def valid_version_id(v: str) -> bool:
 
     Lower-case letters, digits, "-" and "_" only, starting with a letter or digit, at most 32
     characters, and not a Windows device name, a server's data folder or a folder of side files
-    (pets, recipes, finder). Lower
-    case only, because Windows folders ignore case: "I28P4" would write into "i28p4" while
-    versions.json treated them as two versions. No dots either: Windows drops a trailing one, so
-    "i28p4." would also land in "i28p4" (Thunderspy's release 9.6 is "ts9-6").
+    (pets, info, recipes, finder). Lower case only, because Windows folders ignore case: "I28P4"
+    would write into "i28p4" while versions.json treated them as two versions. No dots either:
+    Windows drops a trailing one, so "i28p4." would also land in "i28p4" (Thunderspy's release 9.6
+    is "ts9-6").
 
     @param v The id.
     @return True when it may name a folder under public/data.

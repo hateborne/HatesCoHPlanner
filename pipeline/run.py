@@ -9,7 +9,9 @@ Usage (from the repo root):
 
 The game version id names the data folder public/data/<id>/ (public/data/<server>/<id>/ for a
 server other than Homecoming); the version's pseudo-pet file goes beside it, in pets/<id>.json
-(python -m pipeline.pets writes only that file, for a version already published). It defaults to "gameVersion" / "gameLabel" under the server's entry
+(python -m pipeline.pets writes only that file, for a version already published), and its
+power-info extras in info/<id>.json (python -m pipeline.info likewise). It defaults to
+"gameVersion" / "gameLabel" under the server's entry
 in pipeline/patch-watch.json. A version id names one server only: the run refuses an id another
 server already uses.
 
