@@ -22,12 +22,11 @@ from pipeline.coh.p7reader import param_power_names
 from pipeline.decode.live import LiveData, sha1
 from pipeline.forced_respec import forced_respec_warnings
 from pipeline.ids import IdRegistry
+from pipeline.pvp import pvp_requires
 
 # special attributes whose mods name powers in their Params (481, 482, 486, 512 on Homecoming and
 # Thunderspy; looked up by name so another client's numbering can't miss them)
 GRANT_NAMES = ("GrantPower", "RevokePower", "GrantBoostedPower", "ExecutePower")
-PVP_ONLY = ["enttype", "target>", "player", "eq"]
-PVE_ONLY = ["enttype", "target>", "critter", "eq"]
 
 
 def num(v):
@@ -40,11 +39,6 @@ def num(v):
 
 def strip_k(name):
     return name[1:] if isinstance(name, str) and name.startswith("k") else name
-
-
-def contains_seq(seq: list, sub: list) -> bool:
-    n = len(sub)
-    return any(seq[i:i + n] == sub for i in range(len(seq) - n + 1))
 
 
 ENT_CREATE_PARAM = 3  # the param type of an EntCreate mod's Params (the client tests `*params == 3`)
@@ -282,8 +276,7 @@ class Exporter:
         for e in effs or []:
             req = e.get("Requires") or []
             eflags = self.effect_flags(e.get("Flags") or 0)
-            pvp = "PVPOnly" in eflags or (contains_seq(req, PVP_ONLY)
-                                          and not contains_seq(req, PVE_ONLY))
+            pvp = "PVPOnly" in eflags or pvp_requires(req)
             if pvp:
                 self.report["pvp_effects_dropped"] += 1
                 continue
@@ -509,8 +502,7 @@ class Exporter:
         def walk(effs, pvp: bool) -> None:
             for e in effs or []:
                 req = e.get("Requires") or []
-                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or (
-                    contains_seq(req, PVP_ONLY) and not contains_seq(req, PVE_ONLY))
+                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or pvp_requires(req)
                 walk(e.get("Effect"), p)
                 if not p:
                     continue
