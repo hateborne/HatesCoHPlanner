@@ -503,8 +503,21 @@ interface Tmpl {
   evalOk: boolean;
 }
 
-/** Notes the client derives from requirement tokens (getRequiresString). */
-function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean): string[] {
+/**
+ * Notes the client derives from requirement tokens (getRequiresString).
+ *
+ * Thunderspy's client adds whom a line applies to, after the origin note (its getRequiresString,
+ * 0x1404d2f00, decompiled): a requirement that names the target reads "Applies to enemies" when it
+ * holds `target.isFriend?!` or `enttypetarget>crittereq`, else "Applies to allies" (its Stygian
+ * Circle's heals vs lieutenants and bosses, in game). Its power_AddEffects asks for it; its
+ * getTotalDamage doesn't, so it never takes a group out of the damage total.
+ *
+ * @param reqs The requirements the notes read (the group's and, on Homecoming, its parents').
+ * @param assumeDefaults Leave out the notes of the default case (the damage total; Combo Level 0).
+ * @param friendNotes Add Thunderspy's "Applies to" note (infoFriendNotes).
+ * @return The notes, in the client's order, each once.
+ */
+function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean, friendNotes = false): string[] {
   const notes: string[] = [];
   for (const req of reqs) {
     const s = req.join('').toLowerCase();
@@ -533,6 +546,8 @@ function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean): stri
       }
       add(`Only if the player's origin is ${origins.join(', ')}`);
     }
+    if (friendNotes && has('target'))
+      add(has('target.isFriend?!') || has('enttypetarget>crittereq') ? 'Applies to enemies' : 'Applies to allies');
     if (has('Electronictarget.HasTag?')) add('Against electronic targets only');
     if (has('Undeadtarget.HasTag?')) add('Against undead targets only');
     if (has('Ghosttarget.HasTag?')) add('Against ghost targets only');
@@ -680,6 +695,7 @@ export function powerInfo(
   const ctx = contextFor(at.n, null);
   const ownTagModes = serverById(gd.server)?.tagModes === 'ownTag';
   const ownGroupRequires = serverById(gd.server)?.infoRequires === 'ownGroup';
+  const friendNotes = !!serverById(gd.server)?.infoFriendNotes;
 
   const attrName = (offset: number): string | null => {
     if (offset >= 0 && offset < 80) {
@@ -1225,7 +1241,7 @@ export function powerInfo(
       const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
       if (t.mode) note(t.mode); // the client adds it before the requirement notes
       if (t.tags.includes('Overpower')) note('Overpower');
-      for (const n of requiresNotes(t.reqs, false)) note(n);
+      for (const n of requiresNotes(t.reqs, false, friendNotes)) note(n);
       if (m.fl?.includes('IgnoreStrength')) note(TXT.ignoresBuffs);
       if (m.fl?.includes('IgnoreResistance')) note(TXT.unresistable);
       out.push({ line, notes });

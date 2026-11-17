@@ -122,3 +122,33 @@ describe("each client's notes read the requirements its check reads", () => {
     expect(ts.lines[0]!.startsWith(ts.dmg!)).toBe(true);
   });
 });
+
+describe('Thunderspy\'s "Applies to" note (the owner\'s screenshots, Thunderspy, level 50, November 17, 2026)', () => {
+  const ts = loadData('ts9-6', 'thunderspy');
+  const show = (gd: typeof ts, cls: string, name: string) => {
+    const pi = powerInfo(gd, gd.archetypeByName.get(cls)!, gd.powerByName.get(name)!, 49, null);
+    const avg = pi.stats.find((s) => s.label === 'Average Damage:');
+    return { lines: pi.effects.map((e) => [segText(e.line), ...e.notes.map(segText)].join(' / ')), dmg: avg ? segText(avg.value) : null };
+  };
+
+  it('says "Applies to enemies" for a critter target, and keeps the hit in the damage (Fire Blast)', () => {
+    const fb = show(ts, 'class_blaster', 'blaster_ranged.fire_blast.fire_blast');
+    expect(fb.lines[0]).toBe('62.56 fire damage on target / Applies to enemies');
+    expect(fb.lines[1]).toBe('4 Ticks of 80.00% chance for 9.38 fire damage over 3.10s on target after 0.50s delay');
+    expect(fb.dmg).toBe('84.72');
+  });
+
+  it('says "Applies to allies" for any other requirement that names the target (Stygian Circle, Judgement)', () => {
+    // Stygian Circle's heals require the target's rank and say nothing of friends
+    const sc = show(ts, 'class_warshade', 'warshade_defensive.umbral_aura.stygian_circle').lines;
+    expect(sc[0]).toMatch(/^20\.00 endurance on self after 0\.25s delay \/ unresistable$/i); // no requirement: no note
+    expect(sc.slice(1)).toEqual(['321.27 heal on self after 0.25s delay / Applies to allies', '535.45 heal on self after 0.25s delay / Applies to allies']);
+    // Radiant Blast's Judgement: its damage groups (target not a friend) are left out by the check
+    expect(show(ts, 'class_defender', 'defender_ranged.holy_light.judgement').lines).toEqual(['401.59 heal on target / Applies to allies']);
+  });
+
+  it("isn't written by Homecoming's client", () => {
+    const hc = loadData('i28p4');
+    expect(show(hc, 'class_blaster', 'blaster_ranged.fire_blast.fire_blast').lines.some((l) => l.includes('Applies to'))).toBe(false);
+  });
+});
