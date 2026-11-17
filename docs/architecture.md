@@ -25,6 +25,19 @@ src/
     enhance.ts               enhancement values, ED, origin and set validity, set rarity, help text
     setbonus.ts, totals.ts   set bonuses (rule of 5) and the totals panel
     powerinfo.ts             detailed power numbers (base vs enhanced)
+    finder/                  the set finder's engine (no screens yet; see "Set finder" below)
+      query.ts               a search: goals and importance, set tags, wanted bonus and depth
+      goals.ts               what each stat and power channel is worth to a search (weightsFor)
+      roles.ts               what a power is for: attack, self heal, control, other (rolesOf)
+      core.ts                FinderBase: the build read once, and the quick totals change of a re-slot
+      score.ts               Scorer: a re-slot's worth, gutted powers, needs
+      candidates.ts          which sets and pieces may be offered; piece kinds; wanted-bonus options
+      search.ts              searchSwaps / findSwaps: the ranked swaps, legal ones only
+      warnings.ts            what a swap costs that the player should see
+      pending.ts             kept swaps and the build they make (applySwaps, keepSwap)
+      diff.ts                buildDiff: exact gains and losses from two full totals
+      powerNumbers.ts        a power's own numbers with a slotting (slottedNumbers)
+      bonusVec.ts, eligible.ts   bonus lines kept per search; the sets each power takes
     actions.ts               pure edits (setPick, addSlot, setEnh, ...) and pickHoldsEnhancements
     validate.ts              checkBuild(): check and repair builds from outside the app
     migrate.ts               fitToPatch(): swaps that fit an import moved to another patch
@@ -264,6 +277,65 @@ build): autos and toggles on, clicks off, except
 - toggles that switch each other off (`exclusiveGroups`: a shared GroupMembership, as the game's
   `character_ShutOffAllTogglePowersInSameGroup` does): only the earliest picked is on. Switching
   one on in the overview switches the others in its group off.
+
+**Set finder (engine).** `src/engine/finder/` ranks *swaps* for a Homecoming build: pieces of one
+enhancement set into slots one power already has. It never moves a slot or changes a power, and
+it has no screens yet (they come in a later change; nothing in the app calls it). The parts:
+
+- **A search** (`FinderQuery`, `query.ts`): one to three goals with an importance each (Low 0.5,
+  Medium 1, High 2, Critical 8), the kinds of sets to add to uncommon and rare ones (PvP,
+  seasonal, purple, archetype), an optional wanted bonus (a totals line key) with a depth (2 to 3
+  pieces, 4 to 6, anywhere), up to two additional bonuses, set categories, crafted or attuned.
+- **Units** (`goals.ts`): everything is counted in "typical bonuses". A stat's unit is the size of
+  one typical set bonus in it, from the build statistics (`public/data/finder/stats.json`) for the
+  build's archetype, or for every build when the archetype has too few. A goal is a bundle of
+  stats and of *power channels* (what a power's own slotting does for its role: `st.out`,
+  `heal.rech`). A chosen goal counts by its importance; what the search did not name counts a
+  little when gained (`BASELINE`) and in full when given up (`LOSS_WEIGHT`). The statistics only
+  set units, the weight of each defense and resistance type within its goal, and the needs: they
+  never decide which goal matters.
+- **Quick figures** (`core.ts`): the full totals take milliseconds, too slow for every candidate.
+  A re-slot of one power only moves what that power adds while it runs (`runningLines`), the
+  bonuses its slots earn (`earnedBonuses`, then the rule of five against the rest of the build)
+  and the running toggles' cost, so `FinderBase.delta` works those out with the totals' own
+  functions and reads the rest from one `computeTotals`. A test holds the two equal line by line.
+  A piece with an effect of its own counts once however many running powers hold it, as in the
+  totals. Everything is worked out at the build's last level (its stop level, else 50), whatever
+  exemplar level the build is set to show: sets are bought for the whole build.
+  Gains past a cap count for nothing (`cappedChange`: the archetype caps and the 45% defense soft
+  cap, `docs/game-rules.md`).
+- **A power's own job** (`roles.ts`, `score.ts`): its roles come from the enhancement types it
+  accepts and what its effects do. A change in its enhancement strength counts as the global
+  bonus that would do the same for the build: the change times the power's share of the build's
+  damage (or healing) per second in that role. A swap that leaves a power's output, accuracy or
+  recharge multiplier a fifth lower or worse is marked down and carries a warning ("crippled"),
+  whatever the goals are. A running power's buffs on its own user are in the totals lines already;
+  the strength of one aimed at enemies or allies (a debuff toggle) moves no line and counts here.
+  Only a click's recharge counts.
+- **Needs** (`needsFor`): stats nearly every build of the archetype or power set holds (knockback
+  protection). Falling under the typical amount is marked down and warned about.
+- **The search** (`search.ts`): per power, its slots are ordered by what the build loses when
+  each is emptied (empty slots first; a proc is given a set worth, as the planner has no proc
+  numbers), a set's legal pieces by what each does for the power (procs last), and every piece
+  count the search allows is tried. Pieces go in crafted at the highest level that works at the
+  build's last level (set top, or build level plus the levels an IO works above the character),
+  or attuned. A single piece is offered only for a unique piece's global. At 50 a Superior set
+  stands in for its plain version. With a wanted bonus, a swap counts only when the stat rises
+  under its cap through a bonus of the asked depth that the swap newly earns and the rule of five
+  still counts. The best count per power and set is kept, the list is sorted, and what the game
+  would refuse (`enhRefusal`) on the build with every kept swap and the new one in is dropped.
+  `searchSwaps` is a generator that yields after each power, so a screen can spread the work.
+- **Kept swaps** (`pending.ts`): a list beside the build, one per power; the build the planner
+  holds is never changed by a search. A search given kept swaps ranks against the build with them
+  in; a power that has one is searched from its own slots, so a new swap replaces the kept one.
+  A swap records the power's slots as it found them (`before`): one made for another build, or
+  before the player changed that power's slots, is left out and named in the result (`stale`).
+- **Gains and losses** (`diff.ts`): for a hovered swap or the summary, `buildDiff` compares two
+  full totals and the changed powers' own numbers (`slottedNumbers`: damage, heal, accuracy,
+  endurance cost, recharge time with the build's global recharge).
+
+The numbers marked `UNCONFIRMED` in the finder's source are defaults waiting for the owner's
+ruling.
 
 **Builds.** A `Build` (`src/engine/build.ts`) stores ids only:
 

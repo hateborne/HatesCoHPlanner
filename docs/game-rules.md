@@ -268,6 +268,23 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   running powers counts once. Chance and PPM procs are left out, and a "Null" mod only carries a
   number for help text (Luck of the Gambler's recharge comes from its set's global bonus).
 
+## To-hit and the defense soft cap (set finder)
+
+- `CalcToHit` (MapServer/src/entity/character_combat.c): the chance to hit starts from the attacker's
+  ToHit (`attrCur.fToHit`, plus the level-difference mod), the defender's defense is taken off,
+  the result is held at 5% or more, multiplied by the attack's accuracy factor, then held between
+  5% and 95%.
+- So defense beyond the attacker's ToHit less 5% buys nothing. An enemy of the character's own
+  level starts from 50%, which gives the 45% "soft cap" the set finder stops counting defense at
+  (`DEFENSE_SOFT_CAP` in `src/engine/finder/core.ts`). @TODO the 50% is the critter classes' base
+  ToHit, which the planner's data does not carry (only player archetypes are exported); enemies
+  with ToHit buffs or of higher rank and level hit more often, and the finder does not model them.
+- The same function gives the finder's to-hit against accuracy exchange: a player's base ToHit is
+  75%, so one point of ToHit raises the final chance as much as 4/3 of a point of accuracy.
+- A power's recharge time is its base time over 1 + its recharge strength, and a power's strength
+  starts from the character's (character_mods.c), so the build's global recharge adds to the
+  slotted enhancement (`slottedNumbers` in `src/engine/finder/powerNumbers.ts`).
+
 ## Pseudo-pet damage (power info)
 
 Powers such as Burn, Irradiated Ground, Rain of Fire and Lightning Rod deal their damage through a
