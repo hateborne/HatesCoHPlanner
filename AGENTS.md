@@ -63,7 +63,8 @@ the project)
   variables.
 - Tests that need a personal file read its path from an environment variable and skip when it
   is unset (for example `HCP_MIDS_SAMPLE` in `tests/io.test.ts`, `HCP_BUILDTXT_SAMPLE` in
-  `tests/buildtxt.test.ts`).
+  `tests/buildtxt.test.ts`). The build research reads its folder of builds the same way
+  (`HCP_BUILD_CORPUS`) and writes aggregates only: no file names, build names or paths.
 - The CI "Privacy" check fails on drive-letter paths in tracked files.
 
 **Local-only material**
@@ -161,9 +162,10 @@ src/state/      store.ts (zustand: data, build, level-up flow, dialogs)
 src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, escape.ts
 tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for the e2e tests
 e2e/            Playwright browser tests (local only)
+research/       the build research (owner's machine only): community builds -> set finder statistics
 public/data/    generated game data per version, versions.json; <server>/ for other servers;
                 pets/ for each version's pseudo-pets, info/ for its power-info extras (beside the
-                version folders)
+                version folders); finder/ for the set finder's build statistics
 public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its icons
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
 tools/          standard-library Python decoders for client file formats
@@ -179,7 +181,8 @@ Read the doc for the area you are changing:
   and what the totals count by default, builds and storage, store and screens, the stage,
   pop-ups and hovers, browser tests.
 - `docs/pipeline.md`: the data pipeline and its safety rails, new and older patches, Thunderspy's
-  export, `pipeline.watch`, `pipeline.compare`, approximate versions, borrowed frames.
+  export, `pipeline.watch`, `pipeline.compare`, approximate versions, borrowed frames, the build
+  research.
 - `docs/releases.md`: how a deploy picks, tags and stamps a version, and the players' changelog.
 - `docs/game-rules.md`: the engine rules already ported, with the source each comes from.
 
@@ -220,6 +223,7 @@ npm run typecheck    # tsc -b
 npm test             # vitest
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
 npm run build        # type check + production build into dist/
+npm run research     # the build research (owner's machine; needs HCP_BUILD_CORPUS, else skipped)
 python -m pipeline.run --help
 python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
 python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
@@ -310,7 +314,8 @@ a pull request, say which bump it calls for. The git tags are the record; `packa
   deploy puts the new lines at the top of the release's notes (`docs/releases.md`, "The changelog").
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
   `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/ids.json`) change only through a
-  pipeline run, never by hand.
+  pipeline run, never by hand. The same goes for the build research's `public/data/finder/stats.json`
+  and `pipeline/report-finder.md` (`npm run research`).
 
 ## Game-data notes for agents
 
