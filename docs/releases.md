@@ -1,6 +1,7 @@
 # Versions and releases
 
-How a deploy picks, tags and stamps a version. The bump rules are in `AGENTS.md`.
+How a deploy picks, tags and stamps a version, and how the players' changelog feeds its notes. The
+bump rules are in `AGENTS.md`.
 
 Every deploy is a release with a SemVer version, `vX.Y.Z`. The first public release (the site as
 deployed on November 13, 2026) is `v1.0.0`. The owner's rules for the bump:
@@ -21,10 +22,10 @@ When you hand back a pull request, say which bump it calls for, so the owner can
   (`vite.config.ts`, read through `src/version.ts`). Builds outside a deploy (dev server, tests,
   pull request checks) are `dev`.
 - Before the site goes live, the deploy's `release` job tags the commit and publishes a GitHub
-  Release listing the pull requests merged since the last one, so a failed deploy can't let
-  another build take the same number. If that job fails, nothing was deployed: re-run all jobs (a
-  fresh build sees whether the tag was made, and reuses it if so; if main has moved on and no tag
-  was made, start a new deploy).
+  Release: the changelog's new lines for players (below), then the pull requests merged since the
+  last one. So a failed deploy can't let another build take the same number. If that job fails,
+  nothing was deployed: re-run all jobs (a fresh build sees whether the tag was made, and reuses it
+  if so; if main has moved on and no tag was made, start a new deploy).
 - The footer names the version after the planner's name, as plain text. The crash page and the
   browser console name it with its commit, and Mids exports carry it in `BuiltWith.Version`
   (`0.0.0` from a dev build; imports ignore it). Each version's notes are on the repository's
@@ -33,3 +34,24 @@ When you hand back a pull request, say which bump it calls for, so the owner can
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
 bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+
+## The changelog
+
+`CHANGELOG.md` (repository root) tells players what changed in each release, newest first.
+
+- A pull request that changes something players can see adds one line under `## Unreleased`, in
+  the group that fits: `### New`, `### Improved` or `### Fixed`. A change players can't see (docs,
+  CI, the pipeline, tests, refactoring) adds none.
+- A line is one sentence in plain words, safe for anyone to read: what a player notices, not how it
+  was done. No file or function names, pull request numbers, engine or client terms, or names of
+  people. Related changes share a line (four power-info pull requests became one).
+- The deploy puts the new lines at the top of the release's notes (`scripts/release-notes.mjs`,
+  run by the `build` job; `tests/releasenotes.test.ts`). New means: in `## Unreleased` now, and
+  nowhere in the previous release's copy of the file. So nothing has to be renamed or committed at
+  deploy time, and a line is never announced twice. A deploy with no new lines publishes the pull
+  request list alone, and so does one whose changelog step fails (the run flags it; the deploy goes
+  on, and the release's notes can be edited afterwards with `gh release edit`).
+- After a deploy, the first pull request to add a line also moves the released lines under their
+  own heading, `## vX.Y.Z - Month D, YYYY` (the tag and its date), below a fresh `## Unreleased`.
+  Forgetting this only leaves the file untidy; the next release's notes are the same either way.
+- A line reworded after its release counts as new, so leave released lines as they are.
