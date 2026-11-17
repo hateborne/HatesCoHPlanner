@@ -34,6 +34,9 @@ Read from the two clients' compiled code (Ghidra, functions found from the boost
   Homecoming's also reads the group's parents' first tags and knows ASTeamCrit (0x1404de5c0,
   0x1404de9f0). The planner takes this from the server entry (`tagModes: 'ownTag'`); see "Tag modes
   (power info)" below.
+- The power info's requirement check (requiresArchetypePvPEval) is the same in both, but
+  Thunderspy's client runs it on an effect's own group only, Homecoming's on every group above it
+  too (`infoRequires: 'ownGroup'`); see "Requirements in the power info" below.
 - @TODO not yet compared: Enhancement Diversification (`AggregateStrength`), attribute caps
   (`ClampMax`), combat level scaling (`combatmod_Get`) and the combine limit
   (`boost_IsValidCombination`). They have no strings or table globals of their own to find them
@@ -404,9 +407,13 @@ Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d
 ## Requirements in the power info
 
 The live client's power info doesn't run the game's requirement evaluator on an effect group. It
-runs a cut-down check of its own (Homecoming i28p4 0x1404dfdd0, decompiled; `infoRequires` in
-`src/engine/requires.ts`), for the lines (power_AddEffects) and the damage total (getTotalDamage)
-alike, over the group and every group above it:
+runs a cut-down check of its own, `requiresArchetypePvPEval` in the source's uiPowerInfo.c
+(Homecoming i28p4 0x1404dfdd0, Thunderspy 9.6 0x1404d4cc0, decompiled, both as the source;
+`infoRequires` in `src/engine/requires.ts`), for the lines (power_AddEffects) and the damage total
+(getTotalDamage) alike. Homecoming's client checks the effect's group and every group above it (a
+failing group hides its sub-groups); Thunderspy's checks the effect's own group only
+(`infoRequires: 'ownGroup'` in `src/data/servers.ts`: its Twilight Shield and Quantum Shield list
+the effects under their "not in Nova form" parent group).
 
 - It tells apart only the caster's archetype (`arch source>`), the creator's (`arch source.owner>`,
   `arch source.creator>`), a critter target from a player one (`enttype target>`, critter in PvE),

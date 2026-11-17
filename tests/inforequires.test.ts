@@ -83,3 +83,15 @@ describe('the lines the client lists for requirements', () => {
     expect(segText(s[0]!.value)).toBe('331.45'); // the hidden lines carry a note, so they don't count
   });
 });
+
+describe("Thunderspy's client checks an effect's own group only", () => {
+  const ts = loadData('ts9-6', 'thunderspy');
+
+  it("lists Twilight Shield's effects under a parent group the check reads as false", () => {
+    // Thunderspy's Twilight Shield nests its 7 mods under "kWarshade_Blaster_Mode Source.Mode? !",
+    // which reads false (the ? pops two, the ! negates); Homecoming's client would hide them all
+    expect(infoRequires(r('kWarshade_Blaster_Mode Source.Mode? !'), 'Class_Warshade', null)).toBe(false);
+    const p = ts.powerByName.get('warshade_defensive.umbral_aura.twilight_shield')!;
+    expect(powerInfo(ts, ts.archetypeByName.get('class_warshade')!, p, 49, null).effects.length).toBeGreaterThan(0);
+  });
+});

@@ -599,6 +599,7 @@ export function powerInfo(
   });
   const ctx = contextFor(at.n, null);
   const ownTagModes = serverById(gd.server)?.tagModes === 'ownTag';
+  const ownGroupRequires = serverById(gd.server)?.infoRequires === 'ownGroup';
 
   const attrName = (offset: number): string | null => {
     if (offset >= 0 && offset < 80) {
@@ -667,10 +668,14 @@ export function powerInfo(
       const chance = e.ch ?? 1;
       const rq = e.req && e.req.length ? [...reqs, e.req] : reqs;
       // the client's own cut-down check (infoRequires), not the game's evaluator: it lists the
-      // Combo Level and "Only if hidden" groups, and leaves out another archetype's
-      if (!rq.every((r) => infoRequires(r, cls, owner))) continue;
+      // Combo Level and "Only if hidden" groups, and leaves out another archetype's. Homecoming's
+      // client checks every group above too (a failing group hides its sub-groups), Thunderspy's the
+      // group's own only (its sub-groups are checked on their own)
+      const met = (ownGroupRequires ? (e.req?.length ? [e.req] : []) : rq).every((r) => infoRequires(r, cls, owner));
+      if (!met && !ownGroupRequires) continue;
       // the client's template list: a group's sub-groups first, then its own mods
       if (e.sub?.length) templates(e.sub, rq, out, ec, pet, hide, [e, ...parents]);
+      if (!met) continue;
       const mode = tagMode(e, parents, ownTagModes);
       for (const m of e.m ?? []) {
         if (m.t === 'SkillMagnitude') continue;
