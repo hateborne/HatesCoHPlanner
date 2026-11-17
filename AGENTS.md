@@ -236,7 +236,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `node scripts/audit-dev.mjs` (tools: high and critical advisories, except the few its `ALLOWED` lets through, each with its reason, until a fixed release exists) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.info_test pipeline.pvp_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the power-info extras export, the PvP-only test); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.info_test pipeline.pvp_test pipeline.check_ids_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the power-info extras export, the PvP-only test, the stable ids check); `pipeline/check_ids.py` (every ids file well formed, and every id the base branch has kept unchanged, in each ids file the base branch holds); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
@@ -245,11 +245,15 @@ bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
 
 ## Versions and releases
 
-Every deploy is a SemVer release, `vX.Y.Z` (the first public one, November 13, 2026, is
-`v1.0.0`). The owner's bump rules: **major** for massive feature changes or redesigns, **minor**
-for a new server or medium-sized work, **patch** for fixes and small changes. When you hand back
-a pull request, say which bump it calls for. The git tags are the record; `package.json`'s
-`version` is not used. How a deploy tags and stamps it: `docs/releases.md`.
+Every deploy that changes the site is a SemVer release, `vX.Y.Z` (the first public one, November
+13, 2026, is `v1.0.0`). The owner's bump rules: **major** for massive feature changes or redesigns,
+**minor** for a new server or medium-sized work, **patch** for fixes and small changes, and
+**none** for a change to nothing the site is built from: docs, tests, CI and the deploy workflow,
+the pipeline's own code, tooling. Those are not the application, so they never move the version,
+and the deploy keeps the current one when nothing else changed (`affectsSite` in
+`scripts/release-version.mjs`). When you hand back a pull request, say which bump it calls for.
+The git tags are the record; `package.json`'s `version` is not used. How a deploy tags and stamps
+it, and the full list of what counts: `docs/releases.md`.
 
 ## Coding standards
 

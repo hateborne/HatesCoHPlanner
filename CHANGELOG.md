@@ -5,6 +5,13 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ## Unreleased
 
+### Fixed
+
+- The Continue button on the server list always shows which server your build is on, even with a long build name.
+- A detailed power tooltip no longer keeps the wrong size or place when its extra details finish loading.
+
+## v1.1.0 - November 17, 2026
+
 ### New
 
 - Thunderspy is here: a second game server with its own archetypes, power sets and enhancements.
