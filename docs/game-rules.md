@@ -434,6 +434,15 @@ Shield and Quantum Shield list the effects under their "not in Nova form" parent
   ... || kStunned ... ||`. Confirmed in game (the owner's checks, November 17, 2026, Homecoming,
   level 50): a Corruptor's Dark Blast 83.42 with two bare 41.71 lines, Blaster Charged Bolts 75.08,
   Liquid Nitrogen 423.02 (211.51 per activation), Brute Shadow Maul 97.88.
+- Thunderspy's client adds one requirement note of its own, after the origin note (its
+  getRequiresString, 0x1404d2f00, decompiled; `infoFriendNotes` in `src/data/servers.ts`): a
+  requirement that names the target reads "Applies to enemies" when it holds `target.isFriend?!` or
+  `enttypetarget>crittereq`, and "Applies to allies" otherwise, whatever else it tests. In game
+  (the owner's screenshots, November 17, 2026, Thunderspy, level 50): Fire Blast's first hit
+  "Applies to enemies"; Stygian Circle's heals, which test the target's rank, and Radiant Blast's
+  Judgement heal "Applies to allies". Its power_AddEffects asks for the note and its getTotalDamage
+  doesn't (a flag its two calls pass as 0 and 1), so the note never takes a hit out of the damage
+  total (Fire Blast 84.72, in game).
 - Thunderspy's power info doesn't test a group's PvE/PvP flags at all, so it lists PvP-only groups
   too (its Twilight Shield's second set of knock protections and 93.42% status resistances, in
   game). The export drops PvP-only groups, so the version's info file carries the groups of each

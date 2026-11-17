@@ -128,8 +128,9 @@ describe("tag modes on Thunderspy (its client reads a group's own first tag only
 
   it("lists Dual Pistols' ammo groups with their notes", () => {
     const { lines } = info(gd, 'Class_Dominator', 'Dominator_Assault.Dual_Pistols.Piercing_Rounds');
-    expect(lines).toContain('68.68 fire damage on target / Only using Incendiary Ammo');
-    expect(lines).toContain('68.68 toxic damage on target / Only using Chemical Ammo');
+    // the tag mode's note comes before the requirement notes ("Applies to enemies": a critter target)
+    expect(lines).toContain('68.68 fire damage on target / Only using Incendiary Ammo / Applies to enemies');
+    expect(lines).toContain('68.68 toxic damage on target / Only using Chemical Ammo / Applies to enemies');
   });
 
   it("doesn't read a parent's tag (Homecoming's does)", () => {

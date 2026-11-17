@@ -22,6 +22,7 @@ export interface GameServer {
   ioLevelsAbove?: number; // how far an IO or set piece's level may be above the character's and still work; omitted: the boost effect table's length - 1 (3, Homecoming's client)
   infoPvp?: 'listed'; // its client's power info lists PvP-only effect groups too (it tests no group flags: Thunderspy.exe power_AddEffects 0x1404da680); the version's info file carries those groups
   infoRequires?: 'ownGroup'; // its client's power info reads an effect's requirements (infoRequires and the requirement notes) on the effect's own group only (Thunderspy.exe 0x1404d4cc0, from power_AddEffects and getTotalDamage 0x1404d6070); omitted: Homecoming's client, which reads every group above it too
+  infoFriendNotes?: true; // its client's power info notes on a line whose group's requirement names the target whom it applies to, "Applies to enemies" / "Applies to allies" (Thunderspy.exe's requirement notes 0x1404d2f00, from power_AddEffects; not for the damage total); omitted: Homecoming's client, which has no such note
   tagModes?: 'ownTag'; // its client's power info reads a group's tag mode (getChanceModString, getChanceModValue) from the group's own first tag only and knows no ASTeamCrit (Thunderspy.exe); omitted: Homecoming's client, which also reads its parent groups' first tags
 }
 
@@ -38,8 +39,9 @@ export const SERVERS: readonly GameServer[] = [
   // power_MinBoostUseLevel gives an IO or set piece (BoostIgnoreEffectiveness) no levels below its
   // own: MAX(MinSlotLevel, level), where Homecoming's takes level - 3 (seen in Thunderspy.exe). Its
   // power info reads tag modes from a group's own first tag (tagModes, Thunderspy.exe 0x1404d1f90)
-  // and checks requirements on an effect's own group only (infoRequires, 0x1404d4cc0)
-  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts', ioLevelsAbove: 0, tagModes: 'ownTag', infoRequires: 'ownGroup', infoPvp: 'listed' },
+  // and checks requirements on an effect's own group only (infoRequires, 0x1404d4cc0), and notes whom
+  // a line applies to (infoFriendNotes, 0x1404d2f00)
+  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts', ioLevelsAbove: 0, tagModes: 'ownTag', infoRequires: 'ownGroup', infoPvp: 'listed', infoFriendNotes: true },
 ];
 
 /**
