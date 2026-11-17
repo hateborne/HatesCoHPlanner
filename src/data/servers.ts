@@ -20,6 +20,7 @@ export interface GameServer {
   buildSave: boolean; // its game client writes /build_save files (build.txt) the planner can import
   versionPrefix?: string; // every game version id of its starts with this (the pipeline enforces it); the default server has none
   ioLevelsAbove?: number; // how far an IO or set piece's level may be above the character's and still work; omitted: the boost effect table's length - 1 (3, Homecoming's client)
+  tagModes?: 'ownTag'; // its client's power info reads a group's tag mode (getChanceModString, getChanceModValue) from the group's own first tag only and knows no ASTeamCrit (Thunderspy.exe); omitted: Homecoming's client, which also reads its parent groups' first tags
 }
 
 /** The server new visitors start on (the most played), and the one builds without a server belong to. */
@@ -33,8 +34,9 @@ export const SERVERS: readonly GameServer[] = [
   { id: 'homecoming', label: 'Homecoming', path: 'Homecoming', data: 'data/', logo: 'servers/homecoming.webp', midsDb: 'Homecoming', buildSave: true },
   // Thunderspy's client has no /build_save, and MidsReborn has no Thunderspy database. Its
   // power_MinBoostUseLevel gives an IO or set piece (BoostIgnoreEffectiveness) no levels below its
-  // own: MAX(MinSlotLevel, level), where Homecoming's takes level - 3 (seen in Thunderspy.exe)
-  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts', ioLevelsAbove: 0 },
+  // own: MAX(MinSlotLevel, level), where Homecoming's takes level - 3 (seen in Thunderspy.exe). Its
+  // power info reads tag modes from a group's own first tag (tagModes, Thunderspy.exe 0x1404d1f90)
+  { id: 'thunderspy', label: 'Thunderspy', path: 'Thunderspy', data: 'data/thunderspy/', logo: 'servers/thunderspy.webp', buildSave: false, versionPrefix: 'ts', ioLevelsAbove: 0, tagModes: 'ownTag' },
 ];
 
 /**
