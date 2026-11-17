@@ -25,6 +25,7 @@ import { useFreshHover, useHover } from '../hover.ts';
 import { pressKeys } from '../press.ts';
 import type { Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
+import { ShopNeeds, ShopSets, useShoppingList } from './FinderShopping.tsx';
 
 const IMPORTANCES: { id: Importance; name: string }[] = [
   { id: 'low', name: 'Low' },
@@ -572,7 +573,28 @@ function SearchButton({ width, onSearch }: { width: number | string; onSearch: (
   );
 }
 
-const PHONE_TABS = ['Search', 'Results', 'Kept'];
+/**
+ * The shopping list: the sets to get with their pieces, and what is still needed (on desktop with
+ * the auction house search lines). Desktop shows the two parts side by side, a phone one under
+ * the other.
+ *
+ * @param props.part Which part to draw.
+ * @param props.width The room the sets' bars have (stage px).
+ */
+function Shopping({ gd, skin, phone, width, part }: { gd: GameData; skin: Skin; phone: boolean; width: number; part: 'sets' | 'needs' | 'both' }) {
+  const { list, recipes } = useShoppingList(gd);
+  return (
+    <>
+      {part === 'needs' ? null : <Note />}
+      {part === 'needs' ? null : <ShopSets gd={gd} skin={skin} list={list} phone={phone} width={width} />}
+      {part === 'both' && list.sets.length ? <div style={{ height: 12 }} /> : null}
+      {part === 'sets' ? null : <ShopNeeds gd={gd} list={list} phone={phone} recipes={recipes} />}
+    </>
+  );
+}
+
+const PHONE_TABS = ['Search', 'Results', 'Kept', 'List'];
+const LIST_TAB = 3;
 
 /**
  * The set finder: a pop-up pane over the build overview (the whole screen on phones). A search
@@ -583,7 +605,7 @@ const PHONE_TABS = ['Search', 'Results', 'Kept'];
  */
 export default function SetFinder({ skin }: { skin: Skin }) {
   const { gd, build } = useStore(useShallow((s) => ({ gd: s.gd, build: s.build })));
-  const { prepare, search, stop, stats, busy, kept, link, apply, selected, result, keep, drop, setQuery } = useFinder(
+  const { prepare, search, stop, stats, busy, kept, link, apply, selected, result, keep, drop, setQuery, openShopping, clearShopping, openedNewBuild, saved } = useFinder(
     useShallow((s) => ({
       prepare: s.prepare,
       search: s.search,
@@ -598,12 +620,25 @@ export default function SetFinder({ skin }: { skin: Skin }) {
       keep: s.keep,
       drop: s.drop,
       setQuery: s.setQuery,
+      openShopping: s.openShopping,
+      clearShopping: s.clearShopping,
+      openedNewBuild: s.openedNewBuild,
+      // the stored list's size, once it is this build's server's (Clear list is off until then)
+      saved: gd && s.shopFor === gd.server ? s.shop.length : 0,
     })),
   );
   const stage = useStage();
   const { phone } = stage;
   const [tab, setTab] = useState(0);
-  useEscape(close);
+  // desktop: the shopping list takes the pane's place
+  const [shopping, setShopping] = useState(false);
+  const listShown = phone ? tab === LIST_TAB : shopping;
+  // the list the browser keeps and the game version's recipes are read when the list shows
+  useEffect(() => {
+    if (listShown) openShopping();
+  }, [listShown, openShopping, gd]);
+  // Escape closes the pane; from the desktop's shopping list it goes back to the search first
+  useEscape(() => (shopping && !phone ? setShopping(false) : close()));
   useFreshHover();
   // the statistics, and whether the finder can work on this build at all
   useEffect(() => prepare(), [prepare, gd, build?.dataVersion]);
@@ -644,6 +679,9 @@ export default function SetFinder({ skin }: { skin: Skin }) {
           href={link}
           target="_blank"
           rel="noopener noreferrer"
+          // the changed build is being opened: its pieces go on the shopping list (a middle click opens it too)
+          onClick={openedNewBuild}
+          onAuxClick={(e) => (e.button === 1 ? openedNewBuild() : undefined)}
           title="Leaves this build as it is and opens the changed one in a new tab"
           style={{ position: 'static', width, padding: short ? 0 : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', boxSizing: 'border-box' }}
         >
@@ -657,11 +695,18 @@ export default function SetFinder({ skin }: { skin: Skin }) {
     </>
   );
 
+  const clearButton = (width: number | string): ReactNode => (
+    <button data-testid="shop:clear" className="info-button" title="Empties the shopping list this browser keeps" style={{ position: 'static', width }} disabled={!saved} onClick={() => void clearShopping()}>
+      Clear list
+    </button>
+  );
+
   if (phone) {
     const W = stage.w;
     const bottom = stage.h - 36; // clear of the not-affiliated line
     const tabsY = 82;
-    const top = tabsY + PHONE_TAB_ROW / 2 + 8;
+    // four tabs sit in two rows
+    const top = tabsY + PHONE_TAB_ROW * 1.5 + 8;
     const btnY = bottom - 14 - 56;
     const room = btnY - 10 - top;
     const listH = tab === 1 ? Math.round(room * 0.52) : room;
@@ -675,7 +720,15 @@ export default function SetFinder({ skin }: { skin: Skin }) {
           <SetTitle x={18} y={18} size={24} width={W - 60} text={FINDER_NAME} skin={skin} />
           <PhoneTabs skin={skin} labels={PHONE_TABS.map((t, i) => (i === 2 && kept.length ? `Kept (${kept.length})` : t))} active={tab} onChange={setTab} y={tabsY} x={16} width={W - 20} clickSounds={['powerselect2']} />
           <div className="abs scroll-y" style={{ left: 16, top, width: W - 32, height: listH }}>
-            {tab === 0 ? <SearchForm sections={sections} groups={groups} phone /> : tab === 1 ? <ResultList gd={gd} phone hasSlots={hasSlots} /> : <Detail gd={gd} build={build} rules={rules} phone summary />}
+            {tab === 0 ? (
+              <SearchForm sections={sections} groups={groups} phone />
+            ) : tab === 1 ? (
+              <ResultList gd={gd} phone hasSlots={hasSlots} />
+            ) : tab === LIST_TAB ? (
+              <Shopping gd={gd} skin={skin} phone width={W - 32} part="both" />
+            ) : (
+              <Detail gd={gd} build={build} rules={rules} phone summary />
+            )}
           </div>
           {tab === 1 ? (
             <>
@@ -704,6 +757,11 @@ export default function SetFinder({ skin }: { skin: Skin }) {
                 </button>
                 {closeButton(btnW)}
               </>
+            ) : tab === LIST_TAB ? (
+              <>
+                {clearButton(btnW * 2)}
+                {closeButton(btnW)}
+              </>
             ) : (
               <>
                 {applyButtons(btnW, /*short=*/ true)}
@@ -724,6 +782,35 @@ export default function SetFinder({ skin }: { skin: Skin }) {
   const list = { x: 670, w: 620 };
   const det = { x: 1310, w: 560 };
   const btnY = paneY + paneH + 22;
+  if (shopping) {
+    const sets = { x: 140, w: 850 };
+    const needs = { x: 1010, w: 860 };
+    return (
+      <div className="overlay" onClick={close}>
+        <div onClick={(e) => e.stopPropagation()}>
+          <MenuFrame x={F.x} y={F.y} w={F.w} h={F.h} r25 style={{ background: 'rgba(0,0,20,0.95)' }} skin={skin} />
+          <SetTitle x={F.x + 40} y={F.y + 20} size={34} width={F.w - 80} text={`${FINDER_NAME}: Shopping List`} skin={skin} />
+          <MenuFrame x={sets.x} y={paneY} w={sets.w} h={paneH} skin={skin} />
+          <div className="abs scroll-y" style={{ left: sets.x + 14, top: paneY + 12, width: sets.w - 28, height: paneH - 24 }}>
+            <Shopping gd={gd} skin={skin} phone={false} width={sets.w - 44} part="sets" />
+          </div>
+          <MenuFrame x={needs.x} y={paneY} w={needs.w} h={paneH} skin={skin} />
+          <div className="abs scroll-y" style={{ left: needs.x + 18, top: paneY + 14, width: needs.w - 36, height: paneH - 28 }}>
+            <Shopping gd={gd} skin={skin} phone={false} width={needs.w - 36} part="needs" />
+          </div>
+          <div className="abs" style={{ left: sets.x, top: btnY, width: sets.w, display: 'flex', justifyContent: 'flex-start' }}>
+            <button data-testid="shop:back" className="info-button" style={{ position: 'static', width: 240 }} onClick={() => setShopping(false)}>
+              Back to the search
+            </button>
+          </div>
+          <div className="abs" style={{ left: needs.x, top: btnY, width: needs.w, display: 'flex', justifyContent: 'flex-end', gap: 14 }}>
+            {clearButton(160)}
+            {closeButton(120)}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="overlay" onClick={close}>
       <div onClick={(e) => e.stopPropagation()}>
@@ -744,6 +831,9 @@ export default function SetFinder({ skin }: { skin: Skin }) {
           <SearchButton width={220} onSearch={runSearch} />
         </div>
         <div className="abs" style={{ left: list.x, top: btnY, width: det.x + det.w - list.x, display: 'flex', justifyContent: 'flex-end', gap: 14 }}>
+          <button data-testid="finder:shopping" className="info-button" title="What the kept and applied swaps need: recipes, salvage and enhancements" style={{ position: 'static', width: 190 }} onClick={() => setShopping(true)}>
+            Shopping List
+          </button>
           {applyButtons(210)}
           {closeButton(120)}
         </div>

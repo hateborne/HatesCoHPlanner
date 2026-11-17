@@ -178,7 +178,7 @@ export function ui(path: string, skin?: Skin): string {
  * @param name The icon name from the game data.
  * @return The asset URL.
  */
-export function icon(kind: 'powers' | 'enh' | 'at' | 'origin', name: string): string {
+export function icon(kind: 'powers' | 'enh' | 'at' | 'origin' | 'salvage', name: string): string {
   const base = import.meta.env.BASE_URL;
   const at = name.indexOf(':');
   const own = at > 0 ? serverById(name.slice(0, at)) : undefined;

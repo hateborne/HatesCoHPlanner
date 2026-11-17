@@ -18,6 +18,8 @@ src/
     types.ts                 shapes of the exported JSON
     finderStats.ts           the set finder's build statistics (public/data/finder/): their shape,
                              checkFinderStats, loadFinderStats
+    recipes.ts               a version's recipes (public/data/recipes/<version>.json): their shape,
+                             checkRecipes, loadRecipes
   engine/                    pure TypeScript build rules (no React, no DOM)
     build.ts                 Build / Pick / Slot model, newBuild()
     rules.ts                 BuildRules: availability, picks, auto-granted powers, slots, issues
@@ -41,6 +43,8 @@ src/
       bonusVec.ts, eligible.ts   bonus lines kept per search; the sets each power takes
       labels.ts, view.ts     words (stat names, amounts, warnings) and lists for the screens (the
                              bonuses to ask for, set types, results grouped by set)
+      shopping.ts            the shopping list: recipes, salvage and enhancements to get, and the
+                             auction house search lines (shoppingList, auctionLines)
     actions.ts               pure edits (setPick, addSlot, setEnh, ...) and pickHoldsEnhancements
     validate.ts              checkBuild(): check and repair builds from outside the app
     migrate.ts               fitToPatch(): swaps that fit an import moved to another patch
@@ -53,13 +57,16 @@ src/
     library.ts               builds saved in the browser (IndexedDB)
     binary.ts                byte reader / writer helpers, size-capped decompression
     fileName.ts              safe names for downloaded files
+    shopping.ts              the set finder's shopping list as the browser keeps it (localStorage)
   state/store.ts             zustand store: data, current build, level-up flow, dialogs
-  state/finder.ts            the set finder's store: statistics, search, results, kept swaps
+  state/finder.ts            the set finder's store: statistics, search, results, kept swaps,
+                             the shopping list
   state/finderOpen.ts        whether its pane is open (apart, so the engine loads on demand)
   ui/
     screens/                 Setup (New Build), ChooseNewPower, ChoosePoolSet,
                              AddEnhancementSlot, Overview, EnhancementPicker, BuildMenu,
-                             SetFinder (the set finder's pane, loaded on demand)
+                             SetFinder (the set finder's pane, loaded on demand) and
+                             FinderShopping (its shopping list)
     components/              game chrome (frames, bars, rings, scrollbars, text, tooltips);
                              FinderIcon (the set finder's button icon and working name)
     skin/                    metrics.ts (virtual-screen maths), skin.ts (hero/villain/praetorian)
@@ -86,6 +93,8 @@ public/data/pets/<version>.json  each version's pseudo-pets, beside the version 
                              Thunderspy's in public/data/thunderspy/pets/)
 public/data/info/<version>.json  each version's power-info extras, beside them (generated;
                              Thunderspy's in public/data/thunderspy/info/)
+public/data/recipes/<version>.json  each version's dropped recipes and their salvage, beside the
+                             version folders (generated; the set finder's shopping list reads it)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
@@ -343,7 +352,7 @@ screens are described under "Set finder (screens)" below. The parts:
   endurance cost, recharge time with the build's global recharge).
 
 **Set finder (screens).** The pane is `src/ui/screens/SetFinder.tsx`, over the build overview
-like the enhancement picker (the whole screen on phones, with Search / Results / Kept tabs). It is
+like the enhancement picker (the whole screen on phones, with Search / Results / Kept / List tabs). It is
 still being built: its button shows only where `SET_FINDER` is true (`src/ui/flags.ts`: a dev
 server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
 
@@ -387,6 +396,43 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   hand is left alone and no pop-up blocker is involved.
 - A build whose game version has no statistics, or another server's build, gets a plain sentence
   instead of a search (`finderProblem`).
+- **Shopping list** (`FinderShopping.tsx`; the "Shopping List" button on desktop, the List tab on
+  phones). It shows what the browser keeps (`src/io/shopping.ts`: localStorage `hcp.shopping`, one
+  list per server, enhancement ids with a level and an owned mark, at most 600 items, every entry
+  checked when read) and, after it, the pieces the kept swaps would bring in (`swapItems`: a piece
+  going into a slot that already holds that enhancement is not one). A kept swap's pieces are only
+  shown: they join the stored list when the swap is applied or the changed build is opened in a
+  new tab, once (`settled`), so a swap let go leaves nothing behind. The list is never part of a
+  build, a saved build or a link, and stays until "Clear list" (which asks first; the kept swaps'
+  pieces then show again as not stored yet). Opening the changed build means a click or a middle
+  click on "Open as new build": a build opened from the link's right-click menu, or by a long
+  press on a phone, adds nothing to the list.
+  - Tabs share the stored list. A change made in another tab is shown at once (the `storage`
+    event, `shoppingChangedElsewhere`), and marking a piece reads the stored list first: what
+    another tab added is kept, and when the list is no longer the one shown, nothing is marked and
+    a line says so. If the browser refuses to store the list, a line says so and that server's
+    list lasts as long as the tab (`unsavedFor`): until a write works again it is the tab's own
+    and other tabs' changes are not taken in. When that happens on Apply, which closes the pane,
+    the planner's own notice says it (`notify`); a refused "Clear list" says the stored list will
+    be back.
+  - On desktop, Escape in the shopping list goes back to the search; a second Escape closes the
+    pane.
+  - Each set is a bar with its pieces as rings, like a power on the overview. Clicking a ring marks
+    that piece owned (greyed out); clicking the bar marks them all, or none when all were.
+  - What is still needed comes from the version's recipe file (`src/data/recipes.ts`, downloaded
+    when the list first shows, shape-checked, and used only with its own game version's data): a
+    crafted piece needs the dropped recipe of its level and that recipe's salvage, added up; a
+    piece no recipe makes (attuned, winter and archetype sets) is listed as an enhancement to buy.
+    A version the site has no recipe file for (an approximate one) lists every piece that way and
+    is not asked for again; after a download that failed, the next opening asks again. A recipe's
+    row shows its set's round icon alone, an enhancement's row the framed piece.
+  - Desktop only: the auction house lines (`auctionLines`) join names with commas into lines of at
+    most 128 characters, the search box's limit; the search lists every item whose name holds one
+    of the words (`uiAuction.c` `setSearchText`). A recipe's name goes without its "(Recipe)"
+    ending, and its level is the player's to set in the auction house. Phones show no lines: text
+    can't be pasted from a phone into the game. The limit is from the game's source; on
+    Homecoming the owner got 8 names (123 characters) into the box and no further one
+    (checked in game, November 17, 2026).
 
 The numbers marked `UNCONFIRMED` in the finder's source are defaults waiting for the owner's
 ruling.

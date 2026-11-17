@@ -1,6 +1,7 @@
 /**
  * The set finder's store: it downloads its statistics once, searches in slices, keeps swaps beside
- * the build, and only changes the build when the player confirms.
+ * the build, and only changes the build when the player confirms. Its shopping list shows the kept
+ * swaps' pieces and keeps them in the browser once the swaps are applied.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,10 +11,12 @@ import type { Build } from '../src/engine/build.ts';
 import { applySwaps, slotIds } from '../src/engine/finder/pending.ts';
 import type * as Search from '../src/engine/finder/search.ts';
 import { swapsLegal, type RankedSwap } from '../src/engine/finder/search.ts';
+import { swapItems } from '../src/engine/finder/shopping.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { importMidsText } from '../src/io/mids.ts';
 import { decodeShare } from '../src/io/share.ts';
-import { swapId, useFinder } from '../src/state/finder.ts';
+import { readShopping, SHOPPING_KEY, writeShopping } from '../src/io/shopping.ts';
+import { shopItems, shoppingChangedElsewhere, swapId, useFinder } from '../src/state/finder.ts';
 import { openSetFinder, useFinderOpen } from '../src/state/finderOpen.ts';
 import { useStore } from '../src/state/store.ts';
 import { loadData, loadMidsMapFile, pid } from './helpers/data.ts';
@@ -36,6 +39,7 @@ vi.mock('../src/engine/finder/search.ts', async (importOriginal) => {
 
 const gd = loadData();
 const statsText = readFileSync(join(process.cwd(), 'public', 'data', 'finder', 'stats.json'), 'utf-8');
+const recipesText = readFileSync(join(process.cwd(), 'public', 'data', 'recipes', `${gd.core.manifest.dataVersion}.json`), 'utf-8');
 vi.setConfig({ testTimeout: 60_000 });
 
 /** @return The Symphony / Dark Dominator forum build. */
@@ -55,19 +59,34 @@ async function until(test: () => boolean): Promise<void> {
 
 let fetched: string[] = [];
 let answer = true;
+// what the browser keeps (the shopping list), and whether the recipe file is there
+let stored = new Map<string, string>();
+let noRecipes = false;
+// what the planner told the player outside the finder's pane (notify)
+let told: string[] = [];
 
 beforeEach(async () => {
   fetched = [];
   answer = true;
   hook.fail = false;
+  stored = new Map();
+  noRecipes = false;
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => stored.get(k) ?? null,
+    setItem: (k: string, v: string) => void stored.set(k, v),
+    removeItem: (k: string) => void stored.delete(k),
+  });
   vi.stubGlobal('location', { origin: 'https://example.test', pathname: '/', search: '', hash: '' });
   vi.stubGlobal('fetch', async (url: string) => {
     fetched.push(url);
+    if (url.includes('/recipes/')) return noRecipes ? { ok: false, status: 404, json: async () => null } : { ok: true, status: 200, json: async () => JSON.parse(recipesText) as unknown };
     return { ok: true, status: 200, json: async () => JSON.parse(statsText) as unknown };
   });
-  useStore.setState({ gd, build: await dominator(), server: 'homecoming', view: 'overview', askConfirm: async () => answer });
+  told = [];
+  useStore.setState({ gd, build: await dominator(), server: 'homecoming', view: 'overview', askConfirm: async () => answer, notify: (text: string) => void told.push(text) });
   useFinder.getState().stop();
   useFinder.setState({ stats: null, loading: false, problem: null, query: { goals: [], tags: [], extra: [] }, searched: null, searchedKept: null, result: null, progress: null, kept: [], selected: null, link: null, note: null });
+  useFinder.setState({ recipes: null, recipesFor: null, recipesLoading: false, recipesMissing: false, recipesFailed: null, unsavedFor: null, shop: [], shopFor: null, shopOwned: {}, settled: [] });
   useFinderOpen.setState({ open: false });
 });
 
@@ -320,5 +339,268 @@ describe('finder store', () => {
     useStore.getState().setBuild({ ...useStore.getState().build!, name: 'Edited' });
     expect(useFinder.getState()).toMatchObject({ kept: [], result: null, searched: null, progress: null, note: null });
     expect(useFinder.getState().query).toBe(query);
+  });
+});
+
+describe('finder store: shopping list', () => {
+  /** Search and keep the first result. */
+  async function kept(): Promise<RankedSwap> {
+    await searched();
+    const first = useFinder.getState().result!.swaps[0]!;
+    useFinder.getState().keep(first);
+    await until(() => useFinder.getState().progress === null);
+    return first;
+  }
+
+  it("shows the kept swaps' pieces, and keeps them in the browser only once the swaps are applied", async () => {
+    const first = await kept();
+    const pieces = swapItems([first]);
+    expect(pieces.length).toBeGreaterThan(0);
+    expect(shopItems(useFinder.getState())).toEqual(pieces);
+    // marking a piece of a kept swap as owned is remembered, not stored
+    useFinder.getState().setOwned([0], /*owned=*/ true);
+    expect(shopItems(useFinder.getState())[0]).toEqual({ ...pieces[0]!, owned: true });
+    expect(stored.has(SHOPPING_KEY)).toBe(false);
+    // letting the swap go takes its pieces off the list
+    useFinder.getState().drop(first.key);
+    expect(shopItems(useFinder.getState())).toEqual([]);
+    await until(() => useFinder.getState().progress === null); // nothing is kept from a list being ranked again
+    useFinder.getState().keep(first);
+    expect(useFinder.getState().kept).toEqual([first]);
+    await until(() => useFinder.getState().progress === null);
+    useFinder.getState().setOwned([0], /*owned=*/ true);
+    await useFinder.getState().apply();
+    // applied: the pieces are the browser's now, with the mark, and the list still shows them
+    const saved = pieces.map((p, i) => ({ ...p, owned: i === 0 }));
+    expect(readShopping('homecoming')).toEqual(saved);
+    expect(useFinder.getState()).toMatchObject({ kept: [], shop: saved, shopOwned: {}, settled: [] });
+    expect(shopItems(useFinder.getState())).toEqual(saved);
+  });
+
+  it('adds to the list the browser already keeps, never an applied swap twice', async () => {
+    const before = [{ boost: pid(gd, 'Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F'), level: 49, owned: true }];
+    writeShopping('homecoming', before);
+    const first = await kept();
+    const pieces = swapItems([first]);
+    // the changed build is opened in a new tab (twice), then applied here: its pieces go on once
+    useFinder.getState().openedNewBuild();
+    expect(readShopping('homecoming')).toEqual([...before, ...pieces]);
+    expect(shopItems(useFinder.getState())).toEqual([...before, ...pieces]);
+    useFinder.getState().openedNewBuild();
+    await useFinder.getState().apply();
+    expect(readShopping('homecoming')).toEqual([...before, ...pieces]);
+    // a build edited without applying leaves the list as it is
+    useStore.getState().setBuild({ ...useStore.getState().build!, name: 'Edited' });
+    expect(readShopping('homecoming')).toEqual([...before, ...pieces]);
+  });
+
+  it('declined: nothing is applied and nothing is kept in the browser', async () => {
+    await kept();
+    answer = false;
+    await useFinder.getState().apply();
+    expect(stored.has(SHOPPING_KEY)).toBe(false);
+    expect(useFinder.getState().shop).toEqual([]);
+  });
+
+  it('reads the kept list and the recipes when it opens, marks saved items, and clears after asking', async () => {
+    const list = [
+      { boost: pid(gd, 'Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F'), level: 49, owned: false },
+      { boost: pid(gd, 'Boosts.Attuned_Winters_Bite_A.Attuned_Winters_Bite_A'), level: null, owned: false },
+    ];
+    writeShopping('homecoming', list);
+    useFinder.getState().openShopping();
+    expect(useFinder.getState()).toMatchObject({ shop: list, recipesLoading: true });
+    await until(() => !!useFinder.getState().recipes);
+    expect(fetched).toEqual([`${import.meta.env.BASE_URL}data/recipes/${gd.core.manifest.dataVersion}.json`]);
+    // opened again: the list is read again, the recipes are not asked for twice
+    useFinder.getState().openShopping();
+    expect(fetched).toHaveLength(1);
+    useFinder.getState().setOwned([1, 7], /*owned=*/ true);
+    expect(readShopping('homecoming')).toEqual([list[0], { ...list[1]!, owned: true }]);
+    answer = false;
+    await useFinder.getState().clearShopping();
+    expect(readShopping('homecoming')).toHaveLength(2);
+    answer = true;
+    await useFinder.getState().clearShopping();
+    expect(readShopping('homecoming')).toEqual([]);
+    expect(useFinder.getState().shop).toEqual([]);
+    expect(stored.has(SHOPPING_KEY)).toBe(false);
+  });
+
+  it('goes without recipes when the game version has none, without asking for them again', async () => {
+    noRecipes = true;
+    useFinder.getState().openShopping();
+    await until(() => !useFinder.getState().recipesLoading);
+    expect(useFinder.getState()).toMatchObject({ recipes: null, recipesMissing: true });
+    useFinder.getState().openShopping();
+    expect(fetched).toHaveLength(1);
+  });
+
+  it('asks for the recipes again after a download that failed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', async (url: string) => {
+      fetched.push(url);
+      return fetched.length === 1 ? { ok: false, status: 503, json: async () => null } : { ok: true, status: 200, json: async () => JSON.parse(recipesText) as unknown };
+    });
+    try {
+      useFinder.getState().openShopping();
+      await until(() => !useFinder.getState().recipesLoading);
+      expect(useFinder.getState()).toMatchObject({ recipes: null, recipesFor: null, recipesMissing: false, recipesFailed: gd.core.manifest.dataVersion });
+      useFinder.getState().openShopping();
+      expect(useFinder.getState().recipesFailed).toBeNull();
+      await until(() => !!useFinder.getState().recipes);
+      expect(fetched).toHaveLength(2);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('marks the right piece with a saved list and two kept swaps on show', async () => {
+    const before = [{ boost: pid(gd, 'Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F'), level: 49, owned: false }];
+    writeShopping('homecoming', before);
+    useFinder.getState().openShopping();
+    const first = await kept();
+    const second = useFinder.getState().result!.swaps.find((s) => s.key !== first.key && swapItems([s]).length > 0)!;
+    useFinder.getState().keep(second);
+    await until(() => useFinder.getState().progress === null);
+    expect(useFinder.getState().kept).toEqual([first, second]);
+    const a = swapItems([first]);
+    const b = swapItems([second]);
+    expect(shopItems(useFinder.getState())).toEqual([...before, ...a, ...b]);
+    // the second swap's last piece, and the saved item
+    useFinder.getState().setOwned([before.length + a.length + b.length - 1, 0], /*owned=*/ true);
+    const shown = shopItems(useFinder.getState());
+    expect(shown.map((it) => it.owned)).toEqual([true, ...a.map(() => false), ...b.map((_, i) => i === b.length - 1)]);
+    expect(readShopping('homecoming')).toEqual([{ ...before[0]!, owned: true }]);
+    // a swap let go and kept again starts unmarked
+    useFinder.getState().drop(second.key);
+    await until(() => useFinder.getState().progress === null);
+    useFinder.getState().keep(second);
+    expect(shopItems(useFinder.getState()).slice(-b.length)).toEqual(b);
+  });
+
+  it('keeps what another tab added to the list, and marks nothing on a list that is no longer the one shown', async () => {
+    const lotg = { boost: pid(gd, 'Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F'), level: 49, owned: false };
+    const winter = { boost: pid(gd, 'Boosts.Attuned_Winters_Bite_A.Attuned_Winters_Bite_A'), level: null, owned: false };
+    writeShopping('homecoming', [lotg]);
+    useFinder.getState().openShopping();
+    // another tab (the changed build, opened as a new one) adds a piece
+    writeShopping('homecoming', [lotg, winter]);
+    useFinder.getState().setOwned([0], /*owned=*/ true);
+    expect(readShopping('homecoming')).toEqual([{ ...lotg, owned: true }, winter]);
+    expect(useFinder.getState().shop).toEqual([{ ...lotg, owned: true }, winter]);
+    // another tab clears the list: index 1 names nothing now
+    writeShopping('homecoming', [winter]);
+    useFinder.getState().setOwned([1], /*owned=*/ true);
+    expect(readShopping('homecoming')).toEqual([winter]);
+    expect(useFinder.getState()).toMatchObject({ shop: [winter] });
+    expect(useFinder.getState().note).toMatch(/changed in another tab/);
+  });
+
+  it('after a clear, shows the kept swaps as not on the list yet, a swap opened as a new build included', async () => {
+    const first = await kept();
+    const pieces = swapItems([first]);
+    useFinder.getState().openedNewBuild();
+    expect(readShopping('homecoming')).toEqual(pieces);
+    await useFinder.getState().clearShopping();
+    expect(readShopping('homecoming')).toEqual([]);
+    // as the question said: the kept swap's pieces stay on the list shown
+    expect(shopItems(useFinder.getState())).toEqual(pieces);
+    await useFinder.getState().apply();
+    expect(readShopping('homecoming')).toEqual(pieces);
+  });
+
+  it('says so when the browser will not store the list, and keeps it for as long as the tab lives', async () => {
+    await kept();
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('full');
+      },
+      removeItem: () => undefined,
+    });
+    useFinder.getState().openedNewBuild();
+    expect(useFinder.getState().note).toMatch(/wouldn't store the shopping list/);
+    const held = useFinder.getState().shop;
+    expect(held.length).toBeGreaterThan(0);
+    // opening the list again does not swap it for the empty one the browser holds
+    useFinder.getState().openShopping();
+    expect(useFinder.getState()).toMatchObject({ shop: held, unsavedFor: 'homecoming' });
+    // nor does a change in another tab: this list is the tab's own
+    shoppingChangedElsewhere(SHOPPING_KEY);
+    expect(useFinder.getState().shop).toEqual(held);
+    // once the browser stores it again, the stored list is the one that counts
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => stored.get(k) ?? null,
+      setItem: (k: string, v: string) => void stored.set(k, v),
+      removeItem: (k: string) => void stored.delete(k),
+    });
+    useFinder.getState().setOwned([0], /*owned=*/ true);
+    expect(useFinder.getState().unsavedFor).toBeNull();
+    expect(readShopping('homecoming')).toEqual(held.map((it, i) => ({ ...it, owned: i === 0 })));
+  });
+
+  it("keeps a list the browser refused to store for its own server only", () => {
+    const winter = { boost: pid(gd, 'Boosts.Attuned_Winters_Bite_A.Attuned_Winters_Bite_A'), level: null, owned: false };
+    writeShopping('homecoming', [winter]);
+    // another server's list was refused earlier in this tab: this server's is read from the browser
+    useFinder.setState({ shop: [{ boost: 5, level: 20, owned: false }], shopFor: 'thunderspy', unsavedFor: 'thunderspy' });
+    useFinder.getState().openShopping();
+    expect(useFinder.getState()).toMatchObject({ shop: [winter], shopFor: 'homecoming', unsavedFor: null });
+  });
+
+  it('shows what another tab stored, for the list on show only', () => {
+    const lotg = { boost: pid(gd, 'Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F'), level: 49, owned: false };
+    // no list shown yet: nothing to refresh
+    writeShopping('homecoming', [lotg]);
+    shoppingChangedElsewhere(SHOPPING_KEY);
+    expect(useFinder.getState().shop).toEqual([]);
+    useFinder.getState().openShopping();
+    writeShopping('homecoming', [lotg, lotg]);
+    shoppingChangedElsewhere('hcp.current'); // another key: not the list
+    expect(useFinder.getState().shop).toEqual([lotg]);
+    shoppingChangedElsewhere(SHOPPING_KEY);
+    expect(useFinder.getState().shop).toEqual([lotg, lotg]);
+    stored.clear();
+    shoppingChangedElsewhere(/*key=*/ null); // the whole storage was cleared
+    expect(useFinder.getState().shop).toEqual([]);
+  });
+
+  it('says what happens when the browser will not clear the stored list', async () => {
+    const lotg = { boost: pid(gd, 'Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F'), level: 49, owned: false };
+    writeShopping('homecoming', [lotg]);
+    useFinder.getState().openShopping();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => stored.get(k) ?? null,
+      setItem: () => {
+        throw new Error('full');
+      },
+      removeItem: () => {
+        throw new Error('full');
+      },
+    });
+    await useFinder.getState().clearShopping();
+    // empty here, and said plainly that the stored one is still there
+    expect(useFinder.getState().shop).toEqual([]);
+    expect(useFinder.getState().note).toMatch(/wouldn't clear the stored shopping list/);
+    expect(JSON.parse(stored.get(SHOPPING_KEY)!)).toEqual({ v: 1, lists: { homecoming: [[lotg.boost, 49, 0]] } });
+  });
+
+  it('says so outside the pane when applying could not store the list', async () => {
+    await kept();
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('full');
+      },
+      removeItem: () => undefined,
+    });
+    openSetFinder();
+    await useFinder.getState().apply();
+    // the pane is closed and its note cleared with the build: the planner's own notice says it
+    expect(useFinderOpen.getState().open).toBe(false);
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatch(/wouldn't store the shopping list/);
+    expect(useFinder.getState().shop.length).toBeGreaterThan(0);
   });
 });

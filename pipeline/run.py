@@ -135,6 +135,12 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
                  f"what powers execute, {pt['classes']} classes' tables, {pt['bytes']} bytes in "
                  f"pets/{m['dataVersion']}.json). Powers whose PvP-only groups execute powers the damage total "
                  f"counts: {pt['exec']}. EntCreate mods left out: {skipped}.\n")
+    rc = exp.get("recipes")
+    if rc:
+        L.append("## Recipes\n")
+        L.append(f"{rc['recipes']} dropped recipes make {rc['enhancements']} set enhancements from {rc['salvage']} "
+                 f"invention salvage items ({rc['bytes']} bytes in recipes/{m['dataVersion']}.json, which the "
+                 f"set finder's shopping list reads).\n")
     fr = exp.get("frames")
     if fr and fr.get("cross"):  # an older version of the same server reports as it always did
         L.append("## Enhancement frames\n")

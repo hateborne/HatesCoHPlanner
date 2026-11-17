@@ -477,6 +477,13 @@ def run(data_root) -> dict:
         prev = json.loads(mpath.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         prev = None
+    # icon kinds this run does not make (salvage: pipeline.recipes) stay listed as they were
+    for kind, names in ((prev or {}).get("icons") or {}).items():
+        manifest["icons"].setdefault(kind, names)
+    # with no manifest to say so (it was deleted), such a kind is listed from its folder
+    icons_dir = config.ASSETS_OUT / "icons"
+    for folder in sorted(p for p in icons_dir.iterdir() if p.is_dir()) if icons_dir.is_dir() else []:
+        manifest["icons"].setdefault(folder.name, sorted(f.stem for f in folder.glob("*.png")))
     check_not_smaller(manifest, prev)
     config.atomic_write(mpath, json.dumps(manifest, separators=(",", ":")))
     write_skin_variants(manifest["ui"])
