@@ -49,9 +49,10 @@ jobs:
       # what ships to visitors (React, zustand, brotli-wasm) must have no known advisories at all
       - name: Shipped dependencies
         run: npm audit --omit=dev --audit-level=moderate
-      # build and test tools: high and critical advisories fail the check
+      # build and test tools: high and critical advisories fail the check, except the few
+      # scripts/audit-dev.mjs allows (each with its reason) until a fixed release exists
       - name: Development tools
-        run: npm audit --audit-level=high
+        run: node scripts/audit-dev.mjs
 
   pipeline:
     name: Data pipeline (Python compiles)
