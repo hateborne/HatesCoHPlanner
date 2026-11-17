@@ -1,0 +1,85 @@
+/**
+ * The live client's power-info requirement check (infoRequires, Homecoming 0x1404dfdd0, decompiled)
+ * and what it lists: every Combo Level and "Only if hidden" group, as in game (the owner's
+ * screenshots, November 17, 2026), but not another archetype's.
+ */
+import { describe, expect, it } from 'vitest';
+import { powerInfo, segText } from '../src/engine/powerinfo.ts';
+import { infoRequires } from '../src/engine/requires.ts';
+import { loadData } from './helpers/data.ts';
+
+const r = (s: string) => s.split(' ');
+
+describe('infoRequires', () => {
+  it('tells the caster\'s and the creator\'s archetype apart', () => {
+    expect(infoRequires(r('arch source> Class_Stalker eq'), 'Class_Stalker', null)).toBe(true);
+    expect(infoRequires(r('arch source> class_stalker eq'), 'Class_Stalker', null)).toBe(true);
+    expect(infoRequires(r('arch source> Class_Scrapper eq'), 'Class_Stalker', null)).toBe(false);
+    expect(infoRequires(r('arch source.owner> Class_Brute eq'), 'Class_Minion_Pets', 'Class_Brute')).toBe(true);
+    expect(infoRequires(r('arch source.creator> Class_Brute eq'), 'Class_Minion_Pets', null)).toBe(false);
+    // a target's archetype isn't checked
+    expect(infoRequires(r('arch target> Class_Minion_Grunt eq'), 'Class_Scrapper', null)).toBe(true);
+  });
+
+  it('reads a critter target as met and a player target as not, in PvE', () => {
+    expect(infoRequires(r('enttype target> critter eq'), 'Class_Blaster', null)).toBe(true);
+    expect(infoRequires(r('enttype target> player eq'), 'Class_Blaster', null)).toBe(false);
+    expect(infoRequires(r('enttype target> player eq'), 'Class_Blaster', null, /*pvp=*/ true)).toBe(true);
+    expect(infoRequires(r('isPVPMap?'), 'Class_Blaster', null)).toBe(false);
+  });
+
+  it('reads owned powers, with or without a ! after them, as met', () => {
+    const c = 'Temporary_Powers.Temporary_Powers.Combo_Level_';
+    const level0 = `${c}1 source.ownPower? ! ${c}2 source.ownPower? ! && ${c}3 source.ownPower? ! &&`;
+    expect(infoRequires(r(level0), 'Class_Stalker', null)).toBe(true);
+    expect(infoRequires(r(`${c}2 source.ownPower?`), 'Class_Stalker', null)).toBe(true);
+  });
+
+  it('reads values and comparisons as true, and works && || ! eq on them', () => {
+    expect(infoRequires(r('kMeter source> 0 >'), 'Class_Stalker', null)).toBe(true);
+    expect(infoRequires(r('kMeter source> .9 < enttype target> critter eq &&'), 'Class_Stalker', null)).toBe(true);
+    expect(infoRequires(r('kStormCell Source.Mode?'), 'Class_Blaster', null)).toBe(true);
+    expect(infoRequires(r('enttype target> player eq arch source> Class_Blaster eq ||'), 'Class_Blaster', null)).toBe(true);
+    // "not targeting itself" reads false: both sides are 1
+    expect(infoRequires(r('entref target> entref source> eq !'), 'Class_Minion_Pets', 'Class_Controller')).toBe(false);
+  });
+});
+
+describe('the lines the client lists for requirements', () => {
+  const gd = loadData('i28p4');
+  const lines = (cls: string, name: string) =>
+    powerInfo(gd, gd.archetypeByName.get(cls)!, gd.powerByName.get(name)!, 49, null).effects.map((e) =>
+      [segText(e.line), ...e.notes.map(segText)].join(' / '),
+    );
+
+  it("lists every Combo Level and the hidden line of Crushing Uppercut, in the game's order", () => {
+    const got = lines('class_stalker', 'stalker_melee.brawling.crushing_uppercut').filter((l) => !l.startsWith('Grants'));
+    expect(got).toEqual([
+      '176.85 smashing damage on target / Only at Combo Level 0',
+      '3.00 magnitude stun for 8.94s on target / Only at Combo Level 0',
+      '185.69 smashing damage on target / Only at Combo Level 1',
+      '3.00 magnitude stun for 10.28s on target / Only at Combo Level 1',
+      '198.07 smashing damage on target / Only at Combo Level 2',
+      // @TODO the game shows 11.18s: it multiplies in single precision (not ported yet)
+      '3.00 magnitude stun for 11.17s on target / Only at Combo Level 2',
+      '221.06 smashing damage on target / Only at Combo Level 3',
+      '3.00 magnitude stun for 12.52s on target / Only at Combo Level 3',
+      '3.00 magnitude hold for 12.52s on target / Only at Combo Level 3',
+      '176.85 smashing damage on target / Only if hidden or target placated',
+      '0.00% chance for 176.85 smashing damage on target / Chance increases the more allies are nearby',
+      '6.23 magnitude knockup on target',
+    ]);
+  });
+
+  it("lists Thunder Strike's hidden lines and keeps its damage as in game", () => {
+    const got = lines('class_stalker', 'stalker_melee.electrical_melee.lightning_clap');
+    expect(got.slice(0, 4)).toEqual([
+      '142.37 energy damage on target',
+      '23.36 energy damage on target',
+      '149.31 energy damage on target / Only if hidden or target placated',
+      '50.00% chance for 21.04 special damage on target / Only if hidden or target placated',
+    ]);
+    const s = powerInfo(gd, gd.archetypeByName.get('class_stalker')!, gd.powerByName.get('stalker_melee.electrical_melee.lightning_clap')!, 49, null).stats;
+    expect(segText(s[0]!.value)).toBe('331.45'); // the hidden lines carry a note, so they don't count
+  });
+});

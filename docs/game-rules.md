@@ -401,6 +401,28 @@ Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d
   tick chance, not its group's: Homecoming's Blaster Charged Brawl (Electricity Manipulation) reads
   "-100.00% recovery rate for 2.00s on target", its group's 20% unshown.
 
+## Requirements in the power info
+
+The live client's power info doesn't run the game's requirement evaluator on an effect group. It
+runs a cut-down check of its own (Homecoming i28p4 0x1404dfdd0, decompiled; `infoRequires` in
+`src/engine/requires.ts`), for the lines (power_AddEffects) and the damage total (getTotalDamage)
+alike, over the group and every group above it:
+
+- It tells apart only the caster's archetype (`arch source>`), the creator's (`arch source.owner>`,
+  `arch source.creator>`), a critter target from a player one (`enttype target>`, critter in PvE),
+  and PvP maps (`isPVPMap?`, false in PvE).
+- Everything else reads as true: values, comparisons, `source.ownPower?` (a `!` after it is
+  skipped), `Source.Mode?`, `target.HasTag?`. So every Combo Level line and every "Only if hidden or
+  target placated" line is listed (Crushing Uppercut and Thunder Strike, as in game, the owner's
+  screenshots, November 17, 2026), and so are Bio Armor's adaptation variants.
+- Its operators work on those 0/1 values, so `entref target> entref source> eq !` ("not on itself")
+  reads false: such groups are neither listed nor counted (Liquid Nitrogen's pet).
+- A group the check passes counts towards the damage total unless the client writes a requirement
+  note for it (getRequiresString, `requiresNotes`). Its note patterns don't match Homecoming's
+  `kHitPoints%` and `kEndurance%` tokens, so Scourge and Charged Bolts' Zapping groups carry no note
+  and count in full. @TODO confirm in game (a Corruptor's Dark Blast reads 83.42, Blaster Charged
+  Bolts 75.08).
+
 ## Grants (Kheldian forms etc.)
 
 `kGrantPower`/`kGrantBoostedPower`/`kExecutePower` attribmods carry power names in their

@@ -12,7 +12,7 @@
 import type { GameData } from '../data/gamedata.ts';
 import type { Archetype, Effect, Mod, PetPower, Power } from '../data/types.ts';
 import { serverById } from '../data/servers.ts';
-import { evalRequires, type EvalContext } from './requires.ts';
+import { infoRequires, type EvalContext } from './requires.ts';
 
 /** A run of text, optionally colored (CSS hex) and italic. */
 export interface Seg {
@@ -626,7 +626,8 @@ export function powerInfo(
 
   // ---- damage totals (getTotalDamage) ----
   /**
-   * Walk effect groups (PvE, visible, requirements met), yielding one template per mod x attribute.
+   * Walk effect groups (PvE, visible, requirements met by the client's power-info check), yielding
+   * one template per mod x attribute.
    *
    * The templates come in the client's template-list order: each group's sub-groups before its
    * own mods (its loader, decompiled), so the lines read in the game's order.
@@ -657,13 +658,17 @@ export function powerInfo(
     hidden = false,
     parents: readonly Effect[] = [],
   ): void => {
+    const cls = String(ec.prop('archetype'));
+    const owner = ec.ownerProp ? String(ec.ownerProp('archetype')) : null;
     for (const e of effs ?? []) {
       if (e.fl?.includes('PVPOnly')) continue;
       const hide = hidden || !!e.fl?.includes('HideFromInfo') || !!e.ppm;
       if (hide && !pet) continue;
       const chance = e.ch ?? 1;
       const rq = e.req && e.req.length ? [...reqs, e.req] : reqs;
-      if (!rq.every((r) => evalRequires(r, ec))) continue;
+      // the client's own cut-down check (infoRequires), not the game's evaluator: it lists the
+      // Combo Level and "Only if hidden" groups, and leaves out another archetype's
+      if (!rq.every((r) => infoRequires(r, cls, owner))) continue;
       // the client's template list: a group's sub-groups first, then its own mods
       if (e.sub?.length) templates(e.sub, rq, out, ec, pet, hide, [e, ...parents]);
       const mode = tagMode(e, parents, ownTagModes);
