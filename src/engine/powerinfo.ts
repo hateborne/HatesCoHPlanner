@@ -602,12 +602,10 @@ export function powerInfo(
   const ownGroupRequires = serverById(gd.server)?.infoRequires === 'ownGroup';
 
   const attrName = (offset: number): string | null => {
-    if (offset >= 0 && offset < 80) {
-      const nm = DAMAGE_NAMES[offset / 4];
-      if (nm) return nm;
-      const dn = gd.core.attribNames.Damage[offset / 4]?.dn;
-      return dn ? (/unique/i.test(dn) ? 'unique' : `${dn.replace(/_/g, ' ').toLowerCase()} damage`) : null;
-    }
+    // the client names only the first ten damage types; it leaves out a line whose attribute it
+    // can't name (AttrUnknown), so Vulnerability lists no radiation, electrical, sonic or quantum
+    // resistance beside "all damage", as in game
+    if (offset >= 0 && offset < 80) return DAMAGE_NAMES[offset / 4] ?? null;
     const d0 = O['DefenseType00'] ?? 104;
     if (offset >= d0 && offset < d0 + 80) {
       const i = (offset - d0) / 4;
@@ -941,9 +939,12 @@ export function powerInfo(
     target.push(row(TXT.powerRange, `<color #ffffff>${pair(enhRng, power.rng, f2, ' ft.')}`));
   }
   const area = power.area;
-  if (area === undefined || area === 'Sphere' || area === 'Cone' || area === 'Location') {
+  // the client's EffectArea row (power_AddTargetInfo): Character, Cone, Sphere, Location and Chain;
+  // none for Map and later kinds
+  if (area === undefined || area === 'Sphere' || area === 'Cone' || area === 'Location' || area === 'Chain') {
     let a: string;
-    if (area === 'Cone') {
+    if (area === 'Chain') a = `Chain -- ${f2(power.rad ?? 0)} ft. jump distance`;
+    else if (area === 'Cone') {
       a = `Cone -- ${f2(power.rad ?? 0)} ft. radius<br>${f2(((power.arc ?? 0) * 180) / Math.PI)} degree arc`;
     } else if (area === 'Sphere') a = `AoE -- ${f2(power.rad ?? 0)} ft. radius`;
     else if (area === 'Location') a = TXT.locationTarget;
@@ -1087,7 +1088,9 @@ export function powerInfo(
         else pchType = attr;
       } else if (offset >= (O['DefenseType00'] ?? 104) && offset < (O['Defense'] ?? 184)) {
         const defName = allKind ? 'all defense' : `${attr} defense`;
-        pchType = eType === 'Str' ? `strength to ${defName}` : eType === 'Cur' ? defName : attr;
+        // both live clients word a Current defense as a Strength one (GenericStr; Homecoming
+        // 0x1404e37e0, Thunderspy 0x1404da680): "+9.75% strength to ranged defense", as in game
+        pchType = eType === 'Str' || eType === 'Cur' ? `strength to ${defName}` : attr;
       } else if (isStatus(offset)) {
         if (eType === 'Cur') pchType = fMag < 0 ? `${attr} protection` : `magnitude ${attr}`;
         else if (eType === 'Str') pchType = `strength to ${attr}`;

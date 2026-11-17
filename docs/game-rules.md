@@ -430,6 +430,24 @@ the effects under their "not in Nova form" parent group).
   and count in full. @TODO confirm in game (a Corruptor's Dark Blast reads 83.42, Blaster Charged
   Bolts 75.08).
 
+## Power info wording
+
+From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p4 0x1404e37e0 and
+0x1404e26f0, Thunderspy 9.6 0x1404da680; decompiled), in `src/engine/powerinfo.ts`:
+
+- A typed defense of aspect Current reads like a Strength one: "+9.75% strength to ranged defense"
+  (Homecoming's Hail of Bullets, in game). Both clients do it.
+- A line whose attribute the client can't name (AttrUnknown) is left out. It names only the first
+  ten damage types, so Homecoming's Vulnerability lists "resistance to all damage" but none of its
+  radiation, electrical, sonic or quantum resistance (in game). Those types only ever come with the
+  other eight.
+- The Effect Area row: Single Target, Cone, AoE (Sphere), Location, and "Chain -- 15.00 ft. jump
+  distance" with its jump radius (Homecoming's Vulnerability, in game), each with "(N targets max)"
+  when the power has a target cap. A Map power gets no row.
+- @TODO the attribute names ("knock", "defense debuff"), the note texts ("unresistable") and the
+  "Aggro Type" row come from each client's own message files and data, which the export doesn't
+  read yet.
+
 ## Grants (Kheldian forms etc.)
 
 `kGrantPower`/`kGrantBoostedPower`/`kExecutePower` attribmods carry power names in their

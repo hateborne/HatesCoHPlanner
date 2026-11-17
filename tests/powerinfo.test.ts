@@ -131,3 +131,24 @@ describe("powerInfo: damage by the client's chance rule (getTotalDamage)", () =>
     expect(dmg('class_brute', 'brute_defense.fiery_aura.burn')[0]).toBe('130.13');
   });
 });
+
+describe("powerInfo: the client's wording and rows (Homecoming, the owner's screenshots, November 17, 2026)", () => {
+  const info = (cls: string, name: string, level = 49) =>
+    powerInfo(gd, gd.archetypeByName.get(cls)!, gd.powerByName.get(name)!, level, null);
+  const lines = (i: ReturnType<typeof info>) => i.effects.map((e) => [segText(e.line), ...e.notes.map(segText)].join(' / '));
+
+  it('words a Current defense as "strength to" (Hail of Bullets)', () => {
+    expect(lines(info('class_sentinel', 'sentinel_ranged.dual_pistols.hail_of_bullets')).slice(0, 3)).toEqual([
+      '+9.75% strength to ranged defense for 5.00s on self / Ignores buffs and enhancements / Unresistable',
+      '+9.75% strength to melee defense for 5.00s on self / Ignores buffs and enhancements / Unresistable',
+      '+9.75% strength to AoE defense for 5.00s on self / Ignores buffs and enhancements / Unresistable',
+    ]);
+  });
+
+  it("lists no damage type the client can't name, and a Chain power's area (Vulnerability, level 2)", () => {
+    const v = info('class_sentinel', 'inherent.inherent.vulnerability', 1);
+    const res = lines(v).filter((l) => l.includes('resistance to')).map((l) => l.replace(/^-15\.00% resistance to (.*) for 15\.00s on target.*$/, '$1'));
+    expect(res).toEqual(['all damage', 'endurance', 'to hit', 'confuse', 'terrorize', 'hold', 'immobilize', 'stun', 'sleep', 'regeneration rate', 'recovery rate', 'recharge', 'Endurance Cost']);
+    expect(rows(v.target)['Effect Area:']).toBe('Chain -- 15.00 ft. jump distance (5 targets max)');
+  });
+});
