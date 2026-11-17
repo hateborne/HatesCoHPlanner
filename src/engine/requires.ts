@@ -282,8 +282,9 @@ const INFO_BINARY_FIRST = new Set(['%', '*', '+', '-', '/', '>', '?']);
 
 /**
  * The live client's power-info requirement check: whether the power info lists an effect group,
- * and whether its damage counts (Homecoming i28p4 0x1404dfdd0, called by power_AddEffects and
- * getTotalDamage; decompiled).
+ * and whether its damage counts (requiresArchetypePvPEval in the source's uiPowerInfo.c; Homecoming
+ * i28p4 0x1404dfdd0 and Thunderspy 9.6 0x1404d4cc0, called by power_AddEffects and getTotalDamage;
+ * decompiled, both as the source).
  *
  * It is not the game's evaluator (evalRequires) but a cut-down stack machine that only tells the
  * caster's archetype, the creator's archetype, a critter target from a player one, and PvP maps

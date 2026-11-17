@@ -20,7 +20,7 @@ export interface GameServer {
   buildSave: boolean; // its game client writes /build_save files (build.txt) the planner can import
   versionPrefix?: string; // every game version id of its starts with this (the pipeline enforces it); the default server has none
   ioLevelsAbove?: number; // how far an IO or set piece's level may be above the character's and still work; omitted: the boost effect table's length - 1 (3, Homecoming's client)
-  infoRequires?: 'ownGroup'; // its client's power info checks an effect's requirements (infoRequires) on the effect's own group only (Thunderspy.exe 0x1404d4cc0, from power_AddEffects and getTotalDamage); omitted: Homecoming's client, which checks every group above it too
+  infoRequires?: 'ownGroup'; // its client's power info reads an effect's requirements (infoRequires and the requirement notes) on the effect's own group only (Thunderspy.exe 0x1404d4cc0, from power_AddEffects and getTotalDamage 0x1404d6070); omitted: Homecoming's client, which reads every group above it too
   tagModes?: 'ownTag'; // its client's power info reads a group's tag mode (getChanceModString, getChanceModValue) from the group's own first tag only and knows no ASTeamCrit (Thunderspy.exe); omitted: Homecoming's client, which also reads its parent groups' first tags
 }
 

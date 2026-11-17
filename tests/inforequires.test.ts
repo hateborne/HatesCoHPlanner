@@ -95,3 +95,30 @@ describe("Thunderspy's client checks an effect's own group only", () => {
     expect(powerInfo(ts, ts.archetypeByName.get('class_warshade')!, p, 49, null).effects.length).toBeGreaterThan(0);
   });
 });
+
+describe("each client's notes read the requirements its check reads", () => {
+  // a hit under a parent group gated on being hidden: Homecoming's client notes it from the parent
+  // and leaves it out of the damage; Thunderspy's reads only the hit's own group, so neither
+  const lines = (server: 'homecoming' | 'thunderspy') => {
+    const gd = server === 'homecoming' ? loadData('i28p4') : loadData('ts9-6', 'thunderspy');
+    const base = gd.powerByName.get('blaster_ranged.fire_blast.flares')!;
+    const fire = { a: [gd.attribByName.get('DamageType02')!], asp: 'Absolute', t: 'Magnitude', tg: 'Affected', tbl: 'Ranged_Damage', sc: 1 };
+    const p = { ...base, act: undefined, eff: [{ req: r('kMeter source> 0 >'), sub: [{ m: [fire] }] }] };
+    const pi = powerInfo(gd, gd.archetypeByName.get('class_blaster')!, p, 49, null);
+    const avg = pi.stats.find((s) => s.label === 'Average Damage:');
+    return { lines: pi.effects.map((e) => [segText(e.line), ...e.notes.map(segText)].join(' / ')), dmg: avg ? segText(avg.value) : null };
+  };
+
+  it('notes and leaves out the hit on Homecoming', () => {
+    const hc = lines('homecoming');
+    expect(hc.lines).toEqual(['62.56 fire damage on target / Only if hidden or target placated']);
+    expect(hc.dmg).toBe(null);
+  });
+
+  it('lists and counts it bare on Thunderspy', () => {
+    const ts = lines('thunderspy');
+    expect(ts.lines).toEqual([expect.stringMatching(/^[\d.]+ fire damage on target$/)]);
+    expect(ts.dmg).not.toBe(null);
+    expect(ts.lines[0]!.startsWith(ts.dmg!)).toBe(true);
+  });
+});
