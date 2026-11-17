@@ -60,19 +60,19 @@ describe('tag modes on Homecoming', () => {
     expect(lines).toContain('129.69 cold damage on target / Only using Cryo Ammo');
     expect(lines).toContain('129.69 toxic damage on target / Only using Chemical Ammo');
     // LethalKB70 (chance 0.7) reads 1: the client tries "Lethal" first
-    expect(lines).toContain('1.66 magnitude knockback on target / Only using Standard Ammo');
-    // a SentCrit group takes its parent's mode; its tick chance is 0
-    expect(lines).toContain('0.00% chance for 51.87 fire damage on target / Only using Incendiary Ammo');
+    expect(lines).toContain('1.66 magnitude knock on target / Only using Standard Ammo');
+    // a SentCrit group takes its parent's mode; its tick chance is 0 (its own note from the info file)
+    expect(lines).toContain('0.00% chance for 51.87 fire damage on target / Only using Incendiary Ammo / Opportunity');
   });
 
   it("shows Hail of Bullets' stand-in chances by the client's rule: the group's without a duration, else the tick's", () => {
     const { lines } = info(gd, 'Class_Sentinel', 'Sentinel_Ranged.Dual_Pistols.Hail_of_Bullets');
     // HailofBulletsKnockdown (0.05) has a duration, so its 0.1 tick chance shows
-    expect(lines).toContain('10.00% chance for 0.40 magnitude knockback for 2.30s on target / Only using Standard Ammo');
+    expect(lines).toContain('10.00% chance for 0.40 magnitude knock for 2.30s on target / Only using Standard Ammo / Within 20ft radius');
     // HailofBulletsEndKnockback (0.4) has none
-    expect(lines).toContain('40.00% chance for 0.40 magnitude knockback on target after 2.30s delay / Only using Standard Ammo');
+    expect(lines).toContain('40.00% chance for 0.40 magnitude knock on target after 2.30s delay / Only using Standard Ammo / Within 20ft radius');
     // HailofBulletsLethal reads 1 ("Lethal" first), so the 0.6 tick chance shows
-    expect(lines).toContain('60.00% chance for 12 Ticks of 8.01 lethal damage over 2.30s on target / Only using Standard Ammo');
+    expect(lines).toContain('60.00% chance for 12 Ticks of 8.01 lethal damage over 2.30s on target / Only using Standard Ammo / Within 20ft radius');
   });
 
   it("gives ASTeamCrit its note and a chance of 0 (the client's chance table has no entry for it)", () => {
@@ -83,11 +83,13 @@ describe('tag modes on Homecoming', () => {
     expect(stats['Average Damage:']).toBe('189.22');
   });
 
-  it('changes only the lines of a group with a mode: an untagged sub-group keeps its chances', () => {
-    // Lightning Clap's ASTeamCrit group (0.07) has no mods; its untagged sub-groups deal the damage
+  it("reads only a line's own group's chance: a mode's parent group lends its sub-groups none", () => {
+    // Thunder Strike's ASTeamCrit group (0.07) has no mods; its untagged sub-groups (chance 1) deal
+    // the damage, and the game shows them without a chance (the owner's screenshot, November 17, 2026)
     const { lines } = info(gd, 'Class_Stalker', 'Stalker_Melee.Electrical_Melee.Lightning_Clap');
-    expect(lines).toContain('7.00% chance for 142.37 energy damage on target');
-    expect(lines).toContain('7.00% chance for 23.36 special damage on target');
+    expect(lines.filter((l) => l === '142.37 energy damage on target / Main Target Only')).toHaveLength(2);
+    expect(lines).toContain('23.36 special damage on target');
+    expect(lines.some((l) => l.includes('7.00% chance'))).toBe(false);
   });
 
   it("reads a tagged group's parents' first tags, passing over parents without tags", () => {
@@ -114,9 +116,9 @@ describe('tag modes on Homecoming', () => {
     expect(info(gd, 'Class_Blaster', p).lines).toEqual([]);
   });
 
-  it('still leaves out an untagged group of chance 0 (the earlier port; the live client lists it: @TODO)', () => {
+  it('lists an untagged group of chance 0, as the client does (it skips only a tagged one)', () => {
     const p = madeUp(gd, [fireGroup(gd, { ch: 0 })]);
-    expect(info(gd, 'Class_Blaster', p).lines).toEqual([]);
+    expect(info(gd, 'Class_Blaster', p).lines).toEqual(['0.00% chance for 62.56 fire damage on target']);
   });
 });
 
@@ -126,8 +128,9 @@ describe("tag modes on Thunderspy (its client reads a group's own first tag only
 
   it("lists Dual Pistols' ammo groups with their notes", () => {
     const { lines } = info(gd, 'Class_Dominator', 'Dominator_Assault.Dual_Pistols.Piercing_Rounds');
-    expect(lines).toContain('68.68 fire damage on target / Only using Incendiary Ammo');
-    expect(lines).toContain('68.68 toxic damage on target / Only using Chemical Ammo');
+    // the tag mode's note comes before the requirement notes ("Applies to enemies": a critter target)
+    expect(lines).toContain('68.68 fire damage on target / Only using Incendiary Ammo / Applies to enemies');
+    expect(lines).toContain('68.68 toxic damage on target / Only using Chemical Ammo / Applies to enemies');
   });
 
   it("doesn't read a parent's tag (Homecoming's does)", () => {

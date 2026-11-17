@@ -93,6 +93,13 @@ the project)
   changes no build, so a published version may get one, made by `python -m pipeline.pets` from the
   very client the version was made from. It is optional: the app never waits for it, and without
   it a power shows no pet damage. `pets` is never a version id.
+- Beside it, a version's power-info extras file (`public/data/info/<id>.json`,
+  `public/data/thunderspy/info/<id>.json`) carries what the client's power info reads from fields
+  the version's own files don't hold: each effect's own note ("Within 20ft radius"), the client's
+  attribute names and note texts, the grants it doesn't list, the "Aggro Type" row, and Thunderspy's
+  PvP-only groups. Like the pets file it changes no build, may be added to a published version
+  (`python -m pipeline.info`, from the version's own client, after its pets file), and is optional:
+  without it the power info keeps the planner's own wording. `info` is never a version id.
 - Game servers (`SERVERS` in `src/data/servers.ts`) keep their `id` (stored in builds) and `path`
   (the address segment) forever. A build or link that names no server is Homecoming's, and
   Homecoming's data stays in `public/data/`; another server gets `public/data/<server>/`. The
@@ -155,7 +162,8 @@ src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, 
 tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for the e2e tests
 e2e/            Playwright browser tests (local only)
 public/data/    generated game data per version, versions.json; <server>/ for other servers;
-                pets/ for each version's pseudo-pets (beside the version folders)
+                pets/ for each version's pseudo-pets, info/ for its power-info extras (beside the
+                version folders)
 public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its icons
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
 tools/          standard-library Python decoders for client file formats
@@ -216,6 +224,7 @@ python -m pipeline.run --help
 python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
 python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
 python -m pipeline.pets --game-version i28p3     # a published version's pseudo-pet file (its own client)
+python -m pipeline.info --game-version i28p3     # its power-info extras file (its own client, after pets)
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -227,7 +236,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `node scripts/audit-dev.mjs` (tools: high and critical advisories, except the few its `ALLOWED` lets through, each with its reason, until a fixed release exists) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.pvp_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the PvP-only test); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.info_test pipeline.pvp_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the power-info extras export, the PvP-only test); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub

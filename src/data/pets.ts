@@ -47,7 +47,8 @@ function isEffect(v: unknown, depth: number): boolean {
   );
 }
 
-const isEffects = (v: unknown) => opt(v, (effs) => Array.isArray(effs) && effs.every((e) => isEffect(e, 0)));
+/** @return Whether a list of effect groups (or none) is well formed. */
+export const isEffects = (v: unknown) => opt(v, (effs) => Array.isArray(effs) && effs.every((e) => isEffect(e, 0)));
 
 /** @return Whether a pet power is well formed. */
 function isPetPower(v: unknown): boolean {

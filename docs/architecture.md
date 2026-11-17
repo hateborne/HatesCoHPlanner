@@ -14,6 +14,7 @@ src/
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
+    info.ts                  the shape check of a version's power-info extras file (readInfoFile)
     types.ts                 shapes of the exported JSON
   engine/                    pure TypeScript build rules (no React, no DOM)
     build.ts                 Build / Pick / Slot model, newBuild()
@@ -52,6 +53,8 @@ public/data/versions.json    version index {default, versions: [{id, label, hash
 public/data/thunderspy/      Thunderspy's data: its own versions.json and version folders (no mids-map)
 public/data/pets/<version>.json  each version's pseudo-pets, beside the version folders (generated;
                              Thunderspy's in public/data/thunderspy/pets/)
+public/data/info/<version>.json  each version's power-info extras, beside them (generated;
+                             Thunderspy's in public/data/thunderspy/info/)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
@@ -61,6 +64,8 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
   pets.py                    a published version's pseudo-pet file only (python -m pipeline.pets)
   pets_test.py               the pseudo-pet export's tests (python -m unittest pipeline.pets_test; run by CI)
+  info.py                    a published version's power-info extras file only (python -m pipeline.info)
+  info_test.py               its export's tests (python -m unittest pipeline.info_test; run by CI)
   watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
   watch_test.py              its tests (python -m unittest pipeline.watch_test; run by CI)
   compare.py                 what another server's data does differently from Homecoming's
@@ -117,7 +122,9 @@ switches versions; each version is fetched once per page. The version's pseudo-p
 once those files have arrived and is never waited for (`loadGameData`): it is attached when it
 arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
-damaged or slow one only leaves pet damage out.
+damaged or slow one only leaves pet damage out. The version's power-info extras file is fetched the
+same way (`GameData.setInfo`, `src/data/info.ts`, `subscribeInfo`; a file naming another version is
+refused); without it the power info shows no effect notes and keeps the planner's own wording.
 
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
