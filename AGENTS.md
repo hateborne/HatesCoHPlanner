@@ -226,7 +226,7 @@ touches configuration or dependencies.
 | Check | Runs |
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
-| Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
+| Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `node scripts/audit-dev.mjs` (tools: high and critical advisories, except the few its `ALLOWED` lets through, each with its reason, until a fixed release exists) |
 | Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test` (the release check, the forced respec check, the difference report, the pseudo-pet export); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
