@@ -232,6 +232,32 @@ export interface PetsFile {
   tables: number[][];
 }
 
+/**
+ * One effect group's place in a version's info file: its mods' own notes and its sub-groups', laid
+ * out as the power's groups are (null: neither it nor a group in it has a note).
+ */
+export type InfoNode = { m?: (string | null)[]; s?: InfoNode[] } | null;
+
+/**
+ * One game version's power-info extras (<server data>/info/<version>.json): what the client's power
+ * info reads from fields the version's own files don't carry. Kept beside the version's folder, like
+ * the pets file, so a published folder never changes. Optional: without it the power info shows no
+ * effect notes, every grant line and the planner's own wording.
+ */
+export interface InfoFile {
+  // per power full name (the version's own and its pets file's), each mod's own note
+  // (Messages.DisplayInfo: "Within 20ft radius", "Main Target Only"), laid out as its eff (e) and
+  // act (a) groups; on a power in `groups`, as those groups
+  notes: Record<string, { e?: InfoNode[]; a?: InfoNode[] }>;
+  hiddenGrants: string[]; // granted powers (full names) whose grant the client lists no line for (ShowInInventory 0)
+  aggro: Record<string, string>; // power full name -> the "Aggro Type" row's text (AIReport)
+  attr: Record<string, string>; // attribute offset -> its name as the client writes it ("knock", "to&nbsp;hit")
+  text: Record<string, string>; // the client's texts for the planner's own notes (Unresistable, ...)
+  // per power full name, its groups as the client lists them where the version's file differs
+  // (Thunderspy's client lists PvP-only groups); granted powers by name (pwn)
+  groups?: Record<string, { eff?: Effect[]; act?: Effect[] }>;
+}
+
 export interface BoostSetBonus {
   min: number;
   max: number;
