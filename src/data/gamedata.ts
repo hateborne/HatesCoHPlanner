@@ -1,6 +1,7 @@
+import { readPetsFile } from './pets.ts';
 import { dataRoot, DEFAULT_SERVER, type GameServer } from './servers.ts';
 import type { GameVersion } from './versions.ts';
-import type { Archetype, BoostSet, BoostsFile, Core, Power, Powerset } from './types.ts';
+import type { Archetype, BoostSet, BoostsFile, Core, PetsFile, Power, Powerset } from './types.ts';
 
 /** Where an enhancement sits inside an IO set. */
 export interface BoostSetRef {
@@ -48,6 +49,11 @@ export class GameData {
   readonly boostSets: BoostSet[];
   readonly attribName = new Map<number, string>();
   readonly attribByName = new Map<string, number>();
+  // the version's pseudo-pets (pets/<version>.json): set when that optional file arrives, so a
+  // power's pet damage shows from then on; null while it is missing
+  pets: PetsFile | null = null;
+  // who to tell when the pets file arrives (subscribePets)
+  private readonly petsListeners = new Set<() => void>();
 
   /**
    * Index a loaded data set.
@@ -144,6 +150,58 @@ export class GameData {
     return vals[Math.max(0, Math.min(vals.length - 1, level))] ?? 0;
   }
 
+  /**
+   * Take the version's pseudo-pet file, when it is one, and tell those waiting for it.
+   *
+   * It comes from the site, but it is optional and loads apart from the rest, so a file with any
+   * part malformed is ignored (the powers then show no pet damage) rather than trusted
+   * (readPetsFile).
+   *
+   * @param raw The parsed pets/<version>.json.
+   * @return Whether it was taken.
+   */
+  setPets(raw: unknown): boolean {
+    const file = readPetsFile(raw);
+    if (!file) return false;
+    this.pets = file;
+    for (const l of [...this.petsListeners]) l();
+    return true;
+  }
+
+  /**
+   * Hear when the pets file arrives, so a panel open by then shows pet damage (for
+   * useSyncExternalStore, with `pets` as the snapshot).
+   *
+   * @param listener Called once the file is taken.
+   * @return Stops listening.
+   */
+  readonly subscribePets = (listener: () => void): (() => void) => {
+    this.petsListeners.add(listener);
+    return () => this.petsListeners.delete(listener);
+  };
+
+  /**
+   * Value of a class's named mod table at a 0-based level, for a pseudo-pet's power: the pet file's
+   * table for that class first (a villain class's, or one core.json lacks for an archetype), else
+   * the archetype's from core.json.
+   *
+   * @param cls Class name (Class_Brute, Class_Minion_Pets).
+   * @param table Table name (case-insensitive).
+   * @param level 0-based level, clamped to the table length.
+   * @return The table value, or 0 when the class lacks the table.
+   */
+  classTable(cls: string, table: string, level: number): number {
+    const idx = this.pets?.classes[cls]?.[table.toLowerCase()];
+    if (idx !== undefined) {
+      const vals = this.pets?.tables[idx];
+      if (!Array.isArray(vals) || vals.length === 0) return 0;
+      const v = vals[Math.max(0, Math.min(vals.length - 1, level))];
+      return typeof v === 'number' ? v : 0;
+    }
+    const at = this.archetypeByName.get(cls.toLowerCase());
+    return at ? this.table(at, table, level) : 0;
+  }
+
   /** @return An archetype attribute table value (e.g. at.max.HitPoints) at a 0-based level. */
   static attrAt(tbl: Record<string, number | number[]>, name: string, level: number, dflt = 0): number {
     const v = tbl[name];
@@ -153,8 +211,16 @@ export class GameData {
   }
 }
 
+/** Folder beside a server's version folders holding each version's pseudo-pets (pets/<version>.json). */
+export const PETS_FOLDER = 'pets';
+
 /**
  * Fetch one game version's exported data set from the site.
+ *
+ * The version's pseudo-pet file is fetched once these four have arrived, and never waited for: it
+ * is attached when it comes (GameData.setPets), and a slow, missing or damaged one only leaves pet
+ * damage out. The build always opens on the four files alone, and a load that fails on them
+ * fetches no pet file.
  *
  * @param server The server the version belongs to.
  * @param base Site base URL (import.meta.env.BASE_URL).
@@ -162,7 +228,8 @@ export class GameData {
  * @return Indexed game data.
  */
 export async function loadGameData(server: GameServer, base: string, version: GameVersion): Promise<GameData> {
-  const root = `${dataRoot(server, base)}${version.id}/`;
+  const data = dataRoot(server, base);
+  const root = `${data}${version.id}/`;
   const q = version.hash ? `?v=${version.hash}` : '';
   const get = async <T,>(f: string): Promise<T> => {
     const r = await fetch(root + f + q);
@@ -175,5 +242,12 @@ export async function loadGameData(server: GameServer, base: string, version: Ga
     get<Power[]>('powers.json'),
     get<BoostsFile>('boosts.json'),
   ]);
-  return new GameData({ core, powersets, powers, boosts }, server.id);
+  const gd = new GameData({ core, powersets, powers, boosts }, server.id);
+  void (async (): Promise<unknown> => {
+    const r = await fetch(`${data}${PETS_FOLDER}/${version.id}.json${q}`);
+    return r.ok ? await r.json() : null;
+  })()
+    .then((raw) => gd.setPets(raw))
+    .catch(() => undefined);
+  return gd;
 }

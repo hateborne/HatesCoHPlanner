@@ -18,7 +18,7 @@ from pipeline.coh import p7reader as P
 from pipeline.coh.messages import decode_messages
 from pipeline.label.attribs import all_attributes
 
-CACHE_VERSION = 7
+CACHE_VERSION = 8
 
 
 @dataclass
@@ -41,6 +41,14 @@ class LiveData:
     enums: dict                 # {"power.Type": {int: name}, "mod.Aspect": {...}, ...}
     health: dict = field(default_factory=dict)
     fingerprint: dict = field(default_factory=dict)
+    # villain defs, trimmed to what pseudo-pets need: {"Name", "Class", "Power": [{"PowerCategory",
+    # "PowerSet", "Power"}]} (villaindef.bin)
+    villains: list = field(default_factory=list)
+    # villain classes, trimmed: {"Name", "ModTable"} (villain_classes.bin)
+    villain_classes: list = field(default_factory=list)
+    # the client's EntCreate param struct (a mod's Params of type 3) in serialized order:
+    # [(field name, is a string earray)]
+    ent_create_layout: list = field(default_factory=list)
 
 
 _SHA_MEMO: dict[tuple, str] = {}
@@ -149,6 +157,10 @@ def decode_all(verbose=True) -> LiveData:
                         P.pick_table("AssignableBoost", {"Power", "AssignableBoost"}),
                         wrapped=True, health=health)
     origins = _origins(health)
+    if verbose:
+        print("decoding villain defs and classes ...", flush=True)
+    villains, villain_classes = _villains(health)
+    ent_create_layout = _ent_create_layout()
     messages = decode_messages(P.load_member(config.BIN_PIGG, "bin/clientmessages-en.bin"))
     health["bin/clientmessages-en.bin"] = {"records": len(messages), "clean": len(messages),
                                            "partial": 0}
@@ -159,7 +171,94 @@ def decode_all(verbose=True) -> LiveData:
                     boostsets=boostsets, origins=origins, attrib_names=attrib_names,
                     dim_returns=dim_returns, schedules=schedules, boost_effect=boost_effect,
                     exemplar=exemplar, messages=messages, attribs=attribs, enums=enums,
-                    health=health)
+                    health=health, villains=villains, villain_classes=villain_classes,
+                    ent_create_layout=ent_create_layout)
+
+
+def _ent_create_layout() -> list:
+    """The client's EntCreate param struct, as its Params stash table lays it out.
+
+    Clients differ: Homecoming's has a CostumeEffect word that Thunderspy's lacks.
+
+    @return [(field name, is a string earray)] in serialized order.
+    @raise RuntimeError When the client has no such table.
+    """
+    x = P.exe()
+    seen = set()
+    for va in P.field_entries(x, "PriorityList"):
+        try:
+            start = x.find_table_start(va)
+        except Exception:  # noqa: BLE001 -- not a parse entry
+            continue
+        if start in seen:
+            continue
+        seen.add(start)
+        cols = x.extract(start)
+        names = {c.name for c in cols}
+        if {"EntityDef", "Class", "Power"} <= names and "Attrib" not in names:
+            return ent_create_layout_of(cols)
+    raise RuntimeError("the client has no EntCreate param table")
+
+
+def ent_create_layout_of(cols) -> list:
+    """The serialized fields of a param parse table, as P7Reader.read_table reads a struct.
+
+    Structural entries, aliases (TOK_REDUNDANTNAME) and columns kept out of bins (TOK_NOBIN) take
+    no word.
+
+    @param cols The table (list[Column]).
+    @return [(field name, is an earray)] in serialized order.
+    """
+    return [(c.name, bool(c.type & P.PB.TOK_EARRAY)) for c in cols
+            if P.PB.tok_type(c.type) not in P._SKIP and not c.type & (P.PB.TOK_REDUNDANTNAME | P.TOK_NOBIN)]
+
+
+def _villain_table():
+    """The client's VillainDef parse table, nameless columns included.
+
+    It serializes two nameless ints after ScriptDef, which the usual extraction (that stops at the
+    first nameless entry) would leave out, leaving every record 8 bytes short.
+
+    @return The table (list[Column]).
+    @raise RuntimeError When the client has no such table.
+    """
+    x = P.exe()
+    seen = set()
+    for va in P.field_entries(x, "SpawnLimitMission"):
+        try:
+            start = x.find_table_start(va)
+        except Exception:  # noqa: BLE001 -- not a parse entry
+            continue
+        if start in seen:
+            continue
+        seen.add(start)
+        cols = x.extract(start, anonymous=True)
+        if {"Name", "Class", "Power", "Level", "GroupDescription"} <= {c.name for c in cols}:
+            # the table opens with Name (ParseVillainDef); the scan back can run into a
+            # StaticDefine just before it (an older Homecoming client's Inverse, Angel, ...)
+            return cols[next(i for i, c in enumerate(cols) if c.name == "Name"):]
+    raise RuntimeError("the client has no VillainDef parse table")
+
+
+def _villains(health) -> tuple[list, list]:
+    """Villain defs and villain classes, trimmed to what pseudo-pets need (export.Exporter.build_pets).
+
+    The client's power info totals the damage of a pet whose villain def it finds, with that def's
+    class (villain_classes.bin), so both are decoded whole and checked by the health gate.
+
+    @param health Decode health, filled in for both bins.
+    @return (villain defs, villain classes).
+    """
+    defs = _earray("bin/villaindef.bin", _villain_table(), health=health)
+    villains = [{"Name": v.get("Name") or "", "Class": v.get("Class") or "",
+                 "Power": [{k: r.get(k) or "" for k in ("PowerCategory", "PowerSet", "Power")}
+                           for r in v.get("Power") or []]}
+                for v in defs]
+    classes = _earray("bin/villain_classes.bin",
+                      P.pick_table("PrimaryCategory", {"Name", "PrimaryCategory", "ModTable"}),
+                      health=health)
+    villain_classes = [{"Name": c.get("Name") or "", "ModTable": c.get("ModTable") or []} for c in classes]
+    return villains, villain_classes
 
 
 def _origins(health) -> list:

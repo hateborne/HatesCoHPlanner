@@ -157,16 +157,34 @@ class CohExe:
             soff = d.find(name, soff + 1)
         return hits
 
-    def extract(self, table_va, depth=0):
-        """table_va -> list[Column]; follows struct subtables, caches by VA."""
-        if table_va in self._tbl_cache:
-            return self._tbl_cache[table_va]
+    def _empty_name(self, va):
+        """@return Whether va points at an empty string (a nameless parse entry's name)."""
+        if not self.in_image(va):
+            return False
+        so = self.va2off(va)
+        return so is not None and self.d[so] == 0
+
+    def extract(self, table_va, depth=0, anonymous=False):
+        """table_va -> list[Column]; follows struct subtables, caches by VA.
+
+        A table normally ends at its first entry without a printable name. With `anonymous`, an
+        entry named "" that has a type is a column too (named ""), and the table ends at the
+        `{"", 0}` terminator: the client's VillainDef table serializes two nameless ints after
+        ScriptDef. Subtables are read the same way.
+        """
+        key = (table_va, anonymous) if anonymous else table_va
+        if key in self._tbl_cache:
+            return self._tbl_cache[key]
         cols = []
-        self._tbl_cache[table_va] = cols            # break cycles
+        self._tbl_cache[key] = cols                 # break cycles
         d = self.d
         for i in range(500):
             eoff = self.va2off(table_va) + i * STRIDE
-            nm = self._str_at(struct.unpack_from("<Q", d, eoff)[0])
+            name_va = struct.unpack_from("<Q", d, eoff)[0]
+            nm = self._str_at(name_va)
+            if nm is None and anonymous and self._empty_name(name_va) \
+                    and struct.unpack_from("<Q", d, eoff + 8)[0] & 0xffffffff:
+                nm = ""
             if nm is None:
                 break
             typ = struct.unpack_from("<Q", d, eoff + 8)[0] & 0xffffffff
@@ -177,7 +195,7 @@ class CohExe:
                 break
             sub = enum = None
             if base == TOK_STRUCT and self.in_image(subva):
-                sub = self.extract(subva, depth + 1)
+                sub = self.extract(subva, depth + 1, anonymous)
             elif self.in_image(subva):
                 enum = subva
             cols.append(Column(nm, typ, param if param > 0 else 0, subtable=sub, enum=enum))

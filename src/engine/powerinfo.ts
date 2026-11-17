@@ -2,14 +2,15 @@
  * The client's "Show Detailed Info" power panel (PvE, enhanced and (base) values), as structured
  * data. Ported from uiPowerInfo.c (displayPowerInfo, power_AddBaseStats, power_AddTargetInfo,
  * power_AddEffects, translateEffect, addAttribValue, getTotalDamage, getRequiresString) with the
- * strings and colors of menuMessages.ms. Pets, PvP, the class selector and the level slider are
- * not ported.
+ * strings and colors of menuMessages.ms. getTotalDamage's pseudo-pet damage follows the live
+ * client (decompiled), which differs from that source. The list of real pets (power_AddPets), PvP,
+ * the class selector and the level slider are not ported.
  *
  * The output is UI-agnostic: runs of text with an optional color (the client's `<color #xxxxxx>`
  * tags), grouped into rows and effect sentences.
  */
 import type { GameData } from '../data/gamedata.ts';
-import type { Archetype, Effect, Mod, Power } from '../data/types.ts';
+import type { Archetype, Effect, Mod, PetPower, Power } from '../data/types.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 
 /** A run of text, optionally colored (CSS hex) and italic. */
@@ -304,9 +305,15 @@ const ALL_DAMAGE = [0, 4, 8, 12, 16, 20, 24, 36];
 
 // ---- helpers -----------------------------------------------------------------------------------
 
-/** Magnitude and duration of a mod at a level (modGetMagnitudeAndDuration), enhancement not applied. */
-function magAndDur(gd: GameData, at: Archetype, m: Mod, level: number): { mag: number; dur: number } {
-  const val = gd.table(at, m.tbl, level) * m.sc;
+/**
+ * Magnitude and duration of a mod (modGetMagnitudeAndDuration), enhancement not applied.
+ *
+ * @param table The mod's table value for the class running it, at the level shown.
+ * @param m The mod.
+ * @return Its magnitude and duration.
+ */
+function magAndDur(table: number, m: Mod): { mag: number; dur: number } {
+  const val = table * m.sc;
   switch (m.t) {
     case 'Duration':
       return { mag: m.mag ?? 1, dur: val };
@@ -325,7 +332,10 @@ interface Tmpl {
   m: Mod;
   attrib: number;
   all?: 'damage' | 'defense'; // collapses every damage / defense type into one "all" line
-  chance: number; // 0..1, group chances times tick chance
+  chance: number; // 0..1: group chances times tick chance; a pet's: its own group's chance only
+  tick: number; // 0..1, the mod's tick chance
+  pet: boolean; // a pseudo-pet's power: the live client's chance rules (petDamage, petLines)
+  hide: boolean; // a pet's HideFromInfo or PPM group: counted in its damage, not listed
   delay: number;
   reqs: string[][];
   tags: string[];
@@ -459,6 +469,12 @@ function attribValueMarkup(
 
 // ---- powerInfo ---------------------------------------------------------------------------------
 
+// How many pets deep a pet's damage is followed (a pet whose power makes a pet ...): the data goes
+// one deep, and a loop in damaged data must still end.
+const MAX_PET_DEPTH = 4;
+// How many ExecutePower steps deep the client follows (a recursion counter it checks before each).
+const MAX_EXECUTE_DEPTH = 4;
+
 /**
  * Build the detailed-info content of a power, PvE, with enhanced and (base) values.
  *
@@ -480,18 +496,25 @@ export function powerInfo(
   const showBoth = enh !== null;
   const str = (off: number | undefined): number => (enh && off !== undefined ? (enh.get(off) ?? 0) : 0);
 
-  const ctx: EvalContext = {
+  const isClassProp = (name: string) => name.startsWith('arch') || name.startsWith('rank') || name === 'class';
+  /**
+   * The requirement context of a power run by a class: the character's own powers (no creator),
+   * or a pseudo-pet's, whose `source.owner>` / `source.creator>` read the class that made it.
+   */
+  const contextFor = (cls: string, creator: string | null): EvalContext => ({
     ownsPower: () => false,
     ownsSet: () => false,
     prop: (name) => {
-      if (name.startsWith('arch') || name.startsWith('rank') || name === 'class') return at.n;
+      if (isClassProp(name)) return cls;
       if (name === 'level') return level + 1;
       if (name === 'alignment' || name === 'type') return 'hero';
       return '';
     },
+    ...(creator === null ? {} : { ownerProp: (name: string) => (isClassProp(name) ? creator : 0) }),
     inMode: () => false,
     targetEntType: 'critter',
-  };
+  });
+  const ctx = contextFor(at.n, null);
 
   const attrName = (offset: number): string | null => {
     if (offset >= 0 && offset < 80) {
@@ -518,20 +541,43 @@ export function powerInfo(
   const eff = (off: number | undefined) => str(off);
 
   // ---- damage totals (getTotalDamage) ----
-  const evalOk = (reqs: readonly string[][]): boolean => reqs.every((r) => evalRequires(r, ctx));
-
-  /** Walk effect groups (PvE, visible, requirements met), yielding one template per mod x attribute. */
-  const templates = (effs: Effect[] | undefined, chain: number, reqs: string[][], out: Tmpl[]): void => {
+  /**
+   * Walk effect groups (PvE, visible, requirements met), yielding one template per mod x attribute.
+   *
+   * A pseudo-pet's power (`pet`) is walked as the live client's getTotalDamage reads every
+   * template: its HideFromInfo and PPM groups count too (marked `hide`, as they aren't listed), and
+   * each template keeps its own group's chance and its tick chance apart.
+   */
+  const templates = (
+    effs: Effect[] | undefined,
+    chain: number,
+    reqs: string[][],
+    out: Tmpl[],
+    ec: EvalContext = ctx,
+    pet = false,
+    hidden = false,
+  ): void => {
     for (const e of effs ?? []) {
-      if (e.fl?.includes('PVPOnly') || e.fl?.includes('HideFromInfo')) continue;
-      if (e.ppm) continue;
-      const chance = chain * (e.ch ?? 1);
+      if (e.fl?.includes('PVPOnly')) continue;
+      const hide = hidden || !!e.fl?.includes('HideFromInfo') || !!e.ppm;
+      if (hide && !pet) continue;
+      const chance = pet ? (e.ch ?? 1) : chain * (e.ch ?? 1);
       const rq = e.req && e.req.length ? [...reqs, e.req] : reqs;
-      if (!evalOk(rq)) continue;
+      if (!rq.every((r) => evalRequires(r, ec))) continue;
       for (const m of e.m ?? []) {
         if (m.t === 'SkillMagnitude') continue;
         const tc = m.tc ?? 1;
-        const base = { m, chance: chance * tc, delay: m.del ?? e.del ?? 0, reqs: rq, tags: e.tag ?? [], evalOk: true };
+        const base = {
+          m,
+          chance: pet ? chance : chance * tc,
+          tick: tc,
+          pet,
+          hide,
+          delay: m.del ?? e.del ?? 0,
+          reqs: rq,
+          tags: e.tag ?? [],
+          evalOk: true,
+        };
         const eType = ASPECT[m.asp];
         const hasAll = (offs: number[]) => offs.every((o) => m.a.includes(o));
         const d0 = O['DefenseType00'] ?? 104;
@@ -546,41 +592,185 @@ export function powerInfo(
         }
         for (const a of m.a) if (rest.has(a)) out.push({ ...base, attrib: a });
       }
-      templates(e.sub, chance, rq, out);
+      templates(e.sub, chance, rq, out, ec, pet, hide);
     }
+  };
+  /** @return A pseudo-pet's power's templates, walked with the pet's requirement context. */
+  const petTemplates = (pp: PetPower, ec: EvalContext): Tmpl[] => {
+    const out: Tmpl[] = [];
+    templates(pp.eff, 1, [], out, ec, /*pet=*/ true);
+    templates(pp.act, 1, [], out, ec, /*pet=*/ true);
+    return out;
   };
   const all: Tmpl[] = [];
   templates(power.eff, 1, [], all);
   templates(power.act, 1, [], all);
 
-  let dmgBase = 0;
-  let dmgTotal = 0;
   const hp = O['HitPoints'] ?? 80;
-  for (const t of all) {
-    if (t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs' || t.all) continue;
-    if (requiresNotes(t.reqs, true).length) continue;
-    const { mag, dur } = magAndDur(gd, at, t.m, level);
-    if (!(mag < 0)) continue;
-    const boost = t.m.fl?.includes('IgnoreStrength') ? 0 : eff(t.attrib);
-    const chance = t.chance;
-    let n = 1;
-    if (dur) {
-      const ticks = Math.floor(dur / (t.m.per ?? 1)) + 1;
-      if (t.m.fl?.includes('CancelOnMiss')) {
-        let avg = 0;
-        let k = 1;
-        for (; k < ticks; k++) avg += Math.pow(chance, k) * (1 - chance) * k;
-        avg += Math.pow(chance, k) * ticks;
-        n = avg;
-        dmgBase += -mag * n;
-        dmgTotal += -mag * n * (1 + boost);
-        continue;
-      }
-      n = ticks * chance;
-    } else n = chance;
-    dmgBase += -mag * n;
-    dmgTotal += -mag * n * (1 + boost);
+  const EXECUTE = gd.attribByName.get('ExecutePower') ?? 512;
+
+  /** The class a power runs with: its tables, its requirement context, and whether it is a pet's. */
+  interface Runner {
+    cls: string;
+    table: (tbl: string) => number;
+    ec: EvalContext;
+    pet: boolean;
   }
+
+  /**
+   * getTotalDamage: the average damage of a power's templates, base and enhanced, plus that of
+   * every pseudo-pet it creates (petDamage) and every power it executes (execDamage).
+   *
+   * @param src The power: its full name (its pets are listed under it) and its effect groups.
+   * @param tmpls Its templates, walked with the runner's requirement context.
+   * @param run The class running it.
+   * @param depth How many pets deep this power runs (0: the character's own).
+   * @param execDepth How many ExecutePower steps deep it runs.
+   * @return Base and enhanced damage.
+   */
+  const totalDamage = (
+    src: { n: string; eff?: Effect[]; act?: Effect[] },
+    tmpls: readonly Tmpl[],
+    run: Runner,
+    depth: number,
+    execDepth: number,
+  ): { base: number; total: number } => {
+    const table = run.table;
+    let base = 0;
+    let total = 0;
+    for (const t of tmpls) {
+      if (t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs' || t.all) continue;
+      if (requiresNotes(t.reqs, true).length) continue;
+      const { mag, dur } = magAndDur(table(t.m.tbl), t.m);
+      if (!(mag < 0)) continue;
+      const boost = t.m.fl?.includes('IgnoreStrength') ? 0 : eff(t.attrib);
+      // the client takes a pet's DoT at its tick chance and anything else at its group's chance
+      const chance = t.pet && dur ? t.tick : t.chance;
+      let n = 1;
+      if (dur) {
+        const ticks = Math.floor(dur / (t.m.per ?? 1)) + 1;
+        if (t.m.fl?.includes('CancelOnMiss')) {
+          let avg = 0;
+          let k = 1;
+          for (; k < ticks; k++) avg += Math.pow(chance, k) * (1 - chance) * k;
+          avg += Math.pow(chance, k) * ticks;
+          n = avg;
+          base += -mag * n;
+          total += -mag * n * (1 + boost);
+          continue;
+        }
+        n = ticks * chance;
+      } else n = chance;
+      base += -mag * n;
+      total += -mag * n * (1 + boost);
+    }
+    const pets = petDamage(src.n, run.cls, depth, execDepth);
+    const exec = execDamage(src, run, depth, execDepth);
+    return { base: base + pets.base + exec.base, total: total + pets.total + exec.total };
+  };
+
+  /** @return Every mod of these groups (and the groups in them) that executes a power, once per such attribute. */
+  const executeMods = (effs: Effect[] | undefined, out: Mod[] = []): Mod[] => {
+    for (const e of effs ?? []) {
+      for (const m of e.m ?? []) for (const a of m.a) if (a === EXECUTE) out.push(m);
+      executeMods(e.sub, out);
+    }
+    return out;
+  };
+
+  /**
+   * The damage of the powers a power executes (ExecutePower), as the live client's getTotalDamage
+   * adds it (both clients, decompiled): each one's own total, run by the same class, with its
+   * enhanced damage only when the mod has CopyBoosts. Every executing mod counts, whatever its
+   * group's chance, requirements or flags, as the client reads its whole template list: those of
+   * PvP-only groups, which the export drops, come from the pets file (`exec`). Executions nest at
+   * most four deep.
+   *
+   * @param src The executing power (its full name finds its PvP-only executions).
+   * @param run The class running it.
+   * @param depth How many pets deep it runs.
+   * @param execDepth How many ExecutePower steps deep it runs.
+   * @return Base and enhanced damage.
+   */
+  const execDamage = (
+    src: { n: string; eff?: Effect[]; act?: Effect[] },
+    run: Runner,
+    depth: number,
+    execDepth: number,
+  ): { base: number; total: number } => {
+    let base = 0;
+    let total = 0;
+    if (execDepth >= MAX_EXECUTE_DEPTH) return { base, total };
+    const pvpOnly = (gd.pets?.exec?.[src.n] ?? []).map((x): Pick<Mod, 'pwn' | 'fl'> => ({ pwn: x.p, fl: x.boosts ? ['CopyBoosts'] : [] }));
+    const mods: Pick<Mod, 'pw' | 'pwn' | 'fl'>[] = [...executeMods(src.eff), ...executeMods(src.act), ...pvpOnly];
+    for (const m of mods) {
+      // the character's powers name what they execute by id; a pet's (from the pets file) by name
+      const named = m.pwn?.map((n) => ({ n, pp: gd.pets?.powers[n] ?? gd.powerByName.get(n.toLowerCase()) })) ?? [];
+      const byId = m.pw?.map((id) => {
+        const pp = gd.powerById.get(id);
+        return { n: pp?.n ?? '', pp };
+      }) ?? [];
+      for (const { n, pp } of [...byId, ...named]) {
+        if (!pp) continue;
+        const tmpls: Tmpl[] = [];
+        templates(pp.eff, 1, [], tmpls, run.ec, run.pet);
+        templates(pp.act, 1, [], tmpls, run.ec, run.pet);
+        const r = totalDamage({ n, eff: pp.eff, act: pp.act }, tmpls, run, depth, execDepth + 1);
+        base += r.base;
+        total += m.fl?.includes('CopyBoosts') ? r.total : r.base;
+      }
+    }
+    return { base, total };
+  };
+
+  /**
+   * The damage of the pseudo-pets a power creates, as the live client's getTotalDamage adds it
+   * (its pet branch, decompiled; Homecoming's differs from the OuroV2 source's uiPowerInfo.c).
+   *
+   * 1. A pet counts only when every power it runs is Auto (pet_IsAutoOnly).
+   * 2. It runs with its creator's class when it is a PseudoPet, else with its own class.
+   * 3. Each pet power's damage is its own total (totalDamage, with the pet's class, its creator's
+   *    class for `source.owner>`, and the character's enhancement strengths), times
+   *    max(1, floor(the mod's Duration / the pet power's ActivatePeriod)) when that period isn't 0
+   *    (Thunderspy's client adds one: the file's `plus`). The division is the client's
+   *    single-precision one.
+   * 4. Without CopyBoosts its enhanced damage is its base damage.
+   * 5. Its templates follow the client's chance rules (templates, `pet`): a DoT at its tick
+   *    chance, anything else at its own group's chance, HideFromInfo and PPM groups included.
+   * 6. What its powers execute runs as the pet too (execDamage).
+   *
+   * @param name The creating power's full name.
+   * @param cls The class running the creating power.
+   * @param depth How many pets deep the creating power runs.
+   * @param execDepth How many ExecutePower steps deep it runs.
+   * @return Base and enhanced pet damage (none without the version's pet file).
+   */
+  const petDamage = (name: string, cls: string, depth: number, execDepth: number): { base: number; total: number } => {
+    let base = 0;
+    let total = 0;
+    const file = gd.pets;
+    if (!file || depth >= MAX_PET_DEPTH) return { base, total };
+    const plus = typeof file.plus === 'number' ? file.plus : 0;
+    for (const c of file.pets[name] ?? []) {
+      const powers = c.p.map((pn) => [pn, file.powers[pn]] as const);
+      if (powers.some(([, pp]) => pp && pp.type !== 'Auto')) continue;
+      const petCls = c.pseudo ? cls : c.cls;
+      if (!petCls) continue;
+      const run: Runner = { cls: petCls, table: (tbl) => gd.classTable(petCls, tbl, level), ec: contextFor(petCls, cls), pet: true };
+      for (const [pn, pp] of powers) {
+        if (!pp) continue;
+        const r = totalDamage({ n: pn, eff: pp.eff, act: pp.act }, petTemplates(pp, run.ec), run, depth + 1, execDepth);
+        const ap = pp.ap ?? 0;
+        const times = ap ? Math.max(1, Math.floor(Math.fround(Math.fround(c.dur ?? 0) / Math.fround(ap))) + plus) : 1;
+        base += r.base * times;
+        total += (c.boosts ? r.total : r.base) * times;
+      }
+    }
+    return { base, total };
+  };
+
+  const own: Runner = { cls: at.n, table: (tbl) => gd.table(at, tbl, level), ec: ctx, pet: false };
+  const { base: dmgBase, total: dmgTotal } = totalDamage(power, all, own, 0, 0);
 
   // ---- base stats (power_AddBaseStats) ----
   const rechBoost = eff(O['RechargeTime']);
@@ -663,116 +853,211 @@ export function powerInfo(
     (o >= (O['Confused'] ?? 256) && o <= (O['OnlyAffectsSelf'] ?? 304)) || (o >= (O['Knockup'] ?? 324) && o <= (O['Repel'] ?? 332));
   const isDamageOff = (o: number) => o >= 0 && o < hp;
 
-  for (const t of all) {
-    const m = t.m;
-    const offset = t.attrib;
-    const eType = ASPECT[m.asp];
-    if (!eType) continue;
-    if (!t.chance) continue;
+  const chanceText = (pct: number) => TXT.chanceForMiss.replace('{chance}', f2(pct));
+  const off100 = (pct: number) => Math.abs(pct - 100) > 1e-6;
 
-    if (offset === 481 || offset === 486 || offset === (gd.attribByName.get('GrantPower') ?? 481) || offset === (gd.attribByName.get('GrantBoostedPower') ?? 486)) {
-      const pw = m.pw?.[0] !== undefined ? gd.powerById.get(m.pw[0]) : undefined;
-      if (pw) {
-        effects.push({
-          line: parseMarkup(`<color #52ff7d>${TXT.powerGrant.replace('{powerName}', pw.dn)}`),
-          notes: [],
-        });
+  /**
+   * power_AddEffects: a power's effect sentences, after those of the pseudo-pets it makes
+   * (petLines, the client's power_AddPetEffects pass at the start).
+   *
+   * A pet's power (`pet`) is listed as the live client lists it (decompiled): effects on the pet
+   * itself are left out; its damage ticks for the pet's lifetime, floor(lifetime / its
+   * ActivatePeriod) + 1 times; an effect that doesn't suppress itself lasts the lifetime, or as
+   * many of its own durations as fit in it plus one; every pet effect with a duration says so; and
+   * its chance is its group's (no duration) or its tick chance.
+   *
+   * @param name The power's full name (its pets are listed under it).
+   * @param tmpls Its templates.
+   * @param type Its power type.
+   * @param ap Its ActivatePeriod.
+   * @param table A mod table's value for the class running it, at the level shown.
+   * @param cls That class's name.
+   * @param both Show enhanced values with the base in parentheses.
+   * @param pet The pet's lifetime (its EntCreate mod's Duration) when the power is a pet's.
+   * @param depth How many pets deep the power runs.
+   * @param out Where the sentences go.
+   */
+  const effectLines = (
+    name: string,
+    tmpls: readonly Tmpl[],
+    type: string,
+    ap: number,
+    table: (tbl: string) => number,
+    cls: string,
+    both: boolean,
+    pet: { dur: number } | null,
+    depth: number,
+    out: InfoEffect[],
+  ): void => {
+    petLines(name, cls, both, depth, out);
+    for (const t of tmpls) {
+      const m = t.m;
+      const offset = t.attrib;
+      const eType = ASPECT[m.asp];
+      if (!eType) continue;
+      if (!t.chance || t.hide) continue;
+      if (pet && m.tg === 'Caster') continue; // the client doesn't list what a pet does to itself
+
+      if (offset === 481 || offset === 486 || offset === (gd.attribByName.get('GrantPower') ?? 481) || offset === (gd.attribByName.get('GrantBoostedPower') ?? 486)) {
+        // a pet's grant is named; one the version's own data lacks has its name in the pets file
+        const pn = m.pwn?.[0];
+        const dn =
+          m.pw?.[0] !== undefined
+            ? gd.powerById.get(m.pw[0])?.dn
+            : pn !== undefined
+              ? (gd.powerByName.get(pn.toLowerCase())?.dn ?? gd.pets?.names?.[pn])
+              : undefined;
+        if (dn) {
+          out.push({
+            line: parseMarkup(`<color #52ff7d>${TXT.powerGrant.replace('{powerName}', dn)}`),
+            notes: [],
+          });
+        }
+        continue;
       }
-      continue;
-    }
 
-    const name = attrName(offset);
-    if (
-      !name ||
-      (offset >= (O['Translucency'] ?? 468) && offset !== O['DropToggles']) ||
-      offset === O['MovementControl'] ||
-      offset === O['MovementFriction'] ||
-      offset === O['NullBool'] ||
-      offset === O['StealthRadiusPlayer'] || // PvE shows StealthRadius, PvP the player variant
-      offset === O['Fly'] // Homecoming does not list the fly-status lines (screenshot)
-    )
-      continue;
+      const attr = attrName(offset);
+      if (
+        !attr ||
+        (offset >= (O['Translucency'] ?? 468) && offset !== O['DropToggles']) ||
+        offset === O['MovementControl'] ||
+        offset === O['MovementFriction'] ||
+        offset === O['NullBool'] ||
+        offset === O['StealthRadiusPlayer'] || // PvE shows StealthRadius, PvP the player variant
+        offset === O['Fly'] // Homecoming does not list the fly-status lines (screenshot)
+      )
+        continue;
 
-    const { mag: fMag, dur: fDuration } = magAndDur(gd, at, m, level);
-    if (m.fl?.includes('HideZero') && fMag === 0) continue;
-    const boosted = enh ? eff(offset) : 0;
-    const cancelOnMiss = !!m.fl?.includes('CancelOnMiss');
-    const fChance = t.chance * 100;
+      const { mag: fMag, dur: fDuration } = magAndDur(table(m.tbl), m);
+      if (m.fl?.includes('HideZero') && fMag === 0) continue;
+      const boosted = both ? eff(offset) : 0;
+      const cancelOnMiss = !!m.fl?.includes('CancelOnMiss');
+      const fChance = t.chance * 100;
+      const fTick = t.tick * 100;
 
-    let pchChance = '';
-    let pchTicks = '';
-    let pchChance2 = '';
-    if (Math.abs(fChance - 100) > 1e-6 && (!fDuration || !cancelOnMiss)) {
-      pchChance = TXT.chanceForMiss.replace('{chance}', f2(fChance));
-    }
-    let iTicks = 0;
-    if (isDamageOff(offset) && eType === 'Abs' && fDuration) {
-      iTicks = Math.floor(fDuration / (m.per ?? 1)) + 1;
+      let pchChance = '';
+      let pchTicks = '';
+      let pchChance2 = '';
+      if (t.pet) {
+        if (off100(fChance) && !fDuration) pchChance = chanceText(fChance);
+        else if (off100(fTick) && !cancelOnMiss) pchChance = chanceText(fTick);
+      } else if (off100(fChance) && (!fDuration || !cancelOnMiss)) {
+        pchChance = chanceText(fChance);
+      }
+      let iTicks = 0;
+      if (isDamageOff(offset) && eType === 'Abs') {
+        if (pet && pet.dur && ap) iTicks = Math.floor(Math.fround(Math.fround(pet.dur) / Math.fround(ap))) + 1;
+        else if (fDuration) iTicks = Math.floor(fDuration / (m.per ?? 1)) + 1;
+        if (iTicks > 1) {
+          pchTicks = TXT.ticksOf.replace('{ticks}', String(iTicks));
+          const missPct = t.pet ? fTick : fChance;
+          if (off100(missPct) && cancelOnMiss) pchChance2 = chanceText(missPct);
+        }
+      }
+      // how long it is shown to last: a pet's effect lasts its lifetime unless it suppresses itself
+      let shownDur = fDuration;
+      if (pet && pet.dur && !(Array.isArray(m.sup) && m.sup.length)) {
+        if (iTicks > 1) shownDur = pet.dur;
+        else shownDur = fDuration ? fDuration * (Math.trunc(Math.fround(Math.fround(pet.dur) / Math.fround(fDuration))) + 1) : 0;
+      }
+
+      // typed name
+      let pchType: string;
+      const allKind = t.all;
+      if (isDamageOff(offset)) {
+        if (eType === 'Str') pchType = `strength to ${allKind ? 'all damage' : attr}`;
+        else if (eType === 'Cur') pchType = allKind ? 'all damage' : attr;
+        else if (eType === 'Res') pchType = `resistance to ${allKind ? 'all damage' : attr}`;
+        else if (eType === 'Abs') pchType = offset === 28 ? 'heal' : attr;
+        else pchType = attr;
+      } else if (offset >= (O['DefenseType00'] ?? 104) && offset < (O['Defense'] ?? 184)) {
+        const defName = allKind ? 'all defense' : `${attr} defense`;
+        pchType = eType === 'Str' ? `strength to ${defName}` : eType === 'Cur' ? defName : attr;
+      } else if (isStatus(offset)) {
+        if (eType === 'Cur') pchType = fMag < 0 ? `${attr} protection` : `magnitude ${attr}`;
+        else if (eType === 'Str') pchType = `strength to ${attr}`;
+        else if (eType === 'Res') pchType = `resistance to ${attr}`;
+        else pchType = attr;
+      } else if (eType === 'Res') pchType = `resistance to ${attr}`;
+      else if (eType === 'Max') pchType = `max ${attr}`;
+      else if (eType === 'Str') pchType = `strength to ${attr}`;
+      else pchType = attr;
+
+      // special magnitude strings (expressions)
+      let pchMag: string | null = null;
+      if (m.mx && m.mx.length) {
+        const joined = m.mx.join('');
+        if (joined.toLowerCase() === '60kHitPointssource>-0100minmax60/0.2*'.toLowerCase())
+          pchMag = '.3 per Health Percentage Point below 60% ';
+        else if (joined.toLowerCase() === '75kHitPointssource>-0100minmax60/0.5*'.toLowerCase())
+          pchMag = '.8 per Health Percentage Point below 75% ';
+        else pchMag = 'Special '; // trailing space like the two client strings above
+      }
+
+      const value = attribValueMarkup(O, eType, m, offset, fMag, boosted, both, pchMag);
+
+      let pchTail = '';
       if (iTicks > 1) {
-        pchTicks = TXT.ticksOf.replace('{ticks}', String(iTicks));
-        if (Math.abs(fChance - 100) > 1e-6 && cancelOnMiss) pchChance2 = TXT.chanceForMiss.replace('{chance}', f2(fChance));
+        pchTail = TXT.overTime.replace('{duration}', prettyDuration(shownDur));
+      } else if ((pet || type === 'Click') && shownDur) {
+        if (both && eType === 'Cur' && isStatus(offset)) {
+          // boosted hold effects lengthen the duration instead of the magnitude
+          pchTail =
+            TXT.forDurationBoosted.replace('{boostedDuration}', prettyDuration(shownDur * (1 + boosted))) +
+            `(${prettyDuration(shownDur)})<color #aaaaaa>`;
+        } else pchTail = TXT.forDuration.replace('{duration}', prettyDuration(shownDur));
       }
+      const pchTarget = m.tg === 'Caster' ? TXT.onSelf : TXT.onTarget;
+      const pchDelay = t.delay ? TXT.afterDelay.replace('{sec}', prettyDuration(t.delay)) : '';
+
+      const line = parseMarkup(pchChance + pchTicks + pchChance2 + value + pchType + pchTail + pchTarget + pchDelay);
+      // the sentence starts in the default (white) color unless the markup says otherwise
+      const notes: Seg[][] = [];
+      const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
+      if (t.tags.includes('Overpower')) note('Overpower');
+      for (const n of requiresNotes(t.reqs, false)) note(n);
+      if (m.fl?.includes('IgnoreStrength')) note(TXT.ignoresBuffs);
+      if (m.fl?.includes('IgnoreResistance')) note(TXT.unresistable);
+      out.push({ line, notes });
     }
+  };
 
-    // typed name
-    let pchType: string;
-    const allKind = t.all;
-    if (isDamageOff(offset)) {
-      if (eType === 'Str') pchType = `strength to ${allKind ? 'all damage' : name}`;
-      else if (eType === 'Cur') pchType = allKind ? 'all damage' : name;
-      else if (eType === 'Res') pchType = `resistance to ${allKind ? 'all damage' : name}`;
-      else if (eType === 'Abs') pchType = offset === 28 ? 'heal' : name;
-      else pchType = name;
-    } else if (offset >= (O['DefenseType00'] ?? 104) && offset < (O['Defense'] ?? 184)) {
-      const defName = allKind ? 'all defense' : `${name} defense`;
-      pchType = eType === 'Str' ? `strength to ${defName}` : eType === 'Cur' ? defName : name;
-    } else if (isStatus(offset)) {
-      if (eType === 'Cur') pchType = fMag < 0 ? `${name} protection` : `magnitude ${name}`;
-      else if (eType === 'Str') pchType = `strength to ${name}`;
-      else if (eType === 'Res') pchType = `resistance to ${name}`;
-      else pchType = name;
-    } else if (eType === 'Res') pchType = `resistance to ${name}`;
-    else if (eType === 'Max') pchType = `max ${name}`;
-    else if (eType === 'Str') pchType = `strength to ${name}`;
-    else pchType = name;
-
-    // special magnitude strings (expressions)
-    let pchMag: string | null = null;
-    if (m.mx && m.mx.length) {
-      const joined = m.mx.join('');
-      if (joined.toLowerCase() === '60kHitPointssource>-0100minmax60/0.2*'.toLowerCase())
-        pchMag = '.3 per Health Percentage Point below 60% ';
-      else if (joined.toLowerCase() === '75kHitPointssource>-0100minmax60/0.5*'.toLowerCase())
-        pchMag = '.8 per Health Percentage Point below 75% ';
-      else pchMag = 'Special '; // trailing space like the two client strings above
+  /**
+   * power_AddPetEffects as the live client runs it (decompiled): before a power's own sentences,
+   * those of each pseudo-pet it makes, in the order of its template list.
+   *
+   * A pet whose EntCreate mod sits under a HideFromInfo group isn't listed (its damage still
+   * counts), nor one that runs a power other than Auto. Each of its powers is listed as the pet's
+   * (effectLines, `pet`), its villain def's powers first, then the mod's own (their order in the
+   * file). Enhanced values show for the villain def's powers whenever the power's do, and for the
+   * mod's own only with CopyBoosts.
+   *
+   * @param name The creating power's full name.
+   * @param cls The class running it.
+   * @param both The creating power shows enhanced values.
+   * @param depth How many pets deep it runs.
+   * @param out Where the sentences go.
+   */
+  const petLines = (name: string, cls: string, both: boolean, depth: number, out: InfoEffect[]): void => {
+    const file = gd.pets;
+    if (!file || depth >= MAX_PET_DEPTH) return;
+    for (const c of file.pets[name] ?? []) {
+      if (c.hid) continue;
+      const powers = c.p.map((pn) => [pn, file.powers[pn]] as const);
+      if (powers.some(([, pp]) => pp && pp.type !== 'Auto')) continue;
+      const petCls = c.pseudo ? cls : c.cls;
+      if (!petCls) continue;
+      const pctx = contextFor(petCls, cls);
+      powers.forEach(([pn, pp], i) => {
+        if (!pp) return;
+        const shown = both && (i < (c.def ?? 0) || !!c.boosts);
+        const table = (tbl: string) => gd.classTable(petCls, tbl, level);
+        effectLines(pn, petTemplates(pp, pctx), pp.type, pp.ap ?? 0, table, petCls, shown, { dur: c.dur ?? 0 }, depth + 1, out);
+      });
     }
+  };
 
-    const value = attribValueMarkup(O, eType, m, offset, fMag, boosted, showBoth, pchMag);
-
-    let pchTail = '';
-    if (iTicks > 1) {
-      pchTail = TXT.overTime.replace('{duration}', prettyDuration(fDuration));
-    } else if (power.type === 'Click' && fDuration) {
-      if (showBoth && eType === 'Cur' && isStatus(offset)) {
-        // boosted hold effects lengthen the duration instead of the magnitude
-        pchTail =
-          TXT.forDurationBoosted.replace('{boostedDuration}', prettyDuration(fDuration * (1 + boosted))) +
-          `(${prettyDuration(fDuration)})<color #aaaaaa>`;
-      } else pchTail = TXT.forDuration.replace('{duration}', prettyDuration(fDuration));
-    }
-    const pchTarget = m.tg === 'Caster' ? TXT.onSelf : TXT.onTarget;
-    const pchDelay = t.delay ? TXT.afterDelay.replace('{sec}', prettyDuration(t.delay)) : '';
-
-    const line = parseMarkup(pchChance + pchTicks + pchChance2 + value + pchType + pchTail + pchTarget + pchDelay);
-    // the sentence starts in the default (white) color unless the markup says otherwise
-    const notes: Seg[][] = [];
-    const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
-    if (t.tags.includes('Overpower')) note('Overpower');
-    for (const n of requiresNotes(t.reqs, false)) note(n);
-    if (m.fl?.includes('IgnoreStrength')) note(TXT.ignoresBuffs);
-    if (m.fl?.includes('IgnoreResistance')) note(TXT.unresistable);
-    effects.push({ line, notes });
-  }
+  effectLines(power.n, all, power.type, power.ap ?? 0, (tbl) => gd.table(at, tbl, level), at.n, showBoth, null, 0, effects);
 
   const title = parseMarkup(
     TXT.title

@@ -23,6 +23,8 @@ Generated 2026-11-15T04:56:38Z (UTC).
 | bin/exemplar_handicaps.bin | 1 | 1 | 0 |
 | bin/schedules.bin | 1 | 1 | 0 |
 | bin/origins.bin | 5 | 5 | 0 |
+| bin/villaindef.bin | 7309 | 7309 | 0 |
+| bin/villain_classes.bin | 45 | 45 | 0 |
 | bin/clientmessages-en.bin | 81595 | 81595 | 0 |
 
 **Gate: PASS** (0 partial records).
@@ -49,6 +51,10 @@ PvP-only effects dropped: 4799. Unresolved references: 1. New IDs: {'power': 0, 
 
 Names and descriptions written into the data as text rather than as message keys (shown as written, as the client does): 313.
 
+## Pseudo-pets
+
+248 powers create 285 pseudo-pets whose damage the power info totals (208 pet powers, 0 more powers carried for what powers execute, 3 classes' tables, 242172 bytes in pets/ts9-6.json). Powers whose PvP-only groups execute powers the damage total counts: 0. EntCreate mods left out: not auto only (a real pet): 255.
+
 ## Enhancement frames
 
 The client has no frame data. Borrowed by name: 2551; by set type (conversion group): 20; none (0): none
@@ -64,6 +70,19 @@ Every icon this server shows is its own copy (public/assets/<server>/), so a lat
 - Not in the shared icons, at (1): archetypeicon_primalist
 - No texture of its own, a copy of the shared icon, enh (12): E_orgin_pvp_L, E_orgin_pvp_R, E_orgin_pvpattune_L, E_orgin_pvpattune_R, E_orgin_rare_L, E_orgin_rare_R, E_orgin_superior_L, E_orgin_superior_R, E_orgin_uncommon_L, E_orgin_uncommon_R, E_orgin_uncommonattune_L, E_orgin_uncommonattune_R
 - No texture at all, powers (3): RadiationMelee_AssassinStrike, WaterControl_Drowning, otics_LaserRifleStunGrenade
+
+## Differences from Homecoming
+
+Against Homecoming i28p4, by internal name (ids, attribute offsets and per-server numbering normalised):
+
+- Power sets (player categories): 469 HC, 386 TS; 123 only on HC, 40 only on TS; 339 of 346 shared differ in order, levels or requirements
+- Powers in shared sets: 2784 compared, 2607 differ; 107 only on HC, 83 only on TS
+- Archetypes: 14 shared, 1 only on HC, 1 only on TS; 236 archetype table differences, 74 modifier table differences
+- Attribute names: 3 only on HC, 4 only on TS, 22 at a different offset
+- Game rules differing: 4 (schedule, boost effect, exemplar, diminishing returns)
+- Enhancement sets: 227 HC, 214 TS; 210 share a name, 210 of those differ; 203 of 246 shared set bonus powers differ
+
+The full list, to spot-check in game, is pipeline/report-thunderspy-diff.md (`python -m pipeline.compare --server thunderspy`; committed data only).
 
 ## Mids map
 

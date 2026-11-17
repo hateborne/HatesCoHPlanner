@@ -13,6 +13,7 @@ src/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
+    pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
     types.ts                 shapes of the exported JSON
   engine/                    pure TypeScript build rules (no React, no DOM)
     build.ts                 Build / Pick / Slot model, newBuild()
@@ -49,6 +50,8 @@ e2e/                         Playwright browser tests (playwright.config.ts; loc
 public/data/<version>/       exported game data per game version (generated, committed)
 public/data/versions.json    version index {default, versions: [{id, label, hash, patch?, approx?}]}
 public/data/thunderspy/      Thunderspy's data: its own versions.json and version folders (no mids-map)
+public/data/pets/<version>.json  each version's pseudo-pets, beside the version folders (generated;
+                             Thunderspy's in public/data/thunderspy/pets/)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
@@ -56,6 +59,8 @@ public/favicon.png           the site icon (placed by hand)
 pipeline/                    Python data pipeline (runs on the owner's machine only)
   run.py                     entry point: python -m pipeline.run
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
+  pets.py                    a published version's pseudo-pet file only (python -m pipeline.pets)
+  pets_test.py               the pseudo-pet export's tests (python -m unittest pipeline.pets_test; run by CI)
   watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
   watch_test.py              its tests (python -m unittest pipeline.watch_test; run by CI)
   compare.py                 what another server's data does differently from Homecoming's
@@ -108,7 +113,11 @@ docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 **Loading.** The app fetches its game server's `versions.json` (Homecoming's is
 `public/data/versions.json`), then loads the game version the current build asks for (the default
 for a new build), with `?v=<hash>` against stale caches. The New Build screen's version picker
-switches versions; each version is fetched once per page.
+switches versions; each version is fetched once per page. The version's pseudo-pet file is fetched
+once those files have arrived and is never waited for (`loadGameData`): it is attached when it
+arrives (`GameData.setPets`, which takes it only when every part is well formed,
+`src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
+damaged or slow one only leaves pet damage out.
 
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
@@ -219,7 +228,10 @@ itself, so a new outside resource needs the policy changed with it.
 be picked at a level, what is auto-granted, where slots can go, what is wrong with the build.
 `totals.ts` and `enhance.ts` do the math with the game's own tables: enhancement curves,
 Enhancement Diversification, boosters and exemplar handicaps, set bonuses with the rule of 5,
-and archetype caps. The engine is pure and synchronous; keep React and the DOM out of it.
+and archetype caps. The power info (`powerinfo.ts`) adds the damage of the pseudo-pets a power
+makes and of the powers it executes, and lists the pets' effects, as the live clients do
+(`docs/game-rules.md`, "Pseudo-pet damage").
+The engine is pure and synchronous; keep React and the DOM out of it.
 
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per
 build): autos and toggles on, clicks off, except
