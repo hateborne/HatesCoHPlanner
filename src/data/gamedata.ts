@@ -1,7 +1,8 @@
+import { readInfoFile } from './info.ts';
 import { readPetsFile } from './pets.ts';
 import { dataRoot, DEFAULT_SERVER, type GameServer } from './servers.ts';
 import type { GameVersion } from './versions.ts';
-import type { Archetype, BoostSet, BoostsFile, Core, PetsFile, Power, Powerset } from './types.ts';
+import type { Archetype, BoostSet, BoostsFile, Core, InfoFile, PetsFile, Power, Powerset } from './types.ts';
 
 /** Where an enhancement sits inside an IO set. */
 export interface BoostSetRef {
@@ -54,6 +55,11 @@ export class GameData {
   pets: PetsFile | null = null;
   // who to tell when the pets file arrives (subscribePets)
   private readonly petsListeners = new Set<() => void>();
+  // the version's power-info extras (info/<version>.json): set when that optional file arrives, so
+  // the power info shows the client's effect notes, grants and wording from then on; null while missing
+  info: InfoFile | null = null;
+  // who to tell when the info file arrives (subscribeInfo)
+  private readonly infoListeners = new Set<() => void>();
 
   /**
    * Index a loaded data set.
@@ -169,6 +175,35 @@ export class GameData {
   }
 
   /**
+   * Take the version's power-info extras file, when it is one, and tell those waiting for it.
+   *
+   * Optional and loaded apart, like the pets file: a file with any part malformed is ignored (the
+   * power info then shows none of its extras) rather than trusted (readInfoFile).
+   *
+   * @param raw The parsed info/<version>.json.
+   * @return Whether it was taken.
+   */
+  setInfo(raw: unknown): boolean {
+    const file = readInfoFile(raw);
+    if (!file) return false;
+    this.info = file;
+    for (const l of [...this.infoListeners]) l();
+    return true;
+  }
+
+  /**
+   * Hear when the info file arrives, so a panel open by then shows its extras (for
+   * useSyncExternalStore, with `info` as the snapshot).
+   *
+   * @param listener Called once the file is taken.
+   * @return Stops listening.
+   */
+  readonly subscribeInfo = (listener: () => void): (() => void) => {
+    this.infoListeners.add(listener);
+    return () => this.infoListeners.delete(listener);
+  };
+
+  /**
    * Hear when the pets file arrives, so a panel open by then shows pet damage (for
    * useSyncExternalStore, with `pets` as the snapshot).
    *
@@ -213,13 +248,15 @@ export class GameData {
 
 /** Folder beside a server's version folders holding each version's pseudo-pets (pets/<version>.json). */
 export const PETS_FOLDER = 'pets';
+/** Folder beside them holding each version's power-info extras (info/<version>.json). */
+export const INFO_FOLDER = 'info';
 
 /**
  * Fetch one game version's exported data set from the site.
  *
- * The version's pseudo-pet file is fetched once these four have arrived, and never waited for: it
- * is attached when it comes (GameData.setPets), and a slow, missing or damaged one only leaves pet
- * damage out. The build always opens on the four files alone, and a load that fails on them
+ * The version's pseudo-pet and power-info extras files are fetched once these four have arrived,
+ * and never waited for: each is attached when it comes (GameData.setPets, setInfo), and a slow,
+ * missing or damaged one only leaves pet damage or the extras out. The build always opens on the four files alone, and a load that fails on them
  * fetches no pet file.
  *
  * @param server The server the version belongs to.
@@ -243,11 +280,16 @@ export async function loadGameData(server: GameServer, base: string, version: Ga
     get<BoostsFile>('boosts.json'),
   ]);
   const gd = new GameData({ core, powersets, powers, boosts }, server.id);
-  void (async (): Promise<unknown> => {
-    const r = await fetch(`${data}${PETS_FOLDER}/${version.id}.json${q}`);
-    return r.ok ? await r.json() : null;
-  })()
-    .then((raw) => gd.setPets(raw))
-    .catch(() => undefined);
+  // the optional files beside the version folder: fetched now, never waited for
+  const extra = (folder: string, take: (raw: unknown) => boolean): void => {
+    void (async (): Promise<unknown> => {
+      const r = await fetch(`${data}${folder}/${version.id}.json${q}`);
+      return r.ok ? await r.json() : null;
+    })()
+      .then((raw) => take(raw))
+      .catch(() => undefined);
+  };
+  extra(PETS_FOLDER, (raw) => gd.setPets(raw));
+  extra(INFO_FOLDER, (raw) => gd.setInfo(raw));
   return gd;
 }

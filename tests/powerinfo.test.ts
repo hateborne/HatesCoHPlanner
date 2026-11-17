@@ -102,11 +102,11 @@ describe("powerInfo: the client's line order", () => {
     const got = lines('class_sentinel', 'sentinel_ranged.dual_pistols.executioners_shot');
     expect(got.slice(0, 4)).toEqual([
       '129.69 lethal damage on target / Only using Standard Ammo',
-      '0.00% chance for 51.87 lethal damage on target / Only using Standard Ammo',
-      '-8.75% defense for 8.00s on target / Only using Standard Ammo',
-      '1.66 magnitude knockback on target / Only using Standard Ammo',
+      '0.00% chance for 51.87 lethal damage on target / Only using Standard Ammo / Opportunity',
+      '-8.75% defense debuff for 8.00s on target / Only using Standard Ammo',
+      '1.66 magnitude knock on target / Only using Standard Ammo',
     ]);
-    const cold = got.indexOf('0.00% chance for 51.87 cold damage on target / Only using Cryo Ammo');
+    const cold = got.indexOf('0.00% chance for 51.87 cold damage on target / Only using Cryo Ammo / Opportunity');
     expect(got[cold + 1]).toBe('-15.00% run speed for 10.00s on target / Only using Cryo Ammo');
   });
 });
@@ -139,9 +139,9 @@ describe("powerInfo: the client's wording and rows (Homecoming, the owner's scre
 
   it('words a Current defense as "strength to" (Hail of Bullets)', () => {
     expect(lines(info('class_sentinel', 'sentinel_ranged.dual_pistols.hail_of_bullets')).slice(0, 3)).toEqual([
-      '+9.75% strength to ranged defense for 5.00s on self / Ignores buffs and enhancements / Unresistable',
-      '+9.75% strength to melee defense for 5.00s on self / Ignores buffs and enhancements / Unresistable',
-      '+9.75% strength to AoE defense for 5.00s on self / Ignores buffs and enhancements / Unresistable',
+      '+9.75% strength to ranged defense for 5.00s on self / Ignores buffs and enhancements / unresistable',
+      '+9.75% strength to melee defense for 5.00s on self / Ignores buffs and enhancements / unresistable',
+      '+9.75% strength to AoE defense for 5.00s on self / Ignores buffs and enhancements / unresistable',
     ]);
   });
 
@@ -164,10 +164,10 @@ describe("powerInfo: the owner's second round of checks (Homecoming, level 50, N
 
   it('lists Evasive Maneuvers without a toxic defense line', () => {
     expect(lines(info('class_blaster', 'pool.flight.afterburner'))).toEqual([
-      '8.30 immobilize protection on self / Ignores buffs and enhancements / Unresistable',
-      '48.44% resistance to knockup on self / Ignores buffs and enhancements / Unresistable',
-      '48.44% resistance to knockback on self / Ignores buffs and enhancements / Unresistable',
-      '+10.50% strength to all defense on self / Unresistable',
+      '8.30 immobilize protection on self / Ignores buffs and enhancements / unresistable',
+      '48.44% resistance to knockup on self / Ignores buffs and enhancements / unresistable',
+      '48.44% resistance to knock on self / Ignores buffs and enhancements / unresistable',
+      '+10.50% strength to all defense on self / unresistable',
     ]);
   });
 
@@ -178,8 +178,8 @@ describe("powerInfo: the owner's second round of checks (Homecoming, level 50, N
       '-7.00% endurance on target',
       '20.00% chance for 3.00 magnitude sleep for 11.92s on target after 0.25s delay',
       '-100.00% recovery rate for 2.00s on target',
-      '30.00% chance for 5.09 endurance on self / Unresistable',
-      '+5.50% strength to all damage for 8.33s on self / Ignores buffs and enhancements / Unresistable',
+      '30.00% chance for 5.09 endurance on self / unresistable',
+      '+5.50% strength to all damage for 8.33s on self / Ignores buffs and enhancements / unresistable',
     ]);
   });
 

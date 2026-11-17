@@ -35,6 +35,20 @@ from (`COH_CLIENT` pointing at a copy of an older client for an older version). 
 from reading each client's code: an export from a client exe not listed in its server's
 `pet_checked` (`pipeline/config.py`) warns until someone reads it and adds its hash.
 
+Beside them it writes the version's power-info extras, `public/data/info/<version>.json`
+(Exporter.build_info): what the client's power info reads from fields the version's own files
+don't carry. Each mod's own note (its Messages.DisplayInfo, translated: "Within 20ft radius",
+"Main Target Only", "Opportunity", "Overpower"), laid out as the power's groups; the granted powers
+whose grant the client doesn't list (ShowInInventory 0); the "Aggro Type" row (AIReport 1 or 2;
+Thunderspy reads HitAggro for 2, `hit_aggro`); the attribute names as the client writes them (the
+message "Attr" + the field name: "knock", "defense debuff", Thunderspy's "knockback"); the client's
+texts for the notes the planner writes ("unresistable"); and, on a server whose client lists
+PvP-only groups (Thunderspy, `info_lists_pvp`), the groups of each power with one only its PVPOnly
+flag marks. A power's notes are written only when its groups, made again from the client, are the
+very groups the version's files hold (else it is named in a warning), so a note never lands on
+another mod. `python -m pipeline.info [--server S] [--game-version V]` writes only that file, for a
+version published before it existed, from the version's own client and after its pets file.
+
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
 `pipeline/report.md`. Safety rails:
 

@@ -74,10 +74,10 @@ describe('the lines the client lists for requirements', () => {
   it("lists Thunder Strike's hidden lines and keeps its damage as in game", () => {
     const got = lines('class_stalker', 'stalker_melee.electrical_melee.lightning_clap');
     expect(got.slice(0, 4)).toEqual([
-      '142.37 energy damage on target',
+      '142.37 energy damage on target / Main Target Only',
       '23.36 energy damage on target',
-      '149.31 energy damage on target / Only if hidden or target placated',
-      '50.00% chance for 21.04 special damage on target / Only if hidden or target placated',
+      '149.31 energy damage on target / Only if hidden or target placated / Main Target Only',
+      '50.00% chance for 21.04 special damage on target / Only if hidden or target placated / Secondary Targets Only',
     ]);
     const s = powerInfo(gd, gd.archetypeByName.get('class_stalker')!, gd.powerByName.get('stalker_melee.electrical_melee.lightning_clap')!, 49, null).stats;
     expect(segText(s[0]!.value)).toBe('331.45'); // the hidden lines carry a note, so they don't count

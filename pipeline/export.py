@@ -271,20 +271,37 @@ class Exporter:
         en = self.E.get("effect.Flags", {})
         return [n for bit, n in sorted(en.items()) if v & bit]
 
-    def conv_effects(self, effs, ids: bool = True) -> list:
+    def pvp_flag(self, e: dict) -> bool:
+        """@return Whether an effect group carries the PVPOnly flag."""
+        return "PVPOnly" in self.effect_flags(e.get("Flags") or 0)
+
+    def pvp_only(self, e: dict, keep_flagged: bool = False) -> bool:
+        """Whether conv_effects drops an effect group as PvP-only.
+
+        @param e The decoded group.
+        @param keep_flagged Keep a group only its flag makes PvP-only (a client that tests no group
+            flags lists it); one that requires a player target is still dropped, as the client's own
+            requirement check leaves it out too.
+        @return True for its PVPOnly flag (unless kept) or a player-target requirement.
+        """
+        req = e.get("Requires") or []
+        return (not keep_flagged and self.pvp_flag(e)) or (
+            contains_seq(req, PVP_ONLY) and not contains_seq(req, PVE_ONLY))
+
+    def conv_effects(self, effs, ids: bool = True, keep_pvp: bool = False) -> list:
         """Effect groups in the site's short form, PvP-only groups dropped.
 
         @param effs The decoded groups.
         @param ids See conv_mod.
+        @param keep_pvp Keep the groups only their PVPOnly flag makes PvP-only (a client that lists
+            them: build_info).
         @return The groups that hold mods.
         """
         out = []
         for e in effs or []:
             req = e.get("Requires") or []
             eflags = self.effect_flags(e.get("Flags") or 0)
-            pvp = "PVPOnly" in eflags or (contains_seq(req, PVP_ONLY)
-                                          and not contains_seq(req, PVE_ONLY))
-            if pvp:
+            if self.pvp_only(e, keep_pvp):
                 self.report["pvp_effects_dropped"] += 1
                 continue
             o = {}
@@ -305,7 +322,7 @@ class Exporter:
             mods = [self.conv_mod(a, ids) for a in e.get("AttribMod") or []]
             if mods:
                 o["m"] = mods
-            sub = self.conv_effects(e.get("Effect"), ids)
+            sub = self.conv_effects(e.get("Effect"), ids, keep_pvp)
             if sub:
                 o["sub"] = sub
             if mods or sub:
@@ -719,6 +736,123 @@ class Exporter:
                             "no_entcreate": ent is None}}
 
     # ---- archetypes ---------------------------------------------------------------------------
+    def info_tree(self, effs, keep_pvp: bool = False) -> list:
+        """Each mod's own note (Messages.DisplayInfo, translated), laid out as conv_effects lays out
+        the groups: one entry per group it keeps, in order.
+
+        @param effs The decoded groups.
+        @param keep_pvp As conv_effects.
+        @return One entry per kept group: {"m": [note or None per mod]?, "s": [entries]?}, or None
+            when neither it nor a group in it has a note.
+        """
+        out: list = []
+        for e in effs or []:
+            if self.pvp_only(e, keep_pvp):
+                continue
+            mods = e.get("AttribMod") or []
+            sub = self.info_tree(e.get("Effect"), keep_pvp)
+            if not mods and not sub:
+                continue  # conv_effects keeps no group without mods or kept sub-groups
+            notes = [self.text((a.get("Messages") or {}).get("DisplayInfo") or "") or None for a in mods]
+            node: dict = {}
+            if any(notes):
+                node["m"] = notes
+            if any(x is not None for x in sub):
+                node["s"] = sub
+            out.append(node or None)
+        return out
+
+    def _attr_names(self) -> dict:
+        """@return {offset: text}: each attribute's name as the client's power info writes it, the
+        message "Attr" + its field name (an array element as "DamageType[0]"), for those it has."""
+        out = {}
+        for off, a in sorted(self.L.attribs.items()):
+            for name in [a["name"], *a.get("aliases", [])]:
+                m = re.fullmatch(r"([A-Za-z_]+?)(\d\d)", name)
+                field = f"{m.group(1)}[{int(m.group(2))}]" if m else name
+                text = self.M.get(f"Attr{field}")
+                if text:
+                    out[str(off)] = text
+                    break
+        return out
+
+    def build_info(self, powers: list[dict], pet_powers: dict) -> dict:
+        """The power-info extras of a version: what the client's power info reads from fields the
+        version's own files don't carry (<server data>/info/<version>.json).
+
+        1. notes: per power (the version's own and its pets file's), each mod's own note
+           (DisplayInfo: "Within 20ft radius", "Main Target Only"), laid out as its groups.
+        2. groups: on a server whose client lists PvP-only groups (Server.info_lists_pvp), the
+           groups of each power with a group only its PVPOnly flag makes PvP-only, that one kept
+           (granted powers by name).
+        3. hiddenGrants: the granted powers whose grant the client doesn't list (ShowInInventory 0).
+        4. aggro: per power, the "Aggro Type" row's text (AIReport 1 or 2).
+        5. attr: the attribute names; text: the client's texts for the notes the planner writes.
+
+        A power's notes and groups are only written when its groups, made again here, are the very
+        groups the version's files hold, so a note can never land on another mod.
+
+        @param powers The version's power records as written (powers.json, boosts.json).
+        @param pet_powers Its pets file's "powers".
+        @return The file, with a "summary".
+        """
+        notes: dict = {}
+        groups: dict = {}
+        mismatched: list[str] = []
+        lists_pvp = config.SERVER.info_lists_pvp
+        for name, out, ids in ([(p["n"], p, True) for p in powers]
+                               + [(n, p, False) for n, p in sorted(pet_powers.items())]):
+            rec = self.pw.get(name)
+            if rec is None:
+                continue
+            made = (self.conv_effects(rec.get("Effect"), ids), self.conv_effects(rec.get("ActivationEffect"), ids))
+            if made != (out.get("eff") or [], out.get("act") or []):
+                mismatched.append(name)
+                continue
+            keep = lists_pvp and any(self.pvp_flag(e) and not self.pvp_only(e, True) for e in self._all_groups(rec))
+            if keep:
+                full = {k: v for k, v in (("eff", self.conv_effects(rec.get("Effect"), False, True)),
+                                          ("act", self.conv_effects(rec.get("ActivationEffect"), False, True))) if v}
+                groups[name] = full
+            tree = {k: v for k, v in (("e", self.info_tree(rec.get("Effect"), keep)),
+                                      ("a", self.info_tree(rec.get("ActivationEffect"), keep)))
+                    if any(x is not None for x in v)}
+            if tree:
+                notes[name] = tree
+        hidden = set()
+        for name in [*(p["n"] for p in powers), *pet_powers]:
+            for e in self._all_groups(self.pw.get(name) or {}):
+                for a in e.get("AttribMod") or []:
+                    if set(a["Attrib"]) & self.grant_attribs:
+                        for n in param_power_names(a.get("Params")):
+                            g = self.pw.get(self.power_name(n) or "")
+                            if g is not None and not g.get("ShowInInventory"):
+                                hidden.add(g["FullName"])
+        aggro = {}
+        for p in powers:
+            rep = (self.pw.get(p["n"]) or {}).get("AIReport")
+            if rep in (1, 2):
+                key = "HitAggro" if rep == 2 and config.SERVER.hit_aggro else "NoAggro"
+                if self.M.get(key):
+                    aggro[p["n"]] = self.M[key]
+        text = {k: self.M[k] for k in ("Unresistable", "IgnoresBuffsAndEnhancements", "AggroReport") if self.M.get(k)}
+        out = {"notes": notes, "hiddenGrants": sorted(hidden), "aggro": aggro, "attr": self._attr_names(), "text": text}
+        if groups:
+            out["groups"] = groups
+        out["summary"] = {"notes": len(notes), "groups": len(groups), "hidden_grants": len(hidden),
+                          "aggro": len(aggro), "mismatched": mismatched}
+        return out
+
+    @staticmethod
+    def _all_groups(rec: dict):
+        """@return Every effect group of a decoded power, its activation effects too, nested ones included."""
+        def walk(effs):
+            for e in effs or []:
+                yield e
+                yield from walk(e.get("Effect"))
+        yield from walk(rec.get("Effect"))
+        yield from walk(rec.get("ActivationEffect"))
+
     @staticmethod
     def compact_attr_table(rows) -> dict:
         """[{attr: [per-level values]}] -> {attr: value | [values]} with constant arrays collapsed."""
@@ -828,6 +962,12 @@ class Exporter:
                   "bonusPowers": [powers_by_name[n] for n in sorted(bonus_names)],
                   "sets": boostsets}
         return {"core": core, "powersets": sets, "powers": powers, "boosts": boosts}
+
+
+def info_powers(built: dict) -> list[dict]:
+    """@return The power records of a version (Exporter.build's, or its files') whose info is shown:
+    its powers, enhancements and set bonuses."""
+    return [*built["powers"], *built["boosts"]["boosts"], *built["boosts"]["bonusPowers"]]
 
 
 def utc_now() -> str:
@@ -1088,6 +1228,8 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
 
     pets_summary = write_pets(pets, version)
     warnings += pet_warnings(pets_summary)
+    info_summary = write_info(ex.build_info(info_powers(out), pets["powers"]), version)
+    warnings += info_warnings(info_summary)
 
     mids_path = root / "mids-map.json"
     if not config.SERVER.mids:
@@ -1110,7 +1252,8 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
                             "Mids import/export will not work until the Mids map is built")
     return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added,
             "mids": mids, "warnings": warnings, "version": version, "root": root, "frames": frames,
-            "icons": icon_plan["summary"] if icon_plan else None, "pets": pets_summary}
+            "icons": icon_plan["summary"] if icon_plan else None, "pets": pets_summary,
+            "info": info_summary}
 
 
 def write_pets(pets: dict, version: str) -> dict:
@@ -1125,6 +1268,30 @@ def write_pets(pets: dict, version: str) -> dict:
     config.atomic_write(config.DATA_OUT / config.PETS_FOLDER / f"{version}.json", text)
     summary["bytes"] = len(text.encode("utf-8"))
     return summary
+
+
+def write_info(info: dict, version: str) -> dict:
+    """Write a version's power-info extras, <server data>/info/<version>.json (Exporter.build_info).
+
+    @param info build_info()'s result; its summary is taken out of it.
+    @param version Game version id.
+    @return The summary, with the file's size ("bytes").
+    """
+    summary = info.pop("summary")
+    text = _dump(info)
+    config.atomic_write(config.DATA_OUT / config.INFO_FOLDER / f"{version}.json", text)
+    summary["bytes"] = len(text.encode("utf-8"))
+    return summary
+
+
+def info_warnings(summary: dict) -> list[str]:
+    """@return What a power-info export should tell the owner: powers whose groups differ from the
+    version's files, so they got no notes."""
+    bad = summary["mismatched"]
+    if not bad:
+        return []
+    return [f"WARNING: {len(bad)} powers' groups differ from the version's files (pipeline changed since "
+            f"it was made?); they get no notes: {', '.join(bad[:5])}{' ...' if len(bad) > 5 else ''}"]
 
 
 def pet_warnings(summary: dict) -> list[str]:
