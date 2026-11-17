@@ -14,6 +14,7 @@ src/
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
+    info.ts                  the shape check of a version's power-info extras file (readInfoFile)
     types.ts                 shapes of the exported JSON
     finderStats.ts           shape of the set finder's build statistics (public/data/finder/)
   engine/                    pure TypeScript build rules (no React, no DOM)
@@ -62,6 +63,8 @@ public/data/versions.json    version index {default, versions: [{id, label, hash
 public/data/thunderspy/      Thunderspy's data: its own versions.json and version folders (no mids-map)
 public/data/pets/<version>.json  each version's pseudo-pets, beside the version folders (generated;
                              Thunderspy's in public/data/thunderspy/pets/)
+public/data/info/<version>.json  each version's power-info extras, beside them (generated;
+                             Thunderspy's in public/data/thunderspy/info/)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
@@ -71,6 +74,8 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
   pets.py                    a published version's pseudo-pet file only (python -m pipeline.pets)
   pets_test.py               the pseudo-pet export's tests (python -m unittest pipeline.pets_test; run by CI)
+  info.py                    a published version's power-info extras file only (python -m pipeline.info)
+  info_test.py               its export's tests (python -m unittest pipeline.info_test; run by CI)
   watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
   watch_test.py              its tests (python -m unittest pipeline.watch_test; run by CI)
   compare.py                 what another server's data does differently from Homecoming's
@@ -129,7 +134,9 @@ switches versions; each version is fetched once per page. The version's pseudo-p
 once those files have arrived and is never waited for (`loadGameData`): it is attached when it
 arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
-damaged or slow one only leaves pet damage out.
+damaged or slow one only leaves pet damage out. The version's power-info extras file is fetched the
+same way (`GameData.setInfo`, `src/data/info.ts`, `subscribeInfo`; a file naming another version is
+refused); without it the power info shows no effect notes and keeps the planner's own wording.
 
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
@@ -243,7 +250,9 @@ be picked at a level, what is auto-granted, where slots can go, what is wrong wi
 Enhancement Diversification, boosters and exemplar handicaps, set bonuses with the rule of 5,
 and archetype caps. The power info (`powerinfo.ts`) adds the damage of the pseudo-pets a power
 makes and of the powers it executes, and lists the pets' effects, as the live clients do
-(`docs/game-rules.md`, "Pseudo-pet damage").
+(`docs/game-rules.md`, "Pseudo-pet damage"). It lists Fiery Embrace's and Dual Pistols' ammo
+groups and Homecoming's Stalker team crits with the client's notes and chances
+(`docs/game-rules.md`, "Tag modes").
 The engine is pure and synchronous; keep React and the DOM out of it.
 
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per
@@ -305,6 +314,16 @@ selectors (`useShallow`) and call its actions.
   on the button); refusals use `notify` or `flashLocked`. The server list is `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
+- A desktop tooltip taller than the stage (Spotlight's Advanced tooltip) is cut to the room above
+  the Back / Finish bar and scrolls with the mouse wheel and Page Up / Page Down while it is shown.
+  A wheel gesture stays with what it started on until the wheel rests, as browsers latch one: one
+  that starts on the tooltip stops at its end, and one that starts on the list (or past the
+  tooltip's end) keeps scrolling the list as tall tooltips come and go under the pointer. With two
+  tooltips up, the newest cut short takes the wheel; with a pop-up open, none does. Its scrollbar
+  only shows there is more (a hover box can't be dragged); the box widens for it (and pads its
+  right side for a scrollbar that floats over the text) so its text doesn't rewrap (`Floating` and `useTallWheel` in
+  `src/ui/components/PowerTip.tsx`; `floatingRoom`, `routeWheel` and `scrollRoom` in
+  `src/ui/floating.ts`). The phone's long-press tooltip scrolls by touch.
 
 ## Browser tests
 
@@ -319,6 +338,9 @@ selectors (`useShallow`) and call its actions.
 
   `respeconly.spec.ts` drives New Build itself: an Arachnos archetype picked with Leveling ticked
   switches to Respec and says why, and Finish starts a Respec to 24 at least.
+  `tooltipwheel.spec.ts` (desktop only) hovers a tall Advanced tooltip (Hail of Bullets) and turns
+  the wheel: the gesture stays on it to its end, a turn after a rest goes to the screen, and Page
+  Up / Page Down scroll it.
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.

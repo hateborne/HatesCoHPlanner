@@ -29,6 +29,15 @@ Read from the two clients' compiled code (Ghidra, functions found from the boost
 - Attribute names: Thunderspy's client calls Knock (offset 328) "Knockback", Homecoming's alias for
   it. The planner reads it as Knock (`ATTRIB_CANON` in `src/data/gamedata.ts`), so knockback
   protection counts.
+- The power info's tag modes (getChanceModString, getChanceModValue) differ, and here Thunderspy's
+  client is the one nearer the source: it reads a group's own first tag (0x1404d1f90, 0x1404d2720).
+  Homecoming's also reads the group's parents' first tags and knows ASTeamCrit (0x1404de5c0,
+  0x1404de9f0). The planner takes this from the server entry (`tagModes: 'ownTag'`); see "Tag modes
+  (power info)" below.
+- The power info's requirement check (requiresArchetypePvPEval) is the same in both, but
+  Thunderspy's client reads an effect's own group's requirements only, for the check and the notes,
+  Homecoming's every group above it too (`infoRequires: 'ownGroup'`); see "Requirements in the
+  power info" below.
 - @TODO not yet compared: Enhancement Diversification (`AggregateStrength`), attribute caps
   (`ClampMax`), combat level scaling (`combatmod_Get`) and the combine limit
   (`boost_IsValidCombination`). They have no strings or table globals of their own to find them
@@ -292,11 +301,16 @@ Its damage (getTotalDamage):
 - Each pet power counts its own total (the same function, recursively) times
   `max(1, floor(mod Duration / its ActivatePeriod))`, or once when its period is 0. Thunderspy's
   client adds one: `max(1, floor(...) + 1)`. The division is single precision.
-- A pet power's templates count by the client's rules: a DoT at its tick chance, anything else at
-  its own group's chance (not its parents'), and HideFromInfo and PPM groups count too. An effect
-  group with chance 0 adds nothing (Burn's Fiery Embrace groups). @TODO the character's own powers
-  still follow the earlier port (group chances times tick chance, HideFromInfo and PPM groups left
-  out); move them to these rules once in-game screenshots confirm it.
+- A pet power's templates count by the client's rules: a DoT (its template's own Duration field is
+  not 0) at its tick chance alone, anything else at its own group's chance alone (not its parents',
+  not its tick chance), and HideFromInfo and PPM groups count too. So a hit in a group of chance 0
+  adds nothing (Burn's Fiery Embrace groups), but a DoT there counts at its tick chance. The
+  character's own powers count by the same rules (the same function, 0x1404e0ab0), apart from their
+  HideFromInfo and PPM groups, which the planner leaves out (the owner's decision, November 17,
+  2026; @TODO the client counts them: 43 Homecoming powers, Siren's Song, Frozen Aura, Laser Beam
+  Eyes and others). Confirmed in game (the owner's screenshots, November 17, 2026, level 50):
+  Executioner's Shot 337.18 (129.69 plus four Opportunity crits of tick chance 0 at their group's
+  1), Thunder Strike 331.45 (its team-crit sub-groups whole, their 0.07 parent aside).
 - Its enhanced damage takes the caster's enhancement strengths only with `CopyBoosts`; without it,
   the enhanced figure is the base.
 
@@ -333,16 +347,149 @@ Its effect lines (the pet pass, then power_AddEffects for each pet power):
   clients; this is not the total's count). An effect that doesn't suppress itself lasts the
   lifetime when it ticks, else as many of its own durations as fit in the lifetime plus one; every
   pet effect with a duration says how long.
-- Its chance reads as its group's when it has no duration, else its tick chance unless it
-  `CancelOnMiss`.
-- @TODO the client also lists a tagged group with chance 0 (Fiery Embrace's) with the tag's note
-  ("FieryEmbraceMode"); neither the character's own powers nor pets list those yet.
+- Its chance reads as its group's when its template's own Duration field is 0 (a duration taken
+  from a table doesn't count: both clients read the field, Homecoming's at template offset 0x2c,
+  Thunderspy's at 0x30), else its tick chance unless it `CancelOnMiss`.
+- A group with a tag mode (Burn's Fiery Embrace groups, of chance 0) is listed as for the
+  character's own powers ("Tag modes (power info)" below).
 
 The pipeline writes each version's pets to `<server data>/pets/<version>.json`, beside the version
 folders (Exporter.build_pets, `python -m pipeline.pets` for a version already published); the
 engine parts are `petDamage` and `petLines` in `src/engine/powerinfo.ts`. Level 50 Brute: Burn
 130.13 (12 ticks of 0.14 plus the 1.44 front hit at Melee_Damage 41.7087; its lines show 13 ticks),
 Irradiated Ground 4.59 (one tick of 0.0825 at Class_Minion_Pets' 55.6599).
+
+## Tag modes (power info)
+
+The live clients' power info (power_AddEffects, with getChanceModString and getChanceModValue:
+Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d1f90 and
+0x1404d2720) treats some tagged effect groups apart, for the character's own powers and pets alike
+(`tagMode` in `src/engine/powerinfo.ts`):
+
+- Only a group with tags has a mode. Its first tag picks one by substring, in any case, in the
+  client's order: Lethal, LethalKB10/25/50/70, HailofBulletsKnockdown, HailofBulletsEndKnockback
+  ("Only using Standard Ammo"); FireDamage, FireDamageDoT, HailofBulletsFire ("Only using Incendiary
+  Ammo"); ColdDamage, HailofBulletsCold ("Only using Cryo Ammo"); ToxicDamage, HailofBulletsToxic
+  ("Only using Chemical Ammo"); FieryEmbrace ("Only using Fiery Embrace"); and, on Homecoming only,
+  ASTeamCrit ("Chance increases the more allies are nearby"). The notes are the client's messages.
+- Homecoming's client then tries each parent group's first tag in turn, passing over parents
+  without tags, so a Dual Pistols SentCrit group takes its ammo group's mode. Thunderspy's reads the
+  group's own first tag only (`tagModes: 'ownTag'` in `src/data/servers.ts`).
+- A group with a mode is listed whatever its chance (Fiery Embrace's and the ammo groups have chance
+  0), the mode's note first among its notes. A tagged group with chance 0 and no mode isn't listed.
+- It shows the mode's chance in place of its group's, found the same way from this table, tried in
+  order: Lethal 1, FieryEmbrace 1, LethalKB10 0.1, LethalKB25 0.25, LethalKB50 0.5, LethalKB70 0.7,
+  HailofBulletsKnockdown 0.05, HailofBulletsEndKnockback 0.4, FireDamage 1, FireDamageDoT 0.8,
+  HailofBulletsFire 0.6, ColdDamage 1, HailofBulletsCold 0.6, ToxicDamage 1, HailofBulletsToxic
+  0.6. So a LethalKB* tag reads 1 ("Lethal" comes first), FireDamageDoT reads 1, and ASTeamCrit,
+  with no entry, reads 0 (Homecoming's Stalker crit lines say "0.00% chance").
+- Its line reads that chance by the live client's rule, as every line does: the group's chance
+  when the template's own Duration field is 0, else its tick chance unless it `CancelOnMiss` (Hail
+  of Bullets' knockdown: 10%, its tick chance). Its parents' chances don't count.
+- Damage totals keep each group's own chance: getTotalDamage reads no modes.
+- The client walks its template list, where each group's sub-groups come before its own mods, so
+  the lines do too (`templates`): Crushing Uppercut's knockup comes last, Executioner's Shot's
+  defense debuff after its Standard Ammo hits.
+- The client keeps the last mode's note in a variable it sets only for a tagged group and never
+  clears within a power, so it repeats that note under the lines of untagged groups that follow
+  (Thunder Strike's recovery, endurance, stun and knock read "Only using Fiery Embrace"). The planner
+  doesn't copy this: the note would be false (the owner's decision, November 17, 2026).
+- Confirmed in game (the owner's screenshots, November 17, 2026, level 50): Crushing Uppercut's
+  "0.00% chance for 176.85 smashing damage", Executioner's Shot's "1.66 magnitude knock" with no
+  chance, Hail of Bullets' 10%, 40% and 60% lines, Shadow Field's 5% and 20% holds (raw Duration
+  rule), and Burn's three Fiery Embrace lines.
+- Every line, the character's own and a pet's alike, reads its own group's chance by that rule (a
+  parent group's never counts: Thunder Strike's team-crit lines show no "7.00% chance", as in game).
+  A group with tags and chance 0 is left out unless it has a mode; a group without tags is listed
+  at any chance (power_AddEffects, decompiled). A mod with a Duration field of its own reads its
+  tick chance, not its group's: Homecoming's Blaster Charged Brawl (Electricity Manipulation) reads
+  "-100.00% recovery rate for 2.00s on target", its group's 20% unshown.
+
+## Requirements in the power info
+
+The live client's power info doesn't run the game's requirement evaluator on an effect group. It
+runs a cut-down check of its own, `requiresArchetypePvPEval` in the source's uiPowerInfo.c
+(Homecoming i28p4 0x1404dfdd0, Thunderspy 9.6 0x1404d4cc0, decompiled, both as the source;
+`infoRequires` in `src/engine/requires.ts`), for the lines (power_AddEffects) and the damage total
+(getTotalDamage) alike. Homecoming's client checks the effect's group and every group above it (a
+failing group hides its sub-groups) and writes notes from them all; Thunderspy's reads the effect's
+own group only, for the check and the notes alike (getTotalDamage 0x1404d6070 builds its note string
+from the group's own Requires; `infoRequires: 'ownGroup'` in `src/data/servers.ts`). So its Twilight
+Shield and Quantum Shield list the effects under their "not in Nova form" parent group.
+
+- It tells apart only the caster's archetype (`arch source>`), the creator's (`arch source.owner>`,
+  `arch source.creator>`), a critter target from a player one (`enttype target>`, critter in PvE),
+  and PvP maps (`isPVPMap?`, false in PvE).
+- Everything else reads as true: values, comparisons, `source.ownPower?` (a `!` after it is
+  skipped), `Source.Mode?`, `target.HasTag?`. So every Combo Level line and every "Only if hidden or
+  target placated" line is listed (Crushing Uppercut and Thunder Strike, as in game, the owner's
+  screenshots, November 17, 2026), and so are Bio Armor's adaptation variants.
+- Its operators work on those 0/1 values, so `entref target> entref source> eq !` ("not on itself")
+  reads false: such groups are neither listed nor counted (Liquid Nitrogen's pet).
+- A group the check passes counts towards the damage total unless the client writes a requirement
+  note for it (getRequiresString, `requiresNotes`). Each note looks for an exact run of tokens, as
+  in the source. They don't match Homecoming's `kHitPoints%` and `kEndurance%` tokens, so Scourge
+  and Charged Bolts' Zapping groups carry no note and count in full; nor Homecoming's own Containment
+  groups, which open with `kTerrorized` where the note expects `kImmobilized ... kHeld ... || kSleep
+  ... || kStunned ... ||`. Confirmed in game (the owner's checks, November 17, 2026, Homecoming,
+  level 50): a Corruptor's Dark Blast 83.42 with two bare 41.71 lines, Blaster Charged Bolts 75.08,
+  Liquid Nitrogen 423.02 (211.51 per activation), Brute Shadow Maul 97.88.
+- Thunderspy's client adds one requirement note of its own, after the origin note (its
+  getRequiresString, 0x1404d2f00, decompiled; `infoFriendNotes` in `src/data/servers.ts`): a
+  requirement that names the target reads "Applies to enemies" when it holds `target.isFriend?!` or
+  `enttypetarget>crittereq`, and "Applies to allies" otherwise, whatever else it tests. In game
+  (the owner's screenshots, November 17, 2026, Thunderspy, level 50): Fire Blast's first hit
+  "Applies to enemies"; Stygian Circle's heals, which test the target's rank, and Radiant Blast's
+  Judgement heal "Applies to allies". Its power_AddEffects asks for the note and its getTotalDamage
+  doesn't (a flag its two calls pass as 0 and 1), so the note never takes a hit out of the damage
+  total (Fire Blast 84.72, in game).
+- Thunderspy's power info doesn't test a group's PvE/PvP flags at all, so it lists PvP-only groups
+  too (its Twilight Shield's second set of knock protections and 93.42% status resistances, in
+  game). The export drops PvP-only groups, so the version's info file carries the groups of each
+  power with one only its PVPOnly flag marks (`info_lists_pvp` in `pipeline/config.py`, `infoPvp:
+  'listed'` in `src/data/servers.ts`): 7 Thunderspy powers, none with damage. A group requiring a
+  player target is left out by the requirement check anyway.
+
+## Power info wording
+
+From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p4 0x1404e37e0 and
+0x1404e26f0, Thunderspy 9.6 0x1404da680; decompiled), in `src/engine/powerinfo.ts`:
+
+- A typed defense of aspect Current reads like a Strength one: "+9.75% strength to ranged defense"
+  (Homecoming's Hail of Bullets, in game). Both clients do it.
+- "All damage" and "all defense" (markAllTypes in the source; Homecoming 0x1404e1540 and
+  Thunderspy 0x1404d6af0, which walk each effect's attribute list; `markAllTypes` in
+  `src/engine/powerinfo.ts`). For each target, kind and aspect the client walks all the power's
+  effects in order, hidden ones included: a damage type (offsets 0..79) or defense type (the 20
+  typed defenses) of that aspect must carry the same Magnitude + Scale as the group's
+  first, else the rest of that effect is passed over; each adds its type's bit, and whenever the mask
+  holds exactly smashing, lethal, fire, cold, energy, negative energy, psionic and toxic (the first
+  ten defense types) one more group counts and the value clears. On the lines, a group's first type
+  reads "all damage" / "all defense" and the next seven (nine) of that kind, target and aspect are
+  left out; after the last group every later one is. So Homecoming's Vulnerability lists "resistance
+  to all damage" and none of its radiation, electrical, sonic or quantum resistance, and Evasive
+  Maneuvers "+10.50% strength to all defense" without its toxic defense (both in game); a lone toxic
+  defense (Invincibility) keeps its line, eight separate equal effects (Thunderspy's Piercing Beam)
+  make one group, and a type outside the eight before the group is whole (Possess' healing) keeps
+  every type apart. @TODO confirm in game: Homecoming's Stealth (Concealment) shows "+7.00% strength
+  to all defense" but not its second, +1.75% effect, which the walk leaves out.
+- The Effect Area row: Single Target, Cone, AoE (Sphere), Location, and "Chain -- 15.00 ft. jump
+  distance" with its jump radius (Homecoming's Vulnerability, in game), each with "(N targets max)"
+  when the power has a target cap. A Map power gets no row.
+- From the version's info file (`public/data/info/<version>.json`, Exporter.build_info), when it
+  has arrived:
+  - each effect's own note (its Messages.DisplayInfo: "Within 20ft radius", "Main Target Only",
+    "Opportunity", "Overpower", "Every 0.8 seconds for 10 seconds"), after the requirement notes and
+    before "Ignores buffs and enhancements" and "unresistable" (the client's order); for a power the
+    file gives notes, the planner's own "Overpower" from the tag gives way to them;
+  - the attribute names as the client writes them, the message "Attr" + the field name (Homecoming's
+    "knock", "defense debuff", "to hit"; Thunderspy's "knockback"), and the notes' own texts
+    ("unresistable");
+  - no "Grants power" line for a power the client keeps out of the inventory (ShowInInventory 0:
+    Crushing Uppercut's Assassin's Focus, in game);
+  - the "Aggro Type" row for AIReport 1 or 2 ("Enemies will not notice this attack", Vulnerability
+    in game; Thunderspy's client reads "Enemies will not notice if this attack misses" for 2).
+  Without the file the power info keeps the planner's own wording and grant lines.
 
 ## Grants (Kheldian forms etc.)
 
