@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { defaultServer, serverById } from './data/servers.ts';
 import { skinOf } from './engine/build.ts';
+import { closeSetFinder, useFinderOpen } from './state/finderOpen.ts';
 import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
@@ -21,6 +22,36 @@ import { SKINS, type Skin } from './ui/skin/skin.ts';
 import { setMusicSkin } from './ui/sound.ts';
 import { TitleText } from './ui/components/GameText.tsx';
 import { versionLabel } from './version.ts';
+
+// the set finder's pane, once downloaded (see FinderPane)
+let finderPane: ComponentType<{ skin: Skin }> | null = null;
+
+/**
+ * The set finder's pane. Its screen and engine are downloaded when the pane is first opened, not
+ * with the page. A download that fails closes the pane with a notice, and the next opening tries
+ * again.
+ */
+function FinderPane({ skin }: { skin: Skin }) {
+  const [Pane, setPane] = useState<ComponentType<{ skin: Skin }> | null>(() => finderPane);
+  useEffect(() => {
+    if (Pane) return;
+    let live = true;
+    import('./ui/screens/SetFinder.tsx')
+      .then((m) => {
+        finderPane = m.default;
+        if (live) setPane(() => m.default);
+      })
+      .catch((e: unknown) => {
+        console.warn('set finder: the pane did not load', e);
+        closeSetFinder();
+        useStore.getState().notify("The set finder couldn't load. Check your connection and try again.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [Pane]);
+  return Pane ? <Pane skin={skin} /> : null;
+}
 
 /**
  * A refused change ("Remove enhancements first"). Desktop: small red text at the bottom center
@@ -116,6 +147,7 @@ function PhoneToast({ skin, text, onClose }: { skin: Skin; text: string; onClose
 /** Top-level router: loading, setup, the level-up screens and the build overview. */
 export function App() {
   const { view, error, build, level, load, menuOpen, setMenu, setupAlign } = useStore();
+  const finderOpen = useFinderOpen((s) => s.open);
   useEffect(() => {
     void load();
   }, [load]);
@@ -172,6 +204,7 @@ export function App() {
     <Stage skin={stageSkin}>
       {screen}
       {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
+      {finderOpen && view === 'overview' ? <FinderPane skin={skin} /> : null}
       <Notice skin={stageSkin} />
       <ConfirmDialog />
       <ServerDialog />

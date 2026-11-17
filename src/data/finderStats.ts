@@ -45,3 +45,32 @@ export interface FinderStats {
   sets: Record<string, FinderSetUse>; // by set internal name ('Luck_of_the_Gambler')
   pieces: Record<string, number>; // unique pieces by boost name: share of builds earning their global
 }
+
+/**
+ * Check that a downloaded statistics file has the shape the finder reads.
+ *
+ * @param raw The parsed JSON.
+ * @return The statistics, or null when it is not a statistics file this version of the app reads.
+ */
+export function checkFinderStats(raw: unknown): FinderStats | null {
+  const s = raw as Partial<FinderStats> | null;
+  const isObject = (v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v);
+  if (!s || s.v !== 1 || typeof s.dataVersion !== 'string' || typeof s.minGroup !== 'number') return null;
+  if (!isObject(s.groups) || !isObject(s.groups?.['all']?.stats) || !isObject(s.needs)) return null;
+  return s as FinderStats;
+}
+
+/**
+ * Download the build statistics.
+ *
+ * @param root The server's data folder as the site serves it (dataRoot), with its closing slash.
+ * @return The statistics.
+ * @raise Error when the file is missing or is not a statistics file.
+ */
+export async function loadFinderStats(root: string): Promise<FinderStats> {
+  const r = await fetch(`${root}finder/stats.json`, { cache: 'no-cache' });
+  if (!r.ok) throw new Error(`the build statistics are missing (HTTP ${r.status})`);
+  const stats = checkFinderStats(await r.json());
+  if (!stats) throw new Error('the build statistics are not in a form this version reads');
+  return stats;
+}

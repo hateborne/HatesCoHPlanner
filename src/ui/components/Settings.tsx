@@ -1,11 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { DEFAULT_SERVER } from '../../data/servers.ts';
+import { openSetFinder } from '../../state/finderOpen.ts';
 import { continueTarget, respecUnfinished, stepsOf, TIP_MODES, useStore, type TipMode } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
+import { SET_FINDER } from '../flags.ts';
 import { fitScale, FONTS, S, snap } from '../skin/metrics.ts';
 import { pressKeys } from '../press.ts';
 import type { Skin } from '../skin/skin.ts';
 import { MenuFrame } from './Chrome.tsx';
+import { FINDER_NAME } from './FinderIcon.tsx';
 import { GameText } from './GameText.tsx';
 import { PHONE_MENU_BTN, phoneGeom, phoneMenuButton } from './Phone.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from './OriginAlign.tsx';
@@ -173,6 +177,17 @@ function PhoneMenu({ skin }: { skin: Skin }) {
           t.act();
         }}>
         {t.label}
+      </Pill>,
+    );
+    y += ROW_H + ROW_GAP;
+  }
+  if (SET_FINDER && overview && build && gd && gd.server === DEFAULT_SERVER) {
+    rows.push(
+      <Pill key="finder" x={PANE.pad} y={y} w={inner} h={ROW_H} fontSize={PILL_FONT} title="Rank the sets this build could slot" onClick={() => {
+          setOpen(false);
+          openSetFinder();
+        }}>
+        {FINDER_NAME}
       </Pill>,
     );
     y += ROW_H + ROW_GAP;

@@ -6,7 +6,7 @@ import { TitleText } from './GameText.tsx';
 const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
 const DEF_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 1, 0, 2]; // Smash, Lethal, Fire, Cold, Energy, Neg, Psi, Toxic, Melee, Ranged, AoE
 const RES_ORDER = [0, 1, 2, 3, 4, 5, 6, 9]; // Smash, Lethal, Fire, Cold, Energy, Neg, Psi, Toxic
-const MPH = 21 * 0.681818; // a speed of 1.0 (21 ft/s) in mph
+export const MPH = 21 * 0.681818; // a speed of 1.0 (21 ft/s) in mph
 
 // bonus / penalty colors: more of every colored stat helps, so above its neutral value is good
 const GOOD = '#5cff5c';
