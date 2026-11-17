@@ -17,6 +17,10 @@ export function toStage(r: DOMRect | undefined, stage: { w: number; h: number })
   return { x: (r.left - wrap.left) * sx, y: (r.top - wrap.top) * sy, w: r.width * sx, h: r.height * sy };
 }
 
+// Marks a pop-up's or dialog's full-stage layer (its click-catcher or backdrop): while one is on
+// screen, a tooltip left under it takes no wheel turn or Page key (PowerTip's popupOpen).
+export const POPUP_LAYER = { 'data-popup': '' } as const;
+
 // The Back / Finish bar's height at the stage's foot, which a floating box keeps clear of.
 const BOTTOM_BAR = 64;
 // A floating box's margin from the stage's top edge.
@@ -103,7 +107,8 @@ export interface WheelLatch<B> {
  * @param now The time in ms (performance.now).
  * @param latch The current latch, if any.
  * @param tall The newest cut-short box and its scroll position, if one is shown.
- * @param shown Whether a box is still shown.
+ * @param shown Whether a box is still shown and cut short; a latch to one that isn't ends, so the
+ *   turn isn't swallowed by a box with nothing left to scroll.
  * @return The box that takes the turn (null: the screen) and the latch to keep.
  */
 export function routeWheel<B>(

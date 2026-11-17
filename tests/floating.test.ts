@@ -136,6 +136,14 @@ describe('routeWheel (a wheel gesture stays with what it started on)', () => {
     expect(routeWheel(down, 50, onA.latch, { box: B, scroll: scroll(0) }, (b) => b !== A).box).toBe(B);
   });
 
+  it('gives the screen the next turn at once when its box is no longer cut short', () => {
+    // the box's content shrank (or the stage grew) mid-gesture: nothing is left to scroll in it
+    const onA = routeWheel(down, 0, null, { box: A, scroll: scroll(0) }, shown);
+    const next = routeWheel(down, 50, onA.latch, null, () => false);
+    expect(next.box).toBe(null);
+    expect(next.latch).toEqual({ box: null, until: 50 + WHEEL_LATCH_MS });
+  });
+
   it('lets sideways turns through, keeping a live latch going (a diagonal trackpad gesture)', () => {
     const onA = routeWheel(down, 0, null, { box: A, scroll: scroll(0) }, shown);
     const side = routeWheel({ deltaY: 0, ctrlKey: false }, 200, onA.latch, { box: A, scroll: scroll(0) }, shown);
