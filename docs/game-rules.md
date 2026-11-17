@@ -34,6 +34,10 @@ Read from the two clients' compiled code (Ghidra, functions found from the boost
   Homecoming's also reads the group's parents' first tags and knows ASTeamCrit (0x1404de5c0,
   0x1404de9f0). The planner takes this from the server entry (`tagModes: 'ownTag'`); see "Tag modes
   (power info)" below.
+- The power info's requirement check (requiresArchetypePvPEval) is the same in both, but
+  Thunderspy's client reads an effect's own group's requirements only, for the check and the notes,
+  Homecoming's every group above it too (`infoRequires: 'ownGroup'`); see "Requirements in the
+  power info" below.
 - @TODO not yet compared: Enhancement Diversification (`AggregateStrength`), attribute caps
   (`ClampMax`), combat level scaling (`combatmod_Get`) and the combine limit
   (`boost_IsValidCombination`). They have no strings or table globals of their own to find them
@@ -417,6 +421,92 @@ Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d
   at any chance (power_AddEffects, decompiled). A mod with a Duration field of its own reads its
   tick chance, not its group's: Homecoming's Blaster Charged Brawl (Electricity Manipulation) reads
   "-100.00% recovery rate for 2.00s on target", its group's 20% unshown.
+
+## Requirements in the power info
+
+The live client's power info doesn't run the game's requirement evaluator on an effect group. It
+runs a cut-down check of its own, `requiresArchetypePvPEval` in the source's uiPowerInfo.c
+(Homecoming i28p4 0x1404dfdd0, Thunderspy 9.6 0x1404d4cc0, decompiled, both as the source;
+`infoRequires` in `src/engine/requires.ts`), for the lines (power_AddEffects) and the damage total
+(getTotalDamage) alike. Homecoming's client checks the effect's group and every group above it (a
+failing group hides its sub-groups) and writes notes from them all; Thunderspy's reads the effect's
+own group only, for the check and the notes alike (getTotalDamage 0x1404d6070 builds its note string
+from the group's own Requires; `infoRequires: 'ownGroup'` in `src/data/servers.ts`). So its Twilight
+Shield and Quantum Shield list the effects under their "not in Nova form" parent group.
+
+- It tells apart only the caster's archetype (`arch source>`), the creator's (`arch source.owner>`,
+  `arch source.creator>`), a critter target from a player one (`enttype target>`, critter in PvE),
+  and PvP maps (`isPVPMap?`, false in PvE).
+- Everything else reads as true: values, comparisons, `source.ownPower?` (a `!` after it is
+  skipped), `Source.Mode?`, `target.HasTag?`. So every Combo Level line and every "Only if hidden or
+  target placated" line is listed (Crushing Uppercut and Thunder Strike, as in game, the owner's
+  screenshots, November 17, 2026), and so are Bio Armor's adaptation variants.
+- Its operators work on those 0/1 values, so `entref target> entref source> eq !` ("not on itself")
+  reads false: such groups are neither listed nor counted (Liquid Nitrogen's pet).
+- A group the check passes counts towards the damage total unless the client writes a requirement
+  note for it (getRequiresString, `requiresNotes`). Each note looks for an exact run of tokens, as
+  in the source. They don't match Homecoming's `kHitPoints%` and `kEndurance%` tokens, so Scourge
+  and Charged Bolts' Zapping groups carry no note and count in full; nor Homecoming's own Containment
+  groups, which open with `kTerrorized` where the note expects `kImmobilized ... kHeld ... || kSleep
+  ... || kStunned ... ||`. Confirmed in game (the owner's checks, November 17, 2026, Homecoming,
+  level 50): a Corruptor's Dark Blast 83.42 with two bare 41.71 lines, Blaster Charged Bolts 75.08,
+  Liquid Nitrogen 423.02 (211.51 per activation), Brute Shadow Maul 97.88.
+- Thunderspy's client adds one requirement note of its own, after the origin note (its
+  getRequiresString, 0x1404d2f00, decompiled; `infoFriendNotes` in `src/data/servers.ts`): a
+  requirement that names the target reads "Applies to enemies" when it holds `target.isFriend?!` or
+  `enttypetarget>crittereq`, and "Applies to allies" otherwise, whatever else it tests. In game
+  (the owner's screenshots, November 17, 2026, Thunderspy, level 50): Fire Blast's first hit
+  "Applies to enemies"; Stygian Circle's heals, which test the target's rank, and Radiant Blast's
+  Judgement heal "Applies to allies". Its power_AddEffects asks for the note and its getTotalDamage
+  doesn't (a flag its two calls pass as 0 and 1), so the note never takes a hit out of the damage
+  total (Fire Blast 84.72, in game).
+- Thunderspy's power info doesn't test a group's PvE/PvP flags at all, so it lists PvP-only groups
+  too (its Twilight Shield's second set of knock protections and 93.42% status resistances, in
+  game). The export drops PvP-only groups, so the version's info file carries the groups of each
+  power with one only its PVPOnly flag marks (`info_lists_pvp` in `pipeline/config.py`, `infoPvp:
+  'listed'` in `src/data/servers.ts`): 7 Thunderspy powers, none with damage. A group requiring a
+  player target is left out by the requirement check anyway.
+
+## Power info wording
+
+From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p4 0x1404e37e0 and
+0x1404e26f0, Thunderspy 9.6 0x1404da680; decompiled), in `src/engine/powerinfo.ts`:
+
+- A typed defense of aspect Current reads like a Strength one: "+9.75% strength to ranged defense"
+  (Homecoming's Hail of Bullets, in game). Both clients do it.
+- "All damage" and "all defense" (markAllTypes in the source; Homecoming 0x1404e1540 and
+  Thunderspy 0x1404d6af0, which walk each effect's attribute list; `markAllTypes` in
+  `src/engine/powerinfo.ts`). For each target, kind and aspect the client walks all the power's
+  effects in order, hidden ones included: a damage type (offsets 0..79) or defense type (the 20
+  typed defenses) of that aspect must carry the same Magnitude + Scale as the group's
+  first, else the rest of that effect is passed over; each adds its type's bit, and whenever the mask
+  holds exactly smashing, lethal, fire, cold, energy, negative energy, psionic and toxic (the first
+  ten defense types) one more group counts and the value clears. On the lines, a group's first type
+  reads "all damage" / "all defense" and the next seven (nine) of that kind, target and aspect are
+  left out; after the last group every later one is. So Homecoming's Vulnerability lists "resistance
+  to all damage" and none of its radiation, electrical, sonic or quantum resistance, and Evasive
+  Maneuvers "+10.50% strength to all defense" without its toxic defense (both in game); a lone toxic
+  defense (Invincibility) keeps its line, eight separate equal effects (Thunderspy's Piercing Beam)
+  make one group, and a type outside the eight before the group is whole (Possess' healing) keeps
+  every type apart. @TODO confirm in game: Homecoming's Stealth (Concealment) shows "+7.00% strength
+  to all defense" but not its second, +1.75% effect, which the walk leaves out.
+- The Effect Area row: Single Target, Cone, AoE (Sphere), Location, and "Chain -- 15.00 ft. jump
+  distance" with its jump radius (Homecoming's Vulnerability, in game), each with "(N targets max)"
+  when the power has a target cap. A Map power gets no row.
+- From the version's info file (`public/data/info/<version>.json`, Exporter.build_info), when it
+  has arrived:
+  - each effect's own note (its Messages.DisplayInfo: "Within 20ft radius", "Main Target Only",
+    "Opportunity", "Overpower", "Every 0.8 seconds for 10 seconds"), after the requirement notes and
+    before "Ignores buffs and enhancements" and "unresistable" (the client's order); for a power the
+    file gives notes, the planner's own "Overpower" from the tag gives way to them;
+  - the attribute names as the client writes them, the message "Attr" + the field name (Homecoming's
+    "knock", "defense debuff", "to hit"; Thunderspy's "knockback"), and the notes' own texts
+    ("unresistable");
+  - no "Grants power" line for a power the client keeps out of the inventory (ShowInInventory 0:
+    Crushing Uppercut's Assassin's Focus, in game);
+  - the "Aggro Type" row for AIReport 1 or 2 ("Enemies will not notice this attack", Vulnerability
+    in game; Thunderspy's client reads "Enemies will not notice if this attack misses" for 2).
+  Without the file the power info keeps the planner's own wording and grant lines.
 
 ## Grants (Kheldian forms etc.)
 
