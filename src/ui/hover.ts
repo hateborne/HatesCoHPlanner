@@ -15,6 +15,7 @@ export interface HoverState {
   blink: number | null; // 0-based level whose orb blinks (the hovered pick or slot was taken then)
   orb: number | null; // 0-based level of the hovered orb (lights that level's pick / slots)
   press: PressTip | null; // phones: what a long press is showing (they have no hover)
+  swap: string | null; // set finder: the result row under the pointer (its id), whose gains and losses show
 }
 
 /**
@@ -24,7 +25,7 @@ export interface HoverState {
  */
 export type PressTip = { x: number; y: number } & ({ kind: 'power'; entry: BuildEntry; notes: string[] } | { kind: 'enh'; entry: BuildEntry; slot: number } | { kind: 'text'; text: string });
 
-const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null, press: null };
+const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null, press: null, swap: null };
 
 export const useHover = create<HoverState>(() => EMPTY);
 

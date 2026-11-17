@@ -336,6 +336,18 @@ const EVENT_STYLE: Record<string, CSSProperties> = {
   'Spring Event Wedding': gradientText('#ffd5d4', '#fa2b29'),
 };
 
+/**
+ * The colour a set's rarity is written in: the Set Rarity line's own (RARITY_STYLE), an event
+ * set's by its event.
+ *
+ * @param r The set's rarity (setRarity), or undefined for a set without one.
+ * @return The CSS for its text; nothing for no rarity.
+ */
+export function rarityStyle(r: SetRarity | undefined): CSSProperties {
+  if (!r) return {};
+  return r.kind === 'event' ? (EVENT_STYLE[r.event ?? ''] ?? {}) : RARITY_STYLE[r.kind];
+}
+
 // bold in the game's heavy face (mont_hvbold, the client's bold game font) instead of a
 // browser-synthesised bold of the tooltip's demibold face, which barely shows
 const BOLD: CSSProperties = { fontFamily: "'MontrealHeavy'", fontWeight: 'normal' };

@@ -6,7 +6,7 @@
 import type { GameData } from '../src/data/gamedata.ts';
 import type { FinderGroup, FinderStats } from '../src/data/finderStats.ts';
 import { setRarity } from '../src/engine/enhance.ts';
-import { MEZ } from '../src/engine/totals.ts';
+import { statLabel } from '../src/engine/finder/labels.ts';
 import { MIN_GROUP } from './aggregate.ts';
 import type { CorpusSkips } from './corpus.ts';
 import { family, type BuildFacts } from './measure.ts';
@@ -56,27 +56,6 @@ export function warningKind(w: string): { category: string; item: string } {
   return { category: 'other', item: w.replace(/\d+/g, 'N') };
 }
 
-const SINGLE: Record<string, string> = {
-  rech: 'Recharge',
-  acc: 'Accuracy',
-  endrdx: 'Endurance Reduction',
-  range: 'Range',
-  heal: 'Healing',
-  hp: 'Max HP',
-  endmax: 'Max Endurance',
-  regen: 'Regeneration',
-  recov: 'Recovery',
-  tohit: 'ToHit',
-  absorb: 'Absorb',
-  enduse: 'End use',
-  run: 'Run Speed',
-  fly: 'Fly Speed',
-  jumpspd: 'Jump Speed',
-  jumph: 'Jump Height',
-  stealth: 'Stealth',
-  perc: 'Perception',
-};
-
 const FAMILY: Record<string, string> = {
   move: 'Movement',
   def: 'Defense',
@@ -88,35 +67,7 @@ const FAMILY: Record<string, string> = {
   max: 'Cap raises',
 };
 
-/**
- * A stat key in words.
- *
- * @param gd Game data (damage and defense type names).
- * @param key The totals line key.
- * @return "Smashing (Res)", "Ranged (Def)", "Knockback (Prot)", "Recharge".
- */
-export function statLabel(gd: GameData, key: string): string {
-  const [fam, rest = ''] = key.split('.');
-  const named = (list: { dn: string }[]) => (list[Number(rest)]?.dn ?? rest).replace(/_/g, ' ');
-  switch (fam) {
-    case 'def':
-      return `${named(gd.core.attribNames.Defense)} (Def)`;
-    case 'res':
-      return `${named(gd.core.attribNames.Damage)} (Res)`;
-    case 'dmg':
-      return `${named(gd.core.attribNames.Damage)} Damage`;
-    case 'mezprot':
-      return `${MEZ[rest] ?? rest} (Prot)`;
-    case 'mezres':
-      return `${MEZ[rest] ?? rest} (Res)`;
-    case 'resx':
-      return `${rest} (Res)`;
-    case 'max':
-      return `${SINGLE[rest] ?? rest} cap`;
-    default:
-      return SINGLE[key] ?? key;
-  }
-}
+export { statLabel };
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 const num = (v: number) => (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
@@ -163,7 +114,7 @@ export function reportText(gd: GameData, run: Run): string {
   const out: string[] = [];
   const all = run.stats.groups.all!;
   const atDn = (n: string) => gd.archetypeByName.get(n.toLowerCase())?.dn ?? n;
-  const famName = (f: string) => FAMILY[f] ?? SINGLE[f] ?? f;
+  const famName = (f: string) => FAMILY[f] ?? statLabel(gd, f);
   const failed = [...run.failures.values()].reduce((a, v) => a + v, 0);
 
   out.push(`# Build research report -- data ${run.stats.dataVersion}\n`);

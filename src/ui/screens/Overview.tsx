@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
+import { DEFAULT_SERVER } from '../../data/servers.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
@@ -8,8 +9,11 @@ import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
+import { openSetFinder } from '../../state/finderOpen.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
+import { FINDER_NAME, FinderIcon } from '../components/FinderIcon.tsx';
+import { SET_FINDER } from '../flags.ts';
 import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleAlt, type TitleEdit } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
@@ -638,6 +642,19 @@ export function Overview({ skin }: { skin: Skin }) {
       {/* the name stops just short of the Origin / Alignment button (two half-size lines past it) */}
       <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
       <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
+      {/* the set finder's button, right of the origin and archetype (Homecoming builds; see flags.ts) */}
+      {SET_FINDER && gd.server === DEFAULT_SERVER ? (
+        <button
+          data-testid="finder:open"
+          className="info-button"
+          aria-label={FINDER_NAME}
+          title={FINDER_NAME}
+          onClick={openSetFinder}
+          style={{ left: TOP_LABEL_RIGHT + 8, top: 20, width: 36, height: 36, padding: 0, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <FinderIcon size={20} />
+        </button>
+      ) : null}
       {topButtons(stage.w / 2, vy(22), OA_W, vy(26))}
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
       {/* level strip: reopen any level's in-game screen (levels after a stop are left off) */}

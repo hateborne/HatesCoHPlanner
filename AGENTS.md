@@ -159,7 +159,8 @@ src/engine/     pure build rules: rules.ts (BuildRules), totals.ts, enhance.ts, 
                 finder/ (the set finder's engine: ranked swaps of sets into existing slots)
 src/io/         share.ts (#b= links), mids.ts, midsPatches.ts, buildtxt.ts, importProblem.ts,
                 library.ts (IndexedDB), binary.ts, fileName.ts
-src/state/      store.ts (zustand: data, build, level-up flow, dialogs)
+src/state/      store.ts (zustand: data, build, level-up flow, dialogs); finder.ts and
+                finderOpen.ts (the set finder's own state)
 src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, escape.ts
 tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for the e2e tests
 e2e/            Playwright browser tests (local only)
