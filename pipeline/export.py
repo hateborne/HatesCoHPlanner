@@ -1000,9 +1000,19 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     @raise SystemExit When the folder was made from a different client and overwriting wasn't asked.
     """
     ex = Exporter(live)          # refuses to run if the ids file is gone while data exists
+    # a published folder is remade with the PvP-only test it was made with, so a run from its own
+    # client reproduces it (pipeline/pvp.py); the newer test reaches only a new version
+    try:
+        published = json.loads((config.DATA_OUT / version / "powers.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        published = None
+    matched = published is None or ex.match_pvp_test(published)
     out = ex.build()
     pets = ex.build_pets()       # beside the version folder; changes nothing build() made
     warnings: list[str] = forced_respec_warnings(live.classes, ex.class_cats, ex.cats, ex.sets)
+    if not matched:
+        warnings.append(f"WARNING: {data_rel(version)}'s effect groups match neither PvP-only test "
+                        "(pipeline.pvp); this run makes them with pvp_requires")
     frames: dict | None = None
     if ex.report["no_frames"]:
         if frames_from:

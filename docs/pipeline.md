@@ -44,7 +44,9 @@ hold in PvE, against a critter target off PvP maps (`pipeline/pvp.py`, `pvp_requ
 postfix evaluator over true / false / unknown). A group that tests for a player target among other
 things ("a boss or a player": Stygian Circle's 428.36 heal, in game on Thunderspy) is kept. Every
 version published before that test (i28p4, i28p3, ts9-6) was made with the older one,
-`pvp_requires_v1`, which dropped any group with a player test and no critter test.
+`pvp_requires_v1`, which dropped any group with a player test and no critter test. A run (or
+`pipeline.pets`) for a published version takes the test its groups were made with
+(`Exporter.match_pvp_test`), so it reproduces the version; the newer test reaches a new version.
 
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
 `pipeline/report.md`. Safety rails:
