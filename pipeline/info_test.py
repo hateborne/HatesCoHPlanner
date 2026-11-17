@@ -103,6 +103,11 @@ class BuildInfoTest(unittest.TestCase):
         self.assertEqual(info["text"], {"Unresistable": "unresistable", "AggroReport": "Aggro Type:"})
         self.assertNotIn("groups", info)
 
+    def test_leaves_the_report_as_build_counted_it(self):
+        before = self.ex.report["pvp_effects_dropped"]
+        self.info()
+        self.assertEqual(self.ex.report["pvp_effects_dropped"], before)
+
     def test_carries_flagged_pvp_groups_for_a_client_that_lists_them(self):
         ts = dataclasses.replace(config.HOMECOMING, info_lists_pvp=True, hit_aggro=True)
         info = self.info(ts)

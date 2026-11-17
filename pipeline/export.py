@@ -796,6 +796,8 @@ class Exporter:
         @param pet_powers Its pets file's "powers".
         @return The file, with a "summary".
         """
+        # what build() counted for the report stays as it was: the groups are only made again here
+        counted = {k: (Counter(v) if isinstance(v, Counter) else v) for k, v in self.report.items()}
         notes: dict = {}
         groups: dict = {}
         mismatched: list[str] = []
@@ -841,6 +843,7 @@ class Exporter:
             out["groups"] = groups
         out["summary"] = {"notes": len(notes), "groups": len(groups), "hidden_grants": len(hidden),
                           "aggro": len(aggro), "mismatched": mismatched}
+        self.report.update(counted)
         return out
 
     @staticmethod
