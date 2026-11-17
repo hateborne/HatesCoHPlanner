@@ -629,7 +629,11 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
   r.i32(); // last power
   const nPowers = r.i32();
   if (nPowers >= MAX_MBD_POWERS) throw DAMAGED_CODE();
-  const v310 = version >= 3.1 - 1e-4;
+  // Mids added fields as its save format went on (MidsCharacterFileFormat: PriorVersion 3.10,
+  // ThisVersion 3.20): a power's ProcInclude from 3.10, a power's InherentSlotsUsed and a slot's
+  // IsInherent only from 3.20. A 3.10 code read with the 3.20 fields runs off its data.
+  const hasProc = version >= 3.1 - 1e-4;
+  const hasInherent = version >= 3.2 - 1e-4;
   const picks = gd.core.schedule.power.length;
   let held = false; // the current power's slots hold an enhancement (identified or not)
   const readSlot = (): MbdEnh | null => {
@@ -669,9 +673,9 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
       unknown = pid === undefined;
       level = r.i8() + 1;
       stat = r.bool();
-      if (v310) r.bool();
-      r.i32();
-      if (v310) r.i32();
+      if (hasProc) r.bool(); // ProcInclude
+      r.i32(); // VariableValue
+      if (hasInherent) r.i32(); // InherentSlotsUsed
       if (hasSub) {
         const ns = r.i8();
         for (let k = 0; k <= ns; k++) {
@@ -687,7 +691,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     held = false;
     for (let k = 0; k <= nSlots; k++) {
       const lv = r.i8() + 1;
-      if (v310) r.bool();
+      if (hasInherent) r.bool(); // IsInherent
       const enh = readSlot();
       if (r.bool()) readSlot();
       slots.push({ Level: lv, Enhancement: enh });
