@@ -149,6 +149,92 @@ describe('Mids interop', () => {
     expect(warnings).toEqual(["A power couldn't be identified, so it was left out", "A power couldn't be identified, so it was left out"]);
   });
 
+  /**
+   * A legacy |MxDz; code of one small build, as a Mids of one save version wrote it.
+   *
+   * Mids added fields to the format as it went (its MidsCharacterFileFormat: PriorVersion 3.10,
+   * ThisVersion 3.20): a power's ProcInclude from 3.10, a power's InherentSlotsUsed and a slot's
+   * IsInherent only from 3.20.
+   *
+   * @param version The save version the code says it is.
+   * @param qualified Powers and enhancements by name instead of by Mids index.
+   * @return The code as posted.
+   */
+  function legacyCode(version: number, qualified: boolean): string {
+    const proc = version >= 3.1 - 1e-4;
+    const inherent = version >= 3.2 - 1e-4;
+    const siOf = (name: string) => map.powers.find(([, id]) => id === pid(gd, name))![0];
+    const enhSi = (uid: string) => map.enh.find((e) => e.uid === uid)!.si;
+    const sets = ['Blaster_Ranged.Fire_Blast', 'Blaster_Support.Fire_Manipulation'];
+    // by pick: the power, its 0-based level, and each slot's enhancement with its two value bytes
+    // (an IO: level, relative level; an SO: relative level, grade)
+    const picks: Record<number, { power: string; level: number; enh: ([uid: string, a: number, b: number] | null)[] }> = {
+      0: { power: 'Blaster_Ranged.Fire_Blast.Flares', level: 0, enh: [['Crafted_Damage', 49, 4], null] },
+      1: { power: 'Blaster_Support.Fire_Manipulation.Ring_of_Fire', level: 0, enh: [['Magic_Accuracy', 4, 3]] },
+      3: { power: 'Pool.Leaping.Combat_Jumping', level: 3, enh: [['Crafted_Luck_of_the_Gambler_F', 49, 4]] },
+    };
+    const w = new ByteWriter();
+    w.bytes(new Uint8Array([77, 120, 68, 12]));
+    w.f32(version);
+    w.bool(qualified);
+    w.bool(true); // sub-power fields
+    for (const s of ['Class_Blaster', 'Magic']) w.netString(s);
+    w.i32(0); // Hero
+    w.netString('Legacy');
+    w.i32(sets.length - 1);
+    for (const s of sets) w.netString(s);
+    w.i32(24); // last power
+    w.i32(24 - 1); // power entries - 1
+    for (let i = 0; i < 24; i++) {
+      const p = picks[i];
+      if (qualified) w.netString(p?.power ?? '');
+      else w.i32(p ? siOf(p.power) : -1);
+      if (p) {
+        w.i8(p.level);
+        w.bool(true); // StatInclude
+        if (proc) w.bool(false); // ProcInclude
+        w.i32(0); // VariableValue
+        if (inherent) w.i32(0); // InherentSlotsUsed
+        w.i8(-1); // no sub powers
+      }
+      const enh = p?.enh ?? [];
+      w.i8(enh.length - 1);
+      for (const e of enh) {
+        w.i8(p!.level);
+        if (inherent) w.bool(false); // IsInherent
+        if (qualified) w.netString(e?.[0] ?? '');
+        else w.i32(e ? enhSi(e[0]) : -1);
+        if (e) {
+          w.i8(e[1]);
+          w.i8(e[2]);
+        }
+        w.bool(false); // no flipped enhancement
+      }
+    }
+    const raw = w.done();
+    const hex = Buffer.from(deflateSync(raw)).toString('hex').toUpperCase();
+    return `|MxDz;${raw.length};${hex.length / 2};${hex.length};HEX;|\n${hex}\n|-------------------------------------------------------------------|`;
+  }
+
+  it('reads a legacy code of every save version: 3.10 has ProcInclude but not the inherent-slot fields of 3.20', async () => {
+    const want = (await importMidsText(gd, map, legacyCode(3.2, /*qualified=*/ false))).build;
+    expect(want.name).toBe('Legacy');
+    expect(want.picks.filter(Boolean)).toHaveLength(3);
+    expect(want.picks[0]?.power).toBe(pid(gd, 'Blaster_Ranged.Fire_Blast.Flares'));
+    expect(want.picks[0]?.slots.map((s) => s.enh)).toEqual([{ boost: pid(gd, 'Boosts.Crafted_Damage.Crafted_Damage'), ioLevel: 49 }, undefined]);
+    expect(want.picks[1]?.slots[0]?.enh?.boost).toBe(pid(gd, 'Boosts.Magic_Accuracy.Magic_Accuracy'));
+    expect(want.picks[3]?.power).toBe(pid(gd, 'Pool.Leaping.Combat_Jumping'));
+    expect(want.picks[3]?.slots[0]?.enh).toEqual({ boost: pid(gd, 'Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F'), ioLevel: 49 });
+    // every version, by index and by name, is the same build
+    for (const version of [1.01, 3.1, 3.2]) {
+      for (const qualified of [false, true]) {
+        const res = await importMidsText(gd, map, legacyCode(version, qualified));
+        expect(res.warnings, `version ${version}, qualified ${qualified}`).toEqual([]);
+        expect(res.build, `version ${version}, qualified ${qualified}`).toEqual(want);
+      }
+    }
+  });
+
   // a real Mids .mbd of a Fiery Aura / Fiery Melee Tanker on this machine (set HCP_MIDS_SAMPLE to
   // its path); skipped when unset, so no personal file names live in the repository
   const local = process.env.HCP_MIDS_SAMPLE ?? '';
