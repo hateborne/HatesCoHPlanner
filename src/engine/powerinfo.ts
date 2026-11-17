@@ -12,7 +12,7 @@
 import type { GameData } from '../data/gamedata.ts';
 import type { Archetype, Effect, Mod, PetPower, Power } from '../data/types.ts';
 import { serverById } from '../data/servers.ts';
-import { evalRequires, type EvalContext } from './requires.ts';
+import { infoRequires, type EvalContext } from './requires.ts';
 
 /** A run of text, optionally colored (CSS hex) and italic. */
 export interface Seg {
@@ -382,9 +382,6 @@ const ASPECT: Record<string, AType> = {
   Absolute: 'Abs',
 };
 
-// Damage types that count as "all damage" (offset/4 bits 639) and defense types (1023).
-const ALL_DAMAGE = [0, 4, 8, 12, 16, 20, 24, 36];
-
 // ---- helpers -----------------------------------------------------------------------------------
 
 /**
@@ -409,24 +406,118 @@ function magAndDur(table: number, m: Mod): { mag: number; dur: number } {
   }
 }
 
+/** A kind of attribute the client prints as "all ..." when a power covers every type of it alike. */
+interface AllKind {
+  name: 'damage' | 'defense';
+  has: (offset: number, O: Offsets) => boolean; // the attribute is of this kind (damage 0..79, defense types 104..183)
+  bit: (offset: number, O: Offsets) => number; // its type's bit in the mask
+  all: number; // the mask of every type the group needs (the source's damageTypes, defenseTypes)
+  count: number; // how many types a group spans (damageTypesCount, defenseTypesCount)
+}
+
+const ALL_KINDS: readonly AllKind[] = [
+  // smashing, lethal, fire, cold, energy, negative energy, psionic and toxic: 639
+  { name: 'damage', has: (o, O) => o >= 0 && o < (O['HitPoints'] ?? 80), bit: (o) => o / 4, all: 0x27f, count: 8 },
+  // the first ten defense types: 1023
+  {
+    name: 'defense',
+    has: (o, O) => o >= (O['DefenseType00'] ?? 104) && o < (O['Defense'] ?? 184),
+    bit: (o, O) => (o - (O['DefenseType00'] ?? 104)) / 4,
+    all: 0x3ff,
+    count: 10,
+  },
+];
+
+/** The state of one "all" group: the source's equalForAllTypes, equalSetsForAllTypes, displayedForAllTypes. */
+interface AllGroup {
+  flag: number; // 0 none, 1 the next type reads "all", 2 a group is being shown
+  sets: number; // how many groups the power holds
+  shown: number; // how many types of the current group have been passed
+}
+
+/** @return The key of a mod's "all" group: its target, kind and aspect. */
+const allKey = (m: Mod, k: AllKind) => `${m.tg}|${k.name}|${m.asp}`;
+
+/**
+ * The client's markAllTypes: which target, kind and aspect of a power hold "all damage" / "all
+ * defense" groups (uiPowerInfo.c; Homecoming's live client walks each effect's attribute list,
+ * 0x1404e1540, decompiled).
+ *
+ * 1. For each target, kind and aspect, walk the power's effects in order, attribute by attribute.
+ * 2. An attribute of that kind and aspect takes the group's value (Magnitude + Scale) when none is
+ *    set; a different value passes over the rest of that effect. Otherwise it adds its type's bit.
+ * 3. After each attribute of the target's effects, a mask that holds exactly every type counts one
+ *    more group and clears the value, so a completed mask keeps counting until another type joins.
+ *
+ * @param tmpls The power's templates, one per mod x attribute, in the client's order.
+ * @param O The attribute offsets.
+ * @return The groups by allKey; a key with none is absent.
+ */
+function markAllTypes(tmpls: readonly Tmpl[], O: Offsets): Map<string, AllGroup> {
+  const out = new Map<string, AllGroup>();
+  const targets = new Set(tmpls.map((t) => t.m.tg));
+  const aspects = new Set(tmpls.map((t) => t.m.asp));
+  for (const tg of targets) {
+    for (const kind of ALL_KINDS) {
+      for (const asp of aspects) {
+        let value = 0;
+        let mask = 0;
+        let sets = 0;
+        let passed: Mod | null = null;
+        for (const t of tmpls) {
+          if (t.m.tg !== tg || t.m === passed) continue;
+          if (t.m.asp === asp && kind.has(t.attrib, O)) {
+            const v = (t.m.mag ?? 1) + t.m.sc;
+            if (!value) value = v;
+            else if (value !== v) {
+              passed = t.m;
+              continue;
+            }
+            mask |= 1 << kind.bit(t.attrib, O);
+          }
+          if (mask === kind.all) {
+            value = 0;
+            sets++;
+          }
+        }
+        if (sets) out.set(`${tg}|${kind.name}|${asp}`, { flag: 1, sets, shown: 0 });
+      }
+    }
+  }
+  return out;
+}
+
 /** One mod applied to one attribute, with the chance/requirements of its effect group. */
 interface Tmpl {
   m: Mod;
   attrib: number;
-  all?: 'damage' | 'defense'; // collapses every damage / defense type into one "all" line
   chance: number; // 0..1, its own group's chance (the client reads no parent's), the tick chance apart
   shown: number; // 0..1, the group chance its line reads: `chance`, or its group's tag mode's chance
   mode: string | null; // a tag mode's note (tagMode): its line is listed whatever its chance
   tick: number; // 0..1, the mod's tick chance
-  hide: boolean; // a pet's HideFromInfo or PPM group: counted in its damage, not listed
+  hide: boolean; // a HideFromInfo or PPM group: not listed
+  counted: boolean; // its damage counts in the total (a pet's hidden groups' does, the character's own don't)
   delay: number;
   reqs: string[][];
   tags: string[];
   evalOk: boolean;
 }
 
-/** Notes the client derives from requirement tokens (getRequiresString). */
-function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean): string[] {
+/**
+ * Notes the client derives from requirement tokens (getRequiresString).
+ *
+ * Thunderspy's client adds whom a line applies to, after the origin note (its getRequiresString,
+ * 0x1404d2f00, decompiled): a requirement that names the target reads "Applies to enemies" when it
+ * holds `target.isFriend?!` or `enttypetarget>crittereq`, else "Applies to allies" (its Stygian
+ * Circle's heals vs lieutenants and bosses, in game). Its power_AddEffects asks for it; its
+ * getTotalDamage doesn't, so it never takes a group out of the damage total.
+ *
+ * @param reqs The requirements the notes read (the group's and, on Homecoming, its parents').
+ * @param assumeDefaults Leave out the notes of the default case (the damage total; Combo Level 0).
+ * @param friendNotes Add Thunderspy's "Applies to" note (infoFriendNotes).
+ * @return The notes, in the client's order, each once.
+ */
+function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean, friendNotes = false): string[] {
   const notes: string[] = [];
   for (const req of reqs) {
     const s = req.join('').toLowerCase();
@@ -444,7 +535,9 @@ function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean): stri
     if (has('kStealthsource>0.5>')) add('Only while domination is active');
     if (has('kHitPointstarget>10-100*5010-/0100minmaxrand100*'))
       add('2.5% chance per every percentage point targets health is below 50%');
-    if (has('kImmobilizedtarget>0>') && has('kHeldtarget>0>') && has('kStunnedtarget>0>'))
+    // one exact run of tokens, as the client and the source test it: Homecoming's own Containment
+    // groups (kTerrorized first) carry no note, and their damage counts (Liquid Nitrogen, in game)
+    if (has('kImmobilizedtarget>0>kHeldtarget>0>||kSleeptarget>0>||kStunnedtarget>0>||'))
       add('Only against immobilized, held, sleeping or stunned targets');
     if (has('originsource>')) {
       const origins: string[] = [];
@@ -453,6 +546,8 @@ function requiresNotes(reqs: readonly string[][], assumeDefaults: boolean): stri
       }
       add(`Only if the player's origin is ${origins.join(', ')}`);
     }
+    if (friendNotes && has('target'))
+      add(has('target.isFriend?!') || has('enttypetarget>crittereq') ? 'Applies to enemies' : 'Applies to allies');
     if (has('Electronictarget.HasTag?')) add('Against electronic targets only');
     if (has('Undeadtarget.HasTag?')) add('Against undead targets only');
     if (has('Ghosttarget.HasTag?')) add('Against ghost targets only');
@@ -599,6 +694,8 @@ export function powerInfo(
   });
   const ctx = contextFor(at.n, null);
   const ownTagModes = serverById(gd.server)?.tagModes === 'ownTag';
+  const ownGroupRequires = serverById(gd.server)?.infoRequires === 'ownGroup';
+  const friendNotes = !!serverById(gd.server)?.infoFriendNotes;
 
   const attrName = (offset: number): string | null => {
     if (offset >= 0 && offset < 80) {
@@ -626,7 +723,8 @@ export function powerInfo(
 
   // ---- damage totals (getTotalDamage) ----
   /**
-   * Walk effect groups (PvE, visible, requirements met), yielding one template per mod x attribute.
+   * Walk effect groups (PvE, visible, requirements met by the client's power-info check), yielding
+   * one template per mod x attribute.
    *
    * The templates come in the client's template-list order: each group's sub-groups before its
    * own mods (its loader, decompiled), so the lines read in the game's order.
@@ -634,8 +732,9 @@ export function powerInfo(
    * Each template keeps its own group's chance and its tick chance apart: the live client's
    * getTotalDamage and power_AddEffects read only the template's own group's chance, never a parent
    * group's (decompiled; confirmed in game: Executioner's Shot's crits, Thunder Strike's team crits).
-   * A pseudo-pet's power (`pet`) is walked as getTotalDamage reads every template: its HideFromInfo
-   * and PPM groups count too (marked `hide`, as they aren't listed).
+   * HideFromInfo and PPM groups are walked too (marked `hide`, as they aren't listed): the client's
+   * markAllTypes counts them, and so does a pseudo-pet's damage (`pet`; the character's own powers'
+   * stay out of the total, the owner's decision).
    *
    * A group with a tag mode (tagMode) shows the mode's chance on its own lines in place of its own;
    * the damage total keeps the group's own chance.
@@ -657,15 +756,25 @@ export function powerInfo(
     hidden = false,
     parents: readonly Effect[] = [],
   ): void => {
+    const cls = String(ec.prop('archetype'));
+    const owner = ec.ownerProp ? String(ec.ownerProp('archetype')) : null;
     for (const e of effs ?? []) {
       if (e.fl?.includes('PVPOnly')) continue;
+      // a hidden group is walked too: the client's markAllTypes counts it, and a pet's damage does
       const hide = hidden || !!e.fl?.includes('HideFromInfo') || !!e.ppm;
-      if (hide && !pet) continue;
       const chance = e.ch ?? 1;
-      const rq = e.req && e.req.length ? [...reqs, e.req] : reqs;
-      if (!rq.every((r) => evalRequires(r, ec))) continue;
+      // the requirements its line and damage read: Homecoming's client reads every group above too
+      // (its check and its notes walk the parents), Thunderspy's the group's own only
+      const own = e.req && e.req.length ? [e.req] : [];
+      const rq = ownGroupRequires ? own : [...reqs, ...own];
+      // the client's own cut-down check (infoRequires), not the game's evaluator: it lists the
+      // Combo Level and "Only if hidden" groups, and leaves out another archetype's. On Homecoming a
+      // failing group hides its sub-groups; on Thunderspy they are checked on their own
+      const met = rq.every((r) => infoRequires(r, cls, owner));
+      if (!met && !ownGroupRequires) continue;
       // the client's template list: a group's sub-groups first, then its own mods
       if (e.sub?.length) templates(e.sub, rq, out, ec, pet, hide, [e, ...parents]);
+      if (!met) continue;
       const mode = tagMode(e, parents, ownTagModes);
       for (const m of e.m ?? []) {
         if (m.t === 'SkillMagnitude') continue;
@@ -677,24 +786,13 @@ export function powerInfo(
           mode: mode?.note ?? null,
           tick: tc,
           hide,
+          counted: pet || !hide,
           delay: m.del ?? e.del ?? 0,
           reqs: rq,
           tags: e.tag ?? [],
           evalOk: true,
         };
-        const eType = ASPECT[m.asp];
-        const hasAll = (offs: number[]) => offs.every((o) => m.a.includes(o));
-        const d0 = O['DefenseType00'] ?? 104;
-        const allDef = Array.from({ length: 10 }, (_, i) => d0 + i * 4);
-        const rest = new Set(m.a);
-        if (eType && eType !== 'Abs' && eType !== 'Max' && hasAll(ALL_DAMAGE)) {
-          for (const o of ALL_DAMAGE) rest.delete(o);
-          out.push({ ...base, attrib: ALL_DAMAGE[0] ?? 0, all: 'damage' });
-        } else if ((eType === 'Cur' || eType === 'Str') && hasAll(allDef)) {
-          for (const o of allDef) rest.delete(o);
-          out.push({ ...base, attrib: d0, all: 'defense' });
-        }
-        for (const a of m.a) if (rest.has(a)) out.push({ ...base, attrib: a });
+        for (const a of m.a) out.push({ ...base, attrib: a });
       }
     }
   };
@@ -742,7 +840,7 @@ export function powerInfo(
     let base = 0;
     let total = 0;
     for (const t of tmpls) {
-      if (t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs' || t.all) continue;
+      if (!t.counted || t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs') continue;
       if (requiresNotes(t.reqs, true).length) continue;
       const { mag, dur } = magAndDur(table(t.m.tbl), t.m);
       if (!(mag < 0)) continue;
@@ -931,9 +1029,12 @@ export function powerInfo(
     target.push(row(TXT.powerRange, `<color #ffffff>${pair(enhRng, power.rng, f2, ' ft.')}`));
   }
   const area = power.area;
-  if (area === undefined || area === 'Sphere' || area === 'Cone' || area === 'Location') {
+  // the client's EffectArea row (power_AddTargetInfo): Character, Cone, Sphere, Location and Chain;
+  // none for Map and later kinds
+  if (area === undefined || area === 'Sphere' || area === 'Cone' || area === 'Location' || area === 'Chain') {
     let a: string;
-    if (area === 'Cone') {
+    if (area === 'Chain') a = `Chain -- ${f2(power.rad ?? 0)} ft. jump distance`;
+    else if (area === 'Cone') {
       a = `Cone -- ${f2(power.rad ?? 0)} ft. radius<br>${f2(((power.arc ?? 0) * 180) / Math.PI)} degree arc`;
     } else if (area === 'Sphere') a = `AoE -- ${f2(power.rad ?? 0)} ft. radius`;
     else if (area === 'Location') a = TXT.locationTarget;
@@ -997,6 +1098,7 @@ export function powerInfo(
     out: InfoEffect[],
   ): void => {
     petLines(name, cls, both, depth, out);
+    const groups = markAllTypes(tmpls, O);
     for (const t of tmpls) {
       const m = t.m;
       const offset = t.attrib;
@@ -1050,6 +1152,23 @@ export function powerInfo(
       // duration from a table doesn't count), else the tick chance
       if (off100(fChance) && !m.dur) pchChance = chanceText(fChance);
       else if (off100(fTick) && !cancelOnMiss) pchChance = chanceText(fTick);
+      // "all damage" / "all defense" (markAllTypes): a group's first type reads "all", the rest of
+      // its kind for the same target and aspect are left out
+      let allKind: AllKind['name'] | null = null;
+      const kind = ALL_KINDS.find((k) => k.has(offset, O));
+      const st = kind && groups.get(allKey(m, kind));
+      if (kind && st && st.flag > 1) {
+        if (++st.shown >= kind.count && --st.sets > 0) {
+          st.flag = 1;
+          st.shown = 0;
+        }
+        continue;
+      }
+      if (kind && st && st.flag === 1) {
+        st.flag++;
+        st.shown++;
+        allKind = kind.name;
+      }
       let iTicks = 0;
       if (isDamageOff(offset) && eType === 'Abs') {
         if (pet && pet.dur && ap) iTicks = Math.floor(Math.fround(Math.fround(pet.dur) / Math.fround(ap))) + 1;
@@ -1068,7 +1187,6 @@ export function powerInfo(
 
       // typed name
       let pchType: string;
-      const allKind = t.all;
       if (isDamageOff(offset)) {
         if (eType === 'Str') pchType = `strength to ${allKind ? 'all damage' : attr}`;
         else if (eType === 'Cur') pchType = allKind ? 'all damage' : attr;
@@ -1077,7 +1195,9 @@ export function powerInfo(
         else pchType = attr;
       } else if (offset >= (O['DefenseType00'] ?? 104) && offset < (O['Defense'] ?? 184)) {
         const defName = allKind ? 'all defense' : `${attr} defense`;
-        pchType = eType === 'Str' ? `strength to ${defName}` : eType === 'Cur' ? defName : attr;
+        // both live clients word a Current defense as a Strength one (GenericStr; Homecoming
+        // 0x1404e37e0, Thunderspy 0x1404da680): "+9.75% strength to ranged defense", as in game
+        pchType = eType === 'Str' || eType === 'Cur' ? `strength to ${defName}` : attr;
       } else if (isStatus(offset)) {
         if (eType === 'Cur') pchType = fMag < 0 ? `${attr} protection` : `magnitude ${attr}`;
         else if (eType === 'Str') pchType = `strength to ${attr}`;
@@ -1121,7 +1241,7 @@ export function powerInfo(
       const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
       if (t.mode) note(t.mode); // the client adds it before the requirement notes
       if (t.tags.includes('Overpower')) note('Overpower');
-      for (const n of requiresNotes(t.reqs, false)) note(n);
+      for (const n of requiresNotes(t.reqs, false, friendNotes)) note(n);
       if (m.fl?.includes('IgnoreStrength')) note(TXT.ignoresBuffs);
       if (m.fl?.includes('IgnoreResistance')) note(TXT.unresistable);
       out.push({ line, notes });
