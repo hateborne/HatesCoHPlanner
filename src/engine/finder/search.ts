@@ -76,6 +76,28 @@ export function finderProblem(gd: GameData, build: Build, stats: FinderStats | n
   return null;
 }
 
+/**
+ * Whether the game would take every piece of a set of swaps on the build with all of them in.
+ *
+ * Swaps are each found legal against the build as it stood, but two of them can still clash (the
+ * same unique piece into two powers), and one that replaces another can free or crowd a piece a
+ * third relies on: only the finished build tells.
+ *
+ * @param gd Game data.
+ * @param build The build as the planner holds it.
+ * @param swaps The swaps, one per power.
+ * @param rules The build's rules, when the caller has them already.
+ * @return True when no piece of any of them is refused.
+ */
+export function swapsLegal(gd: GameData, build: Build, swaps: readonly Swap[], rules: BuildRules = new BuildRules(gd, build)): boolean {
+  const r = rules.reslotted(applySwaps(build, swaps));
+  const entries = new Map(r.entries().map((x) => [x.key, x]));
+  return swaps.every((s) => {
+    const entry = entries.get(s.key);
+    return !!entry && entry.power.id === s.power && s.pieces.every((p) => r.enhRefusal(entry, p.slot, p.enh) === null);
+  });
+}
+
 /** A piece a swap may place. */
 interface Offer {
   letter: number; // the piece's index in its set
@@ -307,15 +329,7 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
   found.sort((a, b) => b.score - a.score || (a.set.n < b.set.n ? -1 : a.set.n > b.set.n ? 1 : 0) || (a.entry.key < b.entry.key ? -1 : 1));
   // the game must take every piece of every kept swap and of the new one on the finished build: a
   // swap that replaces a kept one can free or crowd a unique piece another kept swap relies on
-  const legal = (swap: Swap): boolean => {
-    const all = [...kept.filter((k) => k.key !== swap.key), swap];
-    const r = ownRules.reslotted(applySwaps(build, all));
-    const entries = new Map(r.entries().map((x) => [x.key, x]));
-    return all.every((s) => {
-      const entry = entries.get(s.key);
-      return !!entry && s.pieces.every((p) => r.enhRefusal(entry, p.slot, p.enh) === null);
-    });
-  };
+  const legal = (swap: Swap): boolean => swapsLegal(gd, build, [...kept.filter((k) => k.key !== swap.key), swap], ownRules);
   const swaps: RankedSwap[] = [];
   const limit = input.limit ?? DEFAULT_LIMIT;
   for (const f of found) {

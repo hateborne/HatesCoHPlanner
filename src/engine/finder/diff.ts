@@ -37,13 +37,13 @@ export interface BuildDiff {
 const DERIVED: Record<string, { label: string; of: (t: Totals) => number; lowerIsBetter?: boolean }> = {
   hp: { label: 'Max HP', of: (t) => t.hpMax },
   endmax: { label: 'Max End', of: (t) => t.endMax },
-  regen: { label: 'Regeneration per second', of: (t) => t.regenPerSec },
-  recov: { label: 'Recovery per second', of: (t) => t.recovPerSec },
-  enduse: { label: 'Endurance use per second', of: (t) => t.endUsePerSec, lowerIsBetter: true },
-  run: { label: 'Run Speed', of: (t) => t.speeds.run },
-  fly: { label: 'Fly Speed', of: (t) => t.speeds.fly },
-  jumpspd: { label: 'Jump Speed', of: (t) => t.speeds.jump },
-  jumph: { label: 'Jump Height', of: (t) => t.speeds.jumpHeight },
+  regen: { label: 'Regeneration', of: (t) => t.regenPerSec },
+  recov: { label: 'Recovery', of: (t) => t.recovPerSec },
+  enduse: { label: 'Endurance use', of: (t) => t.endUsePerSec, lowerIsBetter: true },
+  run: { label: 'Running Speed', of: (t) => t.speeds.run },
+  fly: { label: 'Flying Speed', of: (t) => t.speeds.fly },
+  jumpspd: { label: 'Jumping Speed', of: (t) => t.speeds.jump },
+  jumph: { label: 'Max Jump Height', of: (t) => t.speeds.jumpHeight },
   perc: { label: 'Perception', of: (t) => t.perception },
 };
 

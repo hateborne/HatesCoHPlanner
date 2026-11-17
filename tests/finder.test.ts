@@ -15,7 +15,7 @@ import { slottedNumbers } from '../src/engine/finder/powerNumbers.ts';
 import { queryProblem, type FinderQuery } from '../src/engine/finder/query.ts';
 import { isSelfHeal, rolesOf } from '../src/engine/finder/roles.ts';
 import { needsFor, Scorer } from '../src/engine/finder/score.ts';
-import { finderProblem, findSwaps, searchSwaps } from '../src/engine/finder/search.ts';
+import { finderProblem, findSwaps, searchSwaps, swapsLegal } from '../src/engine/finder/search.ts';
 import { powerInfo, segText } from '../src/engine/powerinfo.ts';
 import { BuildRules, type BuildEntry } from '../src/engine/rules.ts';
 import { computeTotals } from '../src/engine/totals.ts';
@@ -482,6 +482,27 @@ describe('finder: kept swaps', () => {
     expect(more.length).toBeGreaterThan(0);
     for (const [i, s] of more.entries()) if (i % 3 === 0) expectNoNewIssue(issues, rules.reslotted(applySwaps(b, keepSwap(both, s))));
   }, 60000);
+});
+
+describe('finder: swaps together', () => {
+  it('takes a set of swaps only when the game would take all of them on one build', () => {
+    const b = brute();
+    const rules = new BuildRules(gd, b);
+    const set = gd.boostSets.find((s) => s.n === 'Steadfast_Protection')!.id;
+    // Steadfast Protection's defense piece is unique: one per build
+    const unique = (name: string): Swap => {
+      const e = rules.entries().find((x) => x.power.n === name)!;
+      return { key: e.key, power: e.power.id, freeLevel: e.level, set, count: 1, pieces: [{ slot: 0, enh: { boost: boost('Crafted_Steadfast_Protection_B'), ioLevel: 29 } }], before: slotIds(e.slots) };
+    };
+    const shield = unique('Brute_Defense.Fiery_Aura.Fire_Shield');
+    const flames = unique('Brute_Defense.Fiery_Aura.Healing_Flames');
+    expect(swapsLegal(gd, b, [shield])).toBe(true);
+    expect(swapsLegal(gd, b, [flames], rules)).toBe(true);
+    expect(swapsLegal(gd, b, [shield, flames])).toBe(false);
+    // a swap written for another power is refused, not applied blind
+    expect(swapsLegal(gd, b, [{ ...shield, power: -1 }])).toBe(false);
+    expect(swapsLegal(gd, b, [])).toBe(true);
+  });
 });
 
 describe('finder: gains and losses', () => {
