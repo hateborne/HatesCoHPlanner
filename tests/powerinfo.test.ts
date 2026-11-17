@@ -110,3 +110,24 @@ describe("powerInfo: the client's line order", () => {
     expect(got[cold + 1]).toBe('-15.00% run speed for 10.00s on target / Only using Cryo Ammo');
   });
 });
+
+describe("powerInfo: damage by the client's chance rule (getTotalDamage)", () => {
+  /** @return A power's damage stats at level 50, unenhanced. */
+  const dmg = (cls: string, name: string) => {
+    const s = rows(powerInfo(gd, gd.archetypeByName.get(cls)!, gd.powerByName.get(name)!, 49, null).stats);
+    return [s['Average Damage:'], s['Damage Per Activation Time:'], s['Damage Per Cast Cycle:']];
+  };
+
+  it("counts a hit at its own group's chance, never its parents' nor its tick chance (in game)", () => {
+    // the four Opportunity crits (tick chance 0) count whole, the ammo groups above them (0) aside
+    expect(dmg('class_sentinel', 'sentinel_ranged.dual_pistols.executioners_shot')).toEqual(['337.18', '201.91', '28.89']);
+    // Thunder Strike: the team-crit sub-groups count whole, their 0.07 parent aside
+    expect(dmg('class_stalker', 'stalker_melee.electrical_melee.lightning_clap')).toEqual(['331.45', '131.01', '14.71']);
+  });
+
+  it('leaves the powers the rules agree on as they were (in game)', () => {
+    expect(dmg('class_stalker', 'stalker_melee.brawling.crushing_uppercut')[0]).toBe('189.22');
+    expect(dmg('class_sentinel', 'sentinel_ranged.dual_pistols.hail_of_bullets')[0]).toBe('181.99');
+    expect(dmg('class_brute', 'brute_defense.fiery_aura.burn')[0]).toBe('130.13');
+  });
+});
