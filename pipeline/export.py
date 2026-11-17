@@ -1088,6 +1088,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
 
     pets_summary = write_pets(pets, version)
     warnings += pet_warnings(pets_summary)
+    recipes_summary = write_recipes(version, warnings, assets=assets, replace_icons=not add_only_icons)
 
     mids_path = root / "mids-map.json"
     if not config.SERVER.mids:
@@ -1110,7 +1111,33 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
                             "Mids import/export will not work until the Mids map is built")
     return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added,
             "mids": mids, "warnings": warnings, "version": version, "root": root, "frames": frames,
-            "icons": icon_plan["summary"] if icon_plan else None, "pets": pets_summary}
+            "icons": icon_plan["summary"] if icon_plan else None, "pets": pets_summary,
+            "recipes": recipes_summary}
+
+
+def write_recipes(version: str, warnings: list[str], assets: bool = True, replace_icons: bool = False) -> dict | None:
+    """Write a version's recipe file beside its folder (pipeline.recipes), for a server that has one.
+
+    It reads the same client the version was just made from. The set finder's shopping list alone
+    reads the file, so a failure here never stops a version's export: it is reported instead.
+
+    @param version Game version id.
+    @param warnings The run's warnings, added to.
+    @param assets Write the salvage icon files too (--no-assets: the recipe file only).
+    @param replace_icons Replace salvage icons already there (not for an older version's run).
+    @return The recipe export's summary, or None when no file was written.
+    """
+    from pipeline import recipes
+
+    if not recipes.wanted():
+        return None
+    try:
+        summary, notes = recipes.export_version(version, icons=assets, replace_icons=replace_icons)
+    except Exception as e:  # noqa: BLE001 -- a side file: report it and carry on
+        warnings.append(f"WARNING: no recipe file written ({type(e).__name__}: {config.scrub(str(e))[:200]})")
+        return None
+    warnings += notes
+    return summary
 
 
 def write_pets(pets: dict, version: str) -> dict:

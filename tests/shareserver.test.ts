@@ -7,7 +7,9 @@
  */
 import { readdirSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FINDER_FOLDER } from '../src/data/finderStats.ts';
 import { PETS_FOLDER } from '../src/data/gamedata.ts';
+import { RECIPES_FOLDER } from '../src/data/recipes.ts';
 import { DEFAULT_SERVER, serverById, SERVERS, versionServer } from '../src/data/servers.ts';
 import { decodeShare } from '../src/io/share.ts';
 import { shareServer } from '../src/state/store.ts';
@@ -87,8 +89,8 @@ describe('version id prefixes', () => {
     for (const s of SERVERS) {
       const index = loadVersionIndex(s.id);
       const folders = readdirSync(dataDir(s.id), { withFileTypes: true })
-        // a server's pseudo-pet folder sits beside its version folders and is none
-        .filter((d) => d.isDirectory() && d.name !== PETS_FOLDER && !SERVERS.some((o) => o.data === `${s.data}${d.name}/`))
+        // a server's folders of side files (pseudo-pets, recipes, the finder's statistics) sit beside its version folders and are none
+        .filter((d) => d.isDirectory() && ![PETS_FOLDER, RECIPES_FOLDER, FINDER_FOLDER].includes(d.name) && !SERVERS.some((o) => o.data === `${s.data}${d.name}/`))
         .map((d) => d.name);
       for (const id of [...index.versions.map((v) => v.id), ...folders]) expect(versionServer(id).id, `${s.id}/${id}`).toBe(s.id);
     }

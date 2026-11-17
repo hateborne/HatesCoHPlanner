@@ -69,7 +69,7 @@ jobs:
       # release check (its manifests are written by the test, no network), the forced respec check,
       # the difference report between servers and the pseudo-pet export (synthetic data, no client)
       - name: Pipeline unit tests
-        run: python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test
+        run: python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.recipes_test
       # share links and saved builds store these ids: none may change or disappear
       - name: Stable IDs are only appended to
         env:

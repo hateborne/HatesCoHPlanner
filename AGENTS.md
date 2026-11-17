@@ -94,6 +94,10 @@ the project)
   changes no build, so a published version may get one, made by `python -m pipeline.pets` from the
   very client the version was made from. It is optional: the app never waits for it, and without
   it a power shows no pet damage. `pets` is never a version id.
+- A version's recipe file sits beside its folder in the same way (`public/data/recipes/<id>.json`,
+  made by `python -m pipeline.recipes` from the very client the version was made from). Only the
+  set finder's shopping list reads it: no link, saved build or loader does. `recipes` and `finder`
+  are never version ids either.
 - Game servers (`SERVERS` in `src/data/servers.ts`) keep their `id` (stored in builds) and `path`
   (the address segment) forever. A build or link that names no server is Homecoming's, and
   Homecoming's data stays in `public/data/`; another server gets `public/data/<server>/`. The
@@ -151,7 +155,8 @@ src/engine/     pure build rules: rules.ts (BuildRules), totals.ts, enhance.ts, 
                 requires.ts (RPN), validate.ts (checkBuild), schedule.ts, actions.ts, migrate.ts;
                 finder/ (the set finder's engine: ranked swaps of sets into existing slots)
 src/io/         share.ts (#b= links), mids.ts, midsPatches.ts, buildtxt.ts, importProblem.ts,
-                library.ts (IndexedDB), binary.ts, fileName.ts
+                library.ts (IndexedDB), binary.ts, fileName.ts, shopping.ts (the set finder's
+                shopping list in localStorage)
 src/state/      store.ts (zustand: data, build, level-up flow, dialogs); finder.ts and
                 finderOpen.ts (the set finder's own state)
 src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, escape.ts
@@ -159,7 +164,8 @@ tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for
 e2e/            Playwright browser tests (local only)
 research/       the build research (owner's machine only): community builds -> set finder statistics
 public/data/    generated game data per version, versions.json; <server>/ for other servers;
-                pets/ for each version's pseudo-pets (beside the version folders);
+                pets/ for each version's pseudo-pets and recipes/ for its recipes and
+                salvage (both beside the version folders);
                 finder/ for the set finder's build statistics
 public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its icons
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
@@ -223,6 +229,7 @@ python -m pipeline.run --help
 python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
 python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
 python -m pipeline.pets --game-version i28p3     # a published version's pseudo-pet file (its own client)
+python -m pipeline.recipes                       # a published version's recipes and salvage (its own client)
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -234,7 +241,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test` (the release check, the forced respec check, the difference report, the pseudo-pet export); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.recipes_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the recipe export); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub

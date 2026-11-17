@@ -111,6 +111,34 @@ An older patch with no client files left can get an approximate version:
 available level from the configured Mids database (its header names the issue and page). Review
 `pipeline/report-<id>.md`, then commit `public/data` and the report through a pull request.
 
+## Recipes and salvage (the set finder's shopping list)
+
+`python -m pipeline.recipes [--game-version V]` writes `public/data/recipes/<version>.json` and
+nothing else in the data folder: for every set enhancement a dropped recipe makes, the recipe's
+name and rarity and the invention salvage it takes at each level. It decodes the client's
+`bin/baserecipes.bin` and `bin/salvage.bin` with the parse tables found in the client's exe
+(`parse_detailrecipe` in `DetailRecipe.c`, `ParseSalvageDef` in `salvage.c`), takes names from the
+client's English messages, and reads `bin/boostsets.bin` for which enhancements are set pieces.
+Only recipes that drop and make a set piece are kept; store, merit, ticket and memorized recipes
+for the same pieces, and common IO recipes, are left out. Like the pseudo-pet file it sits beside
+the version folders, is not part of the version hash, and is refused for any client but the one
+the version was made from (`COH_CLIENT` pointing at a copy of an older client for an older
+version). `pipeline.run` writes it with a new Homecoming version (a failure there is a warning in
+the report, never a failed export). The file format is described at the top of
+`pipeline/recipes.py`.
+
+Nothing is written when a record does not decode cleanly or the records disagree with each other
+(a salvage name with no definition, a name with no text, two dropped recipes for one enhancement
+and level, names compared without case as the app looks them up), when an icon's name is one the
+app would refuse the file over, or when no recipe makes a set piece at all (the set list was not
+read): the run says which. The salvage
+icons the file names go to `public/assets/icons/salvage/` and are listed in
+`public/assets/manifest.json`, which a later asset export keeps: the default version's export
+writes them all (with no `versions.json` yet, the version `pipeline/patch-watch.json` names
+counts as the default), an older version's only adds the ones not there yet, and `pipeline.run
+--no-assets` writes none. An approximate version has no client and so no recipe file; the
+shopping list then names enhancements only.
+
 ## Build research (the set finder's statistics)
 
 The set finder ranks enhancement sets with statistics taken from community builds, not with

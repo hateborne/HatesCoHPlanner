@@ -6,6 +6,9 @@
  * pipeline/ids.json keys its ids on), so the file reads the same against any game version.
  */
 
+/** Folder beside a server's version folders holding the build statistics (finder/stats.json). */
+export const FINDER_FOLDER = 'finder';
+
 /** How builds of one group treat one stat. */
 export interface FinderStat {
   share: number; // mean share of a build's set-bonus spend that goes to this stat (0..1)
@@ -68,7 +71,7 @@ export function checkFinderStats(raw: unknown): FinderStats | null {
  * @raise Error when the file is missing or is not a statistics file.
  */
 export async function loadFinderStats(root: string): Promise<FinderStats> {
-  const r = await fetch(`${root}finder/stats.json`, { cache: 'no-cache' });
+  const r = await fetch(`${root}${FINDER_FOLDER}/stats.json`, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`the build statistics are missing (HTTP ${r.status})`);
   const stats = checkFinderStats(await r.json());
   if (!stats) throw new Error('the build statistics are not in a form this version reads');

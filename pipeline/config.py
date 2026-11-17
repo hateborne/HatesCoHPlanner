@@ -126,6 +126,11 @@ SERVER_FOLDERS = frozenset({s.data for s in SERVERS.values() if s.data} | {"rebi
 # The folder under a server's data folder that holds its pseudo-pet files (pets/<version>.json),
 # never a game version.
 PETS_FOLDER = "pets"
+# Likewise its recipe files (recipes/<version>.json, pipeline.recipes) and the set finder's build
+# statistics (finder/stats.json, the build research): never game versions either.
+RECIPES_FOLDER = "recipes"
+FINDER_FOLDER = "finder"
+SIDE_FOLDERS = frozenset({PETS_FOLDER, RECIPES_FOLDER, FINDER_FOLDER})
 
 
 def _local(keys: tuple) -> str | None:
@@ -235,7 +240,8 @@ def valid_version_id(v: str) -> bool:
     """Whether a game version id is safe as a data folder name on every system.
 
     Lower-case letters, digits, "-" and "_" only, starting with a letter or digit, at most 32
-    characters, and not a Windows device name, a server's data folder or the pets folder. Lower
+    characters, and not a Windows device name, a server's data folder or a folder of side files
+    (pets, recipes, finder). Lower
     case only, because Windows folders ignore case: "I28P4" would write into "i28p4" while
     versions.json treated them as two versions. No dots either: Windows drops a trailing one, so
     "i28p4." would also land in "i28p4" (Thunderspy's release 9.6 is "ts9-6").
@@ -244,7 +250,7 @@ def valid_version_id(v: str) -> bool:
     @return True when it may name a folder under public/data.
     """
     return (bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", v)) and v not in _RESERVED
-            and v not in SERVER_FOLDERS and v != PETS_FOLDER)
+            and v not in SERVER_FOLDERS and v not in SIDE_FOLDERS)
 
 
 def version_server(version: str) -> Server:
