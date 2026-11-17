@@ -445,11 +445,22 @@ From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p
 
 - A typed defense of aspect Current reads like a Strength one: "+9.75% strength to ranged defense"
   (Homecoming's Hail of Bullets, in game). Both clients do it.
-- A line whose attribute the client can't name (AttrUnknown) is left out. It names only the first
-  ten damage types, so Homecoming's Vulnerability lists "resistance to all damage" but none of its
-  radiation, electrical, sonic or quantum resistance (in game). Those types only ever come with the
-  other eight. Likewise the first ten defense types: Evasive Maneuvers lists "+10.50% strength to
-  all defense" but no toxic defense (in game). The Attack Types row still names every type.
+- "All damage" and "all defense" (markAllTypes in the source; Homecoming 0x1404e1540 and
+  Thunderspy 0x1404d6af0, which walk each effect's attribute list; `markAllTypes` in
+  `src/engine/powerinfo.ts`). For each target, kind
+  and aspect the client walks the power's effects in order: a damage type (offsets 0..79) or defense
+  type (the 20 typed defenses) of that aspect must carry the same Magnitude + Scale as the group's
+  first, else the rest of that effect is passed over; each adds its type's bit, and whenever the mask
+  holds exactly smashing, lethal, fire, cold, energy, negative energy, psionic and toxic (the first
+  ten defense types) one more group counts and the value clears. On the lines, a group's first type
+  reads "all damage" / "all defense" and the next seven (nine) of that kind, target and aspect are
+  left out; after the last group every later one is. So Homecoming's Vulnerability lists "resistance
+  to all damage" and none of its radiation, electrical, sonic or quantum resistance, and Evasive
+  Maneuvers "+10.50% strength to all defense" without its toxic defense (both in game); a lone toxic
+  defense (Invincibility) keeps its line, eight separate equal effects (Thunderspy's Piercing Beam)
+  make one group, and a type outside the eight before the group is whole (Possess' healing) keeps
+  every type apart. @TODO confirm in game: Homecoming's Stealth (Concealment) shows "+7.00% strength
+  to all defense" but not its second, +1.75% effect, which the walk leaves out.
 - The Effect Area row: Single Target, Cone, AoE (Sphere), Location, and "Chain -- 15.00 ft. jump
   distance" with its jump radius (Homecoming's Vulnerability, in game), each with "(N targets max)"
   when the power has a target cap. A Map power gets no row.

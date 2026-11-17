@@ -383,7 +383,6 @@ const ASPECT: Record<string, AType> = {
 };
 
 // Damage types that count as "all damage" (offset/4 bits 639) and defense types (1023).
-const ALL_DAMAGE = [0, 4, 8, 12, 16, 20, 24, 36];
 
 // ---- helpers -----------------------------------------------------------------------------------
 
@@ -409,11 +408,91 @@ function magAndDur(table: number, m: Mod): { mag: number; dur: number } {
   }
 }
 
+/** A kind of attribute the client prints as "all ..." when a power covers every type of it alike. */
+interface AllKind {
+  name: 'damage' | 'defense';
+  has: (offset: number, O: Offsets) => boolean; // the attribute is of this kind (damage 0..79, defense types 104..183)
+  bit: (offset: number, O: Offsets) => number; // its type's bit in the mask
+  all: number; // the mask of every type the group needs (the source's damageTypes, defenseTypes)
+  count: number; // how many types a group spans (damageTypesCount, defenseTypesCount)
+}
+
+const ALL_KINDS: readonly AllKind[] = [
+  // smashing, lethal, fire, cold, energy, negative energy, psionic and toxic: 639
+  { name: 'damage', has: (o, O) => o >= 0 && o < (O['HitPoints'] ?? 80), bit: (o) => o / 4, all: 0x27f, count: 8 },
+  // the first ten defense types: 1023
+  {
+    name: 'defense',
+    has: (o, O) => o >= (O['DefenseType00'] ?? 104) && o < (O['Defense'] ?? 184),
+    bit: (o, O) => (o - (O['DefenseType00'] ?? 104)) / 4,
+    all: 0x3ff,
+    count: 10,
+  },
+];
+
+/** The state of one "all" group: the source's equalForAllTypes, equalSetsForAllTypes, displayedForAllTypes. */
+interface AllGroup {
+  flag: number; // 0 none, 1 the next type reads "all", 2 a group is being shown
+  sets: number; // how many groups the power holds
+  shown: number; // how many types of the current group have been passed
+}
+
+/** @return The key of a mod's "all" group: its target, kind and aspect. */
+const allKey = (m: Mod, k: AllKind) => `${m.tg}|${k.name}|${m.asp}`;
+
+/**
+ * The client's markAllTypes: which target, kind and aspect of a power hold "all damage" / "all
+ * defense" groups (uiPowerInfo.c; Homecoming's live client walks each effect's attribute list,
+ * 0x1404e1540, decompiled).
+ *
+ * 1. For each target, kind and aspect, walk the power's effects in order, attribute by attribute.
+ * 2. An attribute of that kind and aspect takes the group's value (Magnitude + Scale) when none is
+ *    set; a different value passes over the rest of that effect. Otherwise it adds its type's bit.
+ * 3. After each attribute of the target's effects, a mask that holds exactly every type counts one
+ *    more group and clears the value, so a completed mask keeps counting until another type joins.
+ *
+ * @param tmpls The power's templates, one per mod x attribute, in the client's order.
+ * @param O The attribute offsets.
+ * @return The groups by allKey; a key with none is absent.
+ */
+function markAllTypes(tmpls: readonly Tmpl[], O: Offsets): Map<string, AllGroup> {
+  const out = new Map<string, AllGroup>();
+  const targets = new Set(tmpls.map((t) => t.m.tg));
+  const aspects = new Set(tmpls.map((t) => t.m.asp));
+  for (const tg of targets) {
+    for (const kind of ALL_KINDS) {
+      for (const asp of aspects) {
+        let value = 0;
+        let mask = 0;
+        let sets = 0;
+        let passed: Mod | null = null;
+        for (const t of tmpls) {
+          if (t.m.tg !== tg || t.m === passed) continue;
+          if (t.m.asp === asp && kind.has(t.attrib, O)) {
+            const v = (t.m.mag ?? 1) + t.m.sc;
+            if (!value) value = v;
+            else if (value !== v) {
+              passed = t.m;
+              continue;
+            }
+            mask |= 1 << kind.bit(t.attrib, O);
+          }
+          if (mask === kind.all) {
+            value = 0;
+            sets++;
+          }
+        }
+        if (sets) out.set(`${tg}|${kind.name}|${asp}`, { flag: 1, sets, shown: 0 });
+      }
+    }
+  }
+  return out;
+}
+
 /** One mod applied to one attribute, with the chance/requirements of its effect group. */
 interface Tmpl {
   m: Mod;
   attrib: number;
-  all?: 'damage' | 'defense'; // collapses every damage / defense type into one "all" line
   chance: number; // 0..1, its own group's chance (the client reads no parent's), the tick chance apart
   shown: number; // 0..1, the group chance its line reads: `chance`, or its group's tag mode's chance
   mode: string | null; // a tag mode's note (tagMode): its line is listed whatever its chance
@@ -604,29 +683,25 @@ export function powerInfo(
   const ownGroupRequires = serverById(gd.server)?.infoRequires === 'ownGroup';
 
   const attrName = (offset: number): string | null => {
-    // the client names only the first ten damage types; it leaves out a line whose attribute it
-    // can't name (AttrUnknown), so Vulnerability lists no radiation, electrical, sonic or quantum
-    // resistance beside "all damage", as in game
-    if (offset >= 0 && offset < 80) return DAMAGE_NAMES[offset / 4] ?? null;
-    // likewise the first ten defense types only: Evasive Maneuvers lists no toxic defense beside
-    // "all defense", as in game (the Attack Types row names them all: defenseTypeName)
+    if (offset >= 0 && offset < 80) {
+      const nm = DAMAGE_NAMES[offset / 4];
+      if (nm) return nm;
+      const dn = gd.core.attribNames.Damage[offset / 4]?.dn;
+      return dn ? (/unique/i.test(dn) ? 'unique' : `${dn.replace(/_/g, ' ').toLowerCase()} damage`) : null;
+    }
     const d0 = O['DefenseType00'] ?? 104;
-    if (offset >= d0 && offset < d0 + 80) return DEFENSE_NAMES[(offset - d0) / 4] ?? null;
+    if (offset >= d0 && offset < d0 + 80) {
+      const i = (offset - d0) / 4;
+      const nm = DEFENSE_NAMES[i];
+      if (nm) return nm;
+      const dn = gd.core.attribNames.Defense[i]?.dn;
+      return dn ? dn.replace(/_/g, ' ').toLowerCase() : 'unique';
+    }
     const raw = gd.attribName.get(offset);
     if (!raw) return null;
     const known = ATTR_NAMES[raw];
     if (known) return known;
     return raw.replace(/([a-z])([A-Z0-9])/g, '$1 $2').toLowerCase();
-  };
-
-  /** @return A defense type's name for the Attack Types row (toxic past the first ten), or null. */
-  const defenseTypeName = (offset: number): string | null => {
-    const i = (offset - (O['DefenseType00'] ?? 104)) / 4;
-    if (i < 0 || i >= 20) return null;
-    const nm = DEFENSE_NAMES[i];
-    if (nm) return nm;
-    const dn = gd.core.attribNames.Defense[i]?.dn;
-    return dn ? dn.replace(/_/g, ' ').toLowerCase() : 'unique';
   };
 
   const eff = (off: number | undefined) => str(off);
@@ -700,19 +775,7 @@ export function powerInfo(
           tags: e.tag ?? [],
           evalOk: true,
         };
-        const eType = ASPECT[m.asp];
-        const hasAll = (offs: number[]) => offs.every((o) => m.a.includes(o));
-        const d0 = O['DefenseType00'] ?? 104;
-        const allDef = Array.from({ length: 10 }, (_, i) => d0 + i * 4);
-        const rest = new Set(m.a);
-        if (eType && eType !== 'Abs' && eType !== 'Max' && hasAll(ALL_DAMAGE)) {
-          for (const o of ALL_DAMAGE) rest.delete(o);
-          out.push({ ...base, attrib: ALL_DAMAGE[0] ?? 0, all: 'damage' });
-        } else if ((eType === 'Cur' || eType === 'Str') && hasAll(allDef)) {
-          for (const o of allDef) rest.delete(o);
-          out.push({ ...base, attrib: d0, all: 'defense' });
-        }
-        for (const a of m.a) if (rest.has(a)) out.push({ ...base, attrib: a });
+        for (const a of m.a) out.push({ ...base, attrib: a });
       }
     }
   };
@@ -760,7 +823,7 @@ export function powerInfo(
     let base = 0;
     let total = 0;
     for (const t of tmpls) {
-      if (t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs' || t.all) continue;
+      if (t.attrib < 0 || t.attrib >= hp || ASPECT[t.m.asp] !== 'Abs') continue;
       if (requiresNotes(t.reqs, true).length) continue;
       const { mag, dur } = magAndDur(table(t.m.tbl), t.m);
       if (!(mag < 0)) continue;
@@ -964,9 +1027,9 @@ export function powerInfo(
   }
   if (power.atk && power.atk.length) {
     const names = power.atk.map((o) => {
-      const d = defenseTypeName(o);
-      if (d) return `${d} defense`;
-      return attrName(o) ?? String(o);
+      const n = attrName(o);
+      const d0 = O['DefenseType00'] ?? 104;
+      return n && o >= d0 && o < d0 + 80 ? `${n} defense` : (n ?? String(o));
     });
     target.push(row(TXT.attackTypes, `<color #ffffff>${names.join(', ')}`));
   }
@@ -1018,6 +1081,7 @@ export function powerInfo(
     out: InfoEffect[],
   ): void => {
     petLines(name, cls, both, depth, out);
+    const groups = markAllTypes(tmpls, O);
     for (const t of tmpls) {
       const m = t.m;
       const offset = t.attrib;
@@ -1071,6 +1135,23 @@ export function powerInfo(
       // duration from a table doesn't count), else the tick chance
       if (off100(fChance) && !m.dur) pchChance = chanceText(fChance);
       else if (off100(fTick) && !cancelOnMiss) pchChance = chanceText(fTick);
+      // "all damage" / "all defense" (markAllTypes): a group's first type reads "all", the rest of
+      // its kind for the same target and aspect are left out
+      let allKind: AllKind['name'] | null = null;
+      const kind = ALL_KINDS.find((k) => k.has(offset, O));
+      const st = kind && groups.get(allKey(m, kind));
+      if (kind && st && st.flag > 1) {
+        if (++st.shown >= kind.count && --st.sets > 0) {
+          st.flag = 1;
+          st.shown = 0;
+        }
+        continue;
+      }
+      if (kind && st && st.flag === 1) {
+        st.flag++;
+        st.shown++;
+        allKind = kind.name;
+      }
       let iTicks = 0;
       if (isDamageOff(offset) && eType === 'Abs') {
         if (pet && pet.dur && ap) iTicks = Math.floor(Math.fround(Math.fround(pet.dur) / Math.fround(ap))) + 1;
@@ -1089,7 +1170,6 @@ export function powerInfo(
 
       // typed name
       let pchType: string;
-      const allKind = t.all;
       if (isDamageOff(offset)) {
         if (eType === 'Str') pchType = `strength to ${allKind ? 'all damage' : attr}`;
         else if (eType === 'Cur') pchType = allKind ? 'all damage' : attr;

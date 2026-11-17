@@ -193,3 +193,36 @@ describe("powerInfo: the owner's second round of checks (Homecoming, level 50, N
     expect(rows(info('class_tanker', 'tanker_melee.radiation_melee.atom_smasher').target)['Attack Types:']).toBe('AoE defense, toxic defense');
   });
 });
+
+describe('powerInfo: "all damage" and "all defense" groups (markAllTypes, both clients)', () => {
+  const at = gd.archetypeByName.get('class_blaster')!;
+  const base = gd.powerByName.get('blaster_ranged.fire_blast.flares')!;
+  const res = (a: number[], sc: number) => ({ a, asp: 'Resistance', t: 'Magnitude', tg: 'Caster', tbl: 'Ranged_Res_Dmg', sc });
+  const lines = (m: ReturnType<typeof res>[]) =>
+    powerInfo(gd, at, { ...base, act: undefined, eff: m.map((x) => ({ m: [x] })) }, 49, null).effects.map((e) => segText(e.line).replace(/^\+?[\d.]+% /, ''));
+  const EIGHT = [0, 4, 8, 12, 16, 20, 24, 36];
+
+  it('groups the eight types across separate effects of equal value', () => {
+    expect(lines(EIGHT.map((o) => res([o], 1)))).toEqual(['resistance to all damage on self']);
+  });
+
+  it('lists each type when a value differs or a ninth type joins before the group is whole', () => {
+    expect(lines([res(EIGHT.slice(0, 7), 1), res([36], 2)])).toHaveLength(8);
+    expect(lines([res([0, 4, 8, 12, 16, 20, 24, 28, 36], 1)])).toHaveLength(9); // healing (28) comes before toxic
+  });
+
+  it('shows a second group for a second effect with every type', () => {
+    expect(lines([res(EIGHT, 1), res(EIGHT, 2)])).toEqual(['resistance to all damage on self', 'resistance to all damage on self']);
+  });
+
+  it('passes over a second effect once a ninth type has taken the value (Stealth, Homecoming)', () => {
+    // the ninth type (radiation) sets the value anew, the second effect's differs, so only one group
+    // counts and every later damage type of that target and aspect is left out
+    expect(lines([res([...EIGHT, 40], 1), res(EIGHT, 2)])).toEqual(['resistance to all damage on self']);
+  });
+
+  it('keeps a lone toxic defense line (no group): Invincibility, Homecoming', () => {
+    const inv = powerInfo(gd, gd.archetypeByName.get('class_tanker')!, gd.powerByName.get('tanker_defense.invulnerability.invincibility')!, 49, null);
+    expect(inv.effects.some((e) => segText(e.line).includes('toxic defense'))).toBe(true);
+  });
+});
