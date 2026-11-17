@@ -1,4 +1,4 @@
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Fragment, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Archetype } from '../../data/types.ts';
 import { powerStrength } from '../../engine/enhance.ts';
@@ -56,11 +56,14 @@ const Divider = () => <div style={{ borderTop: '1px solid #5a6aa8', margin: `${T
  * @param props.level 0-based character level the values are shown at.
  */
 export function AdvancedInfo({ gd, at, entry, level }: { gd: GameData; at: Archetype; entry: BuildEntry; level: number }) {
+  // the version's pets file may arrive while this is open: its pet damage shows then
+  const pets = useSyncExternalStore(gd.subscribePets, () => gd.pets);
   const info = useMemo(() => {
+    void pets; // read through gd: recomputed when the pets file arrives
     const enhs = entry.slots.filter((s) => s.level <= level).map((s) => s.enh);
     const str = powerStrength(gd, at, entry.power, enhs, level).post;
     return powerInfo(gd, at, entry.power, level, str);
-  }, [gd, at, entry, level]);
+  }, [gd, at, entry, level, pets]);
   const blocks: ReactNode[] = [];
   if (info.stats.length) blocks.push(<Rows key="s" rows={info.stats} />);
   if (info.target.length) blocks.push(<Rows key="t" rows={info.target} />);

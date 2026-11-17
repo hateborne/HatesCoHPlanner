@@ -87,6 +87,12 @@ the project)
 - Each game version's data lives in its own folder, `public/data/<id>/` (for example `i28p4` for
   Issue 28, Page 4), listed in `public/data/versions.json`. Never edit or delete a published
   version folder: links made on that patch load it. A new patch gets a new folder.
+- A version's pseudo-pet file sits beside its folder, in the server's `pets/` folder
+  (`public/data/pets/<id>.json`, `public/data/thunderspy/pets/<id>.json`; the owner's choice, so a
+  published folder never changes). It only adds pet damage and effects to the power info and
+  changes no build, so a published version may get one, made by `python -m pipeline.pets` from the
+  very client the version was made from. It is optional: the app never waits for it, and without
+  it a power shows no pet damage. `pets` is never a version id.
 - Game servers (`SERVERS` in `src/data/servers.ts`) keep their `id` (stored in builds) and `path`
   (the address segment) forever. A build or link that names no server is Homecoming's, and
   Homecoming's data stays in `public/data/`; another server gets `public/data/<server>/`. The
@@ -148,7 +154,8 @@ src/state/      store.ts (zustand: data, build, level-up flow, dialogs)
 src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, escape.ts
 tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for the e2e tests
 e2e/            Playwright browser tests (local only)
-public/data/    generated game data per version, versions.json; <server>/ for other servers
+public/data/    generated game data per version, versions.json; <server>/ for other servers;
+                pets/ for each version's pseudo-pets (beside the version folders)
 public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its icons
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
 tools/          standard-library Python decoders for client file formats
@@ -208,6 +215,7 @@ npm run build        # type check + production build into dist/
 python -m pipeline.run --help
 python -m pipeline.watch       # a new release on a server's live manifest (Thunderspy)
 python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
+python -m pipeline.pets --game-version i28p3     # a published version's pseudo-pet file (its own client)
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -219,7 +227,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `npm audit --audit-level=high` (tools) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test` (the release check, the forced respec check, the difference report); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test` (the release check, the forced respec check, the difference report, the pseudo-pet export); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub

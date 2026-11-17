@@ -24,6 +24,16 @@ owner's machine only. The rules every change must keep are in `AGENTS.md`.
 the client executable (for parse-table layouts and enum names), decodes powers, sets,
 archetypes, enhancements, tables and English text, and writes `public/data/<version>/`. That
 folder holds `core.json`, `powersets.json`, `powers.json`, `boosts.json` and `mids-map.json`.
+Beside it the run writes the version's pseudo-pets, `public/data/pets/<version>.json`
+(Exporter.build_pets): the pets whose damage the client's power info adds to the power that makes
+them (Burn, Irradiated Ground, Rain of Fire, ...), with their powers, villain classes and the
+tables they read (villaindef.bin and villain_classes.bin are decoded for it), what their powers
+execute and the names of what they grant that the version lacks. It is not part of the
+version hash. `python -m pipeline.pets [--server S] [--game-version V]` writes only that file, for
+a version published before it existed, and refuses any client but the one the version was made
+from (`COH_CLIENT` pointing at a copy of an older client for an older version). The pet rules come
+from reading each client's code: an export from a client exe not listed in its server's
+`pet_checked` (`pipeline/config.py`) warns until someone reads it and adds its hash.
 
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
 `pipeline/report.md`. Safety rails:
