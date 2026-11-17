@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { GameData, PETS_FOLDER } from '../../src/data/gamedata.ts';
+import { GameData, INFO_FOLDER, PETS_FOLDER } from '../../src/data/gamedata.ts';
 import { DEFAULT_SERVER, serverById } from '../../src/data/servers.ts';
 import type { BoostsFile, Core, Power, Powerset } from '../../src/data/types.ts';
 import type { GameVersions } from '../../src/data/versions.ts';
@@ -45,6 +45,8 @@ export function loadData(version?: string, server: string = DEFAULT_SERVER): Gam
   );
   const pets = join(root, PETS_FOLDER, `${id}.json`);
   if (existsSync(pets)) gd.setPets(JSON.parse(readFileSync(pets, 'utf-8')));
+  const info = join(root, INFO_FOLDER, `${id}.json`);
+  if (existsSync(info)) gd.setInfo(JSON.parse(readFileSync(info, 'utf-8')), id);
   cached.set(key, gd);
   return gd;
 }

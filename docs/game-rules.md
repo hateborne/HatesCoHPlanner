@@ -445,7 +445,10 @@ Shield and Quantum Shield list the effects under their "not in Nova form" parent
   total (Fire Blast 84.72, in game).
 - Thunderspy's power info doesn't test a group's PvE/PvP flags at all, so it lists PvP-only groups
   too (its Twilight Shield's second set of knock protections and 93.42% status resistances, in
-  game). @TODO the export drops PvP-only groups (5 Thunderspy powers carry some, none with damage).
+  game). The export drops PvP-only groups, so the version's info file carries the groups of each
+  power with one only its PVPOnly flag marks (`info_lists_pvp` in `pipeline/config.py`, `infoPvp:
+  'listed'` in `src/data/servers.ts`): 7 Thunderspy powers, none with damage. A group requiring a
+  player target is left out by the requirement check anyway.
 
 ## Power info wording
 
@@ -473,9 +476,20 @@ From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p
 - The Effect Area row: Single Target, Cone, AoE (Sphere), Location, and "Chain -- 15.00 ft. jump
   distance" with its jump radius (Homecoming's Vulnerability, in game), each with "(N targets max)"
   when the power has a target cap. A Map power gets no row.
-- @TODO the attribute names ("knock", "defense debuff"), the note texts ("unresistable") and the
-  "Aggro Type" row come from each client's own message files and data, which the export doesn't
-  read yet.
+- From the version's info file (`public/data/info/<version>.json`, Exporter.build_info), when it
+  has arrived:
+  - each effect's own note (its Messages.DisplayInfo: "Within 20ft radius", "Main Target Only",
+    "Opportunity", "Overpower", "Every 0.8 seconds for 10 seconds"), after the requirement notes and
+    before "Ignores buffs and enhancements" and "unresistable" (the client's order); for a power the
+    file gives notes, the planner's own "Overpower" from the tag gives way to them;
+  - the attribute names as the client writes them, the message "Attr" + the field name (Homecoming's
+    "knock", "defense debuff", "to hit"; Thunderspy's "knockback"), and the notes' own texts
+    ("unresistable");
+  - no "Grants power" line for a power the client keeps out of the inventory (ShowInInventory 0:
+    Crushing Uppercut's Assassin's Focus, in game);
+  - the "Aggro Type" row for AIReport 1 or 2 ("Enemies will not notice this attack", Vulnerability
+    in game; Thunderspy's client reads "Enemies will not notice if this attack misses" for 2).
+  Without the file the power info keeps the planner's own wording and grant lines.
 
 ## Grants (Kheldian forms etc.)
 

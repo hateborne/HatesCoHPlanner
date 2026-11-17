@@ -58,12 +58,15 @@ const Divider = () => <div style={{ borderTop: '1px solid #5a6aa8', margin: `${T
 export function AdvancedInfo({ gd, at, entry, level }: { gd: GameData; at: Archetype; entry: BuildEntry; level: number }) {
   // the version's pets file may arrive while this is open: its pet damage shows then
   const pets = useSyncExternalStore(gd.subscribePets, () => gd.pets);
+  // and its info file (the client's effect notes, grants and wording)
+  const extras = useSyncExternalStore(gd.subscribeInfo, () => gd.info);
   const info = useMemo(() => {
-    void pets; // read through gd: recomputed when the pets file arrives
+    void pets; // read through gd: recomputed when the pets or info file arrives
+    void extras;
     const enhs = entry.slots.filter((s) => s.level <= level).map((s) => s.enh);
     const str = powerStrength(gd, at, entry.power, enhs, level).post;
     return powerInfo(gd, at, entry.power, level, str);
-  }, [gd, at, entry, level, pets]);
+  }, [gd, at, entry, level, pets, extras]);
   const blocks: ReactNode[] = [];
   if (info.stats.length) blocks.push(<Rows key="s" rows={info.stats} />);
   if (info.target.length) blocks.push(<Rows key="t" rows={info.target} />);
