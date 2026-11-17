@@ -220,7 +220,8 @@ one older than every listed version was made before the oldest listed patch, and
 every listed version is unknown and opens on the default version (it may be any later patch, so
 today's Mids builds never land on older data). The planner's own exports
 name their game version (`BuiltWith.GameVersion`, which Mids ignores). Old `|MxDz;` codes record
-nothing and open on the default version. `importTarget()` (`src/data/versions.ts`) then opens the
+nothing and open on the default version; their layout follows the save version they carry (a
+power's ProcInclude from 3.10, the inherent-slot fields only from 3.20: `mxdzToMbd`). `importTarget()` (`src/data/versions.ts`) then opens the
 build on its own patch when the site carries it, exact data before approximate. Otherwise it
 offers the nearest newer patch, or the newest. A move first lists the swaps `fitToPatch()` makes
 in the confirm dialog: picks trade places, slots trade the levels they were gained at, nothing is
@@ -272,7 +273,9 @@ be picked at a level, what is auto-granted, where slots can go, what is wrong wi
 Enhancement Diversification, boosters and exemplar handicaps, set bonuses with the rule of 5,
 and archetype caps. The power info (`powerinfo.ts`) adds the damage of the pseudo-pets a power
 makes and of the powers it executes, and lists the pets' effects, as the live clients do
-(`docs/game-rules.md`, "Pseudo-pet damage").
+(`docs/game-rules.md`, "Pseudo-pet damage"). It lists Fiery Embrace's and Dual Pistols' ammo
+groups and Homecoming's Stalker team crits with the client's notes and chances
+(`docs/game-rules.md`, "Tag modes").
 The engine is pure and synchronous; keep React and the DOM out of it.
 
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per
@@ -476,6 +479,16 @@ selectors (`useShallow`) and call its actions.
   on the button); refusals use `notify` or `flashLocked`. The server list is `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.
+- A desktop tooltip taller than the stage (Spotlight's Advanced tooltip) is cut to the room above
+  the Back / Finish bar and scrolls with the mouse wheel and Page Up / Page Down while it is shown.
+  A wheel gesture stays with what it started on until the wheel rests, as browsers latch one: one
+  that starts on the tooltip stops at its end, and one that starts on the list (or past the
+  tooltip's end) keeps scrolling the list as tall tooltips come and go under the pointer. With two
+  tooltips up, the newest cut short takes the wheel; with a pop-up open, none does. Its scrollbar
+  only shows there is more (a hover box can't be dragged); the box widens for it (and pads its
+  right side for a scrollbar that floats over the text) so its text doesn't rewrap (`Floating` and `useTallWheel` in
+  `src/ui/components/PowerTip.tsx`; `floatingRoom`, `routeWheel` and `scrollRoom` in
+  `src/ui/floating.ts`). The phone's long-press tooltip scrolls by touch.
 
 ## Browser tests
 
@@ -490,6 +503,9 @@ selectors (`useShallow`) and call its actions.
 
   `respeconly.spec.ts` drives New Build itself: an Arachnos archetype picked with Leveling ticked
   switches to Respec and says why, and Finish starts a Respec to 24 at least.
+  `tooltipwheel.spec.ts` (desktop only) hovers a tall Advanced tooltip (Hail of Bullets) and turns
+  the wheel: the gesture stays on it to its end, a turn after a rest goes to the screen, and Page
+  Up / Page Down scroll it.
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.
