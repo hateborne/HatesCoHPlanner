@@ -87,7 +87,7 @@ def main() -> int:
     ex = export.Exporter(data)
     ex.build()                   # what the version exports; its ids are never saved here
     shown = export.info_powers({"powers": powers, "boosts": boosts})
-    summary = export.write_info(ex.build_info(shown, pets.get("powers") or {}), version)
+    summary = export.write_info(ex.build_info(shown, pets.get("powers") or {}, version), version)
     for w in export.info_warnings(summary):
         print(w)
     print(f"wrote {export.data_rel(config.INFO_FOLDER, version + '.json')}: notes for {summary['notes']} powers, "

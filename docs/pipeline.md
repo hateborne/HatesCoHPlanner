@@ -45,8 +45,10 @@ message "Attr" + the field name: "knock", "defense debuff", Thunderspy's "knockb
 texts for the notes the planner writes ("unresistable"); and, on a server whose client lists
 PvP-only groups (Thunderspy, `info_lists_pvp`), the groups of each power with one only its PVPOnly
 flag marks. A power's notes are written only when its groups, made again from the client, are the
-very groups the version's files hold (else it is named in a warning), so a note never lands on
-another mod. `python -m pipeline.info [--server S] [--game-version V]` writes only that file, for a
+very groups the version's files hold and its notes line up with them group by group and mod by mod
+(else it is named in a warning), so a note never lands on another mod; a PvP-only group is listed
+only when the version's files carry every table it scales by. The file names its version
+(`"version"`), and the app refuses one that names another. `python -m pipeline.info [--server S] [--game-version V]` writes only that file, for a
 version published before it existed, from the version's own client and after its pets file.
 
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
@@ -122,5 +124,6 @@ effect lines a side per power. The owner uses it to know what to spot-check in t
 Homecoming default.
 An older patch with no client files left can get an approximate version:
 `python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
-available level from the configured Mids database (its header names the issue and page). Review
+available level from the configured Mids database (its header names the issue and page). The
+base's pets and info files are copied too (the info file renamed for the new version). Review
 `pipeline/report-<id>.md`, then commit `public/data` and the report through a pull request.

@@ -1118,6 +1118,8 @@ export function powerInfo(
   ): void => {
     petLines(name, cls, both, depth, out);
     const groups = markAllTypes(tmpls, O);
+    // the power's own notes came from the info file (none until it arrives, or where its groups differ)
+    const noted = !!gd.info?.notes[name];
     for (const t of tmpls) {
       const m = t.m;
       const offset = t.attrib;
@@ -1263,7 +1265,7 @@ export function powerInfo(
       const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
       // the client's order: the tag mode, the requirement notes, the effect's own note, the flags
       if (t.mode) note(t.mode);
-      if (t.tags.includes('Overpower') && !gd.info) note('Overpower'); // with the info file, the effect's own note says it
+      if (t.tags.includes('Overpower') && !noted) note('Overpower'); // else the effect's own note says it, as in game
       for (const n of requiresNotes(t.reqs, false)) note(n);
       if (t.info) notes.push(parseMarkup(t.info, NOTE_COLOR).map((g) => ({ ...g, italic: true })));
       if (m.fl?.includes('IgnoreStrength')) note(gd.info?.text.IgnoresBuffsAndEnhancements ?? TXT.ignoresBuffs);

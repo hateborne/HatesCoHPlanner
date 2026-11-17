@@ -181,10 +181,11 @@ export class GameData {
    * power info then shows none of its extras) rather than trusted (readInfoFile).
    *
    * @param raw The parsed info/<version>.json.
+   * @param version The id of the version it was fetched for (a file naming another is refused).
    * @return Whether it was taken.
    */
-  setInfo(raw: unknown): boolean {
-    const file = readInfoFile(raw);
+  setInfo(raw: unknown, version: string): boolean {
+    const file = readInfoFile(raw, version);
     if (!file) return false;
     this.info = file;
     for (const l of [...this.infoListeners]) l();
@@ -256,8 +257,8 @@ export const INFO_FOLDER = 'info';
  *
  * The version's pseudo-pet and power-info extras files are fetched once these four have arrived,
  * and never waited for: each is attached when it comes (GameData.setPets, setInfo), and a slow,
- * missing or damaged one only leaves pet damage or the extras out. The build always opens on the four files alone, and a load that fails on them
- * fetches no pet file.
+ * missing or damaged one only leaves pet damage or the extras out. The build always opens on the
+ * four files alone, and a load that fails on them fetches neither extra file.
  *
  * @param server The server the version belongs to.
  * @param base Site base URL (import.meta.env.BASE_URL).
@@ -290,6 +291,6 @@ export async function loadGameData(server: GameServer, base: string, version: Ga
       .catch(() => undefined);
   };
   extra(PETS_FOLDER, (raw) => gd.setPets(raw));
-  extra(INFO_FOLDER, (raw) => gd.setInfo(raw));
+  extra(INFO_FOLDER, (raw) => gd.setInfo(raw, version.id));
   return gd;
 }

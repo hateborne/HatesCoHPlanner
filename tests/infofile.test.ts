@@ -44,8 +44,8 @@ function without<T>(gd: GameData, run: () => T): T {
 
 describe('the info file is taken only whole and well formed', () => {
   it("takes every published version's file", () => {
-    expect(fresh().setInfo(raw())).toBe(true);
-    expect(fresh().setInfo(raw('homecoming', 'i28p3'))).toBe(true);
+    expect(fresh().setInfo(raw(), 'i28p4')).toBe(true);
+    expect(fresh().setInfo(raw('homecoming', 'i28p3'), 'i28p3')).toBe(true);
     expect(loadData('ts9-6', 'thunderspy').info?.groups?.['Warshade_Defensive.Umbral_Aura.Twilight_Shield']).toBeDefined();
   });
 
@@ -58,28 +58,35 @@ describe('the info file is taken only whole and well formed', () => {
       (f) => ((f.attr as Rec)['328'] = null),
       (f) => delete f.text,
       (f) => (f.groups = { 'Pool.Flight.Hover': { eff: [{ m: [{ a: 8 }] }] } }),
+      (f) => delete f.version,
     ];
     for (const b of breaks) {
       const gd = fresh();
       const f = raw();
       b(f);
-      expect(gd.setInfo(f)).toBe(false);
+      expect(gd.setInfo(f, 'i28p4')).toBe(false);
       expect(gd.info).toBeNull();
     }
+  });
+
+  it("refuses another version's file (one copied to the wrong place)", () => {
+    const gd = fresh();
+    expect(gd.setInfo(raw('homecoming', 'i28p3'), 'i28p4')).toBe(false);
+    expect(gd.info).toBeNull();
   });
 
   it('finds nothing under a name objects carry anyway, and tells those waiting', () => {
     const gd = fresh();
     let heard = 0;
     const stop = gd.subscribeInfo(() => heard++);
-    gd.setInfo({ nope: true });
+    gd.setInfo({ nope: true }, 'i28p4');
     expect(heard).toBe(0);
-    gd.setInfo(raw());
+    gd.setInfo(raw(), 'i28p4');
     expect(heard).toBe(1);
     expect(gd.info!.notes['constructor']).toBeUndefined();
     expect(gd.info!.aggro['toString']).toBeUndefined();
     stop();
-    gd.setInfo(raw());
+    gd.setInfo(raw(), 'i28p4');
     expect(heard).toBe(1);
   });
 });
@@ -131,6 +138,19 @@ describe('what the info file changes in the power info', () => {
   it("says Overpower through the effect's own note (Shadow Field's pet, as in game), once", () => {
     const sf = show(hc, 'class_controller', 'controller_control.darkness_control.shadow_field').lines;
     expect(sf).toContain('20.00% chance for 1.00 magnitude hold for 48.00s on target / Overpower');
+    expect(sf.filter((l) => l.includes('Overpower'))).toHaveLength(1);
+  });
+
+  it('keeps the planner\'s "Overpower" note for a power the file gives no notes (its groups differed)', () => {
+    const pet = 'Villain_Pets.Shadow_Field.Shadow_Field_Hold_Controller';
+    const kept = hc.info!.notes[pet];
+    delete hc.info!.notes[pet];
+    try {
+      const sf = show(hc, 'class_controller', 'controller_control.darkness_control.shadow_field').lines;
+      expect(sf).toContain('20.00% chance for 1.00 magnitude hold for 48.00s on target / Overpower');
+    } finally {
+      hc.info!.notes[pet] = kept!;
+    }
   });
 
   it("lists Thunderspy's PvP-only groups as its client does (Twilight Shield, in game: 14 lines)", () => {

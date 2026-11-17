@@ -46,7 +46,7 @@ export function loadData(version?: string, server: string = DEFAULT_SERVER): Gam
   const pets = join(root, PETS_FOLDER, `${id}.json`);
   if (existsSync(pets)) gd.setPets(JSON.parse(readFileSync(pets, 'utf-8')));
   const info = join(root, INFO_FOLDER, `${id}.json`);
-  if (existsSync(info)) gd.setInfo(JSON.parse(readFileSync(info, 'utf-8')));
+  if (existsSync(info)) gd.setInfo(JSON.parse(readFileSync(info, 'utf-8')), id);
   cached.set(key, gd);
   return gd;
 }

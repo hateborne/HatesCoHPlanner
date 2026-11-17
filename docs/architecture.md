@@ -123,8 +123,8 @@ once those files have arrived and is never waited for (`loadGameData`): it is at
 arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
 damaged or slow one only leaves pet damage out. The version's power-info extras file is fetched the
-same way (`GameData.setInfo`, `src/data/info.ts`, `subscribeInfo`); without it the power info shows
-no effect notes and keeps the planner's own wording.
+same way (`GameData.setInfo`, `src/data/info.ts`, `subscribeInfo`; a file naming another version is
+refused); without it the power info shows no effect notes and keeps the planner's own wording.
 
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies

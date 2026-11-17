@@ -776,7 +776,7 @@ class Exporter:
                     break
         return out
 
-    def build_info(self, powers: list[dict], pet_powers: dict) -> dict:
+    def build_info(self, powers: list[dict], pet_powers: dict, version: str) -> dict:
         """The power-info extras of a version: what the client's power info reads from fields the
         version's own files don't carry (<server data>/info/<version>.json).
 
@@ -790,17 +790,27 @@ class Exporter:
         5. attr: the attribute names; text: the client's texts for the notes the planner writes.
 
         A power's notes and groups are only written when its groups, made again here, are the very
-        groups the version's files hold, so a note can never land on another mod.
+        groups the version's files hold and its notes line up with them group by group and mod by
+        mod, so a note can never land on another mod. A kept PvP-only group is only written when
+        the version's files carry every table it scales by.
+
+        It runs after build() (pipeline.run: after the version's files and ids are written), and
+        leaves what build() made as it was: the groups made again here allocate no new ids (build()
+        made the same ones; a pet's are by name), and the tables and report counts they touch are
+        put back.
 
         @param powers The version's power records as written (powers.json, boosts.json).
         @param pet_powers Its pets file's "powers".
+        @param version The game version id the file belongs to (the app checks it on load).
         @return The file, with a "summary".
         """
-        # what build() counted for the report stays as it was: the groups are only made again here
+        # what build() counted and the tables it wrote stay as they were: the groups are only made again here
         counted = {k: (Counter(v) if isinstance(v, Counter) else v) for k, v in self.report.items()}
+        tables = set(self.used_tables)
         notes: dict = {}
         groups: dict = {}
         mismatched: list[str] = []
+        untabled: list[str] = []
         lists_pvp = config.SERVER.info_lists_pvp
         for name, out, ids in ([(p["n"], p, True) for p in powers]
                                + [(n, p, False) for n, p in sorted(pet_powers.items())]):
@@ -812,13 +822,24 @@ class Exporter:
                 mismatched.append(name)
                 continue
             keep = lists_pvp and any(self.pvp_flag(e) and not self.pvp_only(e, True) for e in self._all_groups(rec))
+            laid = made
             if keep:
-                full = {k: v for k, v in (("eff", self.conv_effects(rec.get("Effect"), False, True)),
-                                          ("act", self.conv_effects(rec.get("ActivationEffect"), False, True))) if v}
-                groups[name] = full
-            tree = {k: v for k, v in (("e", self.info_tree(rec.get("Effect"), keep)),
-                                      ("a", self.info_tree(rec.get("ActivationEffect"), keep)))
-                    if any(x is not None for x in v)}
+                full = (self.conv_effects(rec.get("Effect"), False, True),
+                        self.conv_effects(rec.get("ActivationEffect"), False, True))
+                # a pet's tables are all in its pets file (every mod's); a power of the version's own
+                # only has those its files scale by
+                if ids and self._tables_of([*full[0], *full[1]]) - tables:
+                    untabled.append(name)
+                    keep = False
+                else:
+                    laid = full
+                    groups[name] = {k: v for k, v in (("eff", full[0]), ("act", full[1])) if v}
+            te, ta = self.info_tree(rec.get("Effect"), keep), self.info_tree(rec.get("ActivationEffect"), keep)
+            if not (self._lines_up(te, laid[0]) and self._lines_up(ta, laid[1])):
+                mismatched.append(name)
+                groups.pop(name, None)
+                continue
+            tree = {k: v for k, v in (("e", te), ("a", ta)) if any(x is not None for x in v)}
             if tree:
                 notes[name] = tree
         hidden = set()
@@ -838,12 +859,38 @@ class Exporter:
                 if self.M.get(key):
                     aggro[p["n"]] = self.M[key]
         text = {k: self.M[k] for k in ("Unresistable", "IgnoresBuffsAndEnhancements", "AggroReport") if self.M.get(k)}
-        out = {"notes": notes, "hiddenGrants": sorted(hidden), "aggro": aggro, "attr": self._attr_names(), "text": text}
+        out = {"version": version, "notes": notes, "hiddenGrants": sorted(hidden), "aggro": aggro,
+               "attr": self._attr_names(), "text": text}
         if groups:
             out["groups"] = groups
         out["summary"] = {"notes": len(notes), "groups": len(groups), "hidden_grants": len(hidden),
-                          "aggro": len(aggro), "mismatched": mismatched}
+                          "aggro": len(aggro), "mismatched": mismatched, "untabled": untabled}
         self.report.update(counted)
+        self.used_tables = tables
+        return out
+
+    @staticmethod
+    def _lines_up(tree: list, groups: list) -> bool:
+        """@return Whether a notes tree (info_tree) has one entry per group (conv_effects) and one
+        note per mod, at every level."""
+        if len(tree) != len(groups):
+            return False
+        for node, g in zip(tree, groups):
+            if node is None:
+                continue
+            if "m" in node and len(node["m"]) != len(g.get("m") or []):
+                return False
+            if "s" in node and not Exporter._lines_up(node["s"], g.get("sub") or []):
+                return False
+        return True
+
+    @staticmethod
+    def _tables_of(groups: list) -> set[str]:
+        """@return The tables (lower case) the mods of converted groups scale by, nested ones too."""
+        out: set[str] = set()
+        for g in groups:
+            out.update(m["tbl"].lower() for m in g.get("m") or [] if m.get("tbl"))
+            out |= Exporter._tables_of(g.get("sub") or [])
         return out
 
     @staticmethod
@@ -1231,7 +1278,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
 
     pets_summary = write_pets(pets, version)
     warnings += pet_warnings(pets_summary)
-    info_summary = write_info(ex.build_info(info_powers(out), pets["powers"]), version)
+    info_summary = write_info(ex.build_info(info_powers(out), pets["powers"], version), version)
     warnings += info_warnings(info_summary)
 
     mids_path = root / "mids-map.json"
@@ -1289,12 +1336,18 @@ def write_info(info: dict, version: str) -> dict:
 
 def info_warnings(summary: dict) -> list[str]:
     """@return What a power-info export should tell the owner: powers whose groups differ from the
-    version's files, so they got no notes."""
+    version's files, so they got no notes, and powers whose PvP-only groups were left out for want
+    of a table."""
+    out = []
     bad = summary["mismatched"]
-    if not bad:
-        return []
-    return [f"WARNING: {len(bad)} powers' groups differ from the version's files (pipeline changed since "
-            f"it was made?); they get no notes: {', '.join(bad[:5])}{' ...' if len(bad) > 5 else ''}"]
+    if bad:
+        out.append(f"WARNING: {len(bad)} powers' groups differ from the version's files (pipeline changed "
+                   f"since it was made?); they get no notes: {', '.join(bad[:5])}{' ...' if len(bad) > 5 else ''}")
+    bare = summary.get("untabled") or []
+    if bare:
+        out.append(f"WARNING: {len(bare)} powers' PvP-only groups scale by tables the version's files don't "
+                   f"carry; they are not listed: {', '.join(bare[:5])}{' ...' if len(bare) > 5 else ''}")
+    return out
 
 
 def pet_warnings(summary: dict) -> list[str]:

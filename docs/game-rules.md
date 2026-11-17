@@ -471,8 +471,8 @@ From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p
   has arrived:
   - each effect's own note (its Messages.DisplayInfo: "Within 20ft radius", "Main Target Only",
     "Opportunity", "Overpower", "Every 0.8 seconds for 10 seconds"), after the requirement notes and
-    before "Ignores buffs and enhancements" and "unresistable" (the client's order); the planner's
-    own "Overpower" from the tag then gives way to it;
+    before "Ignores buffs and enhancements" and "unresistable" (the client's order); for a power the
+    file gives notes, the planner's own "Overpower" from the tag gives way to them;
   - the attribute names as the client writes them, the message "Attr" + the field name (Homecoming's
     "knock", "defense debuff", "to hit"; Thunderspy's "knockback"), and the notes' own texts
     ("unresistable");

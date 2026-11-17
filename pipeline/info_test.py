@@ -81,7 +81,7 @@ class BuildInfoTest(unittest.TestCase):
 
     def info(self, server: config.Server = config.HOMECOMING) -> dict:
         with mock.patch.object(config, "SERVER", server):
-            return self.ex.build_info(self.written, {})
+            return self.ex.build_info(self.written, {}, "i99")
 
     def test_lays_notes_out_on_the_kept_groups(self):
         # the empty group and both PvP-only groups are dropped, as conv_effects drops them
@@ -103,10 +103,30 @@ class BuildInfoTest(unittest.TestCase):
         self.assertEqual(info["text"], {"Unresistable": "unresistable", "AggroReport": "Aggro Type:"})
         self.assertNotIn("groups", info)
 
-    def test_leaves_the_report_as_build_counted_it(self):
-        before = self.ex.report["pvp_effects_dropped"]
-        self.info()
+    def test_leaves_the_report_and_tables_as_build_made_them(self):
+        before, tables = self.ex.report["pvp_effects_dropped"], set(self.ex.used_tables)
+        self.ex.pw["Melee.Set.Strike"]["Effect"][0]["Effect"][2]["AttribMod"][0]["Table"] = "Pvp_Only"
+        self.info(dataclasses.replace(config.HOMECOMING, info_lists_pvp=True))
         self.assertEqual(self.ex.report["pvp_effects_dropped"], before)
+        self.assertEqual(self.ex.used_tables, tables)
+
+    def test_names_its_version(self):
+        self.assertEqual(self.info()["version"], "i99")
+
+    def test_writes_no_notes_that_dont_line_up_with_the_groups(self):
+        # one note too many for the first group's one mod
+        with mock.patch.object(Exporter, "info_tree", side_effect=lambda effs, keep=False: [{"m": ["a", "b"]}] if effs else []):
+            info = self.info()
+        self.assertNotIn("Melee.Set.Strike", info["notes"])
+        self.assertIn("Melee.Set.Strike", info["summary"]["mismatched"])
+
+    def test_lines_up_checks_every_level(self):
+        groups = [{"m": [{}], "sub": [{"m": [{}, {}]}]}]
+        self.assertTrue(Exporter._lines_up([None], groups))
+        self.assertTrue(Exporter._lines_up([{"m": ["x"], "s": [{"m": [None, "y"]}]}], groups))
+        self.assertFalse(Exporter._lines_up([], groups))
+        self.assertFalse(Exporter._lines_up([{"s": [{"m": ["y"]}]}], groups))
+        self.assertFalse(Exporter._lines_up([{"s": [None, None]}], groups))
 
     def test_carries_flagged_pvp_groups_for_a_client_that_lists_them(self):
         ts = dataclasses.replace(config.HOMECOMING, info_lists_pvp=True, hit_aggro=True)
@@ -116,6 +136,15 @@ class BuildInfoTest(unittest.TestCase):
         self.assertEqual([g.get("fl") for g in eff], [None, ["PVPOnly"], None])
         self.assertEqual(info["notes"]["Melee.Set.Strike"]["e"][0]["s"][1], {"m": ["PvP note"]})
         self.assertEqual(info["aggro"]["Melee.Set.Sneak"], "no aggro on a miss")
+
+    def test_lists_no_pvp_group_whose_table_the_version_lacks(self):
+        ts = dataclasses.replace(config.HOMECOMING, info_lists_pvp=True)
+        self.ex.pw["Melee.Set.Strike"]["Effect"][0]["Effect"][2]["AttribMod"][0]["Table"] = "Pvp_Only"
+        info = self.info(ts)
+        self.assertNotIn("groups", info)
+        self.assertEqual(info["summary"]["untabled"], ["Melee.Set.Strike"])
+        # its notes are laid out on the version's own groups instead
+        self.assertEqual(info["notes"]["Melee.Set.Strike"]["e"][0]["s"], [{"m": [None, "Within 20ft radius"]}, None])
 
 
 if __name__ == "__main__":

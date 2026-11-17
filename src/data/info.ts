@@ -35,11 +35,15 @@ function bare<T>(r: Rec): Record<string, T> {
 /**
  * Check a parsed info file and make it safe to look names up in.
  *
+ * A file that names another version (one copied to the wrong place) is refused: its notes would
+ * land on another version's lines.
+ *
  * @param raw The parsed JSON.
+ * @param version The id of the version it was fetched for.
  * @return The file (its lookup records without prototypes), or null when any part is malformed.
  */
-export function readInfoFile(raw: unknown): InfoFile | null {
-  if (!isRec(raw)) return null;
+export function readInfoFile(raw: unknown, version: string): InfoFile | null {
+  if (!isRec(raw) || raw.version !== version) return null;
   const { notes, hiddenGrants, aggro, attr, text, groups } = raw;
   if (!isRec(notes) || !Object.values(notes).every((n) => isRec(n) && isNodes(n.e) && isNodes(n.a))) return null;
   if (!Array.isArray(hiddenGrants) || !hiddenGrants.every(isStr)) return null;
