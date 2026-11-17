@@ -16,6 +16,7 @@ from pipeline import config, export
 from pipeline.coh import p7reader as P
 from pipeline.decode.live import LiveData, ent_create_layout_of
 from pipeline.export import Exporter, ent_create_param
+from pipeline.pvp import pvp_requires, pvp_requires_v1
 
 # Homecoming's EntCreate param struct (CostumeEffect included) and Thunderspy's (without it)
 HC = [("EntityDef", False), ("Class", False), ("Costume", False), ("DisplayName", False),
@@ -201,6 +202,30 @@ class BuildPetsTest(unittest.TestCase):
     def test_changes_nothing_the_version_exports(self):
         self.assertEqual(self.ex.used_tables, {"melee_damage"})
         self.assertEqual(dict(self.ex.ids.added), {k: 0 for k in self.ex.ids.added})
+
+
+class MatchPvpTestTest(unittest.TestCase):
+    def test_takes_the_test_the_version_was_made_with(self):
+        # Burn gains a group for bosses "or players": the old test dropped it, pvp_requires keeps it
+        def data():
+            d = live()
+            req = ["arch", "target>", "Class_Boss_Grunt", "eq", "enttype", "target>", "player", "eq", "||"]
+            d.powers[0]["Effect"][0]["Effect"].append(
+                {"Chance": 1.0, "Requires": req, "Flags": 0, "AttribMod": [mod(16, Scale=0.7)], "Effect": []})
+            return d
+        burn = "Blaster_Ranged.Fire_Blast.Burn"
+        for test in (pvp_requires, pvp_requires_v1):
+            maker = Exporter(data())
+            maker.pvp_test = test
+            written = [{"n": burn, "eff": maker.conv_effects(maker.pw[burn]["Effect"])}]
+            ex = Exporter(data())
+            self.assertTrue(ex.match_pvp_test(written))
+            self.assertIs(ex.pvp_test, test)
+            self.assertEqual(ex.used_tables, set())  # the trial conversions leave nothing behind
+            self.assertEqual(ex.report["pvp_effects_dropped"], 0)
+        ex = Exporter(data())
+        self.assertFalse(ex.match_pvp_test([{"n": burn, "eff": []}]))
+        self.assertIs(ex.pvp_test, pvp_requires)
 
 
 class PetWarningsTest(unittest.TestCase):

@@ -22,7 +22,7 @@ from pipeline.coh.p7reader import param_power_names
 from pipeline.decode.live import LiveData, sha1
 from pipeline.forced_respec import forced_respec_warnings
 from pipeline.ids import IdRegistry
-from pipeline.pvp import pvp_requires
+from pipeline.pvp import pvp_requires, pvp_requires_v1
 
 # special attributes whose mods name powers in their Params (481, 482, 486, 512 on Homecoming and
 # Thunderspy; looked up by name so another client's numbering can't miss them)
@@ -110,6 +110,8 @@ class Exporter:
         self.report: dict = {"missing_text": Counter(), "unresolved_refs": Counter(),
                              "pvp_effects_dropped": 0, "no_frames": 0}
         self.used_tables: set[str] = set()
+        # the PvP-only test by requirement: pvp_requires, or a published version's own (match_pvp_test)
+        self.pvp_test = pvp_requires
 
     # ---- helpers ------------------------------------------------------------------------------
     def text(self, key: str) -> str:
@@ -265,6 +267,32 @@ class Exporter:
         en = self.E.get("effect.Flags", {})
         return [n for bit, n in sorted(en.items()) if v & bit]
 
+    def match_pvp_test(self, powers: list[dict]) -> bool:
+        """Take the PvP-only test a published version was made with: the one whose groups are the
+        version's own, so a file remade beside it (its pets file) agrees with it.
+
+        Run before build(); the tables and report counts the trial conversions touch are put back.
+
+        @param powers The version's power records as written (powers.json).
+        @return Whether a test matched (then it is taken); False leaves pvp_requires.
+        """
+        tables = set(self.used_tables)
+        counted = {k: (Counter(v) if isinstance(v, Counter) else v) for k, v in self.report.items()}
+        found = False
+        for test in (pvp_requires, pvp_requires_v1):
+            self.pvp_test = test
+            if all((self.conv_effects(self.pw[p["n"]].get("Effect")),
+                    self.conv_effects(self.pw[p["n"]].get("ActivationEffect")))
+                   == (p.get("eff") or [], p.get("act") or []) for p in powers if p["n"] in self.pw):
+                found = True
+                break
+        if not found:
+            self.pvp_test = pvp_requires
+        self.used_tables = tables
+        self.report.clear()
+        self.report.update(counted)
+        return found
+
     def conv_effects(self, effs, ids: bool = True) -> list:
         """Effect groups in the site's short form, PvP-only groups dropped.
 
@@ -276,7 +304,7 @@ class Exporter:
         for e in effs or []:
             req = e.get("Requires") or []
             eflags = self.effect_flags(e.get("Flags") or 0)
-            pvp = "PVPOnly" in eflags or pvp_requires(req)
+            pvp = "PVPOnly" in eflags or self.pvp_test(req)
             if pvp:
                 self.report["pvp_effects_dropped"] += 1
                 continue
@@ -502,7 +530,7 @@ class Exporter:
         def walk(effs, pvp: bool) -> None:
             for e in effs or []:
                 req = e.get("Requires") or []
-                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or pvp_requires(req)
+                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or self.pvp_test(req)
                 walk(e.get("Effect"), p)
                 if not p:
                     continue

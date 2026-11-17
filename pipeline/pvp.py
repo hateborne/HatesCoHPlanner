@@ -103,6 +103,20 @@ def _apply(name: str, args: list):
     return [UNKNOWN] * ARITY.get(name, (1, 1))[1]
 
 
+def pvp_requires_v1(req: list[str]) -> bool:
+    """The test the export used before pvp_requires (every version published before it: i28p4,
+    i28p3, ts9-6): a player-target test anywhere, unless a critter-target test is there too.
+
+    Only to remake a file beside such a version (its pets file) as the version was made.
+
+    @param req The group's Requires tokens.
+    @return Whether that test took the group for PvP-only.
+    """
+    low = [t.strip().lower() for t in req]
+    has = lambda seq: any(low[i:i + len(seq)] == seq for i in range(len(low) - len(seq) + 1))  # noqa: E731
+    return has(PLAYER_TEST) and not has(["enttype", "target>", "critter", "eq"])
+
+
 def pvp_requires(req: list[str]) -> bool:
     """Whether a requirement can never hold in PvE (a critter target, not a PvP map).
 

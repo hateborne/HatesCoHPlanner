@@ -31,9 +31,20 @@ tables they read (villaindef.bin and villain_classes.bin are decoded for it), wh
 execute and the names of what they grant that the version lacks. It is not part of the
 version hash. `python -m pipeline.pets [--server S] [--game-version V]` writes only that file, for
 a version published before it existed, and refuses any client but the one the version was made
-from (`COH_CLIENT` pointing at a copy of an older client for an older version). The pet rules come
+from (`COH_CLIENT` pointing at a copy of an older client for an older version). It also takes the
+PvP-only test the version was made with (`Exporter.match_pvp_test`: the one whose groups are the
+version's own), so the file agrees with the version's groups; a version that matches neither is
+refused. The pet rules come
 from reading each client's code: an export from a client exe not listed in its server's
 `pet_checked` (`pipeline/config.py`) warns until someone reads it and adds its hash.
+
+The export drops PvP-only effect groups (the planner models PvE): a group with the PVPOnly flag,
+or one whose requirement tests for a player target (`enttype target> player eq`) and can never
+hold in PvE, against a critter target off PvP maps (`pipeline/pvp.py`, `pvp_requires`: the game's
+postfix evaluator over true / false / unknown). A group that tests for a player target among other
+things ("a boss or a player": Stygian Circle's 428.36 heal, in game on Thunderspy) is kept. Every
+version published before that test (i28p4, i28p3, ts9-6) was made with the older one,
+`pvp_requires_v1`, which dropped any group with a player test and no critter test.
 
 The run then exports icons, UI textures, fonts and sounds to `public/assets/` and writes
 `pipeline/report.md`. Safety rails:
