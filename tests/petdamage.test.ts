@@ -163,8 +163,12 @@ describe("pseudo-pet effect lines (the client's power_AddPetEffects)", () => {
   it("lists Burn's pet first (its powers last first), its damage ticking for the pet's lifetime", () => {
     expect(lines(gd, 'Class_Brute', BURN, damageEnh(gd))).toEqual([
       '81.33 (41.71) fire damage on target', // FieryBurn_FrontDamage: 1.0 x 41.7087
+      // each damage group's FieryEmbrace group (chance 0): listed with its tag mode's note
+      '36.60 (18.77) fire damage on target / Only using Fiery Embrace', // 0.45 x 41.7087
       '35.79 (18.35) fire damage on target', // and its 0.44 group
+      '16.10 (8.26) fire damage on target / Only using Fiery Embrace', // 0.198
       '13 Ticks of 11.39 (5.84) fire damage over 10.00s on target', // FieryBurn: floor(10 / 0.8) + 1 ticks
+      '13 Ticks of 5.12 (2.63) fire damage over 10.00s on target / Only using Fiery Embrace', // 0.063
       '10.38 immobilize protection for 1m 40s(1m 40s) on self / Ignores buffs and enhancements / Unresistable',
     ]);
   });
@@ -212,7 +216,7 @@ describe("pseudo-pet effect lines (the client's power_AddPetEffects)", () => {
       },
       () => {
         expect(stats(gd, 'Class_Brute', BURN, null)['Average Damage:']).toBe('95.10');
-        expect(lines(gd, 'Class_Brute', BURN, null)[2]).toBe('50.00% chance for 13 Ticks of 5.84 fire damage over 10.00s on target');
+        expect(lines(gd, 'Class_Brute', BURN, null)[4]).toBe('50.00% chance for 13 Ticks of 5.84 fire damage over 10.00s on target');
       },
     );
     // a tick chance on a mod without duration changes nothing; a HideFromInfo group still counts
@@ -225,9 +229,17 @@ describe("pseudo-pet effect lines (the client's power_AddPetEffects)", () => {
       },
       () => {
         expect(stats(gd, 'Class_Brute', BURN, null)['Average Damage:']).toBe('130.13');
-        expect(lines(gd, 'Class_Brute', BURN, null).some((l) => l.includes('Ticks'))).toBe(false);
+        expect(lines(gd, 'Class_Brute', BURN, null).some((l) => l.includes('Ticks of 5.84'))).toBe(false);
       },
     );
+  });
+
+  it("reads the template's own Duration field: a hold timed by a table shows its group's chance", () => {
+    // Shadow Field's pet: its hold (type Duration, timed by Melee_Ones, Duration field 0) is in a
+    // group of chance 0.05 a tick, its Overpower hold in one of 0.2; the client shows both chances
+    const got = lines(gd, 'Class_Controller', 'Controller_Control.Darkness_Control.Shadow_Field', null);
+    expect(got).toContain('5.00% chance for 3.00 magnitude hold for 48.00s on target after 0.25s delay');
+    expect(got).toContain('20.00% chance for 1.00 magnitude hold for 48.00s on target / Overpower');
   });
 });
 
