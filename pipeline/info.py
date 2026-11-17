@@ -85,6 +85,7 @@ def main() -> int:
         print(f"error: decode health gate failed ({', '.join(bad)}); nothing was written")
         return 1
     ex = export.Exporter(data)
+    ex.use_pvp_test(made.get("pvpTest", 1))  # the PvP-only test the version was made with
     ex.build()                   # what the version exports; its ids are never saved here
     shown = export.info_powers({"powers": powers, "boosts": boosts})
     summary = export.write_info(ex.build_info(shown, pets.get("powers") or {}, version), version)

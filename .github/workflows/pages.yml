@@ -40,6 +40,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       fresh: ${{ steps.version.outputs.fresh }}
       previous: ${{ steps.version.outputs.previous }}
+      notes: ${{ steps.notes.outputs.notes }}
     steps:
       # the Run workflow button lets any branch be picked; only main is ever published
       - name: Refuse branches other than main
@@ -59,6 +60,16 @@ jobs:
         env:
           BUMP: ${{ inputs.bump }}
         run: node scripts/release-version.mjs "$BUMP"
+      # the players' lines new in this version (CHANGELOG.md), for the top of its release notes; a
+      # failure here is flagged on the run and leaves the notes to the pull request list, since the
+      # notes can be edited afterwards and must never hold a deploy back
+      - name: Read the changelog
+        id: notes
+        if: steps.version.outputs.fresh == 'true'
+        continue-on-error: true
+        env:
+          PREVIOUS: ${{ steps.version.outputs.previous }}
+        run: node scripts/release-notes.mjs "$PREVIOUS"
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm run build
@@ -70,8 +81,8 @@ jobs:
         with:
           path: dist
 
-  # tag the new version and publish its notes (the pull requests merged since the last release);
-  # skipped when the commit already carries a version
+  # tag the new version and publish its notes (the changelog's new lines for players, then the pull
+  # requests merged since the last release); skipped when the commit already carries a version
   release:
     needs: build
     if: needs.build.outputs.fresh == 'true'
@@ -85,9 +96,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
           PREVIOUS: ${{ needs.build.outputs.previous }}
-        run: >-
-          gh release create "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}"
-          --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
+          NOTES: ${{ needs.build.outputs.notes }}
+        # gh puts --notes above the generated list; with no new changelog lines the list stands alone
+        run: |
+          set -- "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
+          if [ -n "${NOTES}" ]; then set -- "$@" --notes "${NOTES}"; fi
+          gh release create "$@"
 
   deploy:
     needs: [build, release]
