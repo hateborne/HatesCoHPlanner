@@ -325,9 +325,9 @@ powers and pets' alike:
   its 60. Confirmed in game (the owner's screenshots, November 16, 2026): a level 50 Blaster's
   Brawl reads 122.83 (20.02 + the Taser's 102.81) and Storm Cell 3753.79 (60 x 2 x 31.28), with
   the rows made from them.
-- The export drops PvP-only groups, so the executions they hold come from the pets file (`exec`,
-  Exporter._pvp_executions): Whirling Axe and Victory Rush today, both executing powers without
-  damage.
+- The export drops PvP-only groups (`pipeline/pvp.py`), so the executions they hold come from the
+  pets file (`exec`, Exporter._pvp_executions): Whirling Axe and Victory Rush today, both executing
+  powers without damage.
 - Executions nest at most four deep (a counter the client checks before each).
 - @TODO the client also lists an executed power's own effect lines (Storm Cell's "31.28 energy
   damage on target"); the planner doesn't yet.

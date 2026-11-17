@@ -183,7 +183,7 @@ Read the doc for the area you are changing:
 - `docs/pipeline.md`: the data pipeline and its safety rails, new and older patches, Thunderspy's
   export, `pipeline.watch`, `pipeline.compare`, approximate versions, borrowed frames, the build
   research.
-- `docs/releases.md`: how a deploy picks, tags and stamps a version.
+- `docs/releases.md`: how a deploy picks, tags and stamps a version, and the players' changelog.
 - `docs/game-rules.md`: the engine rules already ported, with the source each comes from.
 
 Rules from those areas that hold for every change:
@@ -240,7 +240,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `node scripts/audit-dev.mjs` (tools: high and critical advisories, except the few its `ALLOWED` lets through, each with its reason, until a fixed release exists) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.info_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the power-info extras export); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.info_test pipeline.pvp_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the power-info extras export, the PvP-only test); `pipeline/check_ids.py` (ids.json well formed, and every id the base branch has kept unchanged); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
@@ -309,6 +309,9 @@ a pull request, say which bump it calls for. The git tags are the record; `packa
   and why.
 - One topic per pull request. Describe the user-visible effect and how it was verified (tests,
   screenshots of the screens touched).
+- A change players can see adds one line to `CHANGELOG.md` under `## Unreleased`: one sentence in
+  plain words for players, with no internals (file names, pull request numbers, engine terms). The
+  deploy puts the new lines at the top of the release's notes (`docs/releases.md`, "The changelog").
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
   `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/ids.json`) change only through a
   pipeline run, never by hand. The same goes for the build research's `public/data/finder/stats.json`

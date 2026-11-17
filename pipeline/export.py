@@ -22,12 +22,11 @@ from pipeline.coh.p7reader import param_power_names
 from pipeline.decode.live import LiveData, sha1
 from pipeline.forced_respec import forced_respec_warnings
 from pipeline.ids import IdRegistry
+from pipeline.pvp import PVP_TEST, PVP_TESTS
 
 # special attributes whose mods name powers in their Params (481, 482, 486, 512 on Homecoming and
 # Thunderspy; looked up by name so another client's numbering can't miss them)
 GRANT_NAMES = ("GrantPower", "RevokePower", "GrantBoostedPower", "ExecutePower")
-PVP_ONLY = ["enttype", "target>", "player", "eq"]
-PVE_ONLY = ["enttype", "target>", "critter", "eq"]
 
 
 def num(v):
@@ -40,11 +39,6 @@ def num(v):
 
 def strip_k(name):
     return name[1:] if isinstance(name, str) and name.startswith("k") else name
-
-
-def contains_seq(seq: list, sub: list) -> bool:
-    n = len(sub)
-    return any(seq[i:i + n] == sub for i in range(len(seq) - n + 1))
 
 
 ENT_CREATE_PARAM = 3  # the param type of an EntCreate mod's Params (the client tests `*params == 3`)
@@ -116,6 +110,10 @@ class Exporter:
         self.report: dict = {"missing_text": Counter(), "unresolved_refs": Counter(),
                              "pvp_effects_dropped": 0, "no_frames": 0}
         self.used_tables: set[str] = set()
+        # the PvP-only test by requirement (pipeline/pvp.py): the current one, or a published
+        # version's own (use_pvp_test)
+        self.pvp_test_id = PVP_TEST
+        self.pvp_test = PVP_TESTS[PVP_TEST]
 
     # ---- helpers ------------------------------------------------------------------------------
     def text(self, key: str) -> str:
@@ -271,6 +269,44 @@ class Exporter:
         en = self.E.get("effect.Flags", {})
         return [n for bit, n in sorted(en.items()) if v & bit]
 
+    def use_pvp_test(self, test_id) -> None:
+        """Make the groups with one of the PvP-only tests (pvp.PVP_TESTS): a published version's
+        own, as its manifest records it (pvpTest; none: 1), so remaking it or a file beside it gives
+        what was published.
+
+        @param test_id The test's number.
+        @raise SystemExit For a number this pipeline doesn't know (nothing is written).
+        """
+        if test_id not in PVP_TESTS:
+            raise SystemExit(f"error: the version was made with PvP-only test {test_id!r}, which this "
+                             "pipeline doesn't know. Nothing was written.")
+        self.pvp_test_id = test_id
+        self.pvp_test = PVP_TESTS[test_id]
+
+    def reproduces(self, powers: list[dict]) -> bool:
+        """Whether the groups made now are a published version's own, so a file remade beside it
+        agrees with it.
+
+        Run before build(): the trial conversions leave nothing behind (the tables and report
+        counts they touch, the ids they allocate are all put back).
+
+        @param powers The version's power records as written (powers.json).
+        @return Whether every power's groups are the written ones.
+        """
+        tables = set(self.used_tables)
+        counted = {k: (Counter(v) if isinstance(v, Counter) else v) for k, v in self.report.items()}
+        maps = {k: dict(v) for k, v in self.ids.maps.items()}
+        added = dict(self.ids.added)
+        same = all((self.conv_effects(self.pw[p["n"]].get("Effect")),
+                    self.conv_effects(self.pw[p["n"]].get("ActivationEffect")))
+                   == (p.get("eff") or [], p.get("act") or []) for p in powers if p["n"] in self.pw)
+        self.used_tables = tables
+        self.report.clear()
+        self.report.update(counted)
+        self.ids.maps = maps
+        self.ids.added = added
+        return same
+
     def pvp_flag(self, e: dict) -> bool:
         """@return Whether an effect group carries the PVPOnly flag."""
         return "PVPOnly" in self.effect_flags(e.get("Flags") or 0)
@@ -282,11 +318,10 @@ class Exporter:
         @param keep_flagged Keep a group only its flag makes PvP-only (a client that tests no group
             flags lists it); one that requires a player target is still dropped, as the client's own
             requirement check leaves it out too.
-        @return True for its PVPOnly flag (unless kept) or a player-target requirement.
+        @return True for its PVPOnly flag (unless kept) or a requirement the PvP-only test drops
+            (pvp_test: the current one, or the version's own).
         """
-        req = e.get("Requires") or []
-        return (not keep_flagged and self.pvp_flag(e)) or (
-            contains_seq(req, PVP_ONLY) and not contains_seq(req, PVE_ONLY))
+        return (not keep_flagged and self.pvp_flag(e)) or self.pvp_test(e.get("Requires") or [])
 
     def conv_effects(self, effs, ids: bool = True, keep_pvp: bool = False) -> list:
         """Effect groups in the site's short form, PvP-only groups dropped.
@@ -526,8 +561,7 @@ class Exporter:
         def walk(effs, pvp: bool) -> None:
             for e in effs or []:
                 req = e.get("Requires") or []
-                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or (
-                    contains_seq(req, PVP_ONLY) and not contains_seq(req, PVE_ONLY))
+                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or self.pvp_test(req)
                 walk(e.get("Effect"), p)
                 if not p:
                     continue
@@ -1170,9 +1204,31 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     @raise SystemExit When the folder was made from a different client and overwriting wasn't asked.
     """
     ex = Exporter(live)          # refuses to run if the ids file is gone while data exists
+    root = config.DATA_OUT / version
+    source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
+              "bin_powers.pigg": sha1(config.POWERS_PIGG)}
+    old = None
+    try:
+        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
+    except (OSError, ValueError, KeyError):
+        pass
+    # the PvP-only test (pipeline/pvp.py): a folder published from this client keeps the one it was
+    # made with (its manifest's pvpTest; none: 1), so a run reproduces it; anything else gets the
+    # current one, which the manifest records
+    same_client = bool(old) and old.get("source") == source
+    ex.use_pvp_test(old.get("pvpTest", 1) if same_client else PVP_TEST)
+    reproduced = True
+    if same_client:
+        try:
+            reproduced = ex.reproduces(json.loads((root / "powers.json").read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            pass
     out = ex.build()
     pets = ex.build_pets()       # beside the version folder; changes nothing build() made
     warnings: list[str] = forced_respec_warnings(live.classes, ex.class_cats, ex.cats, ex.sets)
+    if not reproduced:
+        warnings.append(f"WARNING: {data_rel(version)}'s effect groups differ from what its PvP-only test "
+                        f"({ex.pvp_test_id}) makes now: the pipeline changed since it was made?")
     frames: dict | None = None
     if ex.report["no_frames"]:
         if frames_from:
@@ -1208,15 +1264,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
         if mids.get("skipped") and not any("Mids map" in w for w in warnings):
             warnings.append(f"WARNING: Mids map skipped ({mids['skipped']})")
 
-    root = config.DATA_OUT / version
-    source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
-              "bin_powers.pigg": sha1(config.POWERS_PIGG)}
     # nothing is written yet: a folder made from another client stops the run here
-    old = None
-    try:
-        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
-    except (OSError, ValueError, KeyError):
-        pass
     if old and old.get("source") and old["source"] != source:
         if not overwrite_published:
             raise SystemExit(
@@ -1261,6 +1309,8 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     }
     if frames and frames["by_name"] + frames["by_set"]:
         manifest["framesFrom"] = frames_from  # enhancement frame art borrowed from that version
+    if ex.pvp_test_id != 1:
+        manifest["pvpTest"] = ex.pvp_test_id  # the PvP-only test its groups were made with (pipeline/pvp.py)
     out["core"]["manifest"] = manifest
     texts = {n: _dump(out[n]) for n in ("powersets", "powers", "boosts")}
     others = [texts["powersets"], texts["powers"], texts["boosts"]]
