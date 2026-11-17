@@ -50,9 +50,9 @@ main's tip with the newest version's commit, file by file (`affectsSite` in
   A file nobody thought of errs toward a new version, never toward a changed site under an old
   number.
 - **Doesn't count:** `docs/` and every `.md` file outside `src/` and `public/`; `tests/` and `e2e/`
-  with their configuration; `.github/` (CI and the deploy workflow); `scripts/`; the pipeline's own
-  code, ids files and reports (`pipeline/`, `tools/`: what a pipeline run makes lands in `public/`,
-  which counts); `.claude/`; the lint configuration, `.gitignore`, `.gitattributes`, `LICENSE`.
+  with their configuration; `.github/` (CI and the deploy workflow); `scripts/`; the pipeline's and
+  the build research's own code, ids files and reports (`pipeline/`, `tools/`, `research/`: what
+  they make lands in `public/`, which counts); `.claude/`; the lint configuration, `.gitignore`, `.gitattributes`, `LICENSE`.
 - With only such changes since the newest version, the deploy publishes main under that version
   again: the run says so, the bump picked is ignored, and the `release` job is skipped. The pull
   requests show up in the next real release's notes.

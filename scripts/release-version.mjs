@@ -25,7 +25,9 @@ const NOT_THE_SITE = [
   /^\.claude\//, // agent settings
   /^docs\//,
   /^(tests|e2e)\//,
-  /^(pipeline|tools)\//, // the data pipeline's code, ids and reports: what it makes lands in public/, which counts
+  // the data pipeline's and the build research's code, ids and reports: what they make lands in
+  // public/, which counts
+  /^(pipeline|tools|research)\//,
   /^scripts\//, // CI and deploy helpers
   /\.md$/i, // README, AGENTS, CLAUDE, CHANGELOG and other notes
   /^(\.gitignore|\.gitattributes|LICENSE|eslint\.config\.[cm]?[jt]s|playwright\.config\.[cm]?[jt]s|tsconfig\.e2e\.json)$/,

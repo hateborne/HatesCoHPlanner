@@ -10,7 +10,7 @@
  */
 import { GameData } from '../data/gamedata.ts';
 import type { Archetype, BoostSet, Effect, Mod, Power } from '../data/types.ts';
-import type { Build } from './build.ts';
+import type { Build, Slot } from './build.ts';
 import { boostMods, effectiveness, powerStrength } from './enhance.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
@@ -272,113 +272,176 @@ export const MEZ: Record<string, string> = {
 };
 const MEZ_NAMES = Object.keys(MEZ);
 
+/** What one mod adds to one totals line. */
+export interface ModLine {
+  key: string; // the line's key: 'def.03', 'res.00', 'rech', 'mezprot.Knock'
+  label: string;
+  value: number; // in the line's unit (fractions: 0.05 = 5%)
+}
+
+const damageNameOf = (gd: GameData, i: number) => gd.core.attribNames.Damage[i]?.dn ?? `Type ${i}`;
+const defenseNameOf = (gd: GameData, i: number) => gd.core.attribNames.Defense[i]?.dn ?? `Type ${i}`;
+
 /**
- * Compute totals for a build.
+ * The totals lines one mod of a power adds to when it lands on the character.
+ *
+ * magnitude = class table[level] x scale x (1 + enhancement strength unless IgnoreStrength), filed
+ * under the line its attribute and aspect belong to. "All" defense is filed under 'def.base';
+ * computeTotals folds it into each typed defense at the end.
+ *
+ * @param gd Game data.
+ * @param at The character's archetype (its mod tables).
+ * @param level 0-based level the tables are read at.
+ * @param p The power the mod belongs to.
+ * @param m The mod.
+ * @param strength The power's enhancement strength by attribute, or null for none (set bonuses).
+ * @return One entry per line the mod touches (a zero value included).
+ */
+function modLines(gd: GameData, at: Archetype, level: number, p: Power, m: Mod, strength: Map<number, number> | null): ModLine[] {
+  if (!affectsSelf(p, m)) return [];
+  if (m.t !== 'Magnitude' && m.t !== 'Duration') return [];
+  const out: ModLine[] = [];
+  const add = (key: string, label: string, value: number) => out.push({ key, label, value });
+  const base = gd.table(at, m.tbl, level) * m.sc;
+  for (const a of m.a) {
+    const name = gd.attribName.get(a) ?? '';
+    let mag = m.t === 'Duration' ? (m.mag ?? 1) : base;
+    if (m.t === 'Magnitude' && strength && !m.fl?.includes('IgnoreStrength')) {
+      mag *= 1 + (strength.get(a) ?? 0);
+    }
+    const dm = /^DamageType(\d+)$/.exec(name);
+    const df = /^DefenseType(\d+)$/.exec(name);
+    switch (m.asp) {
+      case 'Current':
+        if (df) add(`def.${df[1]}`, defenseNameOf(gd, Number(df[1])), mag);
+        else if (name === 'Defense') add('def.base', 'All', mag);
+        else if (name === 'ToHit') add('tohit', 'ToHit', mag);
+        else if (name === 'Regeneration') add('regen', 'Regeneration', mag);
+        else if (name === 'Recovery') add('recov', 'Recovery', mag);
+        else if (name === 'SpeedRunning') add('run', 'Run Speed', mag);
+        else if (name === 'SpeedFlying') add('fly', 'Fly Speed', mag);
+        else if (name === 'SpeedJumping') add('jumpspd', 'Jump Speed', mag);
+        else if (name === 'JumpHeight') add('jumph', 'Jump Height', mag);
+        else if (name === 'StealthRadius') add('stealth', 'Stealth', mag);
+        else if (name === 'PerceptionRadius') add('perc', 'Perception', mag);
+        else if (MEZ_NAMES.includes(name)) {
+          if (mag < 0) add(`mezprot.${name}`, MEZ[name]!, -mag);
+        }
+        break;
+      case 'Resistance':
+        if (dm) add(`res.${dm[1]}`, damageNameOf(gd, Number(dm[1])), mag);
+        else if (MEZ_NAMES.includes(name)) {
+          add(`mezres.${name}`, MEZ[name]!, mag);
+        } else add(`resx.${name}`, `${name} resistance`, mag);
+        break;
+      case 'Strength':
+        if (dm) add(`dmg.${dm[1]}`, damageNameOf(gd, Number(dm[1])), mag);
+        else if (name === 'RechargeTime') add('rech', 'Recharge', mag);
+        else if (name === 'Accuracy') add('acc', 'Accuracy', mag);
+        else if (name === 'EnduranceDiscount') add('endrdx', 'Endurance Reduction', mag);
+        else if (name === 'Range') add('range', 'Range', mag);
+        else if (name === 'HitPoints') add('heal', 'Healing', mag);
+        break;
+      case 'Maximum':
+        if (name === 'HitPoints') add('hp', 'Max HP', mag);
+        else if (name === 'Endurance') add('endmax', 'Max Endurance', mag);
+        else if (name === 'Absorb') add('absorb', 'Absorb', mag);
+        else if (CAP_RAISE[name]) add(`max.${CAP_RAISE[name]}`, `${name} cap`, mag);
+        break;
+      case 'Absolute':
+        if (name === 'Absorb') add('absorb', 'Absorb', mag);
+        break;
+      default:
+        break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Walk the mods of an earned bonus that land on its owner.
+ *
+ * A set bonus lands on its owner. Homecoming aims its effects at Caster (its Affected mods are the
+ * share for pets, ea MyPet); Thunderspy's +Damage bonuses are Affected mods of a power whose target
+ * is the caster, so they count by affectsSelf. A piece's global keeps to Caster: its other mods are
+ * what it does to others when it fires.
+ *
+ * @param bn The earned bonus (its power, and whether it is a piece's global).
+ * @param ctx Requirement context of the character.
+ * @param fn Called with each mod.
+ */
+function walkBonusMods(bn: { power: Power; global: boolean }, ctx: EvalContext, fn: (m: Mod) => void): void {
+  walkEffects(bn.power.eff, ctx, (m) => (m.tg === 'Caster' || (!bn.global && affectsSelf(bn.power, m))) && fn(m));
+  walkEffects(bn.power.act, ctx, fn);
+}
+
+/**
+ * What one earned bonus adds to the totals lines, as computeTotals counts it (the rule of 5 aside:
+ * a suppressed copy is the caller's to leave out).
+ *
+ * "All" defense is folded into every typed defense line here, so the keys are the ones the
+ * finished totals carry.
+ *
+ * @param gd Game data.
+ * @param at The character's archetype.
+ * @param bn The bonus: its power, and whether it is a unique piece's global.
+ * @param level 0-based level the tables are read at.
+ * @param ctx Requirement context of the character (BuildRules.ctx).
+ * @return One entry per line, values summed; lines the bonus leaves at zero are left out.
+ */
+export function bonusLines(gd: GameData, at: Archetype, bn: { power: Power; global: boolean }, level: number, ctx: EvalContext): ModLine[] {
+  const sum = lineSum(gd);
+  walkBonusMods(bn, ctx, (m) => {
+    for (const l of modLines(gd, at, level, bn.power, m, null)) sum.add(l);
+  });
+  return sum.lines();
+}
+
+/**
+ * Sums mod lines by key, with "All" defense ('def.base') folded into every typed defense line, as
+ * the finished totals carry it.
+ *
+ * @param gd Game data (the defense types).
+ * @return `add` to take a line, `lines` for the sums (zero lines left out).
+ */
+function lineSum(gd: GameData): { add: (l: ModLine) => void; lines: () => ModLine[] } {
+  const sum = new Map<string, ModLine>();
+  const put = (l: ModLine) => {
+    const cur = sum.get(l.key);
+    if (cur) cur.value += l.value;
+    else sum.set(l.key, { ...l });
+  };
+  return {
+    add: (l) => {
+      if (l.key !== 'def.base') put(l);
+      else for (let i = 0; i < gd.core.attribNames.Defense.length; i++) put({ key: `def.${String(i).padStart(2, '0')}`, label: defenseNameOf(gd, i), value: l.value });
+    },
+    lines: () => [...sum.values()].filter((l) => l.value !== 0),
+  };
+}
+
+/** What the totals are worked out from: the powers counted at a level and whether each runs. */
+export interface TotalsState {
+  level: number; // 0-based level the totals are worked out at
+  xpLevel: number; // the character's real level, which a slotted piece's own effects must work at
+  ctx: EvalContext; // requirement context, with the modes the running powers set
+  entries: BuildEntry[]; // the powers owned at the level
+  isOn: (e: BuildEntry) => boolean; // whether a power counts as running
+}
+
+/**
+ * The state computeTotals sums from: who is asking (requirement context), which powers the build
+ * has at the level, and which of them run.
  *
  * @param gd Game data.
  * @param rules Rules view of the build.
  * @param b The build (for per-power toggles).
- * @param level 0-based level to compute at (default 49, or the exemplar level).
+ * @param level 0-based level (default 49, or the exemplar or stop level).
+ * @return The state.
  */
-export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): Totals {
-  const at: Archetype = rules.at;
-  const lines = new Map<string, StatLine>();
-  const line = (key: string, label: string): StatLine => {
-    let l = lines.get(key);
-    if (!l) {
-      l = { key, label, value: 0, capped: 0, sources: [] };
-      lines.set(key, l);
-    }
-    return l;
-  };
-  const add = (key: string, label: string, v: number, src: string) => {
-    if (!v) return;
-    const l = line(key, label);
-    l.value += v;
-    l.sources.push({ name: src, value: v });
-  };
-
-  const damageName = (i: number) => gd.core.attribNames.Damage[i]?.dn ?? `Type ${i}`;
-  const defenseName = (i: number) => gd.core.attribNames.Defense[i]?.dn ?? `Type ${i}`;
-
+export function totalsState(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): TotalsState {
   const owned = rules.ownedAt(level);
   const ctx: EvalContext = { ...rules.ctx(level, owned), targetEntType: 'player' };
-
-  const apply = (p: Power, m: Mod, strength: Map<number, number> | null, srcName: string) => {
-    if (!affectsSelf(p, m)) return;
-    if (m.t !== 'Magnitude' && m.t !== 'Duration') return;
-    const base = gd.table(at, m.tbl, level) * m.sc;
-    for (const a of m.a) {
-      const name = gd.attribName.get(a) ?? '';
-      let mag = m.t === 'Duration' ? (m.mag ?? 1) : base;
-      if (m.t === 'Magnitude' && strength && !m.fl?.includes('IgnoreStrength')) {
-        mag *= 1 + (strength.get(a) ?? 0);
-      }
-      const dm = /^DamageType(\d+)$/.exec(name);
-      const df = /^DefenseType(\d+)$/.exec(name);
-      switch (m.asp) {
-        case 'Current':
-          if (df) add(`def.${df[1]}`, defenseName(Number(df[1])), mag, srcName);
-          else if (name === 'Defense') add('def.base', 'All', mag, srcName);
-          else if (name === 'ToHit') add('tohit', 'ToHit', mag, srcName);
-          else if (name === 'Regeneration') add('regen', 'Regeneration', mag, srcName);
-          else if (name === 'Recovery') add('recov', 'Recovery', mag, srcName);
-          else if (name === 'SpeedRunning') add('run', 'Run Speed', mag, srcName);
-          else if (name === 'SpeedFlying') add('fly', 'Fly Speed', mag, srcName);
-          else if (name === 'SpeedJumping') add('jumpspd', 'Jump Speed', mag, srcName);
-          else if (name === 'JumpHeight') add('jumph', 'Jump Height', mag, srcName);
-          else if (name === 'StealthRadius') add('stealth', 'Stealth', mag, srcName);
-          else if (name === 'PerceptionRadius') add('perc', 'Perception', mag, srcName);
-          else if (MEZ_NAMES.includes(name)) {
-            if (mag < 0) add(`mezprot.${name}`, MEZ[name]!, -mag, srcName);
-          }
-          break;
-        case 'Resistance':
-          if (dm) add(`res.${dm[1]}`, damageName(Number(dm[1])), mag, srcName);
-          else if (MEZ_NAMES.includes(name)) {
-            add(`mezres.${name}`, MEZ[name]!, mag, srcName);
-          } else add(`resx.${name}`, `${name} resistance`, mag, srcName);
-          break;
-        case 'Strength':
-          if (dm) add(`dmg.${dm[1]}`, damageName(Number(dm[1])), mag, srcName);
-          else if (name === 'RechargeTime') add('rech', 'Recharge', mag, srcName);
-          else if (name === 'Accuracy') add('acc', 'Accuracy', mag, srcName);
-          else if (name === 'EnduranceDiscount') add('endrdx', 'Endurance Reduction', mag, srcName);
-          else if (name === 'Range') add('range', 'Range', mag, srcName);
-          else if (name === 'HitPoints') add('heal', 'Healing', mag, srcName);
-          break;
-        case 'Maximum':
-          if (name === 'HitPoints') add('hp', 'Max HP', mag, srcName);
-          else if (name === 'Endurance') add('endmax', 'Max Endurance', mag, srcName);
-          else if (name === 'Absorb') add('absorb', 'Absorb', mag, srcName);
-          else if (CAP_RAISE[name]) add(`max.${CAP_RAISE[name]}`, `${name} cap`, mag, srcName);
-          break;
-        case 'Absolute':
-          if (name === 'Absorb') add('absorb', 'Absorb', mag, srcName);
-          break;
-        default:
-          break;
-      }
-    }
-  };
-  // a chance status effect (walkChanceStatus) on the protection or resistance line it would
-  // raise, listed apart: the line's value counts only what is always there
-  const addChance = (p: Power, m: Mod, chance: number, srcName: string) => {
-    if (!affectsSelf(p, m) || m.t !== 'Magnitude') return;
-    const mag = gd.table(at, m.tbl, level) * m.sc;
-    for (const a of m.a) {
-      const name = gd.attribName.get(a) ?? '';
-      const key = m.asp === 'Resistance' ? 'mezres' : m.asp === 'Current' && mag < 0 ? 'mezprot' : undefined;
-      if (!key || !MEZ[name]) continue;
-      (line(`${key}.${name}`, MEZ[name]).chances ??= []).push({ name: srcName, chance, value: Math.abs(mag), duration: m.dur });
-    }
-  };
-
-  // Active powers
-  let endUse = 0;
-  // running toggles' base cost per second and their own slotted End Reduction; the cost needs the
-  // character-wide End Discount too, known once set bonuses are in (below)
-  const toggles: { name: string; perSec: number; slotted: number }[] = [];
   // defaults from the whole build, so which form of an exclusive group runs doesn't change with
   // the level the totals are worked out at
   const defaults = defaultsOf(gd, rules.entries());
@@ -406,28 +469,176 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     return modes.has(n) || (n.startsWith('k') && modes.has(n.slice(1)));
   };
 
-  // A slotted piece's own effects (Miracle's +Recovery, Kismet's +ToHit, the travel sets' stealth)
-  // land on the character each time the power holding it applies, while the piece works at the
-  // character's real level, which exemplaring leaves alone (character_AccrueBoosts tests
-  // boost_Effectiveness at character_CalcExperienceLevel and sets bBonusAttributes;
-  // character_ApplyPower attaches the piece's non-boost templates). They stack by replacement, so
-  // a piece in two running powers counts once.
+  // a slotted piece's own effects work at the character's real level, which exemplaring leaves alone
   const xpLevel = b.exemplar !== undefined && level === b.exemplar ? (b.endLevel ?? 49) : level;
+  return { level, xpLevel, ctx, entries, isOn };
+}
+
+/**
+ * Walk what one running power adds to the totals: its own effects at its slotted strength, then
+ * its slotted pieces' own effects.
+ *
+ * A slotted piece's own effects (Miracle's +Recovery, Kismet's +ToHit, the travel sets' stealth)
+ * land on the character each time the power holding it applies, while the piece works at the
+ * character's real level (character_AccrueBoosts tests boost_Effectiveness at
+ * character_CalcExperienceLevel and sets bBonusAttributes; character_ApplyPower attaches the
+ * piece's non-boost templates). They stack by replacement, so a piece in two running powers counts
+ * once: `pieceApplied` carries the pieces already counted.
+ *
+ * @param gd Game data.
+ * @param at The character's archetype.
+ * @param st The totals state.
+ * @param e The power and its slots.
+ * @param pieceApplied Boost ids whose own effects are already counted; this power's are added.
+ * @param fn Called with each line and the display name of its source (the power, or the piece).
+ * @return The power's enhancement strength by attribute (after ED).
+ */
+function walkRunning(
+  gd: GameData,
+  at: Archetype,
+  st: TotalsState,
+  e: { power: Power; slots: Slot[] },
+  pieceApplied: Set<number>,
+  fn: (l: ModLine, src: string) => void,
+): Map<number, number> {
+  const p = e.power;
+  const slots = e.slots.filter((s) => s.level <= st.level);
+  const str = powerStrength(gd, at, p, slots.map((s) => s.enh), st.level).post;
+  const take = (m: Mod, src: string) => {
+    for (const l of modLines(gd, at, st.level, p, m, str)) fn(l, src);
+  };
+  walkEffects(p.eff, st.ctx, (m) => take(m, p.dn));
+  walkEffects(p.act, st.ctx, (m) => take(m, p.dn));
+  for (const id of workingPieces(gd, st, e.slots)) {
+    if (pieceApplied.has(id)) continue;
+    pieceApplied.add(id);
+    const boost = gd.power(id);
+    const enhancing = new Set(boostMods(boost));
+    walkEffects(boost.eff, st.ctx, (m) => m.tg === 'Caster' && !enhancing.has(m) && !isNullMod(gd, m) && take(m, boost.dn));
+  }
+  return str;
+}
+
+/**
+ * The slotted pieces of a power whose own effects can count: in a slot the character has at the
+ * totals' level, and working at the character's real level.
+ *
+ * @param gd Game data.
+ * @param st The totals state.
+ * @param slots The power's slots.
+ * @return Their enhancement ids, in slot order (a piece slotted twice is listed twice).
+ */
+export function workingPieces(gd: GameData, st: TotalsState, slots: readonly Slot[]): number[] {
+  const out: number[] = [];
+  for (const s of slots) {
+    const boost = s.enh && s.level <= st.level ? gd.powerById.get(s.enh.boost) : undefined;
+    if (s.enh && boost && effectiveness(gd, boost, s.enh, st.xpLevel) > 0) out.push(boost.id);
+  }
+  return out;
+}
+
+/**
+ * What one running power adds to the totals lines with a given slotting, as computeTotals counts
+ * it: the power's own effects and its pieces' own effects (set bonuses and a toggle's endurance
+ * cost aside).
+ *
+ * @param gd Game data.
+ * @param at The character's archetype.
+ * @param st The totals state of the build the power is in.
+ * @param e The power and the slots to read it with.
+ * @param skip Enhancement ids whose own effects another running power already gives (a piece in
+ *   two running powers counts once).
+ * @return The lines, summed by key ("All" defense folded into each type), and the power's
+ *   enhancement strength by attribute.
+ */
+export function runningLines(
+  gd: GameData,
+  at: Archetype,
+  st: TotalsState,
+  e: { power: Power; slots: Slot[] },
+  skip?: Iterable<number>,
+): { lines: ModLine[]; strength: Map<number, number> } {
+  const sum = lineSum(gd);
+  const strength = walkRunning(gd, at, st, e, new Set<number>(skip), (l) => sum.add(l));
+  return { lines: sum.lines(), strength };
+}
+
+/**
+ * The archetype's cap on a totals line, for the lines that have one: damage resistance, damage
+ * and recharge.
+ *
+ * @param at The archetype.
+ * @param key The line's key ('res.03', 'dmg.00', 'rech').
+ * @param level 0-based level.
+ * @return The cap in the line's unit, or undefined for a line without one.
+ */
+export function lineCap(at: Archetype, key: string, level: number): number | undefined {
+  const dm = /^res\.(\d+)$/.exec(key);
+  if (dm) return GameData.attrAt(at.resMax, `DamageType${dm[1]}`, level, 0.75);
+  const dd = /^dmg\.(\d+)$/.exec(key);
+  if (dd) return GameData.attrAt(at.strMax, `DamageType${dd[1]}`, level, 5) - 1;
+  if (key === 'rech') return GameData.attrAt(at.strMax, 'RechargeTime', level, 5) - 1;
+  return undefined;
+}
+
+/**
+ * Compute totals for a build.
+ *
+ * @param gd Game data.
+ * @param rules Rules view of the build.
+ * @param b The build (for per-power toggles).
+ * @param level 0-based level to compute at (default 49, or the exemplar level).
+ */
+export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): Totals {
+  const at: Archetype = rules.at;
+  const lines = new Map<string, StatLine>();
+  const line = (key: string, label: string): StatLine => {
+    let l = lines.get(key);
+    if (!l) {
+      l = { key, label, value: 0, capped: 0, sources: [] };
+      lines.set(key, l);
+    }
+    return l;
+  };
+  const add = (key: string, label: string, v: number, src: string) => {
+    if (!v) return;
+    const l = line(key, label);
+    l.value += v;
+    l.sources.push({ name: src, value: v });
+  };
+
+  const damageName = (i: number) => damageNameOf(gd, i);
+  const defenseName = (i: number) => defenseNameOf(gd, i);
+
+  const st = totalsState(gd, rules, b, level);
+  const { ctx, entries, isOn } = st;
+
+  const apply = (p: Power, m: Mod, strength: Map<number, number> | null, srcName: string) => {
+    for (const l of modLines(gd, at, level, p, m, strength)) add(l.key, l.label, l.value, srcName);
+  };
+  // a chance status effect (walkChanceStatus) on the protection or resistance line it would
+  // raise, listed apart: the line's value counts only what is always there
+  const addChance = (p: Power, m: Mod, chance: number, srcName: string) => {
+    if (!affectsSelf(p, m) || m.t !== 'Magnitude') return;
+    const mag = gd.table(at, m.tbl, level) * m.sc;
+    for (const a of m.a) {
+      const name = gd.attribName.get(a) ?? '';
+      const key = m.asp === 'Resistance' ? 'mezres' : m.asp === 'Current' && mag < 0 ? 'mezprot' : undefined;
+      if (!key || !MEZ[name]) continue;
+      (line(`${key}.${name}`, MEZ[name]).chances ??= []).push({ name: srcName, chance, value: Math.abs(mag), duration: m.dur });
+    }
+  };
+
+  // Active powers
+  let endUse = 0;
+  // running toggles' base cost per second and their own slotted End Reduction; the cost needs the
+  // character-wide End Discount too, known once set bonuses are in (below)
+  const toggles: { name: string; perSec: number; slotted: number }[] = [];
   const pieceApplied = new Set<number>();
   for (const e of entries) {
-    const p = e.power;
     if (!isOn(e)) continue;
-    const slots = e.slots.filter((s) => s.level <= level);
-    const str = powerStrength(gd, at, p, slots.map((s) => s.enh), level).post;
-    walkEffects(p.eff, ctx, (m) => apply(p, m, str, p.dn));
-    walkEffects(p.act, ctx, (m) => apply(p, m, str, p.dn));
-    for (const s of slots) {
-      const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
-      if (!s.enh || !boost || pieceApplied.has(boost.id) || effectiveness(gd, boost, s.enh, xpLevel) <= 0) continue;
-      pieceApplied.add(boost.id);
-      const enhancing = new Set(boostMods(boost));
-      walkEffects(boost.eff, ctx, (m) => m.tg === 'Caster' && !enhancing.has(m) && !isNullMod(gd, m) && apply(p, m, str, boost.dn));
-    }
+    const p = e.power;
+    const str = walkRunning(gd, at, st, e, pieceApplied, (l, src) => add(l.key, l.label, l.value, src));
     if (p.type === 'Toggle' && p.end && p.ap) {
       toggles.push({ name: p.dn, perSec: p.end / p.ap, slotted: str.get(gd.attribByName.get('EnduranceDiscount') ?? 368) ?? 0 });
     }
@@ -465,12 +676,7 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
         else g.stats.set(st.label, { ...st });
       }
     };
-    // a set bonus lands on its owner. Homecoming aims its effects at Caster (its Affected mods are
-    // the share for pets, ea MyPet); Thunderspy's +Damage bonuses are Affected mods of a power
-    // whose target is the caster, so they count by affectsSelf. A piece's global keeps to Caster:
-    // its other mods are what it does to others when it fires
-    walkEffects(bn.power.eff, ctx, (m) => (m.tg === 'Caster' || (!bn.global && affectsSelf(bn.power, m))) && take(m));
-    walkEffects(bn.power.act, ctx, take);
+    walkBonusMods(bn, ctx, take);
     // a global's chance of a status effect at each tick is listed beside its line (walkChanceStatus)
     if (bn.global) walkChanceStatus(gd, bn.power.eff, ctx, (m, ch) => m.tg === 'Caster' && addChance(bn.power, m, ch, label));
   }
@@ -506,19 +712,10 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     l.sources.sort((a, b) => byName(a.name, b.name)); // stable: one name's entries keep their order
     l.chances?.sort((a, b) => byName(a.name, b.name));
     l.capped = l.value;
-    const dm = /^res\.(\d+)$/.exec(l.key);
-    if (dm) {
-      l.cap = GameData.attrAt(at.resMax, `DamageType${dm[1]}`, level, 0.75);
-      l.capped = Math.min(l.value, l.cap);
-    }
-    const dd = /^dmg\.(\d+)$/.exec(l.key);
-    if (dd) {
-      l.cap = GameData.attrAt(at.strMax, `DamageType${dd[1]}`, level, 5) - 1;
-      l.capped = Math.min(l.value, l.cap);
-    }
-    if (l.key === 'rech') {
-      l.cap = GameData.attrAt(at.strMax, 'RechargeTime', level, 5) - 1;
-      l.capped = Math.min(l.value, l.cap);
+    const cap = lineCap(at, l.key, level);
+    if (cap !== undefined) {
+      l.cap = cap;
+      l.capped = Math.min(l.value, cap);
     }
   }
   const hpMax = Math.min(hpBase + (lines.get('hp')?.value ?? 0), hpCap);

@@ -33,12 +33,29 @@ export interface InfoEffect {
   notes: Seg[][];
 }
 
+/** A number of a power without its enhancements and with them. */
+export interface BaseAndEnhanced {
+  base: number;
+  enh: number; // equal to base when the power is shown unenhanced
+}
+
+/** The numbers behind a power's stats rows, for code that compares two slottings of it. */
+export interface PowerNumbers {
+  damage: BaseAndEnhanced; // average damage per activation (the "Average Damage" row)
+  heal: BaseAndEnhanced; // hit points its heal gives the caster back per activation
+  recharge: BaseAndEnhanced; // seconds
+  endurance: BaseAndEnhanced; // cost per activation (a toggle's: per activation period)
+  accuracy: BaseAndEnhanced; // multiplier
+  cast: number; // activation time in seconds
+}
+
 /** The full detailed-info content of one power. */
 export interface PowerInfo {
   title: Seg[];
   stats: InfoRow[];
   target: InfoRow[];
   effects: InfoEffect[];
+  numbers: PowerNumbers; // what the stats rows are written from
 }
 
 /** Color of the row labels (the client's #aaaaaa). */
@@ -867,6 +884,27 @@ export function powerInfo(
   }
 
   /**
+   * How many times a template's magnitude counts in an average, as getTotalDamage counts damage:
+   * once at its chance, or once per tick of its duration, a CancelOnMiss effect stopping at its
+   * first missed tick. The client takes a DoT at its tick chance and anything else at its own
+   * group's chance.
+   *
+   * @param t The template.
+   * @param dur Its duration in seconds (0: applied once).
+   * @return The expected number of times it lands.
+   */
+  const expectedHits = (t: Tmpl, dur: number): number => {
+    const chance = dur ? t.tick : t.chance;
+    if (!dur) return chance;
+    const ticks = tickCount(dur, t.m.per);
+    if (!t.m.fl?.includes('CancelOnMiss')) return ticks * chance;
+    let avg = 0;
+    let k = 1;
+    for (; k < ticks; k++) avg += Math.pow(chance, k) * (1 - chance) * k;
+    return avg + Math.pow(chance, k) * ticks;
+  };
+
+  /**
    * getTotalDamage: the average damage of a power's templates, base and enhanced, plus that of
    * every pseudo-pet it creates (petDamage) and every power it executes (execDamage).
    *
@@ -893,23 +931,7 @@ export function powerInfo(
       const { mag, dur } = magAndDur(table(t.m.tbl), t.m);
       if (!(mag < 0)) continue;
       const boost = t.m.fl?.includes('IgnoreStrength') ? 0 : eff(t.attrib);
-      // the client takes a DoT at its tick chance and anything else at its own group's chance
-      const chance = dur ? t.tick : t.chance;
-      let n = 1;
-      if (dur) {
-        const ticks = tickCount(dur, t.m.per);
-        if (t.m.fl?.includes('CancelOnMiss')) {
-          let avg = 0;
-          let k = 1;
-          for (; k < ticks; k++) avg += Math.pow(chance, k) * (1 - chance) * k;
-          avg += Math.pow(chance, k) * ticks;
-          n = avg;
-          base += -mag * n;
-          total += -mag * n * (1 + boost);
-          continue;
-        }
-        n = ticks * chance;
-      } else n = chance;
+      const n = expectedHits(t, dur);
       base += -mag * n;
       total += -mag * n * (1 + boost);
     }
@@ -1033,6 +1055,30 @@ export function powerInfo(
   const baseInt = power.intr ?? 0;
   const enhInt = baseInt / (1 + eff(O['InterruptTime']));
   const cast = power.cast ?? 0;
+
+  // the heal it gives its caster (the "heal ... on self" sentences), counted as getTotalDamage
+  // counts damage: effects that need a condition left out, chances and ticks by expectedHits
+  const HEAL = gd.attribByName.get('DamageType07') ?? 28;
+  const healsCaster = (m: Mod) => m.tg === 'Caster' || (m.tg === 'Affected' && (power.ea ?? [power.tgt]).includes('Caster'));
+  let healBase = 0;
+  let healEnh = 0;
+  for (const t of all) {
+    if (!t.counted || t.attrib !== HEAL || ASPECT[t.m.asp] !== 'Abs' || !healsCaster(t.m)) continue;
+    if (requiresNotes(t.reqs, true).length) continue;
+    const { mag, dur } = magAndDur(own.table(t.m.tbl), t.m);
+    if (!(mag > 0)) continue;
+    const n = expectedHits(t, dur);
+    healBase += mag * n;
+    healEnh += mag * n * (1 + (t.m.fl?.includes('IgnoreStrength') ? 0 : eff(t.attrib)));
+  }
+  const numbers: PowerNumbers = {
+    damage: { base: dmgBase, enh: dmgTotal },
+    heal: { base: healBase, enh: healEnh },
+    recharge: { base: baseRech, enh: enhRech },
+    endurance: { base: baseEnd, enh: enhEnd },
+    accuracy: { base: baseAcc, enh: enhAcc },
+    cast,
+  };
 
   const stats: InfoRow[] = [];
   const row = (label: string, markup: string): InfoRow => ({ label, value: parseMarkup(markup) });
@@ -1348,5 +1394,5 @@ export function powerInfo(
       .replace('{level}', String(level + 1))
       .replace('{className}', at.dn),
   );
-  return { title, stats, target, effects };
+  return { title, stats, target, effects, numbers };
 }

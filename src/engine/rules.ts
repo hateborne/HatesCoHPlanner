@@ -188,6 +188,21 @@ export class BuildRules {
     this.pickLevels = gd.core.schedule.power;
   }
 
+  /**
+   * The rules of the same build with other enhancements in its slots.
+   *
+   * Which powers are granted depends on the picks and power sets alone, so the copy keeps this
+   * one's granted powers instead of working them out again (the costly part of a new BuildRules).
+   *
+   * @param b A build that differs from this one in its slots' enhancements only.
+   * @return Its rules.
+   */
+  reslotted(b: Build): BuildRules {
+    const r = new BuildRules(this.gd, b);
+    r.grantedCache = this.granted();
+    return r;
+  }
+
   // ---- basic lookups ---------------------------------------------------------------------------
 
   /** @return The 0-based level of pick `i`. */

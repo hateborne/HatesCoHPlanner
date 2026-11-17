@@ -144,3 +144,39 @@ An older patch with no client files left can get an approximate version:
 available level from the configured Mids database (its header names the issue and page). The
 base's pets and info files are copied too (the info file renamed for the new version). Review
 `pipeline/report-<id>.md`, then commit `public/data` and the report through a pull request.
+
+## Build research (the set finder's statistics)
+
+The set finder ranks enhancement sets with statistics taken from community builds, not with
+hand-tuned lists. `npm run research` makes them. It runs on the owner's machine only: it reads a
+folder of builds named by the `HCP_BUILD_CORPUS` environment variable (folders and files, separated
+like `PATH` entries) and is skipped when that is unset. It is not part of `npm test`.
+
+What it reads: `.mbd` files, and Mids share codes (`|MBD;`, `|MxDz;`) inside `.mxd` / `.txt` files
+and saved `.html` pages. Every build goes through the planner's own importer (`parseMidsText`,
+`importParsed`) against the default game version, then `checkBuild`, so the run doubles as an import
+check over thousands of real builds. Builds made on another server's Mids database, builds too
+empty to count, copies of another build and builds whose file name marks a farm build are left out
+of the values. A build that lost a picked power on import (one the default version does not have
+under that name) is counted without it, at its full level.
+
+What it writes (both committed through a pull request, never edited by hand):
+
+- `public/data/finder/stats.json` (`FinderStats`, `src/data/finderStats.ts`): per archetype, how
+  builds spread their set bonuses over the stats, against what the game offers (share and lift);
+  the status protection builds add with enhancements, per archetype and power set; how often each
+  set and each unique piece is used. Keyed by internal names. No link or saved build reads it.
+- `pipeline/report-finder.md`: the same in tables, with what was read and every import failure,
+  warning, repair and rule issue counted. Review it before the finder's weights change.
+
+Nothing about the builds themselves leaves the machine: no file names, build names or paths, only
+counts and medians. An import fault the report turns up is fixed in its own pull request.
+
+How a stat is valued. A stat's unit is the median size of one set bonus in it, over every set bonus
+in the game data (`offerFor`). A bonus of typical size counts 1 in all, shared between the families
+of stats it gives and then between the types it covers, so a damage bonus over every damage type, or
+a resistance bonus that also carries status resistance, weighs the same as a recharge bonus
+(`bonusSpend`). A build's share for a stat is that stat's part of its whole
+spend; a group's share is the mean over its builds. Lift is the share divided by the stat's share of
+everything the game offers: over 1 means builds seek the stat out. Groups under 25 builds
+(`MIN_GROUP`) are reported but fall back to the all-archetype values.

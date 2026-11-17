@@ -118,7 +118,7 @@ describe('affectsSite', () => {
       ...['README.md', 'AGENTS.md', 'CLAUDE.md', 'CHANGELOG.md', 'LICENSE', 'docs/releases.md', 'docs/img/screen.png'],
       ...['tests/rules.test.ts', 'tests/fixtures/builds/README.md', 'tests/fixtures/builds/x.txt', 'e2e/boosted.spec.ts', 'playwright.config.ts', 'tsconfig.e2e.json'],
       ...['.github/workflows/ci.yml', '.github/workflows/pages.yml', '.github/CODEOWNERS', 'scripts/release-version.mjs', 'scripts/audit-dev.mjs', 'eslint.config.js'],
-      ...['pipeline/export.py', 'pipeline/ids.json', 'pipeline/report.md', 'tools/coh_exe.py', '.claude/launch.json', '.gitignore', '.gitattributes'],
+      ...['pipeline/export.py', 'pipeline/ids.json', 'pipeline/report.md', 'tools/coh_exe.py', 'research/corpus.ts', 'research/vitest.config.ts', '.claude/launch.json', '.gitignore', '.gitattributes'],
     ];
     for (const p of not) expect(affectsSite(p), p).toBe(false);
   });
