@@ -11,6 +11,7 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import type { Archetype, Effect, Mod, PetPower, Power } from '../data/types.ts';
+import { serverById } from '../data/servers.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 
 /** A run of text, optionally colored (CSS hex) and italic. */
@@ -142,6 +143,87 @@ const TXT = {
 } as const;
 
 const NOTE_COLOR = '#aaaa88';
+
+// ---- tag modes (getChanceModString, getChanceModValue) ------------------------------------------
+
+// The note a tag mode adds, by the substrings (any case) that pick it, in the client's order
+// (Homecoming i28p4 0x1404de5c0, i28p3 the same; Thunderspy 0x1404d1f90 has no ASTeamCrit). The
+// texts are the client's messages (DualPistolsLethalMode, ..., FieryEmbraceMode, ASTeamCritStr).
+const TAG_NOTES: readonly (readonly [readonly string[], string])[] = [
+  [['Lethal', 'LethalKB10', 'LethalKB25', 'LethalKB50', 'LethalKB70', 'HailofBulletsKnockdown', 'HailofBulletsEndKnockback'], 'Only using Standard Ammo'],
+  [['FireDamage', 'FireDamageDoT', 'HailofBulletsFire'], 'Only using Incendiary Ammo'],
+  [['ColdDamage', 'HailofBulletsCold'], 'Only using Cryo Ammo'],
+  [['ToxicDamage', 'HailofBulletsToxic'], 'Only using Chemical Ammo'],
+  [['FieryEmbrace'], 'Only using Fiery Embrace'],
+];
+const TEAM_CRIT_NOTE: readonly [readonly string[], string] = [['ASTeamCrit'], 'Chance increases the more allies are nearby'];
+// The chance a tag mode shows instead of its group's, in the client's order (Homecoming 0x1404de9f0,
+// Thunderspy 0x1404d2720). "Lethal" and "FireDamage" come first, so a LethalKB* or FireDamageDoT
+// tag reads 1 as in the client; ASTeamCrit has no entry, so it reads 0. Single precision, as there.
+const TAG_CHANCES: readonly (readonly [string, number])[] = [
+  ['Lethal', 1],
+  ['FieryEmbrace', 1],
+  ['LethalKB10', Math.fround(0.1)],
+  ['LethalKB25', 0.25],
+  ['LethalKB50', 0.5],
+  ['LethalKB70', Math.fround(0.7)],
+  ['HailofBulletsKnockdown', Math.fround(0.05)],
+  ['HailofBulletsEndKnockback', Math.fround(0.4)],
+  ['FireDamage', 1],
+  ['FireDamageDoT', Math.fround(0.8)],
+  ['HailofBulletsFire', Math.fround(0.6)],
+  ['ColdDamage', 1],
+  ['HailofBulletsCold', Math.fround(0.6)],
+  ['ToxicDamage', 1],
+  ['HailofBulletsToxic', Math.fround(0.6)],
+];
+
+// The tables above in lower case (the client compares in any case), with and without ASTeamCrit.
+const lower = (names: readonly string[]) => names.map((n) => n.toLowerCase());
+const NOTES_OWN_TAG = TAG_NOTES.map(([names, note]) => [lower(names), note] as const);
+const NOTES_ALL = [...NOTES_OWN_TAG, [lower(TEAM_CRIT_NOTE[0]), TEAM_CRIT_NOTE[1]] as const];
+const CHANCES = TAG_CHANCES.map(([name, chance]) => [name.toLowerCase(), chance] as const);
+
+/** A group's tag mode: the note its line gets and the chance it shows. */
+interface TagMode {
+  note: string;
+  chance: number; // 0..1, shown in place of the group's chance
+}
+
+/**
+ * The tag mode of an effect group, as the client's power info reads it (getChanceModString and
+ * getChanceModValue, decompiled).
+ *
+ * Only a group with tags has one. Homecoming's client reads the group's first tag, then each parent
+ * group's first tag in turn (a parent without tags is passed over), until one names a mode; the
+ * chance is looked up the same way, apart, so a mode with no chance entry (ASTeamCrit) reads 0.
+ * Thunderspy's client (`ownTag`) reads the group's own first tag only and knows no ASTeamCrit.
+ *
+ * @param e The group.
+ * @param parents Its parent groups, nearest first.
+ * @param ownTag The server's client reads the group's own first tag only (`tagModes`).
+ * @return The mode, or null when the group has none.
+ */
+function tagMode(e: Effect, parents: readonly Effect[], ownTag: boolean): TagMode | null {
+  if (!e.tag?.length) return null;
+  const firsts = (ownTag ? [e] : [e, ...parents]).flatMap((g) => (g.tag?.length ? [g.tag[0]!.toLowerCase()] : []));
+  const notes = ownTag ? NOTES_OWN_TAG : NOTES_ALL;
+  let note: string | undefined;
+  for (const t of firsts) {
+    note = notes.find(([names]) => names.some((n) => t.includes(n)))?.[1];
+    if (note) break;
+  }
+  if (!note) return null;
+  let chance = 0;
+  for (const t of firsts) {
+    const found = CHANCES.find(([name]) => t.includes(name));
+    if (found) {
+      chance = found[1];
+      break;
+    }
+  }
+  return { note, chance };
+}
 
 const POWER_TYPE: Record<string, string> = {
   Click: 'Click',
@@ -333,6 +415,8 @@ interface Tmpl {
   attrib: number;
   all?: 'damage' | 'defense'; // collapses every damage / defense type into one "all" line
   chance: number; // 0..1: group chances times tick chance; a pet's: its own group's chance only
+  shown: number; // 0..1, the chance its line reads: `chance`, or its group's tag mode's chance (the tick chance apart, as a pet's)
+  mode: string | null; // a tag mode's note (tagMode): its line is listed whatever its chance
   tick: number; // 0..1, the mod's tick chance
   pet: boolean; // a pseudo-pet's power: the live client's chance rules (petDamage, petLines)
   hide: boolean; // a pet's HideFromInfo or PPM group: counted in its damage, not listed
@@ -515,6 +599,7 @@ export function powerInfo(
     targetEntType: 'critter',
   });
   const ctx = contextFor(at.n, null);
+  const ownTagModes = serverById(gd.server)?.tagModes === 'ownTag';
 
   const attrName = (offset: number): string | null => {
     if (offset >= 0 && offset < 80) {
@@ -547,6 +632,19 @@ export function powerInfo(
    * A pseudo-pet's power (`pet`) is walked as the live client's getTotalDamage reads every
    * template: its HideFromInfo and PPM groups count too (marked `hide`, as they aren't listed), and
    * each template keeps its own group's chance and its tick chance apart.
+   *
+   * A group with a tag mode (tagMode) shows the mode's chance on its own lines, in place of its own
+   * and its parents' (the client reads only the group's). A sub-group without a mode of its own
+   * keeps the chances above; the damage total keeps the groups' own chances.
+   *
+   * @param effs The groups.
+   * @param chain The parent groups' chances multiplied (own powers).
+   * @param reqs The parent groups' requirements.
+   * @param out Where the templates go.
+   * @param ec The requirement context of the class running the power.
+   * @param pet The power is a pseudo-pet's.
+   * @param hidden A parent group is HideFromInfo or PPM (a pet's).
+   * @param parents The parent groups, nearest first.
    */
   const templates = (
     effs: Effect[] | undefined,
@@ -556,6 +654,7 @@ export function powerInfo(
     ec: EvalContext = ctx,
     pet = false,
     hidden = false,
+    parents: readonly Effect[] = [],
   ): void => {
     for (const e of effs ?? []) {
       if (e.fl?.includes('PVPOnly')) continue;
@@ -564,12 +663,15 @@ export function powerInfo(
       const chance = pet ? (e.ch ?? 1) : chain * (e.ch ?? 1);
       const rq = e.req && e.req.length ? [...reqs, e.req] : reqs;
       if (!rq.every((r) => evalRequires(r, ec))) continue;
+      const mode = tagMode(e, parents, ownTagModes);
       for (const m of e.m ?? []) {
         if (m.t === 'SkillMagnitude') continue;
         const tc = m.tc ?? 1;
         const base = {
           m,
           chance: pet ? chance : chance * tc,
+          shown: mode ? mode.chance : pet ? chance : chance * tc,
+          mode: mode?.note ?? null,
           tick: tc,
           pet,
           hide,
@@ -592,7 +694,7 @@ export function powerInfo(
         }
         for (const a of m.a) if (rest.has(a)) out.push({ ...base, attrib: a });
       }
-      templates(e.sub, chance, rq, out, ec, pet, hide);
+      if (e.sub?.length) templates(e.sub, chance, rq, out, ec, pet, hide, [e, ...parents]);
     }
   };
   /** @return A pseudo-pet's power's templates, walked with the pet's requirement context. */
@@ -864,7 +966,10 @@ export function powerInfo(
    * itself are left out; its damage ticks for the pet's lifetime, floor(lifetime / its
    * ActivatePeriod) + 1 times; an effect that doesn't suppress itself lasts the lifetime, or as
    * many of its own durations as fit in it plus one; every pet effect with a duration says so; and
-   * its chance is its group's (no duration) or its tick chance.
+   * its chance is its group's (its template's own Duration field is 0) or its tick chance.
+   *
+   * A line whose group has a tag mode (tagMode) is listed at any chance, reads its chance that way
+   * too with the mode's chance as its group's, and carries the mode's note first.
    *
    * @param name The power's full name (its pets are listed under it).
    * @param tmpls Its templates.
@@ -895,7 +1000,7 @@ export function powerInfo(
       const offset = t.attrib;
       const eType = ASPECT[m.asp];
       if (!eType) continue;
-      if (!t.chance || t.hide) continue;
+      if ((!t.shown && !t.mode) || t.hide) continue; // a tag mode is listed at any chance
       if (pet && m.tg === 'Caster') continue; // the client doesn't list what a pet does to itself
 
       if (offset === 481 || offset === 486 || offset === (gd.attribByName.get('GrantPower') ?? 481) || offset === (gd.attribByName.get('GrantBoostedPower') ?? 486)) {
@@ -932,14 +1037,16 @@ export function powerInfo(
       if (m.fl?.includes('HideZero') && fMag === 0) continue;
       const boosted = both ? eff(offset) : 0;
       const cancelOnMiss = !!m.fl?.includes('CancelOnMiss');
-      const fChance = t.chance * 100;
+      const fChance = t.shown * 100;
       const fTick = t.tick * 100;
 
       let pchChance = '';
       let pchTicks = '';
       let pchChance2 = '';
-      if (t.pet) {
-        if (off100(fChance) && !fDuration) pchChance = chanceText(fChance);
+      if (t.pet || t.mode) {
+        // the live client's rule: the group's chance when the template's own Duration field is 0
+        // (a duration from a table doesn't count), else the tick chance
+        if (off100(fChance) && !m.dur) pchChance = chanceText(fChance);
         else if (off100(fTick) && !cancelOnMiss) pchChance = chanceText(fTick);
       } else if (off100(fChance) && (!fDuration || !cancelOnMiss)) {
         pchChance = chanceText(fChance);
@@ -950,7 +1057,7 @@ export function powerInfo(
         else if (fDuration) iTicks = Math.floor(fDuration / (m.per ?? 1)) + 1;
         if (iTicks > 1) {
           pchTicks = TXT.ticksOf.replace('{ticks}', String(iTicks));
-          const missPct = t.pet ? fTick : fChance;
+          const missPct = t.pet || t.mode ? fTick : fChance;
           if (off100(missPct) && cancelOnMiss) pchChance2 = chanceText(missPct);
         }
       }
@@ -1014,6 +1121,7 @@ export function powerInfo(
       // the sentence starts in the default (white) color unless the markup says otherwise
       const notes: Seg[][] = [];
       const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
+      if (t.mode) note(t.mode); // the client adds it before the requirement notes
       if (t.tags.includes('Overpower')) note('Overpower');
       for (const n of requiresNotes(t.reqs, false)) note(n);
       if (m.fl?.includes('IgnoreStrength')) note(TXT.ignoresBuffs);
