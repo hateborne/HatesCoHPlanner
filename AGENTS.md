@@ -180,7 +180,7 @@ Read the doc for the area you are changing:
   pop-ups and hovers, browser tests.
 - `docs/pipeline.md`: the data pipeline and its safety rails, new and older patches, Thunderspy's
   export, `pipeline.watch`, `pipeline.compare`, approximate versions, borrowed frames.
-- `docs/releases.md`: how a deploy picks, tags and stamps a version.
+- `docs/releases.md`: how a deploy picks, tags and stamps a version, and the players' changelog.
 - `docs/game-rules.md`: the engine rules already ported, with the source each comes from.
 
 Rules from those areas that hold for every change:
@@ -305,6 +305,9 @@ a pull request, say which bump it calls for. The git tags are the record; `packa
   and why.
 - One topic per pull request. Describe the user-visible effect and how it was verified (tests,
   screenshots of the screens touched).
+- A change players can see adds one line to `CHANGELOG.md` under `## Unreleased`: one sentence in
+  plain words for players, with no internals (file names, pull request numbers, engine terms). The
+  deploy puts the new lines at the top of the release's notes (`docs/releases.md`, "The changelog").
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
   `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/ids.json`) change only through a
   pipeline run, never by hand.
