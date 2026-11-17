@@ -29,6 +29,11 @@ Read from the two clients' compiled code (Ghidra, functions found from the boost
 - Attribute names: Thunderspy's client calls Knock (offset 328) "Knockback", Homecoming's alias for
   it. The planner reads it as Knock (`ATTRIB_CANON` in `src/data/gamedata.ts`), so knockback
   protection counts.
+- The power info's tag modes (getChanceModString, getChanceModValue) differ, and here Thunderspy's
+  client is the one nearer the source: it reads a group's own first tag (0x1404d1f90, 0x1404d2720).
+  Homecoming's also reads the group's parents' first tags and knows ASTeamCrit (0x1404de5c0,
+  0x1404de9f0). The planner takes this from the server entry (`tagModes: 'ownTag'`); see "Tag modes
+  (power info)" below.
 - @TODO not yet compared: Enhancement Diversification (`AggregateStrength`), attribute caps
   (`ClampMax`), combat level scaling (`combatmod_Get`) and the combine limit
   (`boost_IsValidCombination`). They have no strings or table globals of their own to find them
@@ -309,11 +314,16 @@ Its damage (getTotalDamage):
 - Each pet power counts its own total (the same function, recursively) times
   `max(1, floor(mod Duration / its ActivatePeriod))`, or once when its period is 0. Thunderspy's
   client adds one: `max(1, floor(...) + 1)`. The division is single precision.
-- A pet power's templates count by the client's rules: a DoT at its tick chance, anything else at
-  its own group's chance (not its parents'), and HideFromInfo and PPM groups count too. An effect
-  group with chance 0 adds nothing (Burn's Fiery Embrace groups). @TODO the character's own powers
-  still follow the earlier port (group chances times tick chance, HideFromInfo and PPM groups left
-  out); move them to these rules once in-game screenshots confirm it.
+- A pet power's templates count by the client's rules: a DoT (its template's own Duration field is
+  not 0) at its tick chance alone, anything else at its own group's chance alone (not its parents',
+  not its tick chance), and HideFromInfo and PPM groups count too. So a hit in a group of chance 0
+  adds nothing (Burn's Fiery Embrace groups), but a DoT there counts at its tick chance. The
+  character's own powers count by the same rules (the same function, 0x1404e0ab0), apart from their
+  HideFromInfo and PPM groups, which the planner leaves out (the owner's decision, November 17,
+  2026; @TODO the client counts them: 43 Homecoming powers, Siren's Song, Frozen Aura, Laser Beam
+  Eyes and others). Confirmed in game (the owner's screenshots, November 17, 2026, level 50):
+  Executioner's Shot 337.18 (129.69 plus four Opportunity crits of tick chance 0 at their group's
+  1), Thunder Strike 331.45 (its team-crit sub-groups whole, their 0.07 parent aside).
 - Its enhanced damage takes the caster's enhancement strengths only with `CopyBoosts`; without it,
   the enhanced figure is the base.
 
@@ -350,16 +360,63 @@ Its effect lines (the pet pass, then power_AddEffects for each pet power):
   clients; this is not the total's count). An effect that doesn't suppress itself lasts the
   lifetime when it ticks, else as many of its own durations as fit in the lifetime plus one; every
   pet effect with a duration says how long.
-- Its chance reads as its group's when it has no duration, else its tick chance unless it
-  `CancelOnMiss`.
-- @TODO the client also lists a tagged group with chance 0 (Fiery Embrace's) with the tag's note
-  ("FieryEmbraceMode"); neither the character's own powers nor pets list those yet.
+- Its chance reads as its group's when its template's own Duration field is 0 (a duration taken
+  from a table doesn't count: both clients read the field, Homecoming's at template offset 0x2c,
+  Thunderspy's at 0x30), else its tick chance unless it `CancelOnMiss`.
+- A group with a tag mode (Burn's Fiery Embrace groups, of chance 0) is listed as for the
+  character's own powers ("Tag modes (power info)" below).
 
 The pipeline writes each version's pets to `<server data>/pets/<version>.json`, beside the version
 folders (Exporter.build_pets, `python -m pipeline.pets` for a version already published); the
 engine parts are `petDamage` and `petLines` in `src/engine/powerinfo.ts`. Level 50 Brute: Burn
 130.13 (12 ticks of 0.14 plus the 1.44 front hit at Melee_Damage 41.7087; its lines show 13 ticks),
 Irradiated Ground 4.59 (one tick of 0.0825 at Class_Minion_Pets' 55.6599).
+
+## Tag modes (power info)
+
+The live clients' power info (power_AddEffects, with getChanceModString and getChanceModValue:
+Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d1f90 and
+0x1404d2720) treats some tagged effect groups apart, for the character's own powers and pets alike
+(`tagMode` in `src/engine/powerinfo.ts`):
+
+- Only a group with tags has a mode. Its first tag picks one by substring, in any case, in the
+  client's order: Lethal, LethalKB10/25/50/70, HailofBulletsKnockdown, HailofBulletsEndKnockback
+  ("Only using Standard Ammo"); FireDamage, FireDamageDoT, HailofBulletsFire ("Only using Incendiary
+  Ammo"); ColdDamage, HailofBulletsCold ("Only using Cryo Ammo"); ToxicDamage, HailofBulletsToxic
+  ("Only using Chemical Ammo"); FieryEmbrace ("Only using Fiery Embrace"); and, on Homecoming only,
+  ASTeamCrit ("Chance increases the more allies are nearby"). The notes are the client's messages.
+- Homecoming's client then tries each parent group's first tag in turn, passing over parents
+  without tags, so a Dual Pistols SentCrit group takes its ammo group's mode. Thunderspy's reads the
+  group's own first tag only (`tagModes: 'ownTag'` in `src/data/servers.ts`).
+- A group with a mode is listed whatever its chance (Fiery Embrace's and the ammo groups have chance
+  0), the mode's note first among its notes. A tagged group with chance 0 and no mode isn't listed.
+- It shows the mode's chance in place of its group's, found the same way from this table, tried in
+  order: Lethal 1, FieryEmbrace 1, LethalKB10 0.1, LethalKB25 0.25, LethalKB50 0.5, LethalKB70 0.7,
+  HailofBulletsKnockdown 0.05, HailofBulletsEndKnockback 0.4, FireDamage 1, FireDamageDoT 0.8,
+  HailofBulletsFire 0.6, ColdDamage 1, HailofBulletsCold 0.6, ToxicDamage 1, HailofBulletsToxic
+  0.6. So a LethalKB* tag reads 1 ("Lethal" comes first), FireDamageDoT reads 1, and ASTeamCrit,
+  with no entry, reads 0 (Homecoming's Stalker crit lines say "0.00% chance").
+- Its line reads that chance by the live client's rule, as every line does: the group's chance
+  when the template's own Duration field is 0, else its tick chance unless it `CancelOnMiss` (Hail
+  of Bullets' knockdown: 10%, its tick chance). Its parents' chances don't count.
+- Damage totals keep each group's own chance: getTotalDamage reads no modes.
+- The client walks its template list, where each group's sub-groups come before its own mods, so
+  the lines do too (`templates`): Crushing Uppercut's knockup comes last, Executioner's Shot's
+  defense debuff after its Standard Ammo hits.
+- The client keeps the last mode's note in a variable it sets only for a tagged group and never
+  clears within a power, so it repeats that note under the lines of untagged groups that follow
+  (Thunder Strike's recovery, endurance, stun and knock read "Only using Fiery Embrace"). The planner
+  doesn't copy this: the note would be false (the owner's decision, November 17, 2026).
+- Confirmed in game (the owner's screenshots, November 17, 2026, level 50): Crushing Uppercut's
+  "0.00% chance for 176.85 smashing damage", Executioner's Shot's "1.66 magnitude knock" with no
+  chance, Hail of Bullets' 10%, 40% and 60% lines, Shadow Field's 5% and 20% holds (raw Duration
+  rule), and Burn's three Fiery Embrace lines.
+- Every line, the character's own and a pet's alike, reads its own group's chance by that rule (a
+  parent group's never counts: Thunder Strike's team-crit lines show no "7.00% chance", as in game).
+  A group with tags and chance 0 is left out unless it has a mode; a group without tags is listed
+  at any chance (power_AddEffects, decompiled). A mod with a Duration field of its own reads its
+  tick chance, not its group's: Homecoming's Blaster Charged Brawl (Electricity Manipulation) reads
+  "-100.00% recovery rate for 2.00s on target", its group's 20% unshown.
 
 ## Grants (Kheldian forms etc.)
 

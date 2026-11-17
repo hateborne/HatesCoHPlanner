@@ -9,6 +9,7 @@ import { TitleText } from './GameText.tsx';
 import { GameScroll } from './GameScroll.tsx';
 import { SELECT } from './OriginAlign.tsx';
 import { useStage } from './Stage.tsx';
+import { POPUP_LAYER } from '../floating.ts';
 
 /**
  * The planner's confirmation dialog (replacing a build, an origin change that removes
@@ -133,7 +134,7 @@ export function ConfirmDialog() {
     top += rowH(c);
   });
   return (
-    <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 105, background: 'rgba(0,0,0,0.55)' }}>
+    <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 105, background: 'rgba(0,0,0,0.55)' }}>
       <MenuFrame x={x} y={y} w={w} h={h} r25 skin={skin} style={{ background: 'rgba(0,3,24,0.97)' }} />
       <SetTitle skin={skin} x={x + (phone ? 22 : 36)} y={y + 26} size={phone ? 26 : 28} text={confirm.title} />
       <div className="abs body-text" style={{ left: x + (phone ? 24 : 40), top: y + (phone ? 76 : 90), width: w - (phone ? 48 : 80), fontSize: 19, lineHeight: 1.35, color: '#cfe8ff', whiteSpace: 'pre-line' }}>

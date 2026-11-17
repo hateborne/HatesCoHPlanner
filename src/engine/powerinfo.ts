@@ -11,6 +11,7 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import type { Archetype, Effect, Mod, PetPower, Power } from '../data/types.ts';
+import { serverById } from '../data/servers.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 
 /** A run of text, optionally colored (CSS hex) and italic. */
@@ -159,6 +160,87 @@ const TXT = {
 } as const;
 
 const NOTE_COLOR = '#aaaa88';
+
+// ---- tag modes (getChanceModString, getChanceModValue) ------------------------------------------
+
+// The note a tag mode adds, by the substrings (any case) that pick it, in the client's order
+// (Homecoming i28p4 0x1404de5c0, i28p3 the same; Thunderspy 0x1404d1f90 has no ASTeamCrit). The
+// texts are the client's messages (DualPistolsLethalMode, ..., FieryEmbraceMode, ASTeamCritStr).
+const TAG_NOTES: readonly (readonly [readonly string[], string])[] = [
+  [['Lethal', 'LethalKB10', 'LethalKB25', 'LethalKB50', 'LethalKB70', 'HailofBulletsKnockdown', 'HailofBulletsEndKnockback'], 'Only using Standard Ammo'],
+  [['FireDamage', 'FireDamageDoT', 'HailofBulletsFire'], 'Only using Incendiary Ammo'],
+  [['ColdDamage', 'HailofBulletsCold'], 'Only using Cryo Ammo'],
+  [['ToxicDamage', 'HailofBulletsToxic'], 'Only using Chemical Ammo'],
+  [['FieryEmbrace'], 'Only using Fiery Embrace'],
+];
+const TEAM_CRIT_NOTE: readonly [readonly string[], string] = [['ASTeamCrit'], 'Chance increases the more allies are nearby'];
+// The chance a tag mode shows instead of its group's, in the client's order (Homecoming 0x1404de9f0,
+// Thunderspy 0x1404d2720). "Lethal" and "FireDamage" come first, so a LethalKB* or FireDamageDoT
+// tag reads 1 as in the client; ASTeamCrit has no entry, so it reads 0. Single precision, as there.
+const TAG_CHANCES: readonly (readonly [string, number])[] = [
+  ['Lethal', 1],
+  ['FieryEmbrace', 1],
+  ['LethalKB10', Math.fround(0.1)],
+  ['LethalKB25', 0.25],
+  ['LethalKB50', 0.5],
+  ['LethalKB70', Math.fround(0.7)],
+  ['HailofBulletsKnockdown', Math.fround(0.05)],
+  ['HailofBulletsEndKnockback', Math.fround(0.4)],
+  ['FireDamage', 1],
+  ['FireDamageDoT', Math.fround(0.8)],
+  ['HailofBulletsFire', Math.fround(0.6)],
+  ['ColdDamage', 1],
+  ['HailofBulletsCold', Math.fround(0.6)],
+  ['ToxicDamage', 1],
+  ['HailofBulletsToxic', Math.fround(0.6)],
+];
+
+// The tables above in lower case (the client compares in any case), with and without ASTeamCrit.
+const lower = (names: readonly string[]) => names.map((n) => n.toLowerCase());
+const NOTES_OWN_TAG = TAG_NOTES.map(([names, note]) => [lower(names), note] as const);
+const NOTES_ALL = [...NOTES_OWN_TAG, [lower(TEAM_CRIT_NOTE[0]), TEAM_CRIT_NOTE[1]] as const];
+const CHANCES = TAG_CHANCES.map(([name, chance]) => [name.toLowerCase(), chance] as const);
+
+/** A group's tag mode: the note its line gets and the chance it shows. */
+interface TagMode {
+  note: string;
+  chance: number; // 0..1, shown in place of the group's chance
+}
+
+/**
+ * The tag mode of an effect group, as the client's power info reads it (getChanceModString and
+ * getChanceModValue, decompiled).
+ *
+ * Only a group with tags has one. Homecoming's client reads the group's first tag, then each parent
+ * group's first tag in turn (a parent without tags is passed over), until one names a mode; the
+ * chance is looked up the same way, apart, so a mode with no chance entry (ASTeamCrit) reads 0.
+ * Thunderspy's client (`ownTag`) reads the group's own first tag only and knows no ASTeamCrit.
+ *
+ * @param e The group.
+ * @param parents Its parent groups, nearest first.
+ * @param ownTag The server's client reads the group's own first tag only (`tagModes`).
+ * @return The mode, or null when the group has none.
+ */
+function tagMode(e: Effect, parents: readonly Effect[], ownTag: boolean): TagMode | null {
+  if (!e.tag?.length) return null;
+  const firsts = (ownTag ? [e] : [e, ...parents]).flatMap((g) => (g.tag?.length ? [g.tag[0]!.toLowerCase()] : []));
+  const notes = ownTag ? NOTES_OWN_TAG : NOTES_ALL;
+  let note: string | undefined;
+  for (const t of firsts) {
+    note = notes.find(([names]) => names.some((n) => t.includes(n)))?.[1];
+    if (note) break;
+  }
+  if (!note) return null;
+  let chance = 0;
+  for (const t of firsts) {
+    const found = CHANCES.find(([name]) => t.includes(name));
+    if (found) {
+      chance = found[1];
+      break;
+    }
+  }
+  return { note, chance };
+}
 
 const POWER_TYPE: Record<string, string> = {
   Click: 'Click',
@@ -349,9 +431,10 @@ interface Tmpl {
   m: Mod;
   attrib: number;
   all?: 'damage' | 'defense'; // collapses every damage / defense type into one "all" line
-  chance: number; // 0..1: group chances times tick chance; a pet's: its own group's chance only
+  chance: number; // 0..1, its own group's chance (the client reads no parent's), the tick chance apart
+  shown: number; // 0..1, the group chance its line reads: `chance`, or its group's tag mode's chance
+  mode: string | null; // a tag mode's note (tagMode): its line is listed whatever its chance
   tick: number; // 0..1, the mod's tick chance
-  pet: boolean; // a pseudo-pet's power: the live client's chance rules (petDamage, petLines)
   hide: boolean; // a pet's HideFromInfo or PPM group: counted in its damage, not listed
   delay: number;
   reqs: string[][];
@@ -532,6 +615,7 @@ export function powerInfo(
     targetEntType: 'critter',
   });
   const ctx = contextFor(at.n, null);
+  const ownTagModes = serverById(gd.server)?.tagModes === 'ownTag';
 
   const attrName = (offset: number): string | null => {
     if (offset >= 0 && offset < 80) {
@@ -561,34 +645,54 @@ export function powerInfo(
   /**
    * Walk effect groups (PvE, visible, requirements met), yielding one template per mod x attribute.
    *
-   * A pseudo-pet's power (`pet`) is walked as the live client's getTotalDamage reads every
-   * template: its HideFromInfo and PPM groups count too (marked `hide`, as they aren't listed), and
-   * each template keeps its own group's chance and its tick chance apart.
+   * The templates come in the client's template-list order: each group's sub-groups before its
+   * own mods (its loader, decompiled), so the lines read in the game's order.
+   *
+   * Each template keeps its own group's chance and its tick chance apart: the live client's
+   * getTotalDamage and power_AddEffects read only the template's own group's chance, never a parent
+   * group's (decompiled; confirmed in game: Executioner's Shot's crits, Thunder Strike's team crits).
+   * A pseudo-pet's power (`pet`) is walked as getTotalDamage reads every template: its HideFromInfo
+   * and PPM groups count too (marked `hide`, as they aren't listed).
+   *
+   * A group with a tag mode (tagMode) shows the mode's chance on its own lines in place of its own;
+   * the damage total keeps the group's own chance.
+   *
+   * @param effs The groups.
+   * @param reqs The parent groups' requirements.
+   * @param out Where the templates go.
+   * @param ec The requirement context of the class running the power.
+   * @param pet The power is a pseudo-pet's.
+   * @param hidden A parent group is HideFromInfo or PPM (a pet's).
+   * @param parents The parent groups, nearest first.
    */
   const templates = (
     effs: Effect[] | undefined,
-    chain: number,
     reqs: string[][],
     out: Tmpl[],
     ec: EvalContext = ctx,
     pet = false,
     hidden = false,
+    parents: readonly Effect[] = [],
   ): void => {
     for (const e of effs ?? []) {
       if (e.fl?.includes('PVPOnly')) continue;
       const hide = hidden || !!e.fl?.includes('HideFromInfo') || !!e.ppm;
       if (hide && !pet) continue;
-      const chance = pet ? (e.ch ?? 1) : chain * (e.ch ?? 1);
+      const chance = e.ch ?? 1;
       const rq = e.req && e.req.length ? [...reqs, e.req] : reqs;
       if (!rq.every((r) => evalRequires(r, ec))) continue;
+      // the client's template list: a group's sub-groups first, then its own mods
+      if (e.sub?.length) templates(e.sub, rq, out, ec, pet, hide, [e, ...parents]);
+      const mode = tagMode(e, parents, ownTagModes);
       for (const m of e.m ?? []) {
         if (m.t === 'SkillMagnitude') continue;
         const tc = m.tc ?? 1;
         const base = {
           m,
-          chance: pet ? chance : chance * tc,
+          chance,
+          shown: mode ? mode.chance : chance,
+          mode: mode?.note ?? null,
           tick: tc,
-          pet,
           hide,
           delay: m.del ?? e.del ?? 0,
           reqs: rq,
@@ -609,19 +713,18 @@ export function powerInfo(
         }
         for (const a of m.a) if (rest.has(a)) out.push({ ...base, attrib: a });
       }
-      templates(e.sub, chance, rq, out, ec, pet, hide);
     }
   };
   /** @return A pseudo-pet's power's templates, walked with the pet's requirement context. */
   const petTemplates = (pp: PetPower, ec: EvalContext): Tmpl[] => {
     const out: Tmpl[] = [];
-    templates(pp.eff, 1, [], out, ec, /*pet=*/ true);
-    templates(pp.act, 1, [], out, ec, /*pet=*/ true);
+    templates(pp.eff, [], out, ec, /*pet=*/ true);
+    templates(pp.act, [], out, ec, /*pet=*/ true);
     return out;
   };
   const all: Tmpl[] = [];
-  templates(power.eff, 1, [], all);
-  templates(power.act, 1, [], all);
+  templates(power.eff, [], all);
+  templates(power.act, [], all);
 
   const hp = O['HitPoints'] ?? 80;
   const EXECUTE = gd.attribByName.get('ExecutePower') ?? 512;
@@ -637,7 +740,7 @@ export function powerInfo(
   /**
    * How many times a template's magnitude counts in an average, as getTotalDamage counts damage:
    * once at its chance, or once per tick of its duration, a CancelOnMiss effect stopping at its
-   * first missed tick. The client takes a pet's DoT at its tick chance and anything else at its
+   * first missed tick. The client takes a DoT at its tick chance and anything else at its own
    * group's chance.
    *
    * @param t The template.
@@ -645,7 +748,7 @@ export function powerInfo(
    * @return The expected number of times it lands.
    */
   const expectedHits = (t: Tmpl, dur: number): number => {
-    const chance = t.pet && dur ? t.tick : t.chance;
+    const chance = dur ? t.tick : t.chance;
     if (!dur) return chance;
     const ticks = Math.floor(dur / (t.m.per ?? 1)) + 1;
     if (!t.m.fl?.includes('CancelOnMiss')) return ticks * chance;
@@ -735,8 +838,8 @@ export function powerInfo(
       for (const { n, pp } of [...byId, ...named]) {
         if (!pp) continue;
         const tmpls: Tmpl[] = [];
-        templates(pp.eff, 1, [], tmpls, run.ec, run.pet);
-        templates(pp.act, 1, [], tmpls, run.ec, run.pet);
+        templates(pp.eff, [], tmpls, run.ec, run.pet);
+        templates(pp.act, [], tmpls, run.ec, run.pet);
         const r = totalDamage({ n, eff: pp.eff, act: pp.act }, tmpls, run, depth, execDepth + 1);
         base += r.base;
         total += m.fl?.includes('CopyBoosts') ? r.total : r.base;
@@ -909,8 +1012,12 @@ export function powerInfo(
    * A pet's power (`pet`) is listed as the live client lists it (decompiled): effects on the pet
    * itself are left out; its damage ticks for the pet's lifetime, floor(lifetime / its
    * ActivatePeriod) + 1 times; an effect that doesn't suppress itself lasts the lifetime, or as
-   * many of its own durations as fit in it plus one; every pet effect with a duration says so; and
-   * its chance is its group's (no duration) or its tick chance.
+   * many of its own durations as fit in it plus one; and every pet effect with a duration says so.
+   *
+   * Every line reads its chance by the live client's rule: its own group's chance when its
+   * template's own Duration field is 0, else its tick chance unless it CancelOnMiss. A group with
+   * tags is left out at chance 0 unless it has a tag mode (tagMode), which it then reads as its
+   * group's chance, its note first; a group without tags is listed at any chance.
    *
    * @param name The power's full name (its pets are listed under it).
    * @param tmpls Its templates.
@@ -941,7 +1048,8 @@ export function powerInfo(
       const offset = t.attrib;
       const eType = ASPECT[m.asp];
       if (!eType) continue;
-      if (!t.chance || t.hide) continue;
+      if (t.hide) continue;
+      if (!t.chance && t.tags.length && !t.mode) continue; // the client skips only a tagged group of chance 0
       if (pet && m.tg === 'Caster') continue; // the client doesn't list what a pet does to itself
 
       if (offset === 481 || offset === 486 || offset === (gd.attribByName.get('GrantPower') ?? 481) || offset === (gd.attribByName.get('GrantBoostedPower') ?? 486)) {
@@ -978,26 +1086,23 @@ export function powerInfo(
       if (m.fl?.includes('HideZero') && fMag === 0) continue;
       const boosted = both ? eff(offset) : 0;
       const cancelOnMiss = !!m.fl?.includes('CancelOnMiss');
-      const fChance = t.chance * 100;
+      const fChance = t.shown * 100;
       const fTick = t.tick * 100;
 
       let pchChance = '';
       let pchTicks = '';
       let pchChance2 = '';
-      if (t.pet) {
-        if (off100(fChance) && !fDuration) pchChance = chanceText(fChance);
-        else if (off100(fTick) && !cancelOnMiss) pchChance = chanceText(fTick);
-      } else if (off100(fChance) && (!fDuration || !cancelOnMiss)) {
-        pchChance = chanceText(fChance);
-      }
+      // the live client's rule: the group's chance when the template's own Duration field is 0 (a
+      // duration from a table doesn't count), else the tick chance
+      if (off100(fChance) && !m.dur) pchChance = chanceText(fChance);
+      else if (off100(fTick) && !cancelOnMiss) pchChance = chanceText(fTick);
       let iTicks = 0;
       if (isDamageOff(offset) && eType === 'Abs') {
         if (pet && pet.dur && ap) iTicks = Math.floor(Math.fround(Math.fround(pet.dur) / Math.fround(ap))) + 1;
         else if (fDuration) iTicks = Math.floor(fDuration / (m.per ?? 1)) + 1;
         if (iTicks > 1) {
           pchTicks = TXT.ticksOf.replace('{ticks}', String(iTicks));
-          const missPct = t.pet ? fTick : fChance;
-          if (off100(missPct) && cancelOnMiss) pchChance2 = chanceText(missPct);
+          if (off100(fTick) && cancelOnMiss) pchChance2 = chanceText(fTick);
         }
       }
       // how long it is shown to last: a pet's effect lasts its lifetime unless it suppresses itself
@@ -1060,6 +1165,7 @@ export function powerInfo(
       // the sentence starts in the default (white) color unless the markup says otherwise
       const notes: Seg[][] = [];
       const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
+      if (t.mode) note(t.mode); // the client adds it before the requirement notes
       if (t.tags.includes('Overpower')) note('Overpower');
       for (const n of requiresNotes(t.reqs, false)) note(n);
       if (m.fl?.includes('IgnoreStrength')) note(TXT.ignoresBuffs);

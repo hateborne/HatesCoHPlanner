@@ -3,13 +3,13 @@ import { join } from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { BuildRules } from '../src/engine/rules.ts';
-import { importMbd, importMidsText, type Mbd, type MidsMap } from '../src/io/mids.ts';
+import { importMbd, importMidsText, parseMidsText, type Mbd, type MidsMap } from '../src/io/mids.ts';
 import { loadData, pid } from './helpers/data.ts';
 
 /**
  * The forum builds the browser recreation tests (e2e/) rebuild, all legal on the current patch: each
  * fixture imports here first, so a broken fixture or importer shows up in `npm test` and not only in
- * the browser run.
+ * the browser run. The Sentinel is here for its save format alone; no browser test rebuilds it.
  */
 const gd = loadData();
 const map = JSON.parse(readFileSync(join(process.cwd(), 'public', 'data', gd.core.manifest.dataVersion, 'mids-map.json'), 'utf-8')) as MidsMap;
@@ -69,6 +69,30 @@ describe('forum build fixtures import', () => {
     // each slot at the level it was gained (1-based): Havoc Punch is slotted from level 1 to 7
     const havoc = build.picks.find((p) => p?.power === pid(gd, 'Stalker_Melee.Electrical_Melee.Havoc_Punch'));
     expect(havoc?.slots.map((s) => s.level + 1)).toEqual([1, 3, 3, 5, 5, 7]);
+    expect(new BuildRules(gd, build).issues()).toEqual([]);
+  });
+
+  it('Archery / Bio Armor Sentinel (legacy |MxDz; chunk saved at version 3.10)', async () => {
+    const text = fixture('archery-bio-sentinel.txt');
+    // Mids save version 3.10: a power has ProcInclude but not the inherent-slot fields of 3.20
+    const parsed = await parseMidsText(text);
+    if (parsed.kind !== 'mxdz') throw new Error('not a legacy chunk');
+    expect(new DataView(parsed.raw.buffer, parsed.raw.byteOffset).getFloat32(4, /*littleEndian=*/ true)).toBeCloseTo(3.1, 5);
+    const { build, warnings } = await importMidsText(gd, map, text);
+    expect(gd.archetype(build.at).n).toBe('Class_Sentinel');
+    expect(gd.powerset(build.primary).n).toBe('Sentinel_Ranged.Archery');
+    expect(gd.powerset(build.secondary).n).toBe('Sentinel_Defense.Bio_Organic_Armor');
+    expect(build.picks.filter(Boolean)).toHaveLength(24);
+    expect(build.picks.reduce((n, p) => n + (p ? p.slots.filter((s) => s.enh).length : 0), 0)).toBe(87);
+    // the last powers of the code still read true: a reader a field out of step is lost long before them
+    const dominate = build.picks.find((p) => p?.power === pid(gd, 'Epic.Sentinel_Psionic_Mastery.Dominate'));
+    expect(dominate?.slots.map((s) => (s.enh ? gd.power(s.enh.boost).n : null))).toEqual(
+      ['Gladiators_Net', 'Unbreakable_Constraint', 'Neuronic_Shutdown', 'Ghost_Widows_Embrace', 'Gladiators_Javelin', 'Decimation'].map(
+        (set) => `Boosts.Crafted_${set}_F.Crafted_${set}_F`,
+      ),
+    );
+    expect(build.picks[23]?.power).toBe(pid(gd, 'Pool.Flight.Fly'));
+    expect(warnings).toEqual([]);
     expect(new BuildRules(gd, build).issues()).toEqual([]);
   });
 });
