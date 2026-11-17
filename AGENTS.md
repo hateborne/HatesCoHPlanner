@@ -148,7 +148,8 @@ The full map, file by file, is in `docs/architecture.md`.
 ```
 src/data/       game data loading, versions.ts, servers.ts (SERVERS), types.ts
 src/engine/     pure build rules: rules.ts (BuildRules), totals.ts, enhance.ts, setbonus.ts,
-                requires.ts (RPN), validate.ts (checkBuild), schedule.ts, actions.ts, migrate.ts
+                requires.ts (RPN), validate.ts (checkBuild), schedule.ts, actions.ts, migrate.ts;
+                finder/ (the set finder's engine: ranked swaps of sets into existing slots)
 src/io/         share.ts (#b= links), mids.ts, midsPatches.ts, buildtxt.ts, importProblem.ts,
                 library.ts (IndexedDB), binary.ts, fileName.ts
 src/state/      store.ts (zustand: data, build, level-up flow, dialogs)
