@@ -30,7 +30,7 @@ const NOT_THE_SITE = [
   /^(pipeline|tools|research)\//,
   /^scripts\//, // CI and deploy helpers
   /\.md$/i, // README, AGENTS, CLAUDE, CHANGELOG and other notes
-  /^(\.gitignore|\.gitattributes|LICENSE|eslint\.config\.[cm]?[jt]s|playwright\.config\.[cm]?[jt]s|tsconfig\.e2e\.json)$/,
+  /^(\.gitignore|\.gitattributes|LICENSE|eslint\.config\.[cm]?[jt]s|playwright(\.built)?\.config\.[cm]?[jt]s|tsconfig\.e2e\.json)$/,
 ];
 
 export function affectsSite(path) {
