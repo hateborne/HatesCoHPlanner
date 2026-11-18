@@ -6,7 +6,7 @@ import type { GameData } from '../data/gamedata.ts';
 import { cloneBuild, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import type { Power } from '../data/types.ts';
 import { canSlot, ioLevelRange, levelsAbove } from './enhance.ts';
-import { BuildRules, MAX_BOUGHT_SLOTS, MAX_LEVEL } from './rules.ts';
+import { BuildRules, MAX_BOUGHT_SLOTS, MAX_LEVEL, type BuildEntry, type PowerOption } from './rules.ts';
 
 function originIndex(gd: GameData, b: Build): number {
   return gd.core.origins.findIndex((o) => o.id === b.origin);
@@ -101,7 +101,22 @@ export function swapPick(gd: GameData, b: Build, i: number, power: number): Swap
     if (s.enh) (pick.slots[k]?.enh ? kept : dropped).push({ key, slot: k, enh: s.enh });
     if (k > 0 && k >= pick.slots.length) freed.push(s.level);
   });
-  // powers the old one granted and the new one doesn't: their slots leave with them
+  dropGoneGrants(gd, before, nb, dropped, freed);
+  return { build: nb, dropped, kept, freed: freed.sort((x, y) => x - y) };
+}
+
+/**
+ * Empty the slots of granted powers a change took out of the build (Kheldian form attacks, ...),
+ * so they don't come back holding enhancements; their pieces count as dropped and their bought
+ * slots as freed.
+ *
+ * @param gd Game data.
+ * @param before The build's entries before the change.
+ * @param nb The changed build (its granted slots are emptied in place).
+ * @param dropped Collects the pieces dropped.
+ * @param freed Collects the freed slots' levels.
+ */
+function dropGoneGrants(gd: GameData, before: BuildEntry[], nb: Build, dropped: SwapPiece[], freed: number[]): void {
   const after = new Set(new BuildRules(gd, nb).entries().map((e) => e.key));
   for (const e of before) {
     if (e.source !== 'grant' || after.has(e.key)) continue;
@@ -112,6 +127,100 @@ export function swapPick(gd: GameData, b: Build, i: number, power: number): Swap
     const g = nb.granted[e.power.id];
     if (g) g.slots = [];
   }
+}
+
+/**
+ * @param b The build.
+ * @param pick A pick index.
+ * @param power A power id.
+ * @return The later pick that holds the power, or -1.
+ */
+export function laterPick(b: Build, pick: number, power: number): number {
+  return b.picks.findIndex((p, i) => i > pick && p?.power === power);
+}
+
+/**
+ * A power option on a pick reopened from the overview, for a power the build takes at a later pick:
+ * offered (available) when it could be taken at this pick were that later pick empty, so it can be
+ * taken earlier; else greyed with the reason. Every other option is returned as it is.
+ *
+ * @param gd Game data.
+ * @param base The build without this pick.
+ * @param pick The pick reopened.
+ * @param o The option as the screen lists it.
+ * @return The option to show.
+ */
+export function earlierOption(gd: GameData, base: Build, pick: number, o: PowerOption): PowerOption {
+  if (o.state !== 'owned') return o;
+  const later = laterPick(base, pick, o.power.id);
+  if (later < 0) return o;
+  const probe = new BuildRules(gd, { ...base, picks: base.picks.map((p, i) => (i === later ? null : p)) }).powerOption(o.power.id, pick);
+  if (probe.state === 'available') return probe;
+  const at = (gd.core.schedule.power[later] ?? 0) + 1;
+  return { ...probe, state: 'unavailable', reason: `Your level ${at} power, and it can't be taken here: ${probe.reason ?? 'not allowed at this level'}` };
+}
+
+/**
+ * Take a power the build has at a later pick at an earlier one instead: it moves with its slots and
+ * enhancements (all gained at the later pick or after, so all still fine), the later pick is left
+ * empty, and the earlier pick's own power leaves the build. Powers that one granted go with their
+ * slots.
+ *
+ * @param gd Game data.
+ * @param b The build as it is.
+ * @param pick The earlier pick.
+ * @param later The later pick holding the power.
+ * @return The build, with the earlier pick's power (its enhancements, and those of powers it
+ *   granted) dropped and its bought slots freed.
+ */
+export function takeEarlier(gd: GameData, b: Build, pick: number, later: number): SwapResult {
+  const before = new BuildRules(gd, b).entries();
+  const nb = cloneBuild(b);
+  const moving = nb.picks[later];
+  if (!moving) return { build: b, dropped: [], kept: [], freed: [] };
+  const level = gd.core.schedule.power[pick] ?? 0;
+  const slots = moving.slots.map((s) => ({ ...s }));
+  if (slots[0]) slots[0].level = level;
+  const old = b.picks[pick];
+  nb.picks[pick] = { ...moving, level, slots };
+  nb.picks[later] = null;
+  const key = `pick:${pick}`;
+  const dropped: SwapPiece[] = [];
+  const freed: number[] = [];
+  (old?.slots ?? []).forEach((s, k) => {
+    if (s.enh) dropped.push({ key, slot: k, enh: s.enh });
+    if (k > 0) freed.push(s.level);
+  });
+  dropGoneGrants(gd, before, nb, dropped, freed);
+  return { build: nb, dropped, kept: [], freed: freed.sort((x, y) => x - y) };
+}
+
+/**
+ * Put a power back at a later pick, as a leveling build's swap does with the power a later one
+ * replaced: it keeps the slots gained at that pick's level or after, and their enhancements; the
+ * slots gained before it can't belong to it and are freed, their enhancements dropped.
+ *
+ * @param gd Game data.
+ * @param b The build (the later pick empty).
+ * @param later The later pick.
+ * @param old The power as it was at its earlier pick.
+ * @param key The entry key its pieces are reported under (its earlier pick's).
+ * @return The build with it placed, the enhancements dropped and kept, and the freed slots' levels.
+ */
+export function putLater(gd: GameData, b: Build, later: number, old: Pick, key: string): SwapResult {
+  const nb = cloneBuild(b);
+  const level = gd.core.schedule.power[later] ?? 0;
+  const dropped: SwapPiece[] = [];
+  const kept: SwapPiece[] = [];
+  const freed: number[] = [];
+  const slots: Slot[] = [];
+  old.slots.forEach((s, k) => {
+    const stays = k === 0 || s.level >= level;
+    if (s.enh) (stays ? kept : dropped).push({ key, slot: k, enh: s.enh });
+    if (stays) slots.push(k === 0 ? { ...s, level } : { ...s });
+    else freed.push(s.level);
+  });
+  nb.picks[later] = { power: old.power, level, slots, on: old.on };
   return { build: nb, dropped, kept, freed: freed.sort((x, y) => x - y) };
 }
 

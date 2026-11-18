@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, versionServer, withServer, type GameServer } from '../data/servers.ts';
 import { loadVersions, missingVersionNote, normalizeVersion, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
-import { addSlot, raiseToCap, setPick, swapPick, type SwapPiece } from '../engine/actions.ts';
+import { addSlot, laterPick, putLater, raiseToCap, setPick, swapPick, takeEarlier, type SwapPiece } from '../engine/actions.ts';
 import { pieceName } from '../engine/enhance.ts';
 import { cleanName, cloneBuild, hasWork, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules, buildPairProblem, levelUpRespec, MAX_LEVEL } from '../engine/rules.ts';
@@ -62,6 +62,7 @@ export interface LevelCtx {
   pendingSlots: string[]; // entry keys, one per slot placed at this level
   flow?: LevelStep[]; // a Respec build's wizard order (respecSteps); absent: the leveling order
   freed?: boolean; // the slot screen after a power swap freed slots: `flow` holds one step with just those slots
+  chain?: { freed: number[] }; // a later pick to choose again (a power taken earlier): the slots to place after it
 }
 
 interface Store {
@@ -536,7 +537,8 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
   }
   const pick = currentPick(steps, l);
   // editing a level from the overview: the pick's slots and enhancements come from the original
-  const carry = l.mode === 'edit' ? l.orig.picks[pick] : undefined;
+  // (not a pick emptied by taking its power earlier: the original holds that power there)
+  const carry = l.mode === 'edit' && !l.chain ? l.orig.picks[pick] : undefined;
   return l.pendingPower !== undefined && pick >= 0 ? setPick(gd, l.base, pick, l.pendingPower, carry) : l.base;
 }
 
@@ -651,11 +653,6 @@ function swapPieceLabel(gd: GameData, b: Build, p: SwapPiece, pickKey: string): 
   return `${name}${label ? ` (${label})` : ''}${where}`;
 }
 
-/** @return Levels as a phrase: "3", "3 and 5", "3, 5 and 7" (1-based). */
-function levelList(levels: number[]): string {
-  const n = levels.map((l) => String(l + 1));
-  return n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : (n[0] ?? '');
-}
 
 /** @return The Music switch when the browser remembers none: off on phones (the phone layout), on elsewhere. */
 function defaultMusic(): boolean {
@@ -712,8 +709,11 @@ async function finishSwap(gd: GameData, steps: LevelStep[], level: LevelCtx): Pr
   const pick = currentPick(steps, level);
   const power = level.pendingPower;
   if (power === undefined || pick < 0) return;
-  const old = level.orig.picks[pick];
-  const sw = swapPick(gd, level.orig, pick, power);
+  // a power the build takes at a later pick, taken here instead
+  const later = level.chain ? -1 : laterPick(level.orig, pick, power);
+  if (later >= 0) return takeEarlierFlow(gd, steps, level, pick, later);
+  const old = level.chain ? null : level.orig.picks[pick];
+  const sw = swapPick(gd, level.chain ? level.base : level.orig, pick, power);
   const st = useStore.getState();
   const advanced = st.advancedRespec && level.orig.respecTo !== undefined;
   if (old && !advanced && (sw.dropped.length || sw.freed.length)) {
@@ -729,7 +729,7 @@ async function finishSwap(gd: GameData, steps: LevelStep[], level: LevelCtx): Pr
       return why ? `${label(p)} - kept, but flagged: ${why}` : label(p);
     };
     const n = sw.freed.length;
-    const frees = `${n} enhancement slot${n > 1 ? 's' : ''} (gained at level ${levelList(sw.freed)}). You'll place ${n > 1 ? 'them' : 'it'} next.`;
+    const frees = `${n} enhancement slot${n > 1 ? 's' : ''}. You'll place ${n > 1 ? 'them' : 'it'} next.`;
     const intro = `Changing ${from} to ${to} for the level ${(gd.core.schedule.power[pick] ?? 0) + 1} power choice`;
     const sections = sw.dropped.length
       ? [
@@ -748,14 +748,99 @@ async function finishSwap(gd: GameData, steps: LevelStep[], level: LevelCtx): Pr
     // Cancel (or a newer dialog) stays on the power screen; so does a screen that moved on meanwhile
     if (!ok || useStore.getState().level !== level) return;
   }
-  if (sw.freed.length) {
+  // a later pick chosen again: the slots its old power held are placed now too
+  finishWith(level.orig, sw.build, [...(level.chain?.freed ?? []), ...sw.freed]);
+}
+
+/**
+ * End a swap: show the overview with the new build, or first the slot screen for the slots it freed.
+ *
+ * @param orig The build before the swap (Cancel on the slot screen restores it).
+ * @param b The build after it.
+ * @param freed The freed slots' levels, one per slot.
+ */
+function finishWith(orig: Build, b: Build, freed: number[]): void {
+  if (freed.length) {
     // one screen for the freed slots, each keeping its own level (previewBuild spreads them)
-    const step: LevelStep = { level: Math.max(...sw.freed), picks: [], slots: sw.freed.length, slotLevels: sw.freed };
-    useStore.setState({ level: { step: 0, pickInStep: 0, mode: 'edit', sub: 'slots', base: sw.build, orig: level.orig, pendingSlots: [], flow: [step], freed: true } });
+    const levels = [...freed].sort((x, y) => x - y);
+    const step: LevelStep = { level: Math.max(...levels), picks: [], slots: levels.length, slotLevels: levels };
+    useStore.setState({ level: { step: 0, pickInStep: 0, mode: 'edit', sub: 'slots', base: b, orig, pendingSlots: [], flow: [step], freed: true } });
     return;
   }
-  persist(sw.build);
-  useStore.setState({ build: sw.build, view: 'overview', level: undefined });
+  persist(b);
+  useStore.setState({ build: b, view: 'overview', level: undefined });
+}
+
+/**
+ * Take a power the build has at a later pick at a reopened earlier one (B at E, from L).
+ *
+ * A leveling build moves the earlier pick's power (A) up to L, keeping the slots gained at L or
+ * after (the ones before are freed, their enhancements dropped); when A can't be taken at L the
+ * swap is refused, saying why. A Respec build (or an earlier pick that held nothing) empties L
+ * instead: A leaves with its enhancements, and the player chooses L again (A offered first), then
+ * places A's bought slots. Both ask first (Advanced Respec doesn't, on a Respec build); Cancel stays
+ * on the power screen, and Cancel later on undoes it all.
+ *
+ * @param gd Game data.
+ * @param steps The leveling steps.
+ * @param level The power screen's state (edit mode, B chosen).
+ * @param pick The earlier pick (E).
+ * @param later The later pick holding B (L).
+ */
+async function takeEarlierFlow(gd: GameData, steps: LevelStep[], level: LevelCtx, pick: number, later: number): Promise<void> {
+  const orig = level.orig;
+  const st = useStore.getState();
+  const old = orig.picks[pick];
+  const b = gd.power(orig.picks[later]!.power).dn;
+  const a = old ? gd.power(old.power).dn : '';
+  const atE = (gd.core.schedule.power[pick] ?? 0) + 1;
+  const atL = (gd.core.schedule.power[later] ?? 0) + 1;
+  const key = `pick:${pick}`;
+  const label = (p: SwapPiece) => swapPieceLabel(gd, orig, p, key);
+  const moved = takeEarlier(gd, orig, pick, later);
+  const respec = orig.respecTo !== undefined;
+  if (old && !respec) {
+    // leveling: more guardrails. A must be legal at L, else nothing changes
+    const opt = new BuildRules(gd, moved.build).powerOption(old.power, later);
+    if (opt.state !== 'available') {
+      await st.tell({ title: "Can't swap these powers", text: `Taking ${b} at level ${atE} would move ${a} to level ${atL}, but ${a} can't be taken there: ${opt.reason ?? 'not allowed at that level'}.` });
+      return;
+    }
+    const put = putLater(gd, moved.build, later, old, key);
+    const n = put.freed.length;
+    const frees = n ? ` It frees ${n} enhancement slot${n > 1 ? 's' : ''} gained before level ${atL}; you'll place ${n > 1 ? 'them' : 'it'} next.` : '';
+    const ok = await st.askConfirm({
+      title: 'Change power?',
+      text: `Taking ${b} at level ${atE} moves ${a} to level ${atL}.${frees}${put.dropped.length ? ' The following enhancements will be dropped:' : ''}`,
+      sections: put.dropped.length ? [{ heading: '', lines: put.dropped.map(label) }] : undefined,
+      highlight: [b, a],
+      okLabel: 'OK',
+    });
+    if (!ok || useStore.getState().level !== level) return;
+    finishWith(orig, put.build, put.freed);
+    return;
+  }
+  // a Respec build (or nothing at E): L is chosen again
+  if (!(st.advancedRespec && respec)) {
+    const slotsAt = moved.freed.length ? `, as well as reinserting enhancement slots` : '';
+    const ok = await st.askConfirm({
+      title: 'Change power?',
+      text: old
+        ? `Selecting ${b} instead of ${a} at level ${atE} will require that ${a} be reselected at level ${atL}${slotsAt}.`
+        : `Selecting ${b} at level ${atE} will require that a power be reselected at level ${atL}.`,
+      sections: moved.dropped.length ? [{ heading: 'The following enhancements will be dropped:', lines: moved.dropped.map(label) }] : undefined,
+      highlight: old ? [b, a] : [b],
+      okLabel: 'OK',
+    });
+    if (!ok || useStore.getState().level !== level) return;
+  }
+  const step = steps.findIndex((s) => s.picks.includes(later));
+  if (step < 0) return;
+  // A offered first at L when it can be taken there
+  const offer = old && new BuildRules(gd, moved.build).powerOption(old.power, later).state === 'available' ? offerAgain(gd, moved.build, later, old.power) : {};
+  useStore.setState({
+    level: { step, pickInStep: steps[step]!.picks.indexOf(later), mode: 'edit', sub: 'power', base: moved.build, orig, ...offer, pendingSlots: [], chain: { freed: moved.freed } },
+  });
 }
 
 export const useStore = create<Store>((set, get) => ({

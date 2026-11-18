@@ -383,7 +383,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   return (
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
-        <MenuFrame x={fx} y={fy} w={fw} h={fh} r25 style={{ background: 'rgba(0,0,20,0.94)' }} />
+        <MenuFrame x={fx} y={fy} w={fw} h={fh} r25 skin={skin} style={{ background: 'rgba(0,0,20,0.94)' }} />
         <SetTitle x={G.title[0]!} y={G.title[1]!} size={titleSize} width={titleW} text={titleText} />
         <div className="abs body-text" style={{ left: fx + fw - SWITCH_W - (phone ? 12 : 30), top: fy + (phone ? 10 : 26), width: SWITCH_W, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: phone ? 6 : 0, fontSize: phone ? 15 : 18, color: '#cfe8ff' }}>
           <label title={AT_CAP_HELP} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: phone ? 32 : undefined }}>
@@ -437,7 +437,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
           )}
         </div>
         {/* selection details and controls */}
-        <MenuFrame x={dx} y={dy} w={dw} h={dh} />
+        <MenuFrame x={dx} y={dy} w={dw} h={dh} skin={skin} />
         <div className="abs body-text scroll-y" style={{ left: ix, top: iy, width: iw, height: dh - (phone ? 20 : 30), fontSize: phone ? 19 : 16, color: '#cfe8ff' }}>
           {selBoost && sel ? (
             <>
@@ -476,7 +476,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') commitLevel();
                       }}
-                      style={{ width: phone ? 90 : 70, height: phone ? 44 : undefined, background: atCap ? '#222' : '#000', color: '#fff', border: '1px solid #4f94ff' }}
+                      style={{ width: phone ? 90 : 70, height: phone ? 44 : undefined, background: atCap ? '#222' : '#000', color: '#fff', border: `1px solid ${skin.menuBorder}` }}
                     />
                   </label>
                 ) : null}

@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
+import { earlierOption } from '../../engine/actions.ts';
 import { BuildRules, type SetOption } from '../../engine/rules.ts';
 import { currentPick, stepsOf, useStore, type LevelCtx } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
@@ -124,7 +125,10 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   const rules = useMemo(() => (gd && level ? new BuildRules(gd, level.base) : null), [gd, level]);
   if (!gd || !level || !rules) return null;
 
-  const options = rules.setOptions(pick);
+  // reopened from the overview: a power the build takes later can be taken here instead
+  // (store.takeEarlierFlow), when it could be taken at this level
+  const earlier = level.mode === 'edit' && !level.chain;
+  const options = rules.setOptions(pick).map((o) => (earlier ? { ...o, powers: o.powers.map((p) => earlierOption(gd, level.base, pick, p)) } : o));
   const primary = options.filter((o) => o.column === 0);
   const secondary = options.filter((o) => o.column === 1);
   const extra: SetOption[] = options.filter((o) => o.column === 2);

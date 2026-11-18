@@ -469,6 +469,18 @@ yellow through `highlight`); Cancel stays on the power screen. Freed slots are p
 screen holding just them (`LevelCtx.freed`, a one-step `flow`), each keeping its level: a slot can
 only go on a power owned by its level (outside a respec), and Cancel there undoes the whole swap.
 
+A power the build takes at a later pick is offered on a reopened earlier one when it could be
+taken there with that later pick empty (`earlierOption`; otherwise it stays greyed, the reason in
+its tooltip). Taking it (`takeEarlierFlow` in the store) differs by build type:
+
+- **Leveling build:** the earlier pick's power moves up to the later pick (`putLater`), keeping the
+  slots gained at that level or after; the earlier ones are freed. When it can't be taken there,
+  the swap is refused with the reason (`tell`).
+- **Respec build (or an earlier pick that held nothing):** the later pick is emptied
+  (`takeEarlier`), the old power's enhancements are dropped, and the player chooses that pick again
+  (the old power offered first, `LevelCtx.chain`), then places its freed slots. Advanced Respec
+  skips the question.
+
 **Advanced Respec** is a browser setting (`advancedRespec`, localStorage `hcp.advancedRespec`),
 not part of the build: the tray's "Respec: Normal / Advanced" button (phones: the menu pane)
 switches it, and so does a second click on New Build's ticked Respec bar (a double-click switches
@@ -480,7 +492,7 @@ it makes a click on a power (or a pool power) take it and move on, and swaps ask
 (`enhAtCap`, `hcp.enhAtCap`): pieces go in at `capLevel` (the set's top, or the build's last level
 plus `levelsAbove`, whichever is lower), and on reaching the overview from leveling (the end of
 the walk or View Build) every crafted piece below its cap is raised to it (`raiseToCap`; none is
-ever lowered). Ctrl+Click (phones: Select several) chooses several pieces, up to the clicked slot
+ever lowered). Its frames, tabs and level box follow the build's skin. Ctrl+Click (phones: Select several) chooses several pieces, up to the clicked slot
 plus the power's empty slots; Place fills those slots left to right in the list's order, so no
 piece already slotted elsewhere in the power is replaced.
 
