@@ -5,6 +5,14 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ## Unreleased
 
+### New
+
+- Advanced Respec: set the new Respec button to Advanced (or click the ticked Respec bubble on New Build) and each power you click moves you straight to the next pick.
+- Powers can be swapped from the build screen even when they hold enhancements: the planner lists which enhancements will be dropped and kept, and asks first unless Advanced Respec is on.
+- When a new power can't hold the old one's slots, you place the freed slots right away.
+- The enhancement picker can put every piece in at your build's level or the set's top level, and raise them when the build levels further.
+- Ctrl+Click (or Select several on phones) picks several enhancements at once and fills the power's empty slots in one go, with their total shown after enhancement diversification.
+
 ### Fixed
 
 - The Continue button on the server list always shows which server your build is on, even with a long build name.

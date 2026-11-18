@@ -4,26 +4,9 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import { cloneBuild, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
-import { canSlot } from './enhance.ts';
-import { BuildRules } from './rules.ts';
-
-/**
- * Whether taking pick `i` out of the build would take enhancements with it.
- *
- * Counts the pick's own slots and the slots of powers it grants (Kheldian form attacks, Bright
- * Nova's blasts, ...), which disappear with it: the build's enhancements are compared with and
- * without the pick.
- *
- * @param gd Game data.
- * @param b The build.
- * @param i 0-based pick index.
- * @return True when the pick (or anything it grants) holds an enhancement.
- */
-export function pickHoldsEnhancements(gd: GameData, b: Build, i: number): boolean {
-  if (b.picks[i]?.slots.some((s) => s.enh)) return true;
-  const count = (x: Build) => new BuildRules(gd, x).entries().reduce((n, e) => n + e.slots.filter((s) => s.enh).length, 0);
-  return count({ ...b, picks: b.picks.map((p, k) => (k === i ? null : p)) }) < count(b);
-}
+import type { Power } from '../data/types.ts';
+import { canSlot, ioLevelRange, levelsAbove } from './enhance.ts';
+import { BuildRules, MAX_BOUGHT_SLOTS, MAX_LEVEL } from './rules.ts';
 
 function originIndex(gd: GameData, b: Build): number {
   return gd.core.origins.findIndex((o) => o.id === b.origin);
@@ -70,6 +53,105 @@ export function setPick(gd: GameData, b: Build, i: number, power: number, carry?
   if (slots[0]) slots[0].level = level;
   nb.picks[i] = { power, level, slots, on: undefined };
   return nb;
+}
+
+/** One enhancement a power swap drops or keeps. */
+export interface SwapPiece {
+  key: string; // the entry it sits in ('pick:<i>' or 'grant:<powerId>')
+  slot: number; // its slot index there
+  enh: SlottedEnh;
+}
+
+/** What swapping a pick's power does to the build (swapPick). */
+export interface SwapResult {
+  build: Build; // the build after the swap
+  dropped: SwapPiece[]; // enhancements that leave the build (the new power can't take them, or their slot goes)
+  kept: SwapPiece[]; // the pick's enhancements the new power keeps
+  freed: number[]; // 0-based levels of the bought slots that leave the build, one per slot
+}
+
+/**
+ * Swap the power in a pick, dropping what the new power can't hold.
+ *
+ * The pick keeps its slots and the enhancements the new power accepts (setPick). Slots past the new
+ * power's maximum go, and a power that takes no slots keeps none; powers the old one granted
+ * (Kheldian form attacks, ...) go with it, slots and all. The bought slots that leave are freed:
+ * the caller has them placed again.
+ *
+ * @param gd Game data.
+ * @param b The build with the old power still in the pick.
+ * @param i 0-based pick index.
+ * @param power The new power's id.
+ * @return The new build, the enhancements dropped and kept, and the levels of the freed slots.
+ */
+export function swapPick(gd: GameData, b: Build, i: number, power: number): SwapResult {
+  const before = new BuildRules(gd, b).entries();
+  const nb = setPick(gd, b, i, power);
+  const prev = b.picks[i]?.slots ?? [];
+  const pick = nb.picks[i]!;
+  const p = gd.power(power);
+  const rules = new BuildRules(gd, nb);
+  // a power that takes no slots holds none (the overview shows it without rings)
+  pick.slots = rules.slottable(p) ? pick.slots.slice(0, Math.max(1, Math.min(p.maxB ?? 0, MAX_BOUGHT_SLOTS + 1))) : [];
+  const key = `pick:${i}`;
+  const dropped: SwapPiece[] = [];
+  const kept: SwapPiece[] = [];
+  const freed: number[] = [];
+  prev.forEach((s, k) => {
+    if (s.enh) (pick.slots[k]?.enh ? kept : dropped).push({ key, slot: k, enh: s.enh });
+    if (k > 0 && k >= pick.slots.length) freed.push(s.level);
+  });
+  // powers the old one granted and the new one doesn't: their slots leave with them
+  const after = new Set(new BuildRules(gd, nb).entries().map((e) => e.key));
+  for (const e of before) {
+    if (e.source !== 'grant' || after.has(e.key)) continue;
+    e.slots.forEach((s, k) => {
+      if (s.enh) dropped.push({ key: e.key, slot: k, enh: s.enh });
+      if (k > 0) freed.push(s.level);
+    });
+    const g = nb.granted[e.power.id];
+    if (g) g.slots = [];
+  }
+  return { build: nb, dropped, kept, freed: freed.sort((x, y) => x - y) };
+}
+
+/**
+ * Raise every crafted IO and set piece to the highest level the build can use (Build Level or Set
+ * Max Level): its set's top level, or the build's last level plus the levels an IO works above the
+ * character, whichever is lower. Pieces already at or above it stay as they are.
+ *
+ * @param gd Game data.
+ * @param b The build.
+ * @return The build with the pieces raised (the same object when none moves).
+ */
+export function raiseToCap(gd: GameData, b: Build): Build {
+  const last = b.endLevel ?? MAX_LEVEL;
+  const raise = (s: Slot): Slot => {
+    const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+    const cap = boost ? capLevel(gd, boost, last) : null;
+    return s.enh && cap !== null && (s.enh.ioLevel ?? cap) < cap ? { ...s, enh: { ...s.enh, ioLevel: cap } } : s;
+  };
+  let moved = false;
+  const mapSlots = (slots: Slot[]) => {
+    const out = slots.map(raise);
+    if (out.some((s, k) => s !== slots[k])) moved = true;
+    return out;
+  };
+  const picks = b.picks.map((p) => (p ? { ...p, slots: mapSlots(p.slots) } : p));
+  const granted = Object.fromEntries(Object.entries(b.granted).map(([k, g]) => [k, { ...g, slots: mapSlots(g.slots) }]));
+  return moved ? { ...b, picks, granted } : b;
+}
+
+/**
+ * @param gd Game data.
+ * @param boost An enhancement.
+ * @param last The build's last level (0-based).
+ * @return The highest level (0-based) the piece is made at that the build can use, or null when its
+ *   level can't be chosen (attuned pieces, TO/DO/SO, ...).
+ */
+export function capLevel(gd: GameData, boost: Power, last: number): number | null {
+  const r = ioLevelRange(gd, boost);
+  return r ? Math.max(r[0], Math.min(r[1], last + levelsAbove(gd))) : null;
 }
 
 /** Remove the power from a pick (its slots go with it). */

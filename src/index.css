@@ -299,6 +299,24 @@ button {
 }
 
 /* fadingText (uiFx.c): alpha sin(pi t) over the 1s life while the scale grows 0.01 per tick */
+/* the picker's Max Slot/Build Level label: glows twice in half a second, a double-click's rhythm */
+@keyframes capglow {
+  0%,
+  50%,
+  100% {
+    color: inherit;
+    text-shadow: none;
+  }
+  25%,
+  75% {
+    color: #ffffff;
+    text-shadow: 0 0 4px #ffffff, 0 0 10px #7fd3ff, 0 0 18px #4f94ff;
+  }
+}
+.cap-glow {
+  animation: capglow 0.5s ease-in-out;
+}
+
 @keyframes fadingtext {
   0% {
     opacity: 0;
