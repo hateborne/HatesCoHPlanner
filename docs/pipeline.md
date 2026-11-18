@@ -97,7 +97,8 @@ An older patch whose client survives (a copy of an old install) gets its own ver
 "<label>" [--frames-from <newer id>]` without `--make-default`. A version that is not the default
 writes `pipeline/report-<id>.md` instead of `report.md`, and its asset export only adds icons
 `public/assets` lacks (it never overwrites, and leaves UI textures, fonts and sounds alone). Never
-run anything from the old install itself: copy the files, read the copy.
+run anything from the old install itself: copy the files, read the copy. To tell which patch an old
+client is, match it against the patch timeline (`docs/patch-history.md`).
 
 **Thunderspy** (`--server thunderspy`) reads its own client (`COH_CLIENT_THUNDERSPY`, or
 `servers.thunderspy.client` in `pipeline/paths.local.json`): `Thunderspy.exe`, every bin in
