@@ -35,7 +35,9 @@ function PoolDesc({ skin, phone, power, chosen }: { skin: Skin; phone: boolean; 
  * 2. choose one power from it on the right; Finish returns to Choose a New Power with it picked.
  */
 export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic' }) {
-  const { gd, steps, level, closeSetPicker, tell } = useStore(useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, closeSetPicker: s.closeSetPicker, tell: s.tell })));
+  const { gd, steps, level, closeSetPicker, finishLevel, tell, advanced } = useStore(
+    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, closeSetPicker: s.closeSetPicker, finishLevel: s.finishLevel, tell: s.tell, advanced: s.advancedRespec })),
+  );
   useFreshHover(); // hover lives in useHover: hovering a bar redraws only the description box
   useEscape(() => closeSetPicker()); // back to the power list
   const pick = level ? currentPick(steps, level) : -1;
@@ -79,6 +81,16 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         onHover={(on) => useHover.setState({ desc: on ? { s: c.set } : null })}
       />
     ));
+  // Advanced Respec (a Respec build): a click on a power takes it and moves on, as on Choose a New Power
+  const auto = advanced && level.base.respecTo !== undefined && setId !== undefined;
+  const pickPower = (id: number) => {
+    if (auto) {
+      closeSetPicker(setId, id);
+      finishLevel();
+      return;
+    }
+    setPower(id === power ? undefined : id);
+  };
   const powerBars = (x0: number, y0: number, wd: number) =>
     powers.map((o, i) => (
       <CheckBar
@@ -94,7 +106,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         isPower
         icon={o.power.id === power ? icon('powers', o.power.icon || 'power_missing') : undefined}
         title={o.reason}
-        onClick={o.state === 'available' ? () => setPower(o.power.id === power ? undefined : o.power.id) : undefined}
+        onClick={o.state === 'available' ? () => pickPower(o.power.id) : undefined}
         onLongPress={phone ? (pt) => pressPickTip(rules, o.power, pick, pt, o.state === 'available' ? undefined : o.reason) : undefined}
         onHover={(on, at) => useHover.setState({ desc: on ? { p: o.power, at } : null })}
       />

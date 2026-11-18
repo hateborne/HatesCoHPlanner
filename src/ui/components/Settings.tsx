@@ -40,13 +40,18 @@ const TIP_HELP: Record<TipMode, string> = {
   disabled: 'Tooltips: Disabled -- hovering shows nothing. Click to switch to Enabled.',
 };
 
+const RESPEC_HELP = {
+  normal: "Respec: Normal -- a respec's power screens wait for Next, and swapping a power on the build screen asks before it drops enhancements. Click for Advanced.",
+  advanced: 'Respec: Advanced -- on a Respec build, a click on a power takes it and moves straight to the next pick, and swaps on the build screen ask nothing. Click for Normal.',
+};
+
 const onOffHelp = (label: string, on: boolean) => (on ? `${label} is on (click to turn off)` : `${label} is off (click to turn on)`);
 
 // desktop: the server logo left of the switches, between the screens' outer frame (its bottom edge
 // 79 above the stage's: 58 + 988 on the 1125-high stage) and the not-affiliated line (from 20 above)
 const LOGO = { up: 76, w: 120, h: 54, gap: 12 };
 // the switches and Support button right of it, with their gaps
-const SWITCHES_W = 120 + 12 + 120 + 12 + 170 + 12 + 200;
+const SWITCHES_W = 120 + 12 + 120 + 12 + 170 + 12 + 150 + 12 + 200;
 
 /**
  * Desktop: where the server logo sits in the bottom bar (the logo and the switches are centered
@@ -60,12 +65,12 @@ export function bottomLogoBox(stage: { w: number; h: number }): { x: number; y: 
 }
 
 /**
- * Desktop: the server logo (the server selector), then the sound, music and tooltip switches and
- * the Support button, side by side at the bottom center.
+ * Desktop: the server logo (the server selector), then the sound, music, tooltip and respec mode
+ * switches and the Support button, side by side at the bottom center.
  */
 function BottomBar({ skin }: { skin: Skin }) {
-  const { muted, setMuted, musicOn, setMusicOn, tips, setTips } = useStore(
-    useShallow((s) => ({ muted: s.muted, setMuted: s.setMuted, musicOn: s.musicOn, setMusicOn: s.setMusicOn, tips: s.tips, setTips: s.setTips })),
+  const { muted, setMuted, musicOn, setMusicOn, tips, setTips, advanced, setAdvanced } = useStore(
+    useShallow((s) => ({ muted: s.muted, setMuted: s.setMuted, musicOn: s.musicOn, setMusicOn: s.setMusicOn, tips: s.tips, setTips: s.setTips, advanced: s.advancedRespec, setAdvanced: s.setAdvancedRespec })),
   );
   const [support, setSupport] = useState(false);
   const stage = useStage();
@@ -84,7 +89,10 @@ function BottomBar({ skin }: { skin: Skin }) {
       <Pill x={x0 + 264} y={y} w={170} h={24} fontSize={13} dim={tips === 'disabled'} title={TIP_HELP[tips]} onClick={() => setTips(TIP_MODES[(TIP_MODES.indexOf(tips) + 1) % TIP_MODES.length]!)}>
         Tooltips: {TIP_LABEL[tips]}
       </Pill>
-      <Pill x={x0 + 446} y={y} w={200} h={24} fontSize={13} title="How to support the planner" onClick={() => setSupport(true)}>
+      <Pill x={x0 + 446} y={y} w={150} h={24} fontSize={13} title={RESPEC_HELP[advanced ? 'advanced' : 'normal']} onClick={() => setAdvanced(!advanced)}>
+        Respec: {advanced ? 'Advanced' : 'Normal'}
+      </Pill>
+      <Pill x={x0 + 608} y={y} w={200} h={24} fontSize={13} title="How to support the planner" onClick={() => setSupport(true)}>
         Support HateCoHPlanner
       </Pill>
       {support ? <SupportDialog skin={skin} onClose={() => setSupport(false)} /> : null}
@@ -105,13 +113,14 @@ const OA_SCALE = 1.25;
 /**
  * Phone: a menu button at the top right opening a pane with the planner's own controls, which
  * have no room along the phone's bottom edge: the server logo (the server selector), View Build (while leveling) or Continue Leveling /
- * Continue Respec (on the overview of a build that can go on), each with its level; Sound, Music,
+ * Continue Respec (on the overview of a build that can go on), each with its level; the respec mode
+ * (Normal / Advanced); Sound, Music,
  * Support and, on the build overview, the build's origin and archetype and the Origin / Alignment
  * choice. Hover tooltips don't exist on phones, so the Tooltips switch is left out. Closes on
  * Escape, the button or a tap outside it.
  */
 function PhoneMenu({ skin }: { skin: Skin }) {
-  const { gd, steps, level, continueLeveling, muted, setMuted, musicOn, setMusicOn, wizard, stopHere, build, setBuild, overview, dismissNotice } = useStore(
+  const { gd, steps, level, continueLeveling, muted, setMuted, musicOn, setMusicOn, wizard, stopHere, build, setBuild, overview, dismissNotice, advanced, setAdvanced } = useStore(
     useShallow((s) => ({
       gd: s.gd,
       steps: s.steps,
@@ -127,6 +136,8 @@ function PhoneMenu({ skin }: { skin: Skin }) {
       setBuild: s.setBuild,
       overview: s.view === 'overview',
       dismissNotice: s.dismissNotice,
+      advanced: s.advancedRespec,
+      setAdvanced: s.setAdvancedRespec,
     })),
   );
   const [open, setOpen] = useState(false);
@@ -192,6 +203,13 @@ function PhoneMenu({ skin }: { skin: Skin }) {
     );
     y += ROW_H + ROW_GAP;
   }
+  // the respec mode (the desktop tray's Respec button)
+  rows.push(
+    <Pill key="advanced" x={PANE.pad} y={y} w={inner} h={ROW_H} fontSize={PILL_FONT} onClick={() => setAdvanced(!advanced)}>
+      Respec: {advanced ? 'Advanced' : 'Normal'}
+    </Pill>,
+  );
+  y += ROW_H + ROW_GAP;
   rows.push(
     <Pill key="sound" x={PANE.pad} y={y} w={half} h={ROW_H} fontSize={PILL_FONT} dim={muted} onClick={() => setMuted(!muted)}>
       Sound: {muted ? 'off' : 'on'}

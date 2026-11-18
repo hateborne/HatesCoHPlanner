@@ -6,7 +6,7 @@ import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, stepsOf, useStore, useTipLevel } from '../../state/store.ts';
-import { stepSlotLevels } from '../../engine/schedule.ts';
+import { lowestFreeLevels, stepSlotLevels } from '../../engine/schedule.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
@@ -259,22 +259,40 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const buildEnd = preview!.endLevel ?? 49;
   const levels = stepSlotLevels(step); // a respec screen places the slots of several levels
   // a respec (uiReSpec.c respec_assignment) draws every power, greying the ones bought later
-  const respec = !!level.flow;
+  // (not the screen for slots a power swap freed, which holds just those: store.finishSwap)
+  const respec = !!level.flow && !level.freed;
   const later = (e: BuildEntry) => e.level > L;
   // a respec's slot level reopened from the overview (a Respec build's, or one an Arachnos build
   // had on training to 24): its slots may still go on any power
   const anyPower = respec || rules.slotsAnyPower(L);
   const entries = rules.entries().filter((e) => (anyPower || !later(e)) && rules.slottable(e.power) && e.power.sm !== 0);
-  const remaining = rules.slotsLeft(levels);
+  // a freed-slot screen places only the freed slots, even where its levels have others left over
+  const remaining = level.freed ? Math.min(rules.slotsLeft(levels), step.slots - level.pendingSlots.length) : rules.slotsLeft(levels);
+  /**
+   * @return Whether a slot added to the power still gives every freed slot a level at or after its
+   *   power's (lowestFreeLevels, as previewBuild books them); a respec's levels may go anywhere.
+   */
+  const fitsFreed = (e: BuildEntry) => {
+    if (!level.freed) return true;
+    const all = rules.entries();
+    const owned = [...level.pendingSlots.map((k) => all.find((x) => x.key === k)?.level ?? 0), e.level];
+    return lowestFreeLevels(step.slotLevels ?? [], owned, L).every((lv, i) => lv >= owned[i]! || rules.slotsAnyPower(lv));
+  };
+  // Finish waits while a slot can still go somewhere (a freed slot: on a power owned by its level)
+  const anyPlaceable = entries.some((e) => rules.slotBlock(e, L, levels) === null && fitsFreed(e));
   const visiting = visit?.base === level.base;
   const added = visiting ? visit.added : [];
   const pendingOf = (key: string) => level.pendingSlots.filter((k) => k === key).length;
-  const anyPlaceable = entries.some((e) => rules.slotBlock(e, L, levels) === null);
+
 
   const click = (e: BuildEntry) => {
     // specLevel's order: no slots left beats a full power
     const noSlots = remaining <= 0;
     const block = noSlots ? 'No Slots' : rules.slotBlock(e, L, levels);
+    if (!block && !fitsFreed(e)) {
+      flashLocked(e.key, 'Slot Levels Too Low!');
+      return;
+    }
     if (block) {
       // drawPowerAndEnhancements: fadingText only, no sound (powerselect2 is for a placed slot)
       const id = ++fadeId.current;
