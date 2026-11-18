@@ -653,7 +653,7 @@ export function Overview({ skin }: { skin: Skin }) {
           onClick={openSetFinder}
           style={{ left: TOP_LABEL_RIGHT + 8, top: 20, width: 36, height: 36, padding: 0, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
-          <FinderIcon size={20} />
+          <FinderIcon size={30} />
         </button>
       ) : null}
       {topButtons(stage.w / 2, vy(22), OA_W, vy(26))}

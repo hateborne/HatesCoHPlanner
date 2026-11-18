@@ -23,7 +23,7 @@ import { gd, Player, POWER_TABS, setOf, STORAGE_KEY } from './player.ts';
 
 // a level 50 build on the default game version, full of enhancements (tests/fixtures/builds/README.md)
 const FILE = 'symphony-dark-dominator.txt';
-// the phone menu's row for the finder, by its hover text (the finder's name is the owner's to change)
+// the phone menu's row for the finder, by its hover text
 const MENU_ROW_TITLE = 'Rank the sets this build could slot';
 
 /** What a result row's id says the swap does (swapId in src/state/finder.ts). */

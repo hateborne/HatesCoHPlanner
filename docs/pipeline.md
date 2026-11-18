@@ -99,6 +99,11 @@ writes `pipeline/report-<id>.md` instead of `report.md`, and its asset export on
 `public/assets` lacks (it never overwrites, and leaves UI textures, fonts and sounds alone). Never
 run anything from the old install itself: copy the files, read the copy.
 
+A UI texture a new screen needs between patches is added to `UI_PREFIXES` or `UI_FILES`
+(`pipeline/assets/export_assets.py`), then `python -m pipeline.assets.export_assets` writes the
+ones `public/assets` lacks from the Homecoming client and lists them in the manifest. It writes
+nothing else and never overwrites a file; the next whole run exports them with everything else.
+
 **Thunderspy** (`--server thunderspy`) reads its own client (`COH_CLIENT_THUNDERSPY`, or
 `servers.thunderspy.client` in `pipeline/paths.local.json`): `Thunderspy.exe`, every bin in
 `tspy/bin.pigg`, base art in `piggs/`, its own art in `tspy/*.pigg`. Run

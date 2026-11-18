@@ -68,7 +68,7 @@ src/
                              SetFinder (the set finder's pane, loaded on demand) and
                              FinderShopping (its shopping list)
     components/              game chrome (frames, bars, rings, scrollbars, text, tooltips);
-                             FinderIcon (the set finder's button icon and working name)
+                             FinderIcon (the set finder's button icon and name)
     skin/                    metrics.ts (virtual-screen maths), skin.ts (hero/villain/praetorian)
     hover.ts                 hover / tooltip state (kept out of the screens on purpose)
     escape.ts                Escape-key stack (useEscape)
@@ -354,8 +354,9 @@ screens are described under "Set finder (screens)" below. The parts:
 **Set finder (screens).** The pane is `src/ui/screens/SetFinder.tsx`, over the build overview
 like the enhancement picker (the whole screen on phones, with Search / Results / Kept / List tabs).
 
-- **Opening.** An icon button right of the overview's origin and archetype label, and a row in the
-  phone menu, both for Homecoming builds only. They set `finderOpen.ts`'s flag; `App.tsx`
+- **Opening.** An icon button (the invention tutorial's badge, from the client's art) right of the
+  overview's origin and archetype label, and a row in the phone menu, both for Homecoming builds
+  only. They set `finderOpen.ts`'s flag; `App.tsx`
   (`FinderPane`) then downloads the pane and the finder's engine as their own chunk, so neither
   is in the page's first download. A failed download closes the pane with a notice, and the next
   opening tries again. The notice says to check the connection and, if that is not it, to reload

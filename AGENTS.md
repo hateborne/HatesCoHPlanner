@@ -239,6 +239,7 @@ python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: it
 python -m pipeline.pets --game-version i28p3     # a published version's pseudo-pet file (its own client)
 python -m pipeline.info --game-version i28p3     # its power-info extras file (its own client, after pets)
 python -m pipeline.recipes                       # a published version's recipes and salvage (its own client)
+python -m pipeline.assets.export_assets          # UI textures its lists name that public/assets lacks
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
