@@ -469,17 +469,26 @@ yellow through `highlight`); Cancel stays on the power screen. Freed slots are p
 screen holding just them (`LevelCtx.freed`, a one-step `flow`), each keeping its level: a slot can
 only go on a power owned by its level (outside a respec), and Cancel there undoes the whole swap.
 
-A power the build takes at a later pick is offered on a reopened earlier one when it could be
-taken there with that later pick empty (`earlierOption`; otherwise it stays greyed, the reason in
-its tooltip). Taking it (`takeEarlierFlow` in the store) differs by build type:
+A power the build takes at a later pick (one the overview shows: not past its stop level) is
+offered on a reopened earlier one when it could be taken there with that later pick empty
+(`earlierOption`; otherwise it stays greyed, the reason in its tooltip). Taking it
+(`takeEarlierFlow` in the store) depends on where the later pick is:
 
-- **Leveling build:** the earlier pick's power moves up to the later pick (`putLater`), keeping the
-  slots gained at that level or after; the earlier ones are freed. When it can't be taken there,
-  the swap is refused with the reason (`tell`).
-- **Respec build (or an earlier pick that held nothing):** the later pick is emptied
+- **Outside a Respec build's respec** (a leveling build, or a Respec build's picks past its respec
+  level, `inRespec`): the earlier pick's power moves up to the later pick (`moveLater`), keeping the
+  slots gained at that level or after (or in a respec), and so do the powers it grants; the earlier
+  ones are freed. When it can't be taken there, the swap is refused with the reason (`tell`).
+- **Within the respec (or an earlier pick that held nothing):** the later pick is emptied
   (`takeEarlier`), the old power's enhancements are dropped, and the player chooses that pick again
   (the old power offered first, `LevelCtx.chain`), then places its freed slots. Advanced Respec
-  skips the question.
+  skips the question and says how many enhancements were dropped (`notify`).
+
+Every swap question also lists the picks the swap leaves breaking a rule (`newlyFlagged`: they are
+flagged in red, never changed), and asks for that alone. The power screen's Totals show the build
+Finish would make (`previewBuild`). Once a swap is confirmed, the screens after it (choosing a pick
+again, freed slots) say "Undo Swap" where they'd say Cancel; Finish with freed slots no power can
+take asks first. Advanced Respec ignores a click within `AUTO_GAP_MS` of the last one it moved on
+from (`autoAdvanceReady`), so a double-click doesn't also take a power on the next screen.
 
 **Advanced Respec** is a browser setting (`advancedRespec`, localStorage `hcp.advancedRespec`),
 not part of the build: the tray's "Respec: Normal / Advanced" button (phones: the menu pane)

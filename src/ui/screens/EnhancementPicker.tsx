@@ -246,7 +246,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     const chosen = picks.find((p) => rangeOf(gd.power(p.boost)))?.ioLevel;
     writeLast({ tab, set: tab === 'Sets' ? setId : undefined, ioLevel: chosen ?? last?.ioLevel });
     const ordered = [...picks].sort((a, b) => (order.get(a.boost) ?? Infinity) - (order.get(b.boost) ?? Infinity));
-    const placed = multi ? ordered.map((enh, i) => ({ slot: targets[i]!, enh })) : [{ slot, enh: sel }];
+    // the clicked slot's own piece, still chosen, stays in its slot; the others fill the rest in order
+    const own = current ? ordered.find((p) => rowOf(p.boost) === rowOf(current.boost)) : undefined;
+    const rest = ordered.filter((p) => p !== own);
+    const free = own ? targets.filter((t) => t !== slot) : targets;
+    const placed = multi ? [...(own ? [{ slot, enh: own }] : []), ...rest.map((enh, i) => ({ slot: free[i]!, enh }))] : [{ slot, enh: sel }];
     // several pieces: each judged in its own slot with the others in (the list was checked for the clicked slot only)
     const why = multi ? (checkPlace?.(placed) ?? null) : null;
     if (why) {
@@ -281,7 +285,8 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     );
   const toggleCap = () => {
     setAtCap(!atCap);
-    if (!atCap) setPicks(picks.map(capped));
+    // the slot's own piece, only looked at, keeps its level (Place would otherwise change it)
+    if (!atCap) setPicks(picks.map((p) => (current && p.boost === current.boost && p.ioLevel === current.ioLevel ? p : capped(p))));
     setLvlDraft(null);
   };
 

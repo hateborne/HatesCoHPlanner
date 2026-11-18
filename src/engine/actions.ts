@@ -133,10 +133,12 @@ function dropGoneGrants(gd: GameData, before: BuildEntry[], nb: Build, dropped: 
  * @param b The build.
  * @param pick A pick index.
  * @param power A power id.
- * @return The later pick that holds the power, or -1.
+ * @return The later pick that holds the power, or -1 (also for one past the build's stop level,
+ *   which the overview doesn't show).
  */
 export function laterPick(b: Build, pick: number, power: number): number {
-  return b.picks.findIndex((p, i) => i > pick && p?.power === power);
+  const end = b.endLevel ?? MAX_LEVEL;
+  return b.picks.findIndex((p, i) => i > pick && p?.power === power && p.level <= end);
 }
 
 /**
@@ -197,8 +199,9 @@ export function takeEarlier(gd: GameData, b: Build, pick: number, later: number)
 
 /**
  * Put a power back at a later pick, as a leveling build's swap does with the power a later one
- * replaced: it keeps the slots gained at that pick's level or after, and their enhancements; the
- * slots gained before it can't belong to it and are freed, their enhancements dropped.
+ * replaced: it keeps the slots gained at that pick's level or after (or in a respec), and their
+ * enhancements; the slots gained before it can't belong to it and are freed, their enhancements
+ * dropped.
  *
  * @param gd Game data.
  * @param b The build (the later pick empty).
@@ -210,18 +213,65 @@ export function takeEarlier(gd: GameData, b: Build, pick: number, later: number)
 export function putLater(gd: GameData, b: Build, later: number, old: Pick, key: string): SwapResult {
   const nb = cloneBuild(b);
   const level = gd.core.schedule.power[later] ?? 0;
+  const rules = new BuildRules(gd, b);
   const dropped: SwapPiece[] = [];
   const kept: SwapPiece[] = [];
   const freed: number[] = [];
   const slots: Slot[] = [];
   old.slots.forEach((s, k) => {
-    const stays = k === 0 || s.level >= level;
+    // a slot from a respec (an Arachnos build's forced one at 24) may sit on any power
+    const stays = k === 0 || s.level >= level || rules.slotsAnyPower(s.level);
     if (s.enh) (stays ? kept : dropped).push({ key, slot: k, enh: s.enh });
     if (stays) slots.push(k === 0 ? { ...s, level } : { ...s });
     else freed.push(s.level);
   });
   nb.picks[later] = { power: old.power, level, slots, on: old.on };
   return { build: nb, dropped, kept, freed: freed.sort((x, y) => x - y) };
+}
+
+/**
+ * A leveling build's "take it earlier": the power at a later pick (B) moves to the earlier pick, and
+ * the earlier pick's power (A) moves up to the later one (putLater). Powers A grants (Kheldian form
+ * attacks, ...) move up with it and keep their enhancements, but like A they lose the slots gained
+ * before their new level (freed, their enhancements dropped).
+ *
+ * @param gd Game data.
+ * @param b The build as it is.
+ * @param pick The earlier pick.
+ * @param later The later pick holding B.
+ * @return The result, and why A can't be taken at the later pick (null when it can).
+ */
+export function moveLater(gd: GameData, b: Build, pick: number, later: number): { result: SwapResult; refusal: string | null } {
+  const old = b.picks[pick];
+  const moving = b.picks[later];
+  if (!old || !moving) return { result: { build: b, dropped: [], kept: [], freed: [] }, refusal: 'nothing to move' };
+  const before = new Map(new BuildRules(gd, b).entries().map((e) => [e.key, e.level] as const));
+  const nb = cloneBuild(b);
+  const level = gd.core.schedule.power[pick] ?? 0;
+  const slots = moving.slots.map((s) => ({ ...s }));
+  if (slots[0]) slots[0].level = level;
+  nb.picks[pick] = { ...moving, level, slots };
+  nb.picks[later] = null;
+  const opt = new BuildRules(gd, nb).powerOption(old.power, later);
+  const refusal = opt.state === 'available' ? null : (opt.reason ?? 'not allowed at that level');
+  const put = putLater(gd, nb, later, old, `pick:${pick}`);
+  // granted powers now granted later: the slots gained before their new level go
+  const rules = new BuildRules(gd, put.build);
+  for (const e of rules.entries()) {
+    const was = before.get(e.key);
+    const g = put.build.granted[e.power.id];
+    if (e.source !== 'grant' || was === undefined || e.level <= was || !g?.slots.length) continue;
+    g.slots = g.slots.filter((s, k) => {
+      const stays = k === 0 || s.level >= e.level || rules.slotsAnyPower(s.level);
+      if (!stays) {
+        if (s.enh) put.dropped.push({ key: e.key, slot: k, enh: s.enh });
+        put.freed.push(s.level);
+      }
+      return stays;
+    });
+  }
+  put.freed.sort((x, y) => x - y);
+  return { result: put, refusal };
 }
 
 /**

@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Power, Powerset } from '../../data/types.ts';
 import { earlierOption } from '../../engine/actions.ts';
 import { BuildRules, patronArcNote } from '../../engine/rules.ts';
-import { currentPick, useStore } from '../../state/store.ts';
+import { autoAdvanceReady, currentPick, inRespec, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
@@ -85,9 +85,11 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
       />
     ));
   // Advanced Respec (a Respec build): a click on a power takes it and moves on, as on Choose a New Power
-  const auto = advanced && level.base.respecTo !== undefined && setId !== undefined;
+  const auto = advanced && inRespec(gd, level.base, pick) && setId !== undefined;
   const pickPower = (id: number) => {
     if (auto) {
+      // the second click of a double-click would take a power on the next screen too
+      if (!autoAdvanceReady()) return;
       closeSetPicker(setId, id);
       finishLevel();
       return;

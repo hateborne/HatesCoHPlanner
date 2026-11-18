@@ -231,8 +231,8 @@ function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: 
  * slots; click a just-placed slot to take it back. Finish unlocks when every slot is placed.
  */
 export function AddEnhancementSlot({ skin }: { skin: Skin }) {
-  const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel, lockFlash, flashLocked } = useStore(
-    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, addPendingSlot: s.addPendingSlot, removePendingSlot: s.removePendingSlot, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
+  const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel, lockFlash, flashLocked, askConfirm } = useStore(
+    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, addPendingSlot: s.addPendingSlot, removePendingSlot: s.removePendingSlot, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked, askConfirm: s.askConfirm })),
   );
   useEscape(backLevel, level?.mode === 'edit'); // Escape cancels a level reopened from the overview
   useFreshHover(); // hover lives in useHover: hovering a bar redraws only the info box and tooltip
@@ -443,6 +443,19 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       <SlotsAvailable n={remaining} {...box} />
     );
   const finishText = respec && level.mode === 'wizard' ? 'Next' : 'Finish';
+  // a swap's freed slots: Cancel undoes the swap already confirmed
+  const backText = level.freed ? 'Undo Swap' : level.mode === 'edit' ? 'Cancel' : 'Back';
+  // Finish with freed slots no power here can take (Finish unlocks then): they'd be left unplaced, so ask
+  const finish = () => {
+    if (!level.freed || remaining <= 0) return finishLevel();
+    void askConfirm({
+      title: 'Leave slots unplaced?',
+      text: `${remaining} freed enhancement slot${remaining > 1 ? 's' : ''} can't go on any power here and will be left unplaced (the build shows ${remaining > 1 ? 'them' : 'it'} in red until placed). Finish anyway?`,
+      okLabel: 'Finish',
+    }).then((ok) => {
+      if (ok && useStore.getState().level === level) finishLevel();
+    });
+  };
   // which level the slots belong to: a planner extra on the slot screen; in a respec the game's own
   // line, drawn unscaled at screen pixel (1000, 30) (uiReSpec.c prnt(1000, 30, ...)), so on the
   // 3840 x 2160 reference it is small text just above the title bar
@@ -468,8 +481,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         {noSlotFades}
         <HoveredInfo gd={gd} phone={pg} />
         <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(preview!.at)} level={L} />
-        <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
-        <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
+        <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />
+        <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finish} />
       </>
     );
   }
@@ -499,8 +512,8 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       <SlotTipLayer gd={gd} atId={preview!.at} level={L} />
       {counter()}
       {noSlotFades}
-      <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
-      <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
+      <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />
+      <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finish} />
     </>
   );
 }
