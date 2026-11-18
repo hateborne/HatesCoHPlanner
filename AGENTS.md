@@ -230,6 +230,7 @@ npm run lint         # ESLint
 npm run typecheck    # tsc -b
 npm test             # vitest
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
+npm run e2e:built    # the same tests on a production build (the page's security policy, split code)
 npm run build        # type check + production build into dist/
 npm run research     # the build research (owner's machine; needs HCP_BUILD_CORPUS, else skipped)
 python -m pipeline.run --help
@@ -315,7 +316,8 @@ it, and the full list of what counts: `docs/releases.md`.
   tests. Old links must keep decoding.
 - Browser tests (`e2e/`, `npm run e2e`) recreate forum builds from `tests/fixtures/builds/`
   through the screens (desktop clicks, phone taps) and compare the result with the import. Run
-  them after changing the screens or the level-up flow (specs: `docs/architecture.md`).
+  them after changing the screens, the level-up flow or the set finder (specs:
+  `docs/architecture.md`).
 
 **Commits and pull requests**
 - Commit messages: a short imperative summary line, a blank line, then bullets on what changed

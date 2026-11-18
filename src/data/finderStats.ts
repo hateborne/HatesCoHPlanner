@@ -3,7 +3,8 @@
  *
  * Made by the build research (`npm run research`, docs/pipeline.md) from a folder of community
  * builds: aggregates only. Everything is keyed by the game's internal names (the names
- * pipeline/ids.json keys its ids on), so the file reads the same against any game version.
+ * pipeline/ids.json keys its ids on), so the file reads the same against any game version, and the
+ * finder uses it for every version of its server (finderProblem).
  */
 
 /** Folder beside a server's version folders holding the build statistics (finder/stats.json). */
@@ -40,7 +41,7 @@ export interface FinderSetUse {
 /** The whole statistics file. */
 export interface FinderStats {
   v: 1;
-  dataVersion: string; // the game version the builds were read against
+  dataVersion: string; // the game version the builds were read against (the report names it; no build is refused by it)
   builds: number; // builds counted
   minGroup: number; // a group with fewer builds is too thin to use on its own: fall back to 'all'
   groups: Record<string, FinderGroup>; // 'all' and each archetype's internal name

@@ -5,12 +5,22 @@
  */
 import { create } from 'zustand';
 
-/** The pane's open flag. */
+/** The pane's open flag, and whether the pane is drawn yet. */
 interface FinderOpen {
-  open: boolean; // the pane shows
+  open: boolean; // the pane was asked for
+  up: boolean; // the pane is drawn over the overview (not yet while its code downloads)
 }
 
-export const useFinderOpen = create<FinderOpen>(() => ({ open: false }));
+export const useFinderOpen = create<FinderOpen>(() => ({ open: false, up: false }));
+
+/**
+ * Say whether the pane is drawn (App.tsx: once its code has arrived, until it closes).
+ *
+ * @param up Whether it is drawn.
+ */
+export function setFinderUp(up: boolean): void {
+  useFinderOpen.setState({ up });
+}
 
 /** Open the set finder's pane. */
 export function openSetFinder(): void {

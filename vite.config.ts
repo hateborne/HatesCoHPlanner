@@ -131,11 +131,9 @@ export default defineConfig({
   base: '/HatesCoHPlanner/',
   plugins: [react(), cspMeta, serverPages(), notFoundPage()],
   // the release shown in the footer (src/version.ts)
-  // and whether the unfinished set finder shows in this build (src/ui/flags.ts): HCP_SET_FINDER=1
   define: {
     __HCP_VERSION__: JSON.stringify(RELEASE.version),
     __HCP_COMMIT__: JSON.stringify(RELEASE.commit),
-    __HCP_SET_FINDER__: JSON.stringify(process.env.HCP_SET_FINDER === '1'),
   },
   // brotli-wasm locates its .wasm relative to its own module; pre-bundling breaks that in dev.
   optimizeDeps: { exclude: ['brotli-wasm'] },

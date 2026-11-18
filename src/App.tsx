@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from
 import { useShallow } from 'zustand/react/shallow';
 import { defaultServer, serverById } from './data/servers.ts';
 import { skinOf } from './engine/build.ts';
-import { closeSetFinder, useFinderOpen } from './state/finderOpen.ts';
+import { closeSetFinder, setFinderUp, useFinderOpen } from './state/finderOpen.ts';
 import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
@@ -29,7 +29,9 @@ let finderPane: ComponentType<{ skin: Skin }> | null = null;
 /**
  * The set finder's pane. Its screen and engine are downloaded when the pane is first opened, not
  * with the page. A download that fails closes the pane with a notice, and the next opening tries
- * again.
+ * again. The notice names both causes: no connection (trying again is enough), and a deploy since
+ * the page was opened (the page still asks for the old release's file, which is gone, and only a
+ * reload learns the new one's name).
  */
 function FinderPane({ skin }: { skin: Skin }) {
   const [Pane, setPane] = useState<ComponentType<{ skin: Skin }> | null>(() => finderPane);
@@ -44,11 +46,17 @@ function FinderPane({ skin }: { skin: Skin }) {
       .catch((e: unknown) => {
         console.warn('set finder: the pane did not load', e);
         closeSetFinder();
-        useStore.getState().notify("The set finder couldn't load. Check your connection and try again.");
+        useStore.getState().notify("The set finder couldn't load. Check your connection and try again; if it still won't, reload the page.");
       });
     return () => {
       live = false;
     };
+  }, [Pane]);
+  // the overview keeps its own long-press tooltip until this pane covers it
+  useEffect(() => {
+    if (!Pane) return;
+    setFinderUp(/*up=*/ true);
+    return () => setFinderUp(/*up=*/ false);
   }, [Pane]);
   return Pane ? <Pane skin={skin} /> : null;
 }

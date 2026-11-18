@@ -5,6 +5,10 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ## Unreleased
 
+### New
+
+- Set Finder, for Homecoming builds: choose what matters to you and it ranks the enhancement sets your build could slot, shows what each swap gains and loses, and makes a shopping list of the recipes and salvage.
+
 ### Fixed
 
 - The Continue button on the server list always shows which server your build is on, even with a long build name.

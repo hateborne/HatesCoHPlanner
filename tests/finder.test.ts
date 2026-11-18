@@ -27,6 +27,8 @@ const stats = JSON.parse(readFileSync(join(process.cwd(), 'public', 'data', 'fin
 const map = loadMidsMapFile(gd.core.manifest.dataVersion);
 const fixture = (name: string) => readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', name), 'utf-8');
 const power = (name: string) => gd.power(pid(gd, name));
+// a published Homecoming version older than the one the statistics were made on
+const OLDER_VERSION = 'i28p3';
 const boost = (short: string) => pid(gd, `Boosts.${short}.${short}`);
 
 /** @return The Symphony / Dark Dominator forum build: a finished level 50 build full of sets and procs. */
@@ -319,10 +321,28 @@ describe('finder: search', () => {
     const b = corruptor();
     expect(queryProblem(query({ goals: [] }))).toMatch(/at least one/);
     expect(findSwaps({ gd, stats, build: b, query: query({ goals: [] }) })).toEqual({ swaps: [], considered: 0, stale: [], problem: 'Pick at least one priority.' });
-    expect(finderProblem(gd, b, stats)).toBeNull();
-    expect(finderProblem(gd, { ...b, dataVersion: 'i28p3' }, stats)).toMatch(/game version/);
-    expect(finderProblem(gd, b, null)).toMatch(/game version/);
-    expect(finderProblem(loadData(undefined, 'thunderspy'), b, stats)).toMatch(/Homecoming builds only/);
+    expect(finderProblem(gd, stats)).toBeNull();
+    expect(finderProblem(gd, null)).toMatch(/no build statistics/);
+    expect(finderProblem(loadData(undefined, 'thunderspy'), stats)).toMatch(/Homecoming builds only/);
+  });
+
+  it('searches a build on another Homecoming game version than the statistics were made on', () => {
+    const older = loadData(OLDER_VERSION);
+    expect(older.core.manifest.dataVersion).not.toBe(stats.dataVersion);
+    // ids are the same on every version of a server, so the same picks and slots are that version's build
+    const b: Build = { ...brute(), dataVersion: OLDER_VERSION };
+    const rules = new BuildRules(older, b);
+    expect(rules.entries().filter((e) => e.slots.length).map((e) => e.power.n)).toEqual(new BuildRules(gd, brute()).entries().filter((e) => e.slots.length).map((e) => e.power.n));
+    expect(finderProblem(older, stats)).toBeNull();
+    const found = findSwaps({ gd: older, stats, build: b, query: query({}) });
+    expect(found.problem).toBeUndefined();
+    expect(found.swaps.length).toBeGreaterThan(0);
+    const before = issuesOf(rules);
+    for (const s of found.swaps.slice(0, 5)) {
+      expect(older.boostSetById.get(s.set)).toBeDefined();
+      expect(swapsLegal(older, b, [s])).toBe(true);
+      expectNoNewIssue(before, rules.reslotted(applySwap(b, s)));
+    }
   });
 
   it('reports its progress power by power, and stays fast', async () => {

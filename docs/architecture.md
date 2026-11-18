@@ -71,12 +71,12 @@ src/
                              FinderIcon (the set finder's button icon and working name)
     skin/                    metrics.ts (virtual-screen maths), skin.ts (hero/villain/praetorian)
     hover.ts                 hover / tooltip state (kept out of the screens on purpose)
-    flags.ts                 SET_FINDER: whether the unfinished set finder's button shows
     escape.ts                Escape-key stack (useEscape)
     sound.ts                 game UI sounds and menu music
 tests/                       vitest; tests/helpers/data.ts loads public/data like the site does
   fixtures/builds/           forum builds (Mids data chunks, .mbd files) the browser tests recreate
-e2e/                         Playwright browser tests (playwright.config.ts; local only)
+e2e/                         Playwright browser tests (playwright.config.ts; local only;
+                             playwright.built.config.ts runs them on a production build)
 research/                    the build research (npm run research; owner's machine only): reads a
                              folder of community builds and writes the set finder's statistics
   builds.research.ts         the run: import every build, measure, aggregate, write
@@ -352,16 +352,15 @@ screens are described under "Set finder (screens)" below. The parts:
   endurance cost, recharge time with the build's global recharge).
 
 **Set finder (screens).** The pane is `src/ui/screens/SetFinder.tsx`, over the build overview
-like the enhancement picker (the whole screen on phones, with Search / Results / Kept / List tabs). It is
-still being built: its button shows only where `SET_FINDER` is true (`src/ui/flags.ts`: a dev
-server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
+like the enhancement picker (the whole screen on phones, with Search / Results / Kept / List tabs).
 
 - **Opening.** An icon button right of the overview's origin and archetype label, and a row in the
   phone menu, both for Homecoming builds only. They set `finderOpen.ts`'s flag; `App.tsx`
   (`FinderPane`) then downloads the pane and the finder's engine as their own chunk, so neither
-  is in the page's first download. A failed download closes the pane with a notice and the next
-  opening tries again. Leaving the overview closes the pane (`App.tsx`), so it never comes back
-  on its own.
+  is in the page's first download. A failed download closes the pane with a notice, and the next
+  opening tries again. The notice says to check the connection and, if that is not it, to reload
+  the page: a page left open across a deploy asks for the old release's file, which is gone.
+  Leaving the overview closes the pane (`App.tsx`), so it never comes back on its own.
 - **State** (`src/state/finder.ts`, not saved, never in a link): the statistics
   (`loadFinderStats`, fetched once from the data folder and shape-checked), the search as the form
   holds it, the last result, the kept swaps, and a share link to the build with them in. A search
@@ -394,8 +393,19 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   applied and the note says so. "Open as new build" is a plain link to the share link the store
   wrote (`target="_blank"`, the player's own click, an address the code built), so the build in
   hand is left alone and no pop-up blocker is involved.
-- A build whose game version has no statistics, or another server's build, gets a plain sentence
-  instead of a search (`finderProblem`).
+- **Phones** have no hover text, so a long press stands in for it (`pressText`, `hover.ts`): on a
+  swap it lists the pieces by name, on a tick box it shows the hint, on a shopping ring the piece's
+  name and what a tap does, on a set's bar what a tap does. The pane draws its own `PhoneTipLayer`
+  for these; the overview's is under the pane and is not drawn once the pane is (`up` in
+  `finderOpen.ts`). While the pane's code downloads the overview is still the screen in view, so
+  it keeps its own.
+- Another server's build gets a plain sentence instead of a search (`finderProblem`). Every
+  Homecoming game version is searched with the one statistics file. It is keyed by internal names,
+  and a search reads only each archetype's stat values and the needs of the archetype and its two
+  power sets from it; which sets exist and what a power takes come from the build's own game data.
+  So a build on an older patch, or on a patch newer than the last research run, is searched like
+  any other. An archetype the statistics never saw gets the all-builds values, and a power set
+  they never saw has no needs.
 - **Shopping list** (`FinderShopping.tsx`; the "Shopping List" button on desktop, the List tab on
   phones). It shows what the browser keeps (`src/io/shopping.ts`: localStorage `hcp.shopping`, one
   list per server, enhancement ids with a level and an owned mark, at most 600 items, every entry
@@ -513,6 +523,26 @@ selectors (`useShallow`) and call its actions.
   `tooltipwheel.spec.ts` (desktop only) hovers a tall Advanced tooltip (Hail of Bullets) and turns
   the wheel: the gesture stays on it to its end, a turn after a rest goes to the screen, and Page
   Up / Page Down scroll it.
+  `setfinder.spec.ts` uses the set finder on an imported build: a search for one priority, the
+  first swap looked at and kept, the shopping list (a set marked owned; auction house lines on the
+  desktop only; the recipes must have loaded), "Open as new build" in a new tab, "Apply to this
+  build", then the stored list cleared. The build must hold the pieces the row named, at the
+  levels and in the slots it named. On the phone, long presses are real touches (`hold`, through
+  the browser's own touch input): on the row it must name the pieces and select nothing, on a tick
+  box show its hint and tick nothing, on the shopping bar and a ring show theirs and mark nothing;
+  a finger that slides shows no tooltip. Anything the page's Content-Security-Policy refused, in
+  either tab, fails the test (only a built site has the policy: `npm run e2e:built`). A second
+  test holds back the pane's code and then refuses it: meanwhile the phone's overview still shows
+  a long press's tooltip, then the notice shows, and the next opening works. A third opens a
+  Thunderspy build: no finder button and no row in the phone menu.
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
-  driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.
+  driver is `e2e/player.ts`. Run them after changing the screens, the level-up flow or the set
+  finder.
+- `npm run e2e:built` (`playwright.built.config.ts`) runs the same tests on a production build
+  served by `vite preview`. The dev server has no Content-Security-Policy, serves every module
+  as its own file and answers any address, so only this run exercises the policy, the pieces
+  downloaded on demand (the set finder's pane) and each server's own page. Run it before a
+  deploy that changes the policy, what is downloaded on demand, or where a file is fetched from.
+  (The preview server still answers a missing file with the page, where GitHub Pages answers
+  404, so that difference is not covered.)

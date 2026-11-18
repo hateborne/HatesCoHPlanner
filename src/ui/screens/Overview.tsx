@@ -9,11 +9,10 @@ import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
-import { openSetFinder } from '../../state/finderOpen.ts';
+import { openSetFinder, useFinderOpen } from '../../state/finderOpen.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { FINDER_NAME, FinderIcon } from '../components/FinderIcon.tsx';
-import { SET_FINDER } from '../flags.ts';
 import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleAlt, type TitleEdit } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
@@ -293,6 +292,8 @@ export function Overview({ skin }: { skin: Skin }) {
   useEffect(() => clearHover(), [build]); // entries are rebuilt; drop any tooltip holding an old one
   const stage = useStage();
   const { phone } = stage;
+  // once drawn, the set finder's pane covers this screen and shows long-press tooltips of its own
+  const finderUp = useFinderOpen((s) => s.up);
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
   const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
@@ -632,7 +633,7 @@ export function Overview({ skin }: { skin: Skin }) {
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
-        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />
+        {finderUp ? null : <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />}
       </>
     );
   }
@@ -642,8 +643,8 @@ export function Overview({ skin }: { skin: Skin }) {
       {/* the name stops just short of the Origin / Alignment button (two half-size lines past it) */}
       <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
       <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
-      {/* the set finder's button, right of the origin and archetype (Homecoming builds; see flags.ts) */}
-      {SET_FINDER && gd.server === DEFAULT_SERVER ? (
+      {/* the set finder's button, right of the origin and archetype (Homecoming builds) */}
+      {gd.server === DEFAULT_SERVER ? (
         <button
           data-testid="finder:open"
           className="info-button"

@@ -200,6 +200,15 @@ What it writes (both committed through a pull request, never edited by hand):
 Nothing about the builds themselves leaves the machine: no file names, build names or paths, only
 counts and medians. An import fault the report turns up is fixed in its own pull request.
 
+The one file serves every Homecoming game version (`finderProblem`, `src/engine/finder/search.ts`):
+it is keyed by internal names, so a new patch does not switch the finder off and nothing has to be
+run for it to keep working. A search reads only each archetype's stat values and the needs of the
+archetype and its two power sets from it; the sets themselves come from the build's own game data,
+so a new set is offered at once. Run the research again after a patch that adds or reworks
+archetypes or power sets, or changes what builds slot, so their values and needs are measured: an
+archetype the file never saw gets the all-builds values, and a power set it never saw has no needs.
+`dataVersion` in the file only records the version the builds were read against.
+
 How a stat is valued. A stat's unit is the median size of one set bonus in it, over every set bonus
 in the game data (`offerFor`). A bonus of typical size counts 1 in all, shared between the families
 of stats it gives and then between the types it covers, so a damage bonus over every damage type, or

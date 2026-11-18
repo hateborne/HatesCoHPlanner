@@ -17,12 +17,13 @@ import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { FINDER_NAME } from '../components/FinderIcon.tsx';
 import { TitleText } from '../components/GameText.tsx';
 import { PHONE_TAB_ROW, PhoneTabs } from '../components/Phone.tsx';
+import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { rarityStyle } from '../components/PowerTip.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { MPH, TotalsRow } from '../components/TotalsPanel.tsx';
 import { useEscape } from '../escape.ts';
-import { useFreshHover, useHover } from '../hover.ts';
-import { pressKeys } from '../press.ts';
+import { pressText, useFreshHover, useHover } from '../hover.ts';
+import { longPress, pressKeys } from '../press.ts';
 import type { Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
 import { ShopNeeds, ShopSets, useShoppingList } from './FinderShopping.tsx';
@@ -124,12 +125,16 @@ function Diff({ gd, diff }: { gd: GameData; diff: BuildDiff }) {
   );
 }
 
-/** What a swap places: the set's name in its rarity colour, the power it goes into, the pieces as small icons. */
+/**
+ * What a swap places: the set's name in its rarity colour, the power it goes into, the pieces as
+ * small icons. A piece's name is its hover text; phones have no hover, so a long press lists them.
+ */
 function SwapLine({ gd, swap, phone }: { gd: GameData; swap: Swap; phone: boolean }) {
   const set = gd.boostSetById.get(swap.set);
   const [lo, hi] = set ? setLevelRange(set) : [0, 0];
+  const names = swap.pieces.map((p) => gd.powerById.get(p.enh.boost)?.dn ?? 'An enhancement').join('\n');
   return (
-    <div style={{ minWidth: 0 }}>
+    <div {...longPress(phone ? pressText(names) : undefined)} style={{ minWidth: 0 }}>
       <div style={{ fontSize: phone ? 20 : 17, lineHeight: 1.2 }}>
         <span style={{ color: TEXT, ...rarityStyle(set ? setRarity(set) : undefined) }}>{set?.dn ?? 'Unknown set'}</span> <span style={{ color: '#fff' }}>x{swap.count}</span>{' '}
         <span style={{ color: MUTED, fontSize: phone ? 15 : 13 }}>
@@ -151,10 +156,13 @@ function SwapLine({ gd, swap, phone }: { gd: GameData; swap: Swap; phone: boolea
   );
 }
 
-/** A box the player ticks: a native check box with its label, sized for a finger on phones. */
+/**
+ * A box the player ticks: a native check box with its label, sized for a finger on phones. Its
+ * hint is its hover text; on phones a long press shows it.
+ */
 function Tick({ label, checked, onChange, testId, title, phone }: { label: string; checked: boolean; onChange: (on: boolean) => void; testId: string; title?: string; phone: boolean }) {
   return (
-    <label title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: phone ? 44 : 28, cursor: 'pointer', marginRight: 16 }}>
+    <label title={title} {...longPress(phone && title ? pressText(title) : undefined)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: phone ? 44 : 28, cursor: 'pointer', marginRight: 16 }}>
       <input type="checkbox" data-testid={testId} checked={checked} onChange={(e) => onChange(e.target.checked)} style={phone ? { width: 28, height: 28, margin: 0 } : { width: 18, height: 18, margin: 0 }} />
       {label}
     </label>
@@ -769,6 +777,8 @@ export default function SetFinder({ skin }: { skin: Skin }) {
               </>
             )}
           </div>
+          {/* the overview's own long-press tooltip is under this pane */}
+          <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={rules.lastLevel()} />
         </div>
       </div>
     );
