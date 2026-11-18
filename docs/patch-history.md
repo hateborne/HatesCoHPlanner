@@ -7,7 +7,9 @@ changed in the data the planner reads between two patches, when older clients tu
 The catalogue is `pipeline/patch-history.json`: one entry per patch, in date order. It was
 built on 2026-11-18 from the homecoming.wiki patch-note pages listed under "Sources". Entries
 summarise the notes in our own words; they do not copy them (the wiki states no licence). Each
-entry links back to its section of the wiki.
+entry links back to its section of the wiki. Every `planner` and `markers` line was checked
+against its section of the notes in a second pass. `pipeline/patch_history_test.py` (run by CI)
+checks the fields below, the date order and that the file is ASCII.
 
 | Field | Meaning |
 |---|---|
@@ -16,7 +18,7 @@ entry links back to its section of the wiki.
 | `server` | `Retail beta` (Issue 24), `SCoRE` (Issue 25), `Homecoming` |
 | `label` | The heading as the wiki writes it |
 | `kind` | `beta`, `live`, `hotfix`, `server-side` or `rolled-back` |
-| `build` | Client build id, when the notes give one |
+| `build` | Client build id, when the notes give one in full (the first beta's partial id is in its `note`) |
 | `source` | The wiki section |
 | `sections` | The patch's own sub-headings |
 | `planner` | Changes to data the planner reads: archetypes, power sets, powers, pools, epics, inherents, enhancements, IO sets, set bonuses, procs, slotting and exemplar rules |
@@ -28,7 +30,7 @@ entry links back to its section of the wiki.
 | Era | Dates | Entries | What the wiki has |
 |---|---|---|---|
 | Issue 24 beta (NCSoft) | 2012-08-08 to 2012-08-23 | 3 | Three VIP open-beta builds, each with notes. Issue 24 never went live: the game shut down on 2012-11-30. |
-| Issue 25 (SCoRE) | 2013-01-22 to 2018-12-14 | 65 | One consolidated list for everything up to 2014-01-19, dated notes for 2014, and only patch dates for 2015-2018 (the wiki has no pages for those). |
+| Issue 25 (SCoRE) | 2013-01-22 to 2018-12-14 | 65 | One consolidated list for everything up to 2014-01-19 (catalogued on the 2013-05-21 client launch; its markers hold by 2014-01-19, so a client from earlier in 2013 may lack some), dated notes for 2014, and only patch dates for 2015-2018 (the wiki has no pages for those). |
 | Issue 26 (Homecoming) | 2019-04-28 to 2020-11-17 | 42 | Pages 1-5, every patch dated. |
 | Issue 27 | 2020-11-24 to 2024-07-02 | 46 | Pages 1-7, every patch dated. |
 | Issue 28 | 2024-07-23 to 2026-10-20 | 25 | Page 1 by patch; Pages 2-4 as one release each, plus dated updates. |
@@ -47,7 +49,7 @@ Releases that start a Homecoming page (the main release carries most of the powe
 | | | I28 P3 | 2025-11-25 |
 | | | I28 P4 | 2026-10-06 |
 
-Issue 28 Page 3 then had updates on 2025-12-01, 12-03 (hotfix), 12-16, 2026-02-10 (Panel 2),
+Issue 28 Page 3 then had updates on 2025-12-01, 12-02 (hotfix), 12-16, 2026-02-10 (Panel 2),
 03-11, 03-31, 06-23 (Panel 3) and 07-07. Panel 2 and Panel 3 changed many powers.
 
 ## Telling which patch a client is

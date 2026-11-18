@@ -9,7 +9,7 @@
       "server": "Retail beta",
       "label": "12.08.08 Build 2400.20120806XXXX.X (Initial Beta Release)",
       "kind": "beta",
-      "build": "2400.20120806XXXX.X",
+      "build": null,
       "source": "https://homecoming.wiki/wiki/Patch_Notes/2012-08-08_Beta",
       "sections": [
         "Combined",
@@ -21,30 +21,33 @@
         "Enemies"
       ],
       "planner": [
-        "New Blaster secondary set Martial Combat (melee/ranged, mixes Martial Arts, Ninjitsu, Time Manipulation); includes the power Reaction Time (named in the third beta notes).",
+        "New Blaster secondary set Martial Combat (melee/ranged, mixes Martial Arts, Ninjitsu, Time Manipulation).",
         "New Dominator secondary set Martial Assault (melee/ranged, Martial Arts plus Ninjitsu shuriken attacks).",
         "Power pool, epic pool and patron pool powers become customizable; Minimal FX variants added for Shark Skin, Scorpion Shield, Oppressive Gloom, Dark Embrace.",
         "All non-travel pools gain a 5th power, trainable at level 14 with any two other pool powers owned.",
         "Presence: Challenge replaced by Pacify (single-target Placate, no Taunt enhancements). Intimidate cost 10 end, mag 3 fear plus 30% chance of extra mag 1. Invoke Panic cost 18 end, mag 3, acc 0.9x.",
         "Presence gets 5th power Unrelenting: 30s boost to damage, attack speed and recovery, unenhanceable heal over time.",
+        "Dominators: Intimidate and Invoke Panic bonus fear raised from mag 2 to mag 3.",
         "Fighting pool gets 5th power Cross Punch; Boxing, Kick, Cross Punch and Brawl gain synergy bonuses depending on how many Fighting attacks are owned.",
         "Medicine: Stimulant replaced by Injection (usable on allies and foes, foe debuff of speed, to-hit, damage; range 40ft; no Interrupt Time enhancements).",
         "Medicine gets 5th power Field Medic; owning it removes Aid Other interrupt and adds an endurance gain effect to Aid Self.",
         "Concealment gets 5th power Misdirection (PBAoE placate, up to 10 targets, resistance debuff).",
         "Leadership gets 5th power Victory Rush (recovery and end-reduction team buff after a foe is defeated; recharge not enhanceable).",
         "Blaster secondaries each get a 'sustain' power pickable by level 20; renamed: Touch of Fear -> Touch of the Beyond (Darkness Manipulation, 80ft), Blazing Aura -> Cauterizing Aura, Chilling Embrace -> Frigid Protection, Cloaking Device -> Field Operative, Lightning Clap -> Force of Thunder, Conserve Power -> Energize.",
-        "Sustain powers cost little or no endurance; Mental Manipulation already had Drain Psyche so is unchanged.",
+        "Sustain click powers cost very little endurance; sustain toggles cost none.",
         "Ranged blast tier 9 nukes (Blackstar, Thunderous Blast, Nova, Inferno, Psychic Wail, Atomic Blast, Dreadful Wail, Blizzard): recharge cut to 145-170s, damage scale ~4, no endurance crash, cost ~27.73 end.",
         "Overcharge recharge 180s -> 125s; Geyser 205s -> 125s; Hail of Bullets 120s -> 105s. Full Auto and Rain of Arrows left alone.",
         "All Snipe powers become instant and uninterruptible when user has at least 22% bonus To Hit.",
         "Strong single-target 'tier 3' blasts have range raised from 40/50ft to 80ft.",
-        "Touch of Fear/Scare terrorize changes: scaling table removed; Touch of Fear gets 30% chance of 7s mag 1 crit fear in PvE (Blaster, Brute, Scrapper, Stalker, Tanker).",
+        "Touch of Fear (Blaster, Brute, Scrapper, Stalker, Tanker Dark/Darkness) gets 30% chance of 7s mag 1 PvE fear; Scare PvE fear 7s -> 10s, PvP 4s -> 2s.",
         "Power Boost, Build Up and similar effects now also strengthen Absorb; Cardiac and Resilient Alpha swap Intangible Duration for Absorb strength; Clarion Destiny +Special boosts Absorb.",
         "Defender and Corruptor pseudo-pet blast damage (Burn, Ice Storm, Blizzard, Rain of Fire, Rain of Arrows) re-based to own AT damage mods; Corruptor nuke scourge raised to 50% for most sets.",
         "Dual Pistols: Pistols applies ammo-type DoT/slow/debuff; Empty Clips, Bullet Rain, Executioner's Shot cast times cut to 1.67s.",
         "Spines: Barb Swipe cast 0.83s, recharge 3s, end 4.368, damage scale 0.84; Lunge recharge 6s, end 6.864, scale 1.32.",
         "Origin ranged powers (Apprentice Charm, Taser Dart, Tranq Dart, Throwing Knives, Mutagen) get extra accuracy and damage until level 15.",
         "Four new Lore sets: Banished Pantheon, The Tsoo, Knives of Vengeance, Talons of Vengeance; all Lore pets lose endurance cost; many existing Lore pet powers rebalanced.",
+        "Alpha/Destiny and incarnate fixes: Doublehit no longer over-counts AoE area; Peacebringer Light Form recovery bonus now benefits from enhancements.",
+        "Rise of the Phoenix (Fire/Flame/Heat Mastery epics): untouchable phase no longer has a delay.",
         "Four new rare IO sets, level 20-50: Annihilation (Targeted AoE, resist debuff proc), Unbreakable Guard (Resist Damage, +7.5% max HP), Reactive Defenses (Defense, resist scaling with lost HP), Preventive Medicine (Healing, absorb proc).",
         "Invention procs converted from flat percent chance to Procs Per Minute for many sets; PPM chance capped at 90% maximum; PvP damage procs now deal more damage instead of higher chance.",
         "PPM values set per enhancement, e.g. 3.5 for most damage procs, 4.5 for former 33% procs (Hecatomb, Apocalypse, Armageddon), 1 for Decimation Build Up and Gaussian's.",
@@ -52,7 +55,8 @@
         "Set bonuses reworked: XP debt reduction bonuses removed; single mez resistances replaced by paired damage resist plus mez resist bonuses (e.g. Fire/Cold/Mez); all damage resistance bonuses increased.",
         "New set bonus type introduced: Endurance Discount.",
         "Dozens of IO sets get individual bonus changes (Bonesnap, Touch of Death, Crushing Impact, Salvo, Tempest, Detonation, Positron's Blast, Ragnarok, MultiStrike, Armageddon, Executioner's Contract, etc.).",
-        "Mission Architect custom enemies can use Time Manipulation, Beam Rifle, Street Justice, Titan Weapons, Darkness Control, Staff Fighting, Beast Mastery."
+        "Unique bonuses raised: Shield Wall damage resist 3% -> 5%, Impervium Armor Psionic 3% -> 6%, Aegis Psionic 3% -> 5%.",
+        "Going Rogue special IOs (Will of the Seers, Clockwork Efficiency, Might of the Empire, Resistance Tactics, Syndicate Techniques) proc becomes 2 PPM."
       ],
       "markers": [
         "Blaster secondary set Martial Combat exists",
@@ -65,10 +69,9 @@
         "IO sets Annihilation, Unbreakable Guard, Reactive Defenses, Preventive Medicine exist",
         "Lore sets Banished Pantheon, The Tsoo, Knives of Vengeance, Talons of Vengeance exist",
         "Enhancement procs carry Procs Per Minute values rather than flat percent chances",
-        "Set bonus Endurance Discount type exists",
-        "Epic/patron pool powers have customization options (Minimal FX Shark Skin, Scorpion Shield, Oppressive Gloom, Dark Embrace)"
+        "Set bonus Endurance Discount type exists"
       ],
-      "note": "Heading gives only a partial build id (XXXX placeholders); notes are cumulative over retail Issue 23. VIP open beta opened 2012-08-08."
+      "note": "The wiki gives only a partial build id, 2400.20120806XXXX.X (XXXX as written there); notes are cumulative over retail Issue 23. VIP open beta opened 2012-08-08."
     },
     {
       "date": "2012-08-14",
@@ -124,11 +127,13 @@
         "Epic AT nukes standardised: Dawn Strike, Quasar, Widow Psychic Wail recharge 360s -> 145s, scale 4 damage, ~27.7 end, no crash.",
         "Fighting/Cross Punch debuffs no longer scale with level difference.",
         "No endurance discount enhancements accepted by Cauterizing Aura, Field Operative, Frigid Protection, Reaction Time (no endurance cost).",
-        "Martial Combat/Burst of Speed cast 2.57s -> 1s, recharges 1s sooner; consecutive-use counter persists through death.",
+        "Martial Combat/Burst of Speed cast 2.57s -> 1s, recharge after use 2s -> 1s; consecutive-use counter persists through death.",
         "Leadership/Victory Rush now benefits from endurance modification enhancements and sets; Pacify no longer listed as accepting Taunt sets.",
         "Medicine/Injection now accepts Accuracy and Slow enhancements plus To Hit Debuff, Accurate To Hit Debuff and Slow sets.",
         "Second resistance pass on IO set bonuses: many sets get 2-6 slot resist bonuses raised or lowered; Mako's Bite 2 slot changed to Toxic/Psionic/Mez.",
         "Preventive Medicine, Reactive Defenses and others get adjusted health and endurance discount bonuses; Exploit Weakness, Calibrated Accuracy, Executioner's Contract defense bonuses raised.",
+        "Knives of Vengeance Lore power Rallying Cry now buffs all friends in its area, not only the caster.",
+        "Enhancement Sets section repeats the second beta's Improved Movement Bonus, Preventive Medicine, Scourging Blast and 2-3 slot mez resist reductions.",
         "Spider's Bite global Toxic proc fixed; Scourging Blast description now mentions +Health chance."
       ],
       "markers": [
@@ -196,26 +201,23 @@
         "New power sets listed in highlights: Atomic Manipulation, Ninja Training, Radiation Armor, Radiation Melee, Radioactive Assault, Tactical Arrow, Temporal Manipulation.",
         "Power set proliferation across archetypes (details not listed in the consolidated notes).",
         "New Judgement power Mighty Judgement: PBAoE smashing; Core tree more damage, Radial tree high-magnitude knockup.",
-        "Rebalanced Incarnate system: all enemies drop Incarnate XP and Threads; Incarnate Merits always Empyrean.",
+        "Incarnate story arcs and the Apex and Tin Mage task forces now always reward Empyrean Merits; all enemies drop Incarnate XP and Threads.",
         "Veteran levels: level 50 earns Veteran Levels per 5 million XP, to 99, giving Empyrean Merits, respecs and Incarnate Threads.",
         "Task forces, strike forces and trials (non-Incarnate) can start at any team size, including solo.",
+        "Incarnate Lore and Destiny level shifts work in the Apex and Tin Mage task forces, which can start without every member having the Alpha slot.",
         "Dr. Quaterfield Task Force exemplars to 45 instead of 44, keeping Incarnate powers.",
         "Enhancement Catalyst turns any Invention Set IO of any level into its Attuned version; Attuned IOs mix with crafted for bonuses.",
         "Superior Attuned IOs have higher set bonuses and do not keep bonuses when mixed with non-Superior set IOs.",
         "Attuned IOs (ATOs and Winter sets included) become tradable on the Auction House; no longer account bound.",
         "New Knockback IO set: Sudden Acceleration.",
         "Intangibility enhancements retired; remaining powers that took them no longer accept them.",
-        "Enhancement Boosters, Catalysts, Converters, Unslotters tradable; boosted or combined enhancements can be traded or emailed keeping boosts.",
+        "Boosters, Catalysts, Converters and Unslotters tradable; boosted or combined enhancements can be traded or emailed keeping boosts.",
         "Proc rework: Absolute Amazement, Achilles' Heel, Annihilation, Basilisk's Gaze, Bruising (Tankers), Dark Watcher's Despair, Dominion of Arachnos, Fury of the Gladiator, Induced Coma, Pacing of the Turtle, Winter's Bite no longer use GrantPower hacks.",
         "Those procs now use linked chance mods and caster stacking: they stack, extend duration, and obey combat mods (level difference).",
         "Proc 8% (attuned) and 12% (superior) resistance debuffs share a stack key; the larger overwrites the smaller.",
         "Dynamic-damage procs (Offensive Adaptation, Plant Manipulation Toxins, Hybrid Double Hit) evaluated separately in auras and pseudo pets.",
         "Bio Armor Defensive Adaptation heal procs: one heal per attack, cast-time based, no level-dependent loss.",
         "Shield Wall proc no longer affected by damage buffs.",
-        "Hamidon, Titan and Hydra enhancement drops use new weighted table (Damage/Accuracy x8, etc.).",
-        "Enhancement Catalyst drop rate x10 from all critters; Merit vendor sells Catalysts, Boosters, Converters, Unslotters, set recipes at reduced Merit costs.",
-        "Stores list only enhancements usable by origin within a level range by default.",
-        "Currency consolidation: Hero, Villain, Astral, Empyrean, Vanguard Merits convertible to Reward Merits; Prestige removed from bases.",
         "Tanker Ice Melee fixes: Frost DoT accelerated, Frozen Fists two damage ticks, Freezing Touch damage increased.",
         "Blaster Ninja Training Kuji-In Toh recharge 200s, lasts 210s.",
         "Blaster Temporal Manipulation Time Wall accepts Immobilize duration enhancements and set IOs.",
@@ -224,33 +226,30 @@
         "Day job powers normalised (10 days pre-badge, 7 days post-badge/accolade, max 30 charges); Jet Pack max duration 2 hours.",
         "Spider's Bite Toxic chance no longer affects caster or friendly targets.",
         "Tanker Super Reflexes Evasion taunt duration corrected.",
-        "Set-acceptance fixes: Darkness Manipulation Touch of the Beyond takes ToHit Debuff sets; Devices Web Grenade takes Speed Debuff sets; Electricity Manipulation Force of Thunder takes Healing sets; Mastermind Cold Domination takes IO sets; Sentinel Sonic Attack takes Universal sets.",
+        "Set-acceptance fixes: Blaster Darkness Manipulation Touch of the Beyond takes ToHit Debuff sets; Blaster Devices Web Grenade takes Speed Debuff sets; Blaster Electricity Manipulation Force of Thunder takes Healing sets; Mastermind Cold Domination takes IO sets; Sentinel Sonic Attack takes Universal sets.",
         "Mez-protection click powers (Power Surge, Overload, Hybernate, Icy Bastion, Unstoppable, Moment of Glory, Active Defense, Kuji-In Rin, Kuji-In Retsu, Practiced Brawler, Elude, Rune of Protection) usable while mezzed.",
         "Ninja Training Immobilizing Dart, Plant Manipulation Entangle, Temporal Manipulation Time Wall usable while mezzed; Wild Fortress, Temporal Healing, Sentinel Willpower Up To The Challenge no longer drop when mezzed.",
         "Martial Combat: Throw Sand recharge 90s, magnitude 3.",
         "Atomic Manipulation fixes: Positron Cell as damage over time; Beta Decay accepts Accurate ToHit Debuff IOs; Radioactive Cloud accepts Accuracy.",
-        "Fire Manipulation: Burn does damage in PvP; Lightning Rod usable while flying. Defiance duration formulas fixed.",
+        "Fire Manipulation: Burn does damage in PvP and shows its up-front AoE in power info; Lightning Rod usable while flying. Defiance duration formulas fixed.",
+        "Sentinel Willpower Up To The Challenge no longer roots on activation; Rage crash no longer fails to expire if Rage is reactivated while crashing.",
         "Brute Mercurial Blow no longer applies Bruising.",
         "Sentinel Psy Blast: Will Domination accepts Sleep enhancements and generic IOs; Psionic Strike no longer accepts them.",
-        "Stalker Fiery Melee and Ice Melee affected by Assassin's Mark ATO proc.",
-        "Pet changes: all ATs can rename pets; combat attributes visible for any pet.",
-        "Dual and Team Inspirations drop and are tradable; large drop-rate and vendor price changes for inspirations and recipes."
+        "Stalker Fiery Melee and Ice Melee affected by Assassin's Mark ATO proc."
       ],
       "markers": [
         "Sentinel archetype exists (inherent initially named Scrutiny).",
         "Power sets exist: Atomic Manipulation, Ninja Training, Radiation Armor, Radiation Melee, Radioactive Assault, Tactical Arrow, Temporal Manipulation.",
         "Sentinel power sets exist (e.g. Psy Blast, Sonic Attack, Willpower; Beam Rifle proliferated later).",
         "Judgement power Mighty Judgement exists (Core and Radial trees).",
-        "Intangibility enhancements removed from store and drops.",
+        "Remaining powers no longer accept Intangibility enhancements.",
         "IO set Sudden Acceleration (Knockback) exists.",
-        "Attuned set IOs obtainable via Enhancement Catalyst, tradable; Superior Attuned set bonuses differ.",
+        "Superior Attuned set IOs have higher set bonuses than the regular versions.",
         "Proc IOs listed use linked-chance stacking (no GrantPower proc powers).",
         "Blaster Ninja Training Kuji-In Toh recharge 200s duration 210s.",
-        "Martial Combat Throw Sand recharge 90s, mag 3.",
-        "Veteran Levels system (level 50 XP continues) exists.",
-        "Kallisti Wharf zone exists; Prestige removed; Reward Merit conversions present."
+        "Martial Combat Throw Sand recharge 90s, mag 3."
       ],
-      "note": "wiki gives these as one consolidated list, so individual 2013 patch dates are unknown; client tests began 2013-03-21, launch 2013-05-21 with Tequila and Island Rum patchers; notes cover everything up to 2014-01-19"
+      "note": "wiki gives these as one consolidated list, so individual 2013 patch dates are unknown; client tests began 2013-03-21, launch 2013-05-21 with Tequila and Island Rum patchers; notes cover everything up to 2014-01-19. Its planner lines and markers hold by 2014-01-19 at the latest: a client from earlier in 2013 may lack some of them."
     },
     {
       "date": "2014-02-21",
@@ -269,7 +268,6 @@
       ],
       "planner": [
         "Reveal power only clears fog of war for the user.",
-        "Dual Blades gets a No Redraw theme.",
         "Burn, Foot Stomp, Tremor, Ice Patch, Atom Smasher (all sets) usable while flying near ground."
       ],
       "markers": []
@@ -324,7 +322,6 @@
         "Cel Shader"
       ],
       "planner": [
-        "Sentinel ATO enhancements sold at the Reward Merit vendor.",
         "Several Sentinel powers fixed to accept the correct enhancement sets.",
         "Ice Armor Frigid Shield, Invulnerability Durability, Regeneration Instant Regeneration stack up to 5 Absorb buffs."
       ],
@@ -347,9 +344,7 @@
         "Costumes - Male",
         "Other"
       ],
-      "planner": [
-        "Sentinel ATOs listed correctly in Auction House."
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -368,10 +363,7 @@
         "Arena"
       ],
       "planner": [
-        "Sentinel ATOs, Entomb and Avalanche added to minion drop tables.",
-        "Respec granted with security level badges 10, 20, 30, 40, 50.",
-        "Temporary power recipes moved to P2W/T4V vendors for influence.",
-        "VEAT toggles get FX in PvP only options."
+        "Respec granted with security level badges 10, 20, 30, 40, 50."
       ],
       "markers": []
     },
@@ -388,7 +380,6 @@
         "General"
       ],
       "planner": [
-        "Stores sell SOs of correct origin to level 50; TOs and DOs sell back for more.",
         "Secondary Mutation recharges right after the Monkey period."
       ],
       "markers": []
@@ -410,8 +401,6 @@
         "Known Issues"
       ],
       "planner": [
-        "Stores reorganised: low-level sell TOs/DOs, high-level SOs; enhancement and inspiration prices equal buy/sell.",
-        "Enhancement Converter in Merit stores cost lowered (3 for 1 merit).",
         "P2W-bought powers no longer disabled when exemplaring."
       ],
       "markers": []
@@ -429,9 +418,7 @@
         "Flood The Market",
         "Other"
       ],
-      "planner": [
-        "Dispersion Bubble gains a Minimal FX option."
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -499,6 +486,7 @@
       ],
       "planner": [
         "Warshade and Peacebringer powers customizable; shape-shift attacks move from Inherent into the main primary and secondary sets for new builds; respecs move Nova/Dwarf attacks and travel powers.",
+        "Energy Light, Combat Flight, Shadow Step and Shadow Recall become customizable and move into the secondary Aura sets.",
         "Kheldian T1 attack usable in Dwarf form (reduced range); T2 attack usable in Nova form (more damage, longer recharge).",
         "Respec phase two places all enhancements for the level in any power at once.",
         "Beam Rifle proliferated to Sentinels.",
@@ -532,7 +520,8 @@
       "planner": [
         "PvP enhancements slottable at level 7 (flag was level 12).",
         "Procs now stack across damage types correctly; PvP damage formulas for Corruptor and Blaster corrected.",
-        "Sentinel ATOs added to some super packs.",
+        "Powers referencing others in later-lettered categories failed; fixed, so Burnout works for Stalkers, Scrappers, Sentinels, Tankers, Warshades.",
+        "Sentinel Opportunity works again after sidekicking up more than 3 levels, dying and resurrecting; Beam Rifle insta-snipe applies Disintegrate.",
         "SKU requirements removed from player power sets."
       ],
       "markers": []
@@ -571,7 +560,6 @@
         "Contacts"
       ],
       "planner": [
-        "Market level-adjusts Invention Set recipes and enhancements; level 51-53 recipes map to 50.",
         "Attuned enhancements forced to level 1 on acquisition."
       ],
       "markers": []
@@ -588,7 +576,9 @@
       "sections": [
         "Powers"
       ],
-      "planner": [],
+      "planner": [
+        "Redirector powers no longer wrongly flagged as NearGround."
+      ],
       "markers": []
     },
     {
@@ -606,9 +596,7 @@
         "Market",
         "Base Items"
       ],
-      "planner": [
-        "Hamidon and Synthetic Hamidon enhancement listings combined; Titan and Hydra likewise."
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -647,7 +635,7 @@
         "Quantum Acceleration endurance cost matched to Afterburner; the two are mutually exclusive."
       ],
       "markers": [
-        "Energy Flight and Mystic Flight cost same endurance as Fly."
+        "Energy Flight, Mystic Flight and Group Energy Flight cost same endurance as Fly/Group Fly; Quantum Acceleration costs same as Afterburner."
       ]
     },
     {
@@ -1418,14 +1406,10 @@
       ],
       "planner": [
         "Controller and Dominator primary Immobilize powers no longer make targets immune to KnockUp; KnockBack converted to KnockDown",
-        "Cold Domination for Controllers and Masterminds gets a Minimal FX option",
         "Rain of Arrows: animation 4s -> 2s, base recharge +5s",
-        "Bio Armor > Hard Carapace gives damage resistance in PvP; Stalker Ice Melee crits in PvP",
         "Flash Freeze affects flying foes; Glacier usable while flying",
         "Shield Defense no longer creatable with Claws, Dual Blades, Ninja Sword, Spines or Staff Fighting primaries (always broken)",
-        "Scrapper Shinobi-Iri accepts Jump enhancement sets; Sentinel Beam Rifle > Refractor Beam accepts Defense Debuff sets",
-        "Doppelganger spawn fix for Radiation, Spines, Staff, Beam Rifle, Water Blast, Super Reflexes and other sets",
-        "Death From Below XP reduces after level 10"
+        "Scrapper Shinobi-Iri accepts Jump enhancement sets; Sentinel Beam Rifle > Refractor Beam accepts Defense Debuff sets"
       ],
       "markers": [
         "Rain of Arrows recharge 5s higher than before",
@@ -1468,10 +1452,7 @@
         "Bug Fixes"
       ],
       "planner": [],
-      "markers": [
-        "New 32-bit and 64-bit clients exist",
-        "Supergroup member limit 300"
-      ],
+      "markers": [],
       "note": "Page 2 main release: 64-bit client, roleplaying tag, game controller input. No power data changes listed; data changes on Beta were held back."
     },
     {
@@ -1488,9 +1469,7 @@
         "Mission Architect",
         "Rewards"
       ],
-      "planner": [
-        "Special enhancement rewards (Summer Blockbuster, Death From Below) now drop when exemplared"
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -1536,7 +1515,9 @@
         "Pool Leaping > Spring Attack does Containment damage for Controllers; Pool Sorcery > Enflame works for Sentinels",
         "Sentinel Regeneration > Dismiss Pain max HP 6% -> 24%; Sentinel Ice Blast > Chilling Ray accepts Slow",
         "Mu Mastery > Zap uses melee damage modifiers; Beam Rifle disintegration spread chances set (Penetrating Ray 55%, Lancer Shot 100%)",
-        "Night Widow and Fortunata Vengeance trigger on league members; Dominator Unkindness and Stalker Shred text now says they generate Blood Frenzy"
+        "Night Widow and Fortunata Vengeance trigger on league members; Dominator Unkindness and Stalker Shred text now says they generate Blood Frenzy",
+        "Kheldian inherents now treat Sentinels like Blasters and Scrappers",
+        "Ice Control > Flash Freeze flagged as Targeted AoE, not Point Blank AoE"
       ],
       "markers": [
         "IO set Experienced Marksman exists",
@@ -1591,8 +1572,7 @@
       "planner": [
         "New Origin power pool Force of Will: Weaken Resolve, Project Will, Mighty Leap, Takeoff, Wall of Force, Unleash Potential",
         "Only one Origin pool (Sorcery or Force of Will) allowed per build",
-        "Wall of Force and Unleash Potential each require two other Force of Will powers",
-        "Lords of Winter IO sets (Avalanche, Blistering Cold, Entomb, Frozen Blast, Winter's Bite) no longer grouped with Superior versions in AH"
+        "Wall of Force and Unleash Potential each require two other Force of Will powers"
       ],
       "markers": [
         "Power pool Force of Will exists",
@@ -1630,9 +1610,7 @@
         "Stability & Performance",
         "UI"
       ],
-      "planner": [
-        "Stealth and Invisibility transparency values fixed"
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -1683,9 +1661,7 @@
         "Bug Fixes",
         "Homecoming Crash Handler"
       ],
-      "planner": [
-        "Damage Resistance enhancement background colour changed to a redder hue (visual only)"
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -1744,17 +1720,17 @@
         "Tanker acquisition levels: Battle Axe Whirling Axe 20, Swoop 28; Martial Arts Dragon Tail 20, Focus Chi 28, Crippling Axe Kick 35",
         "Tanker acquisition levels: Stone Melee Tremor 28, Hurl Boulder 35; War Mace Whirling Mace 20, Clobber 28",
         "Oppressive Gloom, Cloak of Fear and Burn (Brute/Tanker) accept Taunt enhancements; Burn accepts Taunt sets; Spine Burst honours Radius buffs, Quills ignores them",
-        "Mastermind pet AI: Stay/Go To holds position, ranged-only pets no longer close to melee (Mercs, Lich, Robotics, Thugs), pets ignore aggro cap",
-        "Phantom Army gets Mirror and Phantom Mirror customisation options",
         "Pool Teleportation > Long Range Teleport grants a Second Chance popup power",
         "Weaken Resolve -res debuff scale -1.5 -> -1.0 (Force of Will)",
         "Golden Dragonfly max targets 10 -> 5 for Brute and Scrapper Katana and Stalker Ninja Blade",
-        "PvP: global damage procs use PvP formula; Immobilizing Dart no longer holds in PvP; Storm Summoning Hurricane, O2 Boost, Gale adjusted",
         "Mez duration/suppression rules enforced on many powers and IO sets (Debilitative Action, Devastation, Frozen Blast, Lockdown, Razzle Dazzle, etc.)",
         "Knockback suppression enforced on many powers and sets (Avalanche, Kinetic Combat, Overwhelming Force, Stupefy, Ragnarok, Might of the Empire, Superior Avalanche)",
         "Fixes: Electron Shackles no longer takes Endurance Mod; Umbra Beast takes Fear; Crippling Axe Kick takes Defense Debuff; Sentinel Athletic Regulation no longer takes travel sets",
-        "Fixes: Sentinel Power Armor takes Healing sets; Blazing Blast 13 DoT ticks; Weaken Resolve takes Accurate ToHit Debuff; Liquefy range 0 -> 60ft",
-        "Poison Weaken and Cold Domination -Special powers no longer boosted by +Special powers; Performance Shifter proc can grant Endurance on attacks"
+        "Fixes: Sentinel Power Armor takes Healing sets; Blazing Blast 13 DoT ticks; Weaken Resolve takes Accurate ToHit Debuff sets",
+        "Poison Weaken and Cold Domination -Special powers no longer boosted by +Special powers; Performance Shifter proc can grant Endurance on attacks",
+        "Dominator Savage Assault Call Hawk and Feral Charge no longer accept Dominator ATO sets",
+        "Drain Psyche -Regeneration no longer enhanceable (Blaster Psionic Manipulation, Dominator Psionic Assault)",
+        "Dominator Fire Control Fire Imps always summon 3 imps"
       ],
       "markers": [
         "Tanker melee damage modifier 0.95, ranged 0.8",
@@ -1766,8 +1742,7 @@
         "Tanker Battle Axe Whirling Axe available at level 20",
         "Slice and Flashing Steel arc 90 for Tankers",
         "Weaken Resolve -res scale -1.0",
-        "Pool Teleportation Long Range Teleport grants Second Chance power",
-        "Bath & Kitchen base tab exists with 38 new items"
+        "Pool Teleportation Long Range Teleport grants Second Chance power"
       ]
     },
     {
@@ -1830,11 +1805,11 @@
       ],
       "planner": [
         "Player buffing procs (e.g. Chance for Build Up) no longer proc on pseudo-pets",
-        "Panacea in PvP no longer grants +Regen, same Chance for +Heal as PvE",
         "Caltrops (Blaster Devices, Dominator Martial Assault), Thorntrops now take enhancements and procs",
         "Interface incarnate damage over time proc chance corrected (was too low)",
         "Defender/Corruptor Epic Power Mastery Power Build Up no longer boosted by other Power Build Ups",
-        "Stalker Ice Melee > Frost takes range enhancements; Brute Fury no longer gained passively from some auras"
+        "Stalker Ice Melee > Frost takes range enhancements; Brute Fury no longer gained passively from some auras",
+        "Tanker and Brute global taunt proc now triggers on aura powers"
       ],
       "markers": [
         "Caltrops accepts enhancements and procs"
@@ -1854,8 +1829,7 @@
         "General"
       ],
       "planner": [
-        "Soulbound Allegiance Chance for Build Up proc works on pets again, not on player when summoning",
-        "Chain powers (Beam Rifle, Electric Control, Electric Melee, Electricity Mastery, Martial Assault etc.) get a unique power border"
+        "Soulbound Allegiance Chance for Build Up proc works on pets again, not on player when summoning"
       ],
       "markers": []
     },
@@ -1920,11 +1894,10 @@
         "Leadership Maneuvers, Assault, Tactics activation 3.63s -> 1.5s",
         "Call of the Sandman heal proc 5% -> 15%, unique, single proc per power; Gaussian's Chance for Build Up works on pet to-hit powers again",
         "Dark Miasma Twilight Grasp and Tar Patch use own AT modifiers; Twilight Grasp accuracy 1.0x -> 1.2x",
-        "Katana sets lose No Redraw theme (interruptible draw animation): Ninja Training, Brute/Scrapper/Tanker Katana, Jounin, Ninja Tools, Ninja Blade",
         "Dark Melee Shadow Maul: arc 45 -> 120 degrees, recharge 8 -> 11s, cast 3.07 -> 2.35s, damage scale 2.156 -> 1.6184, target cap Tanker 16, others 10",
         "Evasion Defense Resistance fixed; Unstoppable no longer takes Endurance Mod; some villain powers retagged from Ranged+AoE",
-        "Recharge text bands standardised (Very Fast <=3s ... Extremely Long >600s); Mastermind henchmen Go To radius rules changed",
-        "Powers disabled in Arena: Mystic Fortune, Secondary Mutation, Jump Pack, Steam Jump; Hybrid Melee mez protection becomes resistance in PvP"
+        "Recharge text bands standardised (Very Fast <=3s ... Extremely Long >600s)",
+        "Corrosive Vial and Adrenal Booster each require 2 other Experimentation pool powers"
       ],
       "markers": [
         "Electrical Affinity power set exists (Defender, Corruptor, Controller, Mastermind)",
@@ -1932,7 +1905,7 @@
         "IO sets Synapse's Shock, Power Transfer, Preemptive Optimization, Bombardment, Artillery exist",
         "Shadow Maul recharge 11s, arc 120",
         "Maneuvers/Assault/Tactics activation 1.5s",
-        "Katana sets have no No Redraw theme"
+        "Corrosive Vial and Adrenal Booster require 2 Experimentation powers"
       ],
       "note": "Page 5 main release; later build ids on this page are 26.5.x."
     },
@@ -1988,8 +1961,7 @@
       "planner": [
         "Electrical Affinity: Energizing, Empowering and Insulating Circuit buffs now cancellable; Faraday Cage shows no caster buff icon",
         "Savage Melee set description corrected (Shred builds Blood Frenzy; Frenzy adds recharge and end discount)",
-        "Incarnate Hybrid Support top tier endurance discount fixed; Stalker Weapon Mastery Shuriken gets Page 5 recharge change",
-        "Going Rogue pre-order enhancement damage percentage text fixed"
+        "Incarnate Hybrid Support top tier endurance discount fixed; Stalker Weapon Mastery Shuriken gets Page 5 recharge change"
       ],
       "markers": []
     },
@@ -2167,8 +2139,12 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#November_24th,_2020",
       "sections": [
+        "Story arcs",
+        "Stance Selection",
+        "Power Customisation Update",
         "Sonic Manipulation",
         "Energy Melee",
+        "Energy Melee for Scrappers",
         "Titan Weapons",
         "Trick Arrow",
         "Teleportation pool",
@@ -2176,7 +2152,11 @@
         "Other Powers Changes",
         "Travel Updates",
         "Enhancements",
+        "Badges",
         "PvP Updates",
+        "Arena maps and gamepad",
+        "Map Changes",
+        "Other Changes",
         "Bug Fixes"
       ],
       "planner": [
@@ -2185,6 +2165,7 @@
         "Energy Melee revamp: Stun replaced by Power Crash (cone, takes PBAoE damage sets); Energy Focus combo mechanic; Total Focus and Energy Transfer retimed.",
         "Energy Melee power order changed for Stalkers and Tankers (Total Focus moved from T9, Energy Transfer from T8, Power Crash replaces Stun).",
         "Energy Transfer recharge 20s -> 10s, no endurance cost, self damage 10% base HP; Energy Punch recharge 4s -> 5s, damage scale 1 -> 1.16.",
+        "Stalker Power Crash has 16s recharge (9s for other archetypes); Energy Focus now consumed by Energy Melee powers for bonus effects.",
         "Titan Weapons: bonus damage (about 8-10%) removed from all attacks; Momentum gives 25% faster recharge and extra endurance discount; several cast times and Whirling Smash radius 15ft -> 10ft.",
         "Trick Arrow revamp: Entangling Arrow, Flash Arrow, Glue Arrow, Ice Arrow, Poison Gas Arrow, Acid Arrow, Disruption Arrow, Oil Slick Arrow, EMP Arrow all changed.",
         "Trick Arrow: Flash Arrow, Oil Slick Arrow, EMP Arrow can now take Range enhancements; Glue Arrow and EMP Arrow become location targeted; EMP Arrow spawns an EMP Field.",
@@ -2201,20 +2182,24 @@
         "Mental Manipulation: Telekinetic Thrust moved T3 -> T9, recharge 6s -> 16s, damage scale 0.8 -> 2.92; Scare T8 -> T7, Psychic Shockwave T9 -> T8, World of Confusion T7 -> T3.",
         "Plant Manipulation: Spore Cloud moved T9 -> T5, Thorn Burst moved T5 -> T9, Vines hold reworked; Ice Manipulation Frozen Aura now deals damage.",
         "Ninja Training: Shinobi now gives 20% crit chance instead of damage buff; Sting of the Wasp and Golden Dragonfly recharge increased; The Lotus Drops recharge 28s -> 14s.",
+        "Darkness Manipulation: Touch of the Beyond self buff 60s -> 120s with Fear protection, accuracy 150% -> 120%; Dark Pit recharge 60s -> 90s, endurance 13 -> 20.18.",
+        "Martial Combat: Ki Push damage scale 0.8 -> 1.0, recharge 6s -> 4s; Eagles Claw gains bleed DoT. Devices Gun Drone gets 80% resistance to all damage.",
+        "Fire Manipulation Cauterizing Aura and Ice Manipulation Frigid Protection target cap corrected 11 -> 10.",
+        "Athletic Run, a non-stance Ninja Run, added to P2W prestige powers (free if Beast Run/Ninja Run not owned).",
         "Temporal Manipulation: Time Wall deals damage and takes damage sets; Future Pain and End of Time recharge/damage adjusted; Aging Touch damage reduced.",
         "Absorb powers (Frigid Protection, Reaction Time, Wild Fortress, Temporal Healing) rebalanced to match Cauterizing Aura healing per second.",
         "Dark Melee: Shadow Maul target cap 10 -> 5; Touch of Fear now targeted melee AoE accepting Melee AoE damage sets.",
         "Kinetics: Transfusion, Siphon Power, Transference, Fulcrum Shift converted from pseudopets to execute-power mechanics.",
         "Taunt-capable auras (e.g. Invincibility, Rise to the Challenge, Mud Pots, Dark Armor Death Shroud) can now be slotted with Taunt sets; list covers many armor sets.",
         "Active combat accolade powers now recharge in 10 minutes, ignoring global recharge buffs.",
-        "Pocket D VIP Pass becomes the Long Range Teleporter accolade power; new Supergroup Portal, Rapid Response Portal and Monitor Duty Teleporter powers; Base Transporter recharge 30 -> 10 minutes.",
+        "Pocket D VIP Pass becomes the Long Range Teleporter accolade power; new Supergroup Portal and Rapid Response Portal powers; Base Teleporter renamed Monitor Duty Teleporter; Base Transporter recharge 30 -> 10 minutes.",
         "Enhancement Upgrade button added; combining enhancements now raises level directly (Titan/Hydra/Hamidon can reach 53).",
         "Single Origin enhancements buyable at levels 5/10/15/20; DOs at 5 and 10; TOs removed from regular vendors; Yin's Talisman enhancements usable by all origins.",
         "AoE set categories renamed: Targeted AoE Damage -> Ranged AoE Damage; PBAoE Damage -> Melee AoE Damage (no change to which powers take them).",
         "Damage procs no longer auto-hit in auto-hit powers; Gaussian's Synchronized Fire Control and Performance Shifter sets now require level 17 for all pieces.",
         "Powers that give +Strength (Power Boost, Power Up) now ignore strength buffs so chained boosts add instead of multiply.",
         "Opportunity Proc, Envenomed Blades, Frostbite procs standardized formula for powers above 20s recharge.",
-        "Fixed Energy Melee Power Crash style, Dual Pistols Defiance, Savage Melee crits, Sentinel Ice Armor Frost Protection now accepts recharge, Stalker Willpower Reconstruction accepts resistance sets, Stone Armor Earth's Embrace heal ignores resistance.",
+        "Fixed Dual Pistols Defiance, Savage Melee crits, Sentinel Ice Armor Frost Protection now accepts recharge, Stalker Willpower Reconstruction accepts resistance sets, Dominator Masterful Throw takes ToHit Debuff sets, Stone Armor Earth's Embrace heal ignores resistance.",
         "PvP: new Arena-vendor fakkolade powers (Veteran, Indestructible, Supercharger, Mind Games, Nullifier, Justice, Rampage); many temporary/day job powers disabled in Arena and PvP zones."
       ],
       "markers": [
@@ -2224,10 +2209,11 @@
         "Teleportation pool has Teleport Target, Combat Teleport, Fold Space; no Recall Friend/Teleport Foe/Long Range Teleport",
         "Blaster Tactical Arrow has Gymnastics and Oil Slick Arrow, no Agility",
         "Blaster Electrical Manipulation has Dynamo, no Lightning Field",
-        "Pocket D VIP Pass replaced by Long Range Teleporter power; Supergroup Portal, Rapid Response Portal, Monitor Duty Teleporter powers exist",
+        "Long Range Teleporter power exists; Supergroup Portal and Rapid Response Portal powers exist; Monitor Duty Teleporter is the old Base Teleporter",
         "Enhancement set categories named Ranged AoE Damage and Melee AoE Damage",
         "Warshade has Shadow Recall, Starless Step, Shadow Slip as renamed/changed powers",
-        "Plant Manipulation order: Spore Cloud T5, Thorn Burst T9"
+        "Plant Manipulation order: Spore Cloud T5, Thorn Burst T9",
+        "Mental Manipulation order: Telekinetic Thrust T9, Scare T7, Psychic Shockwave T8, World of Confusion T3"
       ],
       "note": "Page's main release; build id not stated in the notes."
     },
@@ -2391,6 +2377,7 @@
         "Powers with excessively long cast times shortened: Demon Summoning, Ignite, Full Auto, Hail of Bullets, Thunderous Blast, Death Shroud, Ice Patch, Summon Dire Wolf.",
         "Stone Armor: Rooted only debuffs movement while Granite Armor active; Granite Armor disables flying, running and jumping toggles.",
         "Ninjitsu: Shinobi-Iri loses movement buffs and Jump/Run/Universal Travel slotting; Kuji-In Rin gains run/jump buff and now accepts those enhancements and damage resistance sets.",
+        "Ninjitsu: Scrapper Shinobi-Iri stealth crit after 8s out of combat (65% single target, 30% AoE); Sentinel Shinobi-Iri stealth damage buff +20% -> +40%.",
         "Sentinel Mace Mastery Focused Accuracy renamed Coordinated Targeting.",
         "Inherent Rest has no recharge and no longer takes recharge enhancements; Hibernate no longer detoggles flight; fast snipes ranges normalised to 80ft (100ft Psi).",
         "No Phase suppression window reduced from 2 minutes to 90 seconds.",
@@ -2398,9 +2385,7 @@
         "Stalker crit consistency pass across melee sets: 100% single-target/50% AoE from Hide, 7% PvE non-Hide; many PvP damage scales adjusted.",
         "Power animation time and rooting time decoupled; non-offensive buffs/heals no longer root.",
         "Enhancement Boosters and Catalysts can be applied directly by clicking.",
-        "Sprints become a new IO set category: Sprint powers only accept Sprint sets (not Running or Leaping sets).",
-        "Enhancements affected by enemy level fixed: Impervious Skin, Numina's Convalescence, Sentinel's Ward, Miracle, Aegis, Dominating Grasp; Essence Transfer proc now persists like Assassin's Mark.",
-        "Superior Avalanche, Blistering Cold, Frozen Blast, Assassin's Mark, Brute's Fury and other Superior ATO/Winter sets: some enhancements granted too little and were corrected.",
+        "Enhancements weaker against higher-level enemies fixed: Impervious Skin, Numina's Convalescence, Sentinel's Ward, Miracle, Aegis, Dominating Grasp.",
         "PvP: mez protection added to Clarity, Clear Mind, Insulation Shield, Antidote, Thaw, Faraday Cage, EMP Field and others; Elude and Kuji-In Retsu give elusivity.",
         "Fixed attack-type flags and misc power bugs (Radiation Siphon Stalker level 18, Time Wall takes Blaster/Ranged/Universal damage sets, Dynamo no self damage)."
       ],
@@ -2411,9 +2396,9 @@
         "Super Speed has Speed Phase as a secondary power; Super Jump has Double Jump",
         "Sorcery Spirit Ward is a toggle",
         "Inherent Fitness powers available at level 1",
-        "IO set category Sprints exists",
         "Sentinel Mace Mastery power named Coordinated Targeting",
-        "Mastermind T1 henchmen summon recharge is 5s"
+        "Mastermind T1 henchmen summon recharge is 5s",
+        "Teleport base range 350ft; Sorcery Rune of Protection recharge 180s"
       ],
       "note": "Page's main release; build id not stated in the notes."
     },
@@ -2435,10 +2420,13 @@
         "New P2W Prestige Utility powers: Only Affect Self and Disable All Powers (free).",
         "Evasive Maneuvers, Quantum Maneuvers and Stealth defense suppression rules changed; Group Fly respects Disallow Group Fly option.",
         "Respec recipes can no longer be sold to vendors.",
+        "New IO set category Sprints: Sprint powers accept only Sprint sets; Celerity, Quickfoot listed as Running & Sprints, Unbounded Leap, Springfoot as Leaping & Sprints.",
+        "Essence Transfer proc now persists like Assassin's Mark and its heal no longer scales by enemy level.",
         "Several Superior set enhancements granted less than intended and were corrected (Superior Avalanche, Blistering Cold, Frozen Blast, Assassin's Mark, Critical Strikes, Gauntleted Fist and others)."
       ],
       "markers": [
-        "Prestige powers Only Affect Self and Disable All Powers exist in P2W Prestige Utility"
+        "Prestige powers Only Affect Self and Disable All Powers exist",
+        "IO set category Sprints exists; Running & Sprints and Leaping & Sprints sets (Celerity, Quickfoot, Unbounded Leap, Springfoot)"
       ]
     },
     {
@@ -2454,14 +2442,14 @@
         "Powers",
         "Combat Log",
         "Enhancements",
-        "Miscellaneous"
+        "Miscellaneous",
+        "Bug Fixes"
       ],
       "planner": [
         "Infiltration run, jump speed and jump height buffs increased by 10%.",
         "Inherent Walk no longer disables all powers; now applies Only Affect Self, caps speed and disables travel powers.",
         "Stygian Circle no longer roots.",
-        "+Range set bonuses now have 7 tiers instead of 3 (no effect on existing sets).",
-        "Locking power tray icons now also locks macros."
+        "+Range set bonuses now have 7 tiers instead of 3 (no effect on existing sets)."
       ],
       "markers": [
         "Concealment Infiltration run speed buff raised 10%"
@@ -2502,9 +2490,7 @@
         "Mission Architect",
         "Powers"
       ],
-      "planner": [
-        "Restored the Energized Shield power on Cimeroran critters (NPC only)."
-      ],
+      "planner": [],
       "markers": [],
       "note": "Support patch for the Cimerora Mission Architect contest."
     },
@@ -2565,18 +2551,30 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_3#November_26th,_2021",
       "sections": [
+        "General",
         "Dr. Aeon Strike Force",
         "D-Sync Origin Enhancements",
         "Advanced Difficulty Options",
+        "Challenge Modes",
+        "Tasks",
+        "Turnstile / LFG Queue",
+        "City Zones",
+        "Villain Groups",
+        "Inspirations",
         "Powers",
         "Invention Origin Sets",
         "PVP",
         "Badges",
         "Costumes",
-        "Supergroup Bases"
+        "Supergroup Bases",
+        "World Geometry & Textures",
+        "Dynamic Geometry"
       ],
       "planner": [
         "New Earth powersets: Seismic Blast (Blaster/Corruptor primary, Defender secondary) and Earth Manipulation (Blaster secondary).",
+        "Seismic Blast powers: Encase, Shatter, Rock Shards, Entomb, Seismic Force, Upthrust, Tombstone, Stalagmite, Meteor.",
+        "Earth Manipulation powers: Stone Prison, Heavy Mallet, Salt Crystals, Build Up, Tremor, Mud Bath, Beryl Crystals, Fracture, Seismic Smash.",
+        "Scrapper Stone Armor Geode is a Hibernate-like structure that builds Geothermal Power to boost Brimstone's fire proc; Scrapper Seismic Smash hold Mag 3, 20% crit.",
         "Stone Melee and Stone Armor proliferated to Scrappers; Scrapper Stone Armor has Geode instead of Granite Armor.",
         "Stone Armor: Stone Skin takes some Granite resistances/defense and accepts Defense enhancements; Brimstone Armor gains fire proc; Crystal Armor, Minerals gain buffs; Earth's Embrace recharge 360s -> 120s, heal scale 4 -> 1.35.",
         "Stone Armor and Mud Pots endurance costs reduced (0.26 -> 0.208 end/s, Mud Pots 0.78 -> 0.52).",
@@ -2589,10 +2587,10 @@
         "Robotics Protector Bots Force Field scale 0.75 -> 1.3 with single buffer; Total Focus gets Fiery Embrace for Brutes and Tankers.",
         "New D-Sync Origin enhancements (DSO) with new combinations, level up to 53 when combined; reward from Dr. Aeon Strike Force.",
         "New IO sets: Ice Mistral's Torment (Slow Movement), Hypersonic (Flying), Launch (Leaping), Thrust (Running), Warp (Teleportation).",
-        "Ice Mistral's Torment has a cold damage proc (3.5 ppm) and levels 20-50; Hypersonic, Launch, Thrust, Warp are 4-piece rare sets with unique IOs.",
+        "Ice Mistral's Torment is a rare 6-piece set, levels 20-50, with a cold damage proc (3.5 ppm); Hypersonic, Launch, Thrust, Warp are rare 4-piece sets, levels 15-50, each with a unique IO.",
         "Immortal Recovery inspiration gives 25 endurance (was 50).",
         "PvP: Super Reflexes scaling resistance period 2s -> 0.5s (also PvE); Faraday Cage and EMP Field PvP effect duration 20s; Dimension Shift 3s in PvP.",
-        "Added -Fly to tooltips of Crey CBX-9 Pistol, Stolen Immobilizer Ray, Chilblain; Portable Workbench becomes a pushable NPC."
+        "Crey CBX-9 Pistol, Stolen Immobilizer Ray and Chilblain tooltips now list their -Fly effect."
       ],
       "markers": [
         "Powerset Seismic Blast exists for Blaster, Corruptor, Defender",
@@ -2627,8 +2625,7 @@
       ],
       "planner": [
         "Seismic Blast fixes: Seismic Shockwaves work while exemplared, Stalagmite Lava theme colour fixed; Doppelgangers use Seismic Blast and Stone powers.",
-        "Amplifiers work on shape-shifted Kheldians; Experience Boosters moved in P2W; some Day Job powers now disable with temp powers off.",
-        "Crey critter powers Hallucinogenic Gas and Tear Gas Grenade recharge raised and radius reduced (NPC only)."
+        "Amplifiers work on shape-shifted Kheldians; Experience Boosters moved in P2W; some Day Job powers now disable with temp powers off."
       ],
       "markers": []
     },
@@ -2648,9 +2645,7 @@
         "Emotes",
         "Quick Chat Emote Menu"
       ],
-      "planner": [
-        "Fixed missing FX for the Holiday Snowball temporary power."
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -2696,32 +2691,38 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#August_23rd,_2022",
       "sections": [
+        "General",
         "Marquee Features",
         "Powers & Gameplay Adjustments",
         "Character Customization Improvements",
-        "Various Additions & Enhancements"
+        "Various Additions & Enhancements",
+        "City Zone Adjustments & Fixes",
+        "Game Client Adjustments & Fixes"
       ],
       "planner": [
         "Free respec for all characters on login because of the many power changes.",
         "New primary Symphony Control for Controllers and Dominators (Melodic Binding, Hymn of Dissonance, Aria of Stasis, Impassioned Serenade, Dreadful Discord, Enfeebling Lullaby, Confounding Chant, Chords of Despair, Reverberant).",
         "New secondary Sonic Assault for Dominators (Shriek, Strident Echo, Scream, Shockwave, Bass Boost, Deafening Wave, Disruption Aura, Shout, Earsplitter).",
-        "Corruptor set 'Sonic Attacks' renamed 'Sonic Attack'; all Sonic Attack powers now Energy-typed and apply Sonic Vibrations resistance debuffs; Shriek, Scream, Shout, Screech, Howl, Shockwave, Siren's Song get new damage, cast time and recharge values.",
+        "Corruptor set 'Sonic Attacks' renamed 'Sonic Attack'; all Sonic Attack powers now Energy-typed and apply Sonic Vibrations resistance debuffs; Scream, Shout, Screech, Howl, Shockwave, Siren's Song get new damage, cast time and recharge values.",
         "Ice Control: Shiver renamed Cold Snap (recharge 30s -> 40s, adds a Fear cone, now takes ATOs, Fear enhancements and sets); Ice Slick now does damage and accepts Accuracy/Damage enhancements and Ranged AoE and Universal Damage sets.",
         "Ice Control Arctic Air gains Overpower/Domination effects; Dominator version no longer accepts Fear enhancements or sets.",
         "Armor psionic/toxic mitigation pass: Invulnerability, Ice Armor, Energy Aura, Stalker Hide and Fighting pool Weave gain psionic/toxic defense or resistance; Stalker Invulnerability 'Reinforced' renamed Invincible.",
         "All player attack powers now carry up to one positional and one type defense check; many damage types adjusted; Explosive Arrow and M30 Grenade become Fire/Lethal 50/50 instead of Smashing/Lethal.",
-        "Sphere/cone attacks flagged Ranged or Melee (arc >= 30 degrees) are re-tagged AoE Attack for defense checks.",
+        "Sphere/cone attacks flagged Ranged, and Melee ones with arc >= 30 degrees, are re-tagged AoE Attack for defense checks.",
         "New toggle suspension: Granite Armor and Kheldian forms suspend other set toggles (and pool/travel toggles) instead of dropping them.",
         "Toggles that dropped when mezzed now suppress their effects while mezzed and 5s after instead.",
         "Slotting changes: Leviathan Mastery Knockout Blow loses Ranged AoE sets; Static Field gains End Mod sets; Psychic Shockwave (Dominator) gains Dominator ATOs; Thorn Burst gains Defense Debuff sets; Lich loses Def Debuff sets; Shocking Bolt loses Melee AoE sets; Beta Decay loses To Hit/Def Debuff sets; Particle Shielding loses End Mod; Throw Sand loses To Hit Debuff.",
         "Flash Freeze (Ice Control) now 100% cold damage, Controller version does Containment damage; Knockout Blow standardized to 13.2 ft range.",
         "Level changes: Scrapper Shinobi-Iri, Sentinel Durability and Sentinel Shinobi-Iri tier 3 secondary moved from level 6 to level 4.",
-        "Stalker Radiation Siphon grants Assassin's Focus; Rending Flurry endurance 20.8 -> 13.52; Frozen Aura (Ice Manipulation) endurance 18.512 and PvE damage no longer doubled.",
+        "Stalker Radiation Siphon grants Assassin's Focus; Rending Flurry (Dominator, Stalker) endurance 20.8 -> 13.52; Frozen Aura (Ice Manipulation) endurance 18.512 and PvE damage no longer doubled.",
         "Critical-hit tags standardised on Scrapper powers (CritSmall/CritLarge/CritPlayer); Martial Arts attacks now get Scrapper crit buff from Shinobi-Iri; Scrapper ATOs only buff the new tags.",
         "Placate for Stalker/Night Widow/Bane Spider ignores combat mods; Mercenary Soldier upgrade powers corrected.",
         "Radiation Infection cast time 3.1s -> 1.5s; Warshade Shadow Cloak gets a No Fade version; Electric Melee attacks (Chain Induction, Thunder Strike, Assassin's Shock) become 100% Energy damage.",
         "Temporal Warrior option: new level 50 PvP-only characters with Incarnate slots unlocked (character creation).",
-        "Sentinel's Ward ATO description corrected: absorb proc is 2 PPM; Kismet (Unique) description says it grants ToHit."
+        "Sentinel's Ward ATO description corrected: absorb proc is 2 PPM; Kismet (Unique) description says it grants ToHit.",
+        "Fixes: Energize and Kuji-In Toh regeneration scale 118.98% -> 112.5%; Atom Smasher now Toxic-typed; Explosive Shuriken Fire-typed; Defensive Sweep (Slow) endurance 5.356; Thunder Strike radius 12 -> 10 ft.",
+        "Seismic Blast Meteor is now an AoE attack (no longer auto-hit); Rock Shards (Enhanced) reduces other Seismic Blast cooldowns for non-Blasters; Propel splash knockdown now vectored.",
+        "Tough Hide, Moment of Glory, Granite Armor and Stone Skin gain psionic (and toxic) defense/resistance values."
       ],
       "markers": [
         "Power set Symphony Control exists for Controller and Dominator",
@@ -2744,13 +2745,9 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#August_24th,_2022",
       "sections": [
-        "Bug Fixes",
-        "Power Fixes",
-        "Miscellaneous"
+        "Bug Fixes"
       ],
-      "planner": [
-        "Typo fixes in Sonic Assault and Symphony Control power descriptions; Munitions Mastery Freeze Ray tint FX fixed."
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -2784,10 +2781,17 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#September_13th,_2022",
       "sections": [
-        "Advanced Difficulty",
+        "Advanced Difficulty Settings - General",
+        "Advanced Difficulty Settings - Dr. Aeon's Strike Force",
+        "Imperious Task Force",
+        "Dr. Aeon's Strike Force",
         "Custom/Sheathed Weapons",
         "Costume Fixes",
         "Power Bug Fixes",
+        "Peregrine Island",
+        "Cimerora",
+        "Imperial City",
+        "Pocket D",
         "Miscellaneous"
       ],
       "planner": [
@@ -2838,9 +2842,11 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_5#October_18th,_2022",
       "sections": [
+        "General",
         "Marquee Features",
         "Powers & Gameplay Adjustments",
         "Character Customization Improvements",
+        "Costumes",
         "Various Additions & Enhancements"
       ],
       "planner": [
@@ -2864,8 +2870,7 @@
         "Arachnos Soldier and Widow powers moved earlier (e.g. Placate and Frenzy 26 -> 22, Call Reinforcements 38 -> 30, Eviscerate 26 -> 22, Psychic Wail 32 -> 28).",
         "Player stealth toggles (Stealth, Super Speed, Infiltration, Shinobi, Superior Invisibility and others) no longer mutually exclusive; effects do not stack.",
         "Radiation Melee Irradiated Ground proc limited to once per 10s and accepts ATOs; Call to Arms grants all-type defense; Edict of the Master grants toxic defense.",
-        "Fixes: Web Grenade slow enhancements; Eagle Eye no longer accepts Endurance Reduction; Bombardment, Sudden Acceleration, Power Transfer procs not boostable; Stalagmites endurance 15.6; Bio Armor Rebuild DNA adaptations adjusted.",
-        "New Holstered Weapon System for Assault, Arachnos, Munition and Mercenary rifles (costume only)."
+        "Fixes: Web Grenade slow enhancements; Bombardment, Sudden Acceleration, Power Transfer procs not boostable; Stalagmites endurance 15.6; Bio Armor Rebuild DNA adaptations adjusted."
       ],
       "markers": [
         "Sentinel has inherent power 'Vulnerability'",
@@ -2893,7 +2898,8 @@
       "sections": [
         "Bug Fixes",
         "Power Bug Fixes",
-        "Prestige Costumes"
+        "Prestige Costumes",
+        "Costume: Undefined Mode & Costume: Undefined Mini Mode"
       ],
       "planner": [
         "Atomic Manipulation Beta Decay no longer roots; Eagle Eye no longer accepts Endurance Reduction enhancements.",
@@ -2932,9 +2938,11 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#April_25th,_2023",
       "sections": [
+        "General",
         "Marquee Features",
         "Powers & Gameplay Adjustments",
-        "Various Adjustments, Improvements & Fixes"
+        "Character Customization Improvements",
+        "Various Additions, Enhancements, & Fixes"
       ],
       "planner": [
         "New power set Storm Blast: primary for Blasters, Corruptors and Sentinels, secondary for Defenders (Gust, Hailstones, Jet Stream, Storm Cell, Intensify, Direct Strike or Lightning Strike for Sentinels, Chain Lightning, Cloudburst, Category Five).",
@@ -3070,9 +3078,11 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#February_20th,_2024",
       "sections": [
+        "General",
         "Marquee Features",
         "Powers & Gameplay Adjustments",
-        "Various Adjustments, Improvements & Fixes"
+        "Character Customization Improvements",
+        "Various Additions, Enhancements, & Fixes"
       ],
       "planner": [
         "New primary Arsenal Control for Controllers and Dominators (Tranquilizer, Cryo Freeze Ray, Sleep Grenade, Liquid Nitrogen, Cloaking Device, Smoke Canister, Flash Bang, Tear Gas, Tri-Cannon).",
@@ -3082,22 +3092,24 @@
         "Epic/patron balancing pass: dozens of recharge, endurance, range, damage and target-cap changes (e.g. most Temp Invulnerability/Mind Over Body/Frozen Armor 2s -> 8s, Char 32s -> 24s, Shocking Bolt, Soul Storm, Spirit Shark Jaws 24s).",
         "Epic hold attacks use 3.0x cooldown penalty and epic immobilize attacks 2.0x; single-target immobilize 8s recharge, AoE 16s.",
         "Dark Mastery Soul Drain (Defender/Corruptor) replaced by Spirit Drain (targeted AoE, takes Target AoE sets); Torrent (Scrapper/Stalker) renamed Umbral Torrent; Earth's Embrace (Controller/Mastermind epic) renamed Embrace of the Earth.",
-        "Leviathan Mastery Spirit Shark gains Leviathan Hunger mechanic and new values; Shocking/Lightning Field (Sentinel epic) renamed Shocking Field; Conserve Power (Mu Mastery Corruptor/Defender) changed to Energize with Healing sets.",
-        "Force Mastery (Blaster) Repulsion Bomb becomes Force Bomb; Fire Mastery Bonfire loses auto-hit and accepts Accuracy; Psionic Mastery Telekinesis reworked; Web Cocoon/Web Envelope now toxic DoT and accept damage sets.",
+        "Leviathan Mastery Spirit Shark gains Leviathan Hunger mechanic and new values; Electricity Mastery Lightning Field (Sentinel) renamed Shocking Field; Mu Mastery Conserve Power (Corruptor/Defender) changed to Energize with Healing sets.",
+        "Force Mastery (Blaster) Repulsion Bomb becomes Force Bomb; Fire Control and Fire Mastery Bonfire accept Accuracy (Mastery loses auto-hit); Psionic Mastery Telekinesis reworked; Web Cocoon/Web Envelope now toxic DoT and accept damage sets.",
         "Many epic/patron slotting changes: Summon Coralax, Summon Guardian, Summon Tarantula, Summon Mistress, Summon Adept, Summon Seer, Water Spout, Web Cocoon accept new set types; several lose Taunt or Healing enhancements.",
         "Arachnos Soldier/Widow update: new auto powers Pain Tolerance (Night Widow) and Fate Sealed (Fortunata) at level 1; Mace attacks, Placate, Psychic Scream, Wide Area Web Grenade, Omega Maneuver and others retuned.",
         "Mask Presence and Cloaking Device can now stack with other stealth toggles; Placate recharge 35s for Bane/Night Widow.",
         "Storm Blast retune: Chain Lightning recharge 16s, damage and chain pattern changed; Category Five and Storm Cell proc rates changed.",
-        "Cold Domination Sleet and Heat Loss, Storm Summoning Freezing Rain, Sonic Resonance Liquefy and Nature Affinity Lifegiving Spores become true pseudopets using AT modifiers, lowering non-Defender debuff values.",
+        "Cold Domination Sleet, Storm Summoning Freezing Rain, Sonic Resonance Liquefy and Nature Affinity Lifegiving Spores become true pseudopets using AT modifiers (lower non-Defender debuffs); Heat Loss stops being a pseudopet; +Recovery 62.5%.",
         "Blaster Devices Time Bomb replaced by Remote Bomb; Controller/Corruptor/Defender Traps Time Bomb replaced by Temporal Bomb; Mastermind Detonator recharge 300s.",
-        "Mind Control Telekinesis becomes an immobilize with pull effect, 120s recharge, 16 targets; Thermal Radiation Melt Armor recharge 100s; Thunder Strike consistency pass.",
+        "Mind Control Telekinesis becomes an immobilize with pull effect, 120s recharge, 16 targets; Thermal Radiation Melt Armor recharge 100s; Thunder Strike consistency pass (recharge 20s, 18.512 endurance).",
         "Shadow Fall, Steamy Mist and Arctic Fog now only affect teammates and leaguemates; immobilize powers no longer grant knockback protection.",
         "Endurance cost sweep (e.g. Salt Crystals 15.6, Eagle's Claw 16.848, Pistols 5.2, Freeze Ray 10.192, Impale 8.528, Confounding Chant 15.6).",
         "Defense-type check fixes (e.g. Electrified Net Arrow energy, Aging Touch psionic, Masterful Throw lethal) and Sentinel recharge fixes (Power Blast 8s, Power Burst 11s, Cosmic Burst 11s).",
-        "Atomic Manipulation Proton Cell takes Defense Debuff sets instead of To-Hit Debuff; Electron Shackles takes Defense Debuff sets; Frost Protection (Sentinel) no longer takes recharge; Poison Trap and Mud Pots slotting adjusted.",
+        "Atomic Manipulation Proton Cell takes Defense Debuff sets instead of To-Hit Debuff; Electron Shackles takes Defense Debuff sets; Frost Protection (Sentinel) no longer takes recharge; Stone Armor Mud Pots (Tanker) takes Taunt sets.",
         "Sentinel Dark Blast Umbral Torrent damage 1.28; Blazing Blast damage 1.0; Scourging Blast proc now ignores combat levels.",
         "Origin Attacks (new-player) damage flat scale 1.00 through level 10, no endurance cost, 3s recharge, 80 ft range, in tray at creation.",
-        "Placate for Stalker/Bane/Widow now also grants a 5s hide that damage cannot break; Guile proc similar (3s)."
+        "Placate for Stalker/Bane/Widow now also grants a 5s hide that damage cannot break; Guile proc similar (3s).",
+        "New characters start with Athletic Run in place of Sprint; Passport/Long Range Teleporter unlocked by any 10 exploration badges.",
+        "Patron tier moves: Soul Mastery Soul Storm (Defender/Corruptor) tier 1 and Soul Drain tier 4; Soul Drain target cap 7 -> 10."
       ],
       "markers": [
         "Power set Arsenal Control exists for Controller and Dominator",
@@ -3289,16 +3301,13 @@
       ],
       "planner": [
         "New support powerset Marine Affinity for Defender, Controller, Corruptor and Mastermind (Shoal Rush, Soothing Wave, Toroidal Bubble, Whitecap, Tide Pool, Brine, Shifting Tides, Barrier Reef, Power of the Depths; Tide Pool Frenzy is a sub-effect).",
-        "Four new accolade powers: Core Attunement (Labyrinth teleport), Mark & Recall (instant-cast mark and return teleport), and two Sheer Willpower self mez-resist clicks (30s, 10 min recharge).",
-        "New power customization options for Energy Mastery (Laser Beam Sweep alt) and Teleport/Combat Teleport (Goop; tint added to Smoke Bomb, Rikti, Tornado, Murder of Crows).",
-        "Peacebringers and Warshades can now use vanity pets while transformed.",
-        "Warriors enemy group revamped (new Archery, Staff Fighting, Street Justice critter powers); NPC data only."
+        "Four new accolade powers: Core Attunement (Labyrinth teleport), Mark & Recall (instant-cast mark and return teleport), and two Sheer Willpower self mez-resist clicks (30s, 10 min recharge)."
       ],
       "markers": [
         "Power set Marine Affinity exists for Defender, Controller, Corruptor, Mastermind",
         "Powers Shoal Rush, Soothing Wave, Toroidal Bubble, Whitecap, Tide Pool, Brine, Shifting Tides, Barrier Reef, Power of the Depths exist",
         "Accolade powers Core Attunement, Mark & Recall and Sheer Willpower exist",
-        "Marine Affinity not yet rebalanced (Whitecap is a targeted teleport; Soothing Wave -Dam scale 1.2)"
+        "Marine Affinity at launch: Whitecap is a targeted teleport"
       ],
       "note": "Labelled Work in Progress on the wiki; Date noted 2024-07-23."
     },
@@ -3321,14 +3330,9 @@
         "Miscellaneous"
       ],
       "planner": [
-        "Marine Affinity added to Architect Entertainment and Doppelganger power entries.",
-        "Fixed Barrier Reef's water-only costume themes being unselectable.",
-        "Cursed Plague Howl (Labyrinth enemy power): accuracy doubled, recharge halved, no longer hits pets.",
-        "Fixed Daedalus using the wrong Overcharge in the Imperious Task Force."
+        "Marine Affinity added to Architect Entertainment and Doppelganger power entries."
       ],
-      "markers": [
-        "Barrier Reef water-only themes selectable"
-      ]
+      "markers": []
     },
     {
       "date": "2024-09-17",
@@ -3349,9 +3353,7 @@
         "Powers"
       ],
       "planner": [
-        "Mark & Recall accolade: fixed scripted teleports wrongly moving the stored Mark.",
-        "Marine Affinity > Barrier Reef: rename now sticks, correct Disable All flag, no stray Tempest on buff bar.",
-        "NPC versions of Marine Affinity given correct level requirements; Barrier Reef spawns less often and is interruptible in AE/Doppelganger.",
+        "Marine Affinity > Barrier Reef: now has the correct Disable All flag; rename sticks; no stray Tempest on buff bar.",
         "Radiation Blast > Irradiate (Sentinel): no longer able to slot Single Target Ranged enhancement sets."
       ],
       "markers": [
@@ -3427,12 +3429,9 @@
         "Powers",
         "Miscellaneous"
       ],
-      "planner": [
-        "Energy Melee: fixed an FX error in fast-cast Energy Transfer.",
-        "Costume Matrix Macro accolade: corrected the name of the Mini Seedling of Hamidon pet."
-      ],
+      "planner": [],
       "markers": [],
-      "note": "year inferred from neighbouring patches"
+      "note": "The wiki heading gives no year; 2024 is certain, as it sits between the 2024-10-29 and 2024-11-12 patches."
     },
     {
       "date": "2024-11-12",
@@ -3479,10 +3478,7 @@
         "Task Forces",
         "Miscellaneous"
       ],
-      "planner": [
-        "NPC aggro-cap priority reworked (taunted and high-rank foes now prioritized).",
-        "Fixed invention vanity pet recipe crafts not counting toward crafting badges."
-      ],
+      "planner": [],
       "markers": []
     },
     {
@@ -3502,7 +3498,7 @@
         "Tasks"
       ],
       "planner": [
-        "New attuned-only IO set Cupid's Crush (Universal Damage, with a Chance for Confuse proc); converts to and from Overwhelming Force; cannot be made Superior; 100 Reward Merits each.",
+        "New attuned-only IO set Cupid's Crush (Universal Damage, with a Chance for Confuse proc); converts to and from Overwhelming Force; cannot be made Superior.",
         "Brute's Fury: Recharge/Fury Bonus proc no longer scales with the level difference to the target (fix).",
         "Fixed minimum slotting level of Dark Watcher's Despair."
       ],
@@ -3523,9 +3519,7 @@
       "sections": [
         "Spring Fling Event"
       ],
-      "planner": [
-        "Cupid's Crush: added missing text for Universal Damage enhancement conversion."
-      ],
+      "planner": [],
       "markers": [],
       "note": "Text-only change; no data marker."
     },
@@ -3556,14 +3550,18 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_28_Page_2",
       "sections": [
-        "Marquee Features",
-        "Powers & Gameplay Adjustments",
         "Known Issues",
-        "Pyrotechnic Control",
-        "Psionic Armor",
-        "Sleep Revamp",
-        "Archetype Inherent Changes",
-        "Powers"
+        "Kallisti Wharf Zone Comes To Life",
+        "New Story Arcs",
+        "New Enemy Group: Blackwing Industries",
+        "New Powerset: Pyrotechnic Control",
+        "New Powerset: Psionic Armor",
+        "Powers & Gameplay Adjustments",
+        "Zones",
+        "Mission Maps",
+        "Enemies",
+        "Architect Entertainment",
+        "Miscellaneous"
       ],
       "planner": [
         "New control powerset Pyrotechnic Control for Controller and Dominator (Sparkling Cage, Dazzle, Sparkling Chain, Glittering Column, Hypnotizing Lights, Brilliant Barrage, Incendiary Aura, Explosive Bouquet, Catherine Wheel; Blast Off effect).",
@@ -3573,6 +3571,7 @@
         "Tanker inherent: self damage buff 1.0x to 0.875x, -Res modifiers lowered, DR on over-cap melee powers (Gauntlet immune), passive Arc/Radius buff removed, primary/secondary sphere AoE radii +50% (max 15 ft).",
         "Energy Aura proliferated to Tankers (Kinetic Shield, Dampening Field, Power Shield, Entropic Aura, Energy Protection, Power Armor Energy Reserve, Energize, Energy Drain, Overload without crash).",
         "Dark Armor: Cloak of Fear reworked (end 0.56 to 0.26/s, 15 ft radius, auto-hit, -Dmg, KB protection); Soul Transfer usable alive with self-rez; Dark Regeneration open to Sentinels and Obscure Sustenance to Brute/Scrapper/Stalker/Tanker as mutually exclusive picks; Sentinel Tenebrous Regeneration renamed Shadow Dweller.",
+        "Dark Armor: Obscure Sustenance heal 5% to 25%, now a click needing no foes, no damage/accuracy sets; Soul Transfer takes accuracy; Dark Embrace and Murky Cloud recharge 4s to 2s.",
         "Electric Armor: Static Shield +Toxic res, Grounded res and KB changes, Power Sink regen buff, Energize regen 30s to 45s, Power Surge crash removed (350s recharge, 30s effects).",
         "Energy Aura Energy Drain and Power Shield defense lowered. Ice Armor: Hibernate converted to Icy Bastion (toggle) for Scrapper/Sentinel/Stalker; Icicles now cold damage; new power Rime (exclusive with Hoarfrost).",
         "Radiation Armor: Ground Zero offense capped at 16 foes; Radiation Therapy gets adaptive recharge (15s base, up to 60s), accuracy 3 to 1.2, heal values changed.",
@@ -3589,8 +3588,7 @@
         "Obscure Sustenance available to Brute/Scrapper/Stalker/Tanker; Dark Regeneration available to Sentinel",
         "Deep Sleep variant exists on Hypnotizing Lights, Mesmerize, Flash Freeze and others",
         "Staff Fighting Perfection stacks last 10s",
-        "Radiation Therapy has adaptive recharge (15s base, 60s max)",
-        "Not yet present (arrive later): Sonic Melee, Light Affinity, Sonic Aura"
+        "Radiation Therapy has adaptive recharge (15s base, 60s max)"
       ],
       "note": "Released June 17, 2025 per the page. Known issues listed: Consume/Devour Psyche First Target Only popups, Memento Mori and Soul Transfer resurrect timing."
     },
@@ -3604,15 +3602,24 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_28_Page_3",
       "sections": [
-        "Marquee Features",
-        "Powers & Gameplay Adjustments",
-        "Difficulty Options",
-        "Task Force",
-        "Labyrinth of Fog expansion",
-        "Powers",
-        "Set Bonuses",
-        "Masterminds",
-        "Summoning Powerset Adjustments"
+        "New Expanded +5 & Incarnate +6/+7 Difficulty Options",
+        "New Task Force",
+        "New Story Arc",
+        "New Labyrinth of Fog Expansion",
+        "Tasks",
+        "Badges",
+        "Badge Tracker & Profile Customization",
+        "Costumes",
+        "Rewards",
+        "Events",
+        "Enemies",
+        "Zone",
+        "Maps",
+        "Supergroup Bases",
+        "Arena",
+        "Architect Entertainment",
+        "Miscellaneous",
+        "Powers"
       ],
       "planner": [
         "New melee powerset Sonic Melee for Brute, Scrapper, Stalker, Tanker (Sonic Thrust, Strident Echo, Attune, Sound Booster/Build Up, Sonic Clap, Sandman's Whisper/Assassin's Whisper, Deafening Wave, Earsplitter); Attune marks Attuned targets.",
@@ -3622,7 +3629,7 @@
         "Demons: Corruption, Lash, Crack Whip recharge and endurance reduced; Enchant Demons now takes Resistance, Abyssal Empowerment takes Healing; Summon Demons loses Heal and Resist slotting; both upgrades lose recharge.",
         "Necromancy, Mercenaries, Ninjas, Robotics upgrade powers (Enchant Undead, Dark Empowerment, Equip Mercenary, Tactical Upgrade, Train Ninjas, Kuji In Zen, Equip Robot, Upgrade Robot) lose their recharge.",
         "Thugs: Pistols recharge 3s to 4s; Street Cred stacks from Pistols, Dual Wield, Empty Clips raise Posse chances and cut Gang War recharge; Gang War 600s to 300s, 60s duration; Equip Thugs takes ToHit, Upgrade Equipment takes Defense, Call Enforcer loses both.",
-        "Salvage Monstrous Aether renamed Unstable Aether (sub-currency of Prismatic Aether); Merit vendor category Enhancement Converters renamed Enhancement Salvage.",
+        "Salvage Monstrous Aether renamed Unstable Aether (sub-currency of Prismatic Aether).",
         "Combat Dummies become their own power category; Power Analyzer usable in all but PvP; Nemesis Staff cast time 2.5s to 2s.",
         "Fixes: Electricity Mastery Shocking Field no longer claims Healing sets; Radiation Melee Scrapper Atom Smasher/Proton Sweep target caps; Regeneration Integration target count; Sentinel Overload crash."
       ],
@@ -3633,8 +3640,7 @@
         "Demons Enchant Demons takes Resistance sets; Abyssal Empowerment takes Healing",
         "Thugs Gang War recharge 300s; Street Cred mechanic exists",
         "Mercenary, Ninja, Robot, Necromancy upgrade powers have no recharge time",
-        "Salvage named Unstable Aether exists (formerly Monstrous Aether)",
-        "Not yet present (arrive in Feb 10 2026 update): Boomerang Slice, Whitecap as location teleport, Sonic Clap/Deafening Wave splash DoT"
+        "Salvage named Unstable Aether exists (formerly Monstrous Aether)"
       ],
       "note": "Released November 25, 2025 per page intro. Later Panel 2 / Panel 3 updates are separate entries."
     },
@@ -3657,7 +3663,7 @@
       "note": "Event and trial changes only; no player power or enhancement data. Posted December 1, 2025."
     },
     {
-      "date": "2025-12-03",
+      "date": "2025-12-02",
       "issue": 28,
       "page": 3,
       "server": "Homecoming",
@@ -3669,10 +3675,8 @@
         "Stability & Performance"
       ],
       "planner": [],
-      "markers": [
-        "Client launcher version 28.3.7372.3"
-      ],
-      "note": "Heading says December 2, text says Posted December 3, 2025; date uses the posted date. Client-only hotfix (32-bit memory flag regression, Mission Architect crash)."
+      "markers": [],
+      "note": "Hotfix dated by its heading; the notes were posted 2025-12-03."
     },
     {
       "date": "2025-12-16",
@@ -3694,7 +3698,6 @@
       "planner": [
         "Fixed Corruptor/Defender Freeze Ray and Corruptor Bitter Freeze Ray missing the held requirement for -KB.",
         "Fixed Beast Mastery Apex Predator not granting the +Accuracy buff to henchmen or caster.",
-        "Spelling fixes in Sonic Melee powers Attune, Sonic Clap, Sandman's Whisper; Assassin's Whisper hit timing adjusted.",
         "Experience curve: required XP rounded down to nearest 100 per level (level 40 needs 8,401,500)."
       ],
       "markers": [
@@ -3727,8 +3730,6 @@
       "planner": [
         "Enhancement slot moving: adding an enhancement to a power with no free slot can take an empty slot from another power.",
         "Invention set recipe rarities aligned with their conversion sets: many Uncommon to Rare (Miracle, Kismet, Gift of the Ancients, Touch of Death, Salvo, Tempest, Decimation, Explosive Strike and more); Adjusted Targeting, Dampened Spirits, Efficacy Adaptor, Kinetic Crash, Mocking Beratement, Undermined Defenses Rare to Uncommon.",
-        "IO set enhancements get rarity-colored borders; PvP enhancements are red; Going Rogue pre-order enhancement levels hidden.",
-        "Global set bonuses listed in their own section of the powers list.",
         "Aura radius increases for Cloak of Fear, Oppressive Gloom, Mud Pots, Entropy Shield, Repulse, Chilling Embrace, Invincibility, World of Confusion, Impose Presence, Beta Decay, Integration, Against All Odds, Inky Aspect, Rise to the Challenge and others.",
         "Endurance cost cuts: Mastermind primary personal attacks and secondaries, all Epic pool powers, ally rez powers, and pool powers Boxing, Kick, Cross Punch, Air Superiority, Jump Kick, Flurry.",
         "Ally rez powers reworked (Howling Twilight, Resurrect, Defibrillate, Rebirth, Conduit of Pain, Elixir of Life now area rez, Mutation, Power of the Phoenix): lower endurance, faster cast, longer range, 15s stealth on revived ally.",
@@ -3740,8 +3741,7 @@
         "Marine Affinity: Whitecap becomes a location teleport with 15s recharge; Brine and Shoal Rush faster casts; Soothing Wave, Tide Pool, Tide Pool Frenzy -Dam debuffs lowered and resistable.",
         "Beast Mastery: Lick Wounds becomes a 20% self heal and goes to Howler Wolves under Tame Beasts; Howl and Maiming Bite cast times cut; Dire Wolf roars faster.",
         "Dual Pistols Swap Ammo converts 100% of the set's damage to the ammo element. Pyrotechnic Control Glittering Column explosion is an auto power.",
-        "Dark Miasma and Dark Mastery Black Hole: only main target phased; radius raised to 30 ft and 20 ft.",
-        "Tray saving commands (/tray_save, /tray_load); respec keeps trays."
+        "Dark Miasma and Dark Mastery Black Hole: only main target phased; radius raised to 30 ft and 20 ft."
       ],
       "markers": [
         "Power Boomerang Slice exists in Broad Sword",
@@ -3750,7 +3750,7 @@
         "Storm Blast has Storm Brewing as a stackable temporary power",
         "Recipes Miracle_A, Kismet_A, Gift_of_the_Ancients_A are Rare rarity; Adjusted_Targeting_F is Uncommon",
         "Fiery Melee Breath of Fire arc 120 degrees; Greater Fire Sword has no -defense",
-        "Brute damage/resistance modifier 85%; Sentinel 75%",
+        "Brute resist/defense modifier 85%; Sentinel self resist/defense modifier 75%",
         "Howling Twilight endurance cost 10.4; Empathy Resurrect 5.2 and 120s recharge",
         "Mastermind set bonus share 50% to henchmen",
         "Black Hole radius 30 ft (Dark Miasma), 20 ft (Dark Mastery)"
@@ -3774,7 +3774,6 @@
         "Miscellaneous Fixes"
       ],
       "planner": [
-        "Storm Blast enhancement text cleaned of duplicate values.",
         "Head Splitter no longer crits for special damage.",
         "Lightning Clap Scrapper crits apply only to the main target."
       ],
@@ -3819,7 +3818,7 @@
       "build": null,
       "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#June_23_Update_-_Panel_3",
       "sections": [
-        "Powers: Fiery Aura",
+        "Fiery Aura",
         "Ninjitsu",
         "Psionic Armor",
         "Radiation Armor",
@@ -3886,13 +3885,18 @@
       "source": "https://homecoming.wiki/wiki/Issue_28_Page_4",
       "sections": [
         "Marquee Features",
-        "New Powersets",
         "Zones",
         "Tasks",
         "Badges",
         "Costumization",
+        "Emote Additions",
         "Rewards",
+        "Events",
         "Enemies",
+        "Mission Maps",
+        "Architect Entertainment",
+        "Supergroup Base Editor",
+        "Miscellaneous",
         "Player Vs. Player",
         "Powers"
       ],
@@ -3913,7 +3917,7 @@
         "Avoid fixed and applied to Caltrops/Thorntrops/Monkey Gas; Sleet, Freezing Rain, Rain of Fire, Ice Storm, Blizzard, Rain of Arrows now work with Avoid.",
         "Mastermind Supremacy full strength from level 1; Mastermind ATOs work non-Superior; Fire Mastery Char 0.5 to 1.1 damage; Brute Fiery/Sonic Melee Taunt duration fixed; Wormhole teleport magnitude 4.1 to 6.1.",
         "Sentinel and Stalker Dark Regeneration accept ATOs; Soul Transfer accepts all ATOs; Gravity Distortion Field gets damage enhancement; Venomous Gas loses range enhancements; Dominator Vicious Slash removed from Dominator sets; Breath of Fire accepts Ranged AoE sets.",
-        "PvP: Diminishing Returns only on typed resistance, typed defense, debuff resistances; taunt auras PvE only; Elusivity changes; Psionic Armor and Regeneration PvP changes; Gladiator cost rebalance."
+        "Villain Epic AT support buffs now affect all nearby friendlies; Black Dwarf and White Dwarf now respect global recharge."
       ],
       "markers": [
         "Power set Light Affinity exists for Defender, Controller, Corruptor, Mastermind",
