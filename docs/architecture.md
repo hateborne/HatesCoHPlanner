@@ -45,7 +45,7 @@ src/
                              bonuses to ask for, set types, results grouped by set)
       shopping.ts            the shopping list: recipes, salvage and enhancements to get, and the
                              auction house search lines (shoppingList, auctionLines)
-    actions.ts               pure edits (setPick, addSlot, setEnh, ...) and pickHoldsEnhancements
+    actions.ts               pure edits (setPick, addSlot, setEnh, ...), swapPick and raiseToCap
     validate.ts              checkBuild(): check and repair builds from outside the app
     migrate.ts               fitToPatch(): swaps that fit an import moved to another patch
   io/
@@ -458,6 +458,31 @@ may take any slot, as Homecoming's respec does (`docs/game-rules.md`, "Respec or
 Arachnos Soldier or Widow can only train to 24 through a respec, so their builds start as Respec
 builds to 24 at least (`startBuild`, `respecOnlyNote`; New Build greys Leveling for them). Screens read the store with narrow
 selectors (`useShallow`) and call its actions.
+
+**Swapping a power.** Any pick can be reopened from the overview, enhancements or not. Finish
+swaps it (`swapPick` in `src/engine/actions.ts`, called by the store's `finishSwap`): the pick
+keeps its slots and the enhancements the new power takes; the rest are dropped, slots past the
+new power's maximum (all of them for a power that takes none) are freed, and powers the old one
+granted go with their slots. When that drops or frees anything the store asks first
+(`askConfirm` with `sections` listing what is dropped and kept, and the power names in the game's
+yellow through `highlight`); Cancel stays on the power screen. Freed slots are placed on one slot
+screen holding just them (`LevelCtx.freed`, a one-step `flow`), each keeping its level: a slot can
+only go on a power owned by its level (outside a respec), and Cancel there undoes the whole swap.
+
+**Advanced Respec** is a browser setting (`advancedRespec`, localStorage `hcp.advancedRespec`),
+not part of the build: the tray's "Respec: Normal / Advanced" button (phones: the menu pane)
+switches it, and so does a second click on New Build's ticked Respec bar (a double-click switches
+once). While it is on, New Build's Respec box crackles (`BulbSpark`, the slot screen's
+`ElectricFlash` looping), and switching it on from the tray there ticks Respec. For a Respec build
+it makes a click on a power (or a pool power) take it and move on, and swaps ask nothing.
+
+**Placing enhancements.** The picker's "Max Slot/Build Level" is a browser setting too
+(`enhAtCap`, `hcp.enhAtCap`): pieces go in at `capLevel` (the set's top, or the build's last level
+plus `levelsAbove`, whichever is lower), and on reaching the overview from leveling (the end of
+the walk or View Build) every crafted piece below its cap is raised to it (`raiseToCap`; none is
+ever lowered). Ctrl+Click (phones: Select several) chooses several pieces, up to the clicked slot
+plus the power's empty slots; Place fills those slots left to right in the list's order, so no
+piece already slotted elsewhere in the power is replaced.
 
 **Stage.** Every screen draws on a fixed stage scaled to the window with CSS zoom:
 

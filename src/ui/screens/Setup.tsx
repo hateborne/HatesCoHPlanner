@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
 import type { GameData } from '../../data/gamedata.ts';
@@ -7,6 +7,7 @@ import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, carryOrigin, hasWork, skinOf, type Alignment } from '../../engine/build.ts';
 import { levelUpRespec, pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
 import { askOverRemembered, useStore } from '../../state/store.ts';
+import { BulbSpark } from '../components/AdvancedRespec.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { DescBox, InfoButton, MenuFrame, NextButton, SetTitle, TitleBar } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -24,6 +25,9 @@ const COLS = [
 const TOP = 103;
 const H = 759;
 const FRAME_TOP = 58; // the outer frame; the name field sits fully above it
+
+// a second click this soon after one that switched Advanced Respec is the same double-click, not a switch back
+const DOUBLE_CLICK_MS = 500;
 
 // an archetype click also plays N_Archetype_<class> (origin sounds live with OriginAlignPane)
 const atSounds = (a: Archetype) => [...SELECT, `n_archetype_${a.n}`];
@@ -59,7 +63,7 @@ function lowestRespec(gd: GameData | undefined, at: Archetype | undefined): numb
  * name. Finish starts the level 1 power picks.
  */
 export function Setup() {
-  const { gd, build, startBuild, toOverview, versions, selectVersion } = useStore();
+  const { gd, build, startBuild, toOverview, versions, selectVersion, advancedRespec, setAdvancedRespec } = useStore();
   // Back returns to a build only when there is one to see: a build left on its first power screen
   // has no picks, and its overview would be empty with nothing to continue
   const hasPicks = !!build?.picks.some((p) => p);
@@ -73,6 +77,14 @@ export function Setup() {
   const [name, setName] = useState(build?.name ?? '');
   const [desc, setDesc] = useState<{ text: string; icon?: string } | null>(null);
   const [buildType, setBuildType] = useState<BuildType>(build?.respecTo !== undefined ? 'respec' : 'leveling');
+  const respecSwitched = useRef(-Infinity); // when a click on Respec last switched Advanced Respec (performance.now())
+  // Advanced Respec switched on from the tray while this screen is up: Respec is ticked with it, so its
+  // box crackles
+  const [advancedSeen, setAdvancedSeen] = useState(advancedRespec);
+  if (advancedSeen !== advancedRespec) {
+    setAdvancedSeen(advancedRespec);
+    if (advancedRespec) setBuildType('respec');
+  }
   // typed text, 1-based; an archetype planned as Respec only starts at its lowest respec level
   const [respecTo, setRespecTo] = useState(() => String(Math.max((build?.respecTo ?? 49) + 1, lowestRespec(gd, own && gd?.archetypeById.get(own.at)))));
   const [tab, setTab] = useState(0);
@@ -188,13 +200,17 @@ export function Setup() {
       ))}
     </select>
   );
-  /** The Build Type bars (Leveling / Respec) from (x, y), `step` apart, `wd` wide. */
+  /**
+   * The Build Type bars (Leveling / Respec) from (x, y), `step` apart, `wd` wide. A click on Respec
+   * while it is ticked switches Advanced Respec, whose crackle then loops around Respec's box.
+   */
   const typeBars = (x: number, y: number, step: number, wd: number, scale?: number) =>
     BUILD_TYPES.map((t, i) => {
       const locked = t.id === 'leveling' ? levelingLocked : null;
+      const spark = t.id === 'respec' && type === 'respec' && advancedRespec;
       return (
+        <Fragment key={t.id}>
         <CheckBar
-          key={t.id}
           testId={`buildtype:${t.id}`}
           skin={skin}
           x={x}
@@ -211,6 +227,14 @@ export function Setup() {
             locked
               ? undefined
               : () => {
+                  // a click on Respec once it is ticked switches Advanced Respec (the tray's Respec
+                  // button follows), so a double-click on an unticked Respec ticks it and switches; a
+                  // double-click on a ticked one switches once, not back again
+                  const now = performance.now();
+                  if (t.id === 'respec' && type === 'respec' && now - respecSwitched.current > DOUBLE_CLICK_MS) {
+                    respecSwitched.current = now;
+                    setAdvancedRespec(!advancedRespec);
+                  }
                   setBuildType(t.id);
                   setDesc({ text: t.help });
                 }
@@ -218,6 +242,8 @@ export function Setup() {
           onHover={(on) => setDesc(on ? { text: locked ?? t.help } : null)}
           onLongPress={locked ? () => setDesc({ text: locked }) : undefined}
         />
+        {spark ? <BulbSpark x={x} y={y + i * step} scale={scale} skin={skin} /> : null}
+        </Fragment>
       );
     });
   /** "Respec to level" and its field, shown while Respec is ticked; the label's left edge at x. */

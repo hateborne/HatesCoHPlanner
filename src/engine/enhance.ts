@@ -364,13 +364,28 @@ const BOOST_LINES: { attrib: string; type1: string; type2?: string; label1: stri
  * @return Lines in the game's order, each label once.
  */
 export function enhLines(gd: GameData, at: Archetype, power: Power, e: SlottedEnh, charLevel: number): { label: string; value: number }[] {
+  const byAttrib = new Map<number, number>();
+  for (const c of enhValues(gd, at, power, e, charLevel)) byAttrib.set(c.attrib, (byAttrib.get(c.attrib) ?? 0) + c.value);
+  return strengthLines(gd, power, byAttrib);
+}
+
+/**
+ * Enhancement strength as the game lists it (enhLines' lines), from values summed per attribute:
+ * one piece's, or several pieces' together after ED (powerStrength's `post`).
+ *
+ * @param gd Game data.
+ * @param power The power the values are for.
+ * @param byAttrib Strength per attribute offset (0.95 = +95%).
+ * @return Lines in the game's order, each label once.
+ */
+export function strengthLines(gd: GameData, power: Power, byAttrib: Map<number, number>): { label: string; value: number }[] {
   // getEffectiveString: a line shows only when the power accepts one of its types, named by the
   // type the power accepts (both names when it accepts both)
   const allowed = new Set((power.ba ?? []).filter((v) => v >= ORIGIN_COUNT).map((v) => gd.core.attribNames.Boost[v - ORIGIN_COUNT]?.n));
   const byName = new Map<string, number>();
-  for (const c of enhValues(gd, at, power, e, charLevel)) {
-    const n = gd.attribName.get(c.attrib) ?? '';
-    byName.set(n, (byName.get(n) ?? 0) + c.value); // the engine adds every mod on an attribute
+  for (const [a, v] of byAttrib) {
+    const n = gd.attribName.get(a) ?? '';
+    byName.set(n, (byName.get(n) ?? 0) + v); // the engine adds every mod on an attribute
   }
   const out: { label: string; value: number }[] = [];
   const add = (label: string, value: number) => {

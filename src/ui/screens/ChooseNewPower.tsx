@@ -78,8 +78,8 @@ function initialTab(gd: GameData, steps: Parameters<typeof currentPick>[0], leve
  * "Current Respec Level", counts Powers Bought / Powers Remaining, and steps with Back / Next.
  */
 export function ChooseNewPower({ skin }: { skin: Skin }) {
-  const { gd, steps, level, choosePower, openSetPicker, finishLevel, backLevel, lockFlash, flashLocked } = useStore(
-    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, choosePower: s.choosePower, openSetPicker: s.openSetPicker, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
+  const { gd, steps, level, choosePower, openSetPicker, finishLevel, backLevel, lockFlash, advanced } = useStore(
+    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, choosePower: s.choosePower, openSetPicker: s.openSetPicker, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, advanced: s.advancedRespec })),
   );
   // Escape cancels a level reopened from the overview (in the wizard, Back stays a button)
   useEscape(backLevel, level?.mode === 'edit');
@@ -139,16 +139,18 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   // the client clears the help text when the mouse leaves a bar (uiLevelPower.c); phones have no
   // hover, so there the chosen power's text stays up
   const fallback = phone && level.pendingPower !== undefined ? gd.power(level.pendingPower) : null;
+  // Advanced Respec (the tray's Respec button) on a Respec build: a click picks the power and moves
+  // on (Next, or Finish when reopened from the overview)
+  const auto = level.base.respecTo !== undefined && advanced;
   const onPick = (p: Power) => {
-    // reopened from the overview: a power that can't hold this pick's bought slots would leave them
-    // hidden, so those slots must be removed first
-    const prev = level.mode === 'edit' ? level.orig.picks[pick] : null;
-    if (prev && prev.slots.length > 1 && p.id !== prev.power && (!rules.slottable(p) || prev.slots.length > (p.maxB ?? 0))) {
-      flashLocked(`power:${p.id}`, 'Remove Slots First!');
+    // a power from a set chosen on the pool picker keeps that set shown; others drop it. A swap
+    // that drops enhancements or frees slots is asked about on Finish (store.finishSwap)
+    if (auto) {
+      choosePower(p.id);
+      finishLevel();
       return;
     }
     choosePower(p.id === level.pendingPower ? undefined : p.id);
-    // a power from a set chosen on the pool picker keeps that set shown; others drop it
   };
   const firstStep = level.step === 0 && level.pickInStep === 0;
   const lvl = stepsOf(steps, level)[level.step]?.level ?? 0;

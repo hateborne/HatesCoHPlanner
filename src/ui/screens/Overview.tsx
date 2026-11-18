@@ -5,7 +5,7 @@ import { DEFAULT_SERVER } from '../../data/servers.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
-import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine/actions.ts';
+import { setEnh, setExclusive, setOn } from '../../engine/actions.ts';
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
@@ -80,7 +80,7 @@ const NAME_MAX = 40;
 /**
  * Phones: the level log, in place of the desktop's strip of level orbs. A capsule left of the
  * menu button ("1 - 50") opens a list of what each level added: the powers picked there (tap one
- * to swap it, as tapping its orb does: refused while it holds enhancements) and the slots placed
+ * to swap it, as tapping its orb does) and the slots placed
  * there ("Fire Blast +2"; tap to reopen that level's slot screen). Unfinished levels show in red.
  * Closes on Escape, the button or a tap outside it.
  *
@@ -88,7 +88,7 @@ const NAME_MAX = 40;
  * @param props.entries The overview's power entries (for the slots placed at each level).
  */
 function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Skin; build: Build; shown: LevelStep[]; entries: BuildEntry[] }) {
-  const { editPick, editSlots, notify } = useStore(useShallow((s) => ({ editPick: s.editPick, editSlots: s.editSlots, notify: s.notify })));
+  const { editPick, editSlots } = useStore(useShallow((s) => ({ editPick: s.editPick, editSlots: s.editSlots })));
   const [open, setOpen] = useState(false);
   useEscape(() => setOpen(false), open);
   const stage = useStage();
@@ -99,10 +99,6 @@ function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Ski
   const paneTop = g.line + 6;
   const paneW = stage.w - 16;
   const swap = (k: number) => {
-    if (pickHoldsEnhancements(gd, build, k)) {
-      notify(`Remove the enhancements from ${gd.power(build.picks[k]!.power).dn} first`);
-      return;
-    }
     setOpen(false);
     editPick(k);
   };
@@ -530,10 +526,7 @@ export function Overview({ skin }: { skin: Skin }) {
           level={s.level}
           onClick={() => {
             if (!isPick) return editSlots(s.level);
-            // the bar that flashes "Remove Enhancements First!" may be scrolled out of view: say it too
-            const k = s.picks[0]!;
-            if (build.picks[k] && pickHoldsEnhancements(gd, build, k)) useStore.getState().notify(`Remove the enhancements from ${gd.power(build.picks[k].power).dn} first`);
-            editPick(k);
+            editPick(s.picks[0]!);
           }}
           title={orbTitle(s)}
           className="abs body-text"
@@ -598,9 +591,20 @@ export function Overview({ skin }: { skin: Skin }) {
       refusal={(b) => rules?.slotRefusal(picker.entry, picker.slot, b) ?? null}
       lastLevel={rules?.lastLevel() ?? 49}
       onClose={() => setPicker(null)}
-      onPlace={(enh) => {
-        play(enh ? 'select5' : 'delete');
-        setBuild(setEnh(build, picker.entry.key, picker.slot, enh, picker.entry.level));
+      checkPlace={(placed) => {
+        // the build with every piece in, each piece judged in its slot as the game would (enhRefusal)
+        const after = placed.reduce((b, x) => setEnh(b, picker.entry.key, x.slot, x.enh, picker.entry.level), build);
+        const r = new BuildRules(gd, after);
+        const e = r.entries().find((x) => x.key === picker.entry.key);
+        for (const x of placed) {
+          const why = e && x.enh ? r.enhRefusal(e, x.slot, x.enh) : null;
+          if (why) return `${gd.power(x.enh!.boost).dn} (slot ${x.slot + 1}): ${why}`;
+        }
+        return null;
+      }}
+      onPlace={(placed) => {
+        play(placed.some((x) => x.enh) ? 'select5' : 'delete');
+        setBuild(placed.reduce((b, x) => setEnh(b, picker.entry.key, x.slot, x.enh, picker.entry.level), build));
         setPicker(null);
       }}
     />
