@@ -31,6 +31,7 @@ export interface Skin {
   poolDesc: string; // pool picker description text (uiPowers.c gSmallTextAttr)
   poolHeader: string; // drawMenuHeader bottom color ("POOL POWERS")
   menuBorder: string;
+  button: [string, string]; // the planner's own buttons (.info-button): gradient top, bottom (also the glow)
 }
 
 /** 0xRRGGBBAA -> CSS rgba(). */
@@ -83,6 +84,7 @@ export const SKINS: Record<SkinName, Skin> = {
     poolDesc: '#00ff00',
     poolHeader: '#88b6ff',
     menuBorder: rgba(0x4f94ffff),
+    button: ['#1f6dff', '#0a3fb5'],
   },
   villain: {
     name: 'villain',
@@ -110,6 +112,8 @@ export const SKINS: Record<SkinName, Skin> = {
     poolDesc: '#ff8800',
     poolHeader: '#aaaaaa',
     menuBorder: rgba(0xff944fff),
+    // the skin's own bar colours: selected meat over standard meat
+    button: [rgba(0xa00008ff), rgba(0x580008ff)],
   },
   praetorian: {
     name: 'praetorian',
@@ -137,6 +141,8 @@ export const SKINS: Record<SkinName, Skin> = {
     poolDesc: '#e8cc4c',
     poolHeader: '#ffffff',
     menuBorder: rgba(CLR_GREY),
+    // the skin's own bar colours: selected meat over standard meat
+    button: [rgba(0x989898ff), rgba(0x424242ff)],
   },
 };
 

@@ -11,7 +11,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - Powers can be swapped from the build screen even when they hold enhancements: the planner lists which enhancements will be dropped and kept, and asks first unless Advanced Respec is on.
 - When a new power can't hold the old one's slots, you place the freed slots right away.
 - A power you take later in the build can be swapped into an earlier level, and the planner moves or asks you to choose the power it replaces.
-- The enhancement picker now matches your build's hero, villain or Praetorian colors.
+- The enhancement picker and the planner's buttons now match your build's hero, villain or Praetorian colors.
 - The enhancement picker can put every piece in at your build's level or the set's top level, and raise them when the build levels further.
 - Ctrl+Click (or Select several on phones) picks several enhancements at once and fills the power's empty slots in one go, with their total shown after enhancement diversification.
 
