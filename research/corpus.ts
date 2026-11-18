@@ -38,7 +38,7 @@ export function corpusPaths(setting: string | undefined): string[] {
     .filter(Boolean);
 }
 
-// file-name words that mark a specialised build; 'farm' builds are kept out of the general values
+// file-name words that mark a specialised build: the report counts each, and all of them count in the values
 const TAGS: readonly (readonly [tag: string, pattern: RegExp])[] = [
   ['farm', /farm/i],
   ['hard mode', /(^|[^a-z])(hm|hard[ _-]?mode|4[ _-]?star)([^a-z]|$)/i],

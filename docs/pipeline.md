@@ -189,9 +189,10 @@ What it reads: `.mbd` files, and Mids share codes (`|MBD;`, `|MxDz;`) inside `.m
 and saved `.html` pages. Every build goes through the planner's own importer (`parseMidsText`,
 `importParsed`) against the default game version, then `checkBuild`, so the run doubles as an import
 check over thousands of real builds. Builds made on another server's Mids database, builds too
-empty to count, copies of another build and builds whose file name marks a farm build are left out
-of the values. A build that lost a picked power on import (one the default version does not have
-under that name) is counted without it, at its full level.
+empty to count and copies of another build are left out of the values. Farm builds count like any
+other (the owner's ruling: they are builds people play); the report says how many a file name
+marks. A build that lost a picked power on import (one the default version does not have under
+that name) is counted without it, at its full level.
 
 What it writes (both committed through a pull request, never edited by hand):
 
