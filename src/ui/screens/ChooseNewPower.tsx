@@ -3,8 +3,9 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Power } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
-import { BuildRules, type SetOption } from '../../engine/rules.ts';
-import { currentPick, stepsOf, useStore, type LevelCtx } from '../../state/store.ts';
+import { earlierOption } from '../../engine/actions.ts';
+import { BuildRules, type PowerOption, type SetOption } from '../../engine/rules.ts';
+import { autoAdvanceReady, currentPick, inRespec, stepsOf, useStore, type LevelCtx } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { hoverPower, useFreshHover, useHover } from '../hover.ts';
 import { DescBox, MenuBar, MenuFrame, NextButton, RespecCounter, TitleBar } from '../components/Chrome.tsx';
@@ -122,16 +123,28 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   }, [ps.pools, ps.epic, phone, pickKey]);
   const pick = level ? currentPick(steps, level) : -1;
   const rules = useMemo(() => (gd && level ? new BuildRules(gd, level.base) : null), [gd, level]);
+  // reopened from the overview: a power the build takes later can be taken here instead
+  // (store.takeEarlierFlow), when it could be taken at this level (worked out once per screen)
+  const earlier = level?.mode === 'edit' && !level.chain;
+  const offerOf = useMemo(() => {
+    const seen = new Map<number, PowerOption>();
+    return (o: PowerOption) => {
+      if (!earlier || !gd || !level) return o;
+      let v = seen.get(o.power.id);
+      if (!v) seen.set(o.power.id, (v = earlierOption(gd, level.base, pick, o)));
+      return v;
+    };
+  }, [earlier, gd, level, pick]);
+  const options = useMemo(() => (rules ? rules.setOptions(pick).map((o) => ({ ...o, powers: o.powers.map(offerOf) })) : []), [rules, pick, offerOf]);
   if (!gd || !level || !rules) return null;
 
-  const options = rules.setOptions(pick);
   const primary = options.filter((o) => o.column === 0);
   const secondary = options.filter((o) => o.column === 1);
   const extra: SetOption[] = options.filter((o) => o.column === 2);
   if (level.pendingSet !== undefined && !extra.some((o) => o.set.id === level.pendingSet)) {
     // A set chosen on the pool/epic picker shows only the chosen power, as in the game.
     const s = gd.powerset(level.pendingSet);
-    const chosen = s.p.filter((pid) => pid === level.pendingPower).map((pid) => rules.powerOption(pid, pick));
+    const chosen = s.p.filter((pid) => pid === level.pendingPower).map((pid) => offerOf(rules.powerOption(pid, pick)));
     extra.push({ set: s, kind: rules.setKind(s), column: 2, owned: false, powers: chosen });
   }
   const canPool = rules.canAddNewSet('pool', pick);
@@ -139,13 +152,15 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   // the client clears the help text when the mouse leaves a bar (uiLevelPower.c); phones have no
   // hover, so there the chosen power's text stays up
   const fallback = phone && level.pendingPower !== undefined ? gd.power(level.pendingPower) : null;
-  // Advanced Respec (the tray's Respec button) on a Respec build: a click picks the power and moves
-  // on (Next, or Finish when reopened from the overview)
-  const auto = level.base.respecTo !== undefined && advanced;
+  // Advanced Respec (the tray's Respec button) within a Respec build's respec: a click picks the
+  // power and moves on (Next, or Finish when reopened from the overview)
+  const auto = advanced && inRespec(gd, level.base, pick);
   const onPick = (p: Power) => {
     // a power from a set chosen on the pool picker keeps that set shown; others drop it. A swap
     // that drops enhancements or frees slots is asked about on Finish (store.finishSwap)
     if (auto) {
+      // the second click of a double-click would take a power on the next screen too
+      if (!autoAdvanceReady()) return;
       choosePower(p.id);
       finishLevel();
       return;
@@ -181,7 +196,8 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   const desc = <HoverDesc skin={skin} fallback={fallback} box={phone && respec ? phoneDesc(pg, PHONE_COUNTER_H + 8) : undefined} />;
   const buttons = (
     <>
-      <NextButton skin={skin} dir="left" text={level.mode === 'edit' || (firstStep && !respec) ? 'Cancel' : 'Back'} onClick={backLevel} />
+      {/* choosing a pick again after a swap: Cancel undoes the swap already confirmed */}
+      <NextButton skin={skin} dir="left" text={level.chain ? 'Undo Swap' : level.mode === 'edit' || (firstStep && !respec) ? 'Cancel' : 'Back'} onClick={backLevel} />
       <NextButton skin={skin} dir="right" text={respec ? 'Next' : 'Finish'} locked={level.pendingPower === undefined} onClick={finishLevel} />
       {respec ? (
         <RespecCounter

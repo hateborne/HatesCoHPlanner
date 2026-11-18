@@ -93,6 +93,8 @@ export function Stage({ skin, children }: { skin: Skin; children: ReactNode }) {
               // text fields at 16+ window px, so iOS does not zoom the page when one is tapped
               ['--input-px' as string]: `${Math.ceil(16.5 / scale)}px`,
               ['--menu-border' as string]: skin.menuBorder,
+              ['--button-top' as string]: skin.button[0],
+              ['--button-bottom' as string]: skin.button[1],
               ['--title-top' as string]: skin.title[0],
               ['--title-bottom' as string]: skin.title[1],
             }}
