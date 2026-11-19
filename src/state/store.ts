@@ -63,6 +63,7 @@ export interface LevelCtx {
   flow?: LevelStep[]; // a Respec build's wizard order (respecSteps); absent: the leveling order
   freed?: boolean; // the slot screen after a power swap freed slots: `flow` holds one step with just those slots
   chain?: { freed: number[] }; // a later pick to choose again (a power taken earlier): the slots to place after it
+  then?: number[]; // picks of the same level to reopen after this one (level 1's orb: its secondary pick)
 }
 
 interface Store {
@@ -177,7 +178,13 @@ interface Store {
   finishLevel(): void;
   backLevel(): void;
   cancelLevel(): void;
-  editPick(pickIndex: number): void;
+  /**
+   * Reopen a pick of the build on its power screen (a power bar, a level orb).
+   *
+   * @param pickIndex The pick.
+   * @param then Picks to reopen after it, in turn (a level with two picks: level 1's orb).
+   */
+  editPick(pickIndex: number, then?: number[]): void;
   editSlots(level: number): void;
   stopHere(openMenu: boolean): void;
   continueLeveling(): void;
@@ -801,26 +808,39 @@ async function finishSwap(gd: GameData, steps: LevelStep[], level: LevelCtx): Pr
     if (!ok || !sameScreen(useStore.getState().level, level)) return;
   } else if (advanced) toldDropped(sw.dropped.length);
   // a later pick chosen again: the slots its old power held are placed now too
-  finishWith(level.orig, sw.build, [...(level.chain?.freed ?? []), ...sw.freed]);
+  finishWith(level.orig, sw.build, [...(level.chain?.freed ?? []), ...sw.freed], level.then);
 }
 
 /**
- * End a swap: show the overview with the new build, or first the slot screen for the slots it freed.
+ * End a swap: show the overview with the new build, or first the slot screen for the slots it freed;
+ * then the next pick of a reopened level (`then`), on its own power screen.
  *
  * @param orig The build before the swap (Cancel on the slot screen restores it).
  * @param b The build after it.
  * @param freed The freed slots' levels, one per slot.
+ * @param then Picks to reopen next (level 1's orb: its secondary pick).
  */
-function finishWith(orig: Build, b: Build, freed: number[]): void {
+function finishWith(orig: Build, b: Build, freed: number[], then?: number[]): void {
   if (freed.length) {
     // one screen for the freed slots, each keeping its own level (previewBuild spreads them)
     const levels = [...freed].sort((x, y) => x - y);
     const step: LevelStep = { level: Math.max(...levels), picks: [], slots: levels.length, slotLevels: levels };
-    useStore.setState({ level: { step: 0, pickInStep: 0, mode: 'edit', sub: 'slots', base: b, orig, pendingSlots: [], flow: [step], freed: true } });
+    useStore.setState({ level: { step: 0, pickInStep: 0, mode: 'edit', sub: 'slots', base: b, orig, pendingSlots: [], flow: [step], freed: true, ...(then?.length ? { then } : {}) } });
     return;
   }
   persist(b);
   useStore.setState({ build: b, view: 'overview', level: undefined });
+  openNext(then);
+}
+
+/**
+ * Reopen the next pick of a level on its power screen, once the one before it is done (level 1's
+ * orb: the primary pick, then the secondary). The build is the store's, the earlier change in it.
+ *
+ * @param then The picks still to reopen, in turn.
+ */
+function openNext(then: readonly number[] | undefined): void {
+  if (then?.length) useStore.getState().editPick(then[0]!, then.slice(1));
 }
 
 /**
@@ -868,7 +888,7 @@ async function takeEarlierFlow(gd: GameData, steps: LevelStep[], level: LevelCtx
       okLabel: 'OK',
     });
     if (!ok || !sameScreen(useStore.getState().level, level)) return;
-    finishWith(orig, put.build, put.freed);
+    finishWith(orig, put.build, put.freed, level.then);
     return;
   }
   // within a Respec build's respec (or nothing at E): L is chosen again
@@ -896,7 +916,7 @@ async function takeEarlierFlow(gd: GameData, steps: LevelStep[], level: LevelCtx
   // A offered first at L when it can be taken there
   const offer = old && new BuildRules(gd, moved.build).powerOption(old.power, later).state === 'available' ? offerAgain(gd, moved.build, later, old.power) : {};
   useStore.setState({
-    level: { step, pickInStep: steps[step]!.picks.indexOf(later), mode: 'edit', sub: 'power', base: moved.build, orig, ...offer, pendingSlots: [], chain: { freed: moved.freed } },
+    level: { step, pickInStep: steps[step]!.picks.indexOf(later), mode: 'edit', sub: 'power', base: moved.build, orig, ...offer, pendingSlots: [], chain: { freed: moved.freed }, ...(level.then?.length ? { then: level.then } : {}) },
   });
 }
 
@@ -1366,6 +1386,7 @@ export const useStore = create<Store>((set, get) => ({
     persist(b);
     if (level.mode === 'edit') {
       set({ build: b, view: 'overview', level: undefined });
+      openNext(level.then);
       return;
     }
     // advance the wizard
@@ -1458,7 +1479,7 @@ export const useStore = create<Store>((set, get) => ({
     else get().backLevel();
   },
 
-  editPick(pickIndex) {
+  editPick(pickIndex, then) {
     const { build, steps } = get();
     if (!build) return;
     // a swap that drops enhancements or slots is asked about on Finish (finishSwap)
@@ -1479,6 +1500,7 @@ export const useStore = create<Store>((set, get) => ({
         orig: build,
         ...(gd ? offerAgain(gd, base, pickIndex, power) : { pendingPower: power }),
         pendingSlots: [],
+        ...(then?.length ? { then: [...then] } : {}),
       },
     });
   },
