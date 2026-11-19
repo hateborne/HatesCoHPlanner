@@ -65,7 +65,7 @@ function PhoneTip({ gd, skin, at, level, press }: { gd: GameData; skin: Skin; at
         className="abs scroll-y"
         role="tooltip"
         onClick={close}
-        style={{ left: MARGIN, width: stage.w - 2 * MARGIN, ...place, zIndex: 67, boxSizing: 'border-box', padding: `${PX * 0.6}px ${PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: PX * 0.6, fontFamily: "'Montreal'", fontSize: PX, lineHeight: 1.3, color: '#ffffff' }}
+        style={{ left: MARGIN, width: stage.w - 2 * MARGIN, ...place, zIndex: 67, boxSizing: 'border-box', padding: `${PX * 0.6}px ${PX * 0.8}px`, background: skin.panel, border: `2px solid ${skin.panelBorder}`, borderRadius: PX * 0.6, fontFamily: "'Montreal'", fontSize: PX, lineHeight: 1.3, color: '#ffffff' }}
       >
         {body}
       </div>

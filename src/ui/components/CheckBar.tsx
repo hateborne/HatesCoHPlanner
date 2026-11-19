@@ -206,7 +206,47 @@ export function CheckBar(props: CheckBarProps) {
   );
 }
 
-/** drawCheckBox: the round box at the bar's left end, or a power ring holding an icon. */
+/**
+ * The planner's round on/off switch (the overview's totals switch, the picker's level box), drawn
+ * to fill a `size` square: the skin's own check box (CheckBox), its orb lit while on. Pointer
+ * events pass through, so the parent takes the clicks.
+ *
+ * @param props.skin The current skin.
+ * @param props.on Whether it is switched on.
+ * @param props.size Its width and height (stage px).
+ */
+export function OnSwitch({ skin, on, size }: { skin: Skin; on: boolean; size: number }) {
+  const colors = on ? skin.selected : skin.standard;
+  return (
+    <span style={{ position: 'absolute', left: size / 2, top: size / 2, width: 0, height: 0, pointerEvents: 'none' }}>
+      <CheckBox skin={skin} colors={colors} base={colors.base} sc={size / 32} down={on} gray={false} />
+    </span>
+  );
+}
+
+/**
+ * A checkbox drawn as OnSwitch: the real checkbox (keys, screen readers, the label's clicks) lies
+ * see-through over the switch, and keyboard focus rings the switch in the menu border's color.
+ *
+ * @param props.skin The current skin.
+ * @param props.on Whether it is ticked.
+ * @param props.size Its width and height (stage px).
+ * @param props.onChange Called when it is ticked or unticked.
+ * @param props.testId data-testid for the browser tests (e2e/).
+ */
+export function SwitchBox({ skin, on, size, onChange, testId }: { skin: Skin; on: boolean; size: number; onChange: () => void; testId?: string }) {
+  return (
+    <span className="switch-box" style={{ position: 'relative', display: 'inline-block', width: size, height: size, flex: 'none', borderRadius: size / 2 }}>
+      <OnSwitch skin={skin} on={on} size={size} />
+      <input type="checkbox" data-testid={testId} checked={on} onChange={onChange} style={{ position: 'absolute', left: 0, top: 0, width: size, height: size, margin: 0, opacity: 0, cursor: 'pointer' }} />
+    </span>
+  );
+}
+
+/**
+ * drawCheckBox: the round box at the bar's left end, or a power ring holding an icon. Drawn
+ * centred on its parent's origin.
+ */
 function CheckBox({ skin, isPower, colors, base, sc, down, gray, icon }: { skin: Skin; isPower?: boolean; colors: ElemColors; base: string; sc: number; down: boolean; gray: boolean; icon?: string }) {
   const dir = 'creation/common/checkbox';
   const praet = skin.name === 'praetorian';

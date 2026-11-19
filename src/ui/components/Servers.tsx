@@ -165,7 +165,7 @@ function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; 
   const btnW = Math.min(170, (w - 72) / 2);
   return (
     <div {...POPUP_LAYER} ref={root} className="abs" role="dialog" aria-label="Choose a server" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 106, background: 'rgba(0,0,0,0.55)' }}>
-      <MenuFrame x={x} y={y} w={w} h={h} r25 skin={skin} style={{ background: 'rgba(0,3,24,0.97)' }} />
+      <MenuFrame x={x} y={y} w={w} h={h} r25 skin={skin} style={{ background: skin.panel }} />
       <SetTitle skin={skin} x={x + (phone ? 22 : 36)} y={y + 26} size={phone ? 26 : 28} text="Choose a Server" />
       <div className="abs body-text" style={{ left: x + pad, top: y + textTop, width: w - 2 * pad, fontSize: 19, lineHeight: 1.35, color: '#cfe8ff', whiteSpace: 'pre-line' }}>
         {text}

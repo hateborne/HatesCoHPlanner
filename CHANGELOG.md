@@ -12,6 +12,12 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - When a new power can't hold the old one's slots, you place the freed slots right away.
 - A power you take later in the build can be swapped into an earlier level, and the planner moves or asks you to choose the power it replaces.
 - The enhancement picker and the planner's buttons now match your build's hero, villain or Praetorian colors.
+- Tooltips, the totals switches and the level orbs on the build screen now match your build's hero, villain or Praetorian colors; each level orb shows the power picked there or the slots it adds, and the level on hover.
+- Build screen columns that fit no longer show a scroll bar.
+- The on/off switches on the build screen and in the enhancement picker now use the game's own check boxes for every alignment.
+- Labels on the game-style bars should no longer turn black in some Chrome windows.
+- In a respec, "Current Respec Level" on the slot screen is now readable and sits beside the title instead of over it.
+- The enhancement picker's Sets and Special lists fold into groups you can open and close; Special enhancements are grouped as Hydra, Titan, Hamidon, D-Sync, Synthetic Hamidon, Talisman and Other.
 - The enhancement picker can put every piece in at your build's level or the set's top level, and raise them when the build levels further.
 - Ctrl+Click (or Select several on phones) picks several enhancements at once and fills the power's empty slots in one go, with their total shown after enhancement diversification.
 

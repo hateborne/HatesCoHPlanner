@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { BuildRules } from '../../engine/rules.ts';
 import { computeTotals } from '../../engine/totals.ts';
 import { previewBuild, stepsOf, useStore } from '../../state/store.ts';
+import type { Skin } from '../skin/skin.ts';
 import { MenuFrame } from './Chrome.tsx';
 import { TitleText } from './GameText.tsx';
 import { TotalsPanel } from './TotalsPanel.tsx';
@@ -15,8 +16,10 @@ const PHONE_TAB = { w: 40, h: 150 };
 /**
  * Collapsible totals tab on the right edge of the level-up screens: the game's screens have no
  * room for totals, so they slide out over the screen on demand.
+ *
+ * @param props.skin The current skin (the tab and pane colours).
  */
-export function SideTotals() {
+export function SideTotals({ skin }: { skin: Skin }) {
   const { gd, steps, level } = useStore();
   const [open, setOpen] = useState(false);
   const stage = useStage();
@@ -37,14 +40,14 @@ export function SideTotals() {
         className="abs"
         onClick={toggle}
         {...pressKeys(toggle, undefined, open ? 'Hide totals' : 'Show totals')}
-        style={{ right: 0, top: tab.top, width: tab.w, height: tab.h, cursor: 'pointer', zIndex: 60, writingMode: 'vertical-rl', textAlign: 'center', fontSize: stage.phone ? 20 : 24, lineHeight: `${tab.w}px`, fontFamily: "'ParagonCity', 'MontrealHeavy', sans-serif", border: '3px solid var(--menu-border)', borderRight: 'none', borderRadius: '16px 0 0 16px', background: 'rgba(0,0,40,0.92)', backgroundClip: 'padding-box' }}
+        style={{ right: 0, top: tab.top, width: tab.w, height: tab.h, cursor: 'pointer', zIndex: 60, writingMode: 'vertical-rl', textAlign: 'center', fontSize: stage.phone ? 20 : 24, lineHeight: `${tab.w}px`, fontFamily: "'ParagonCity', 'MontrealHeavy', sans-serif", border: '3px solid var(--menu-border)', borderRight: 'none', borderRadius: '16px 0 0 16px', background: skin.panel, backgroundClip: 'padding-box' }}
         title={open ? 'Hide totals' : 'Show totals at this level'}
       >
         <TitleText style={{ transform: 'none' }}>TOTALS</TitleText>
       </div>
       {open && totals ? (
         <div className="abs" style={{ right: tab.w, top: pane.top, width: pane.w, height: pane.h, zIndex: 60 }}>
-          <MenuFrame x={0} y={0} w={pane.w} h={pane.h} style={{ background: 'rgba(0,0,20,0.95)' }} />
+          <MenuFrame x={0} y={0} w={pane.w} h={pane.h} skin={skin} style={{ background: skin.panel }} />
           <div className="abs scroll-y" style={{ left: 18, top: 12, width: pane.w - 30, height: pane.h - 24 }}>
             {/* phones: a little larger text than the desktop pane; its spacing keeps it readable */}
             <div style={{ zoom: stage.phone ? 1.15 : 1 }}>

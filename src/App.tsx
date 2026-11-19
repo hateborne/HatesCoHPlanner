@@ -132,7 +132,7 @@ function PhoneToast({ skin, text, onClose }: { skin: Skin; text: string; onClose
   const w = box?.w ?? maxW;
   return (
     <div className="abs phone-toast" role="status" onClick={onClose} style={{ left: (stage.w - w) / 2, top: phoneGeom(stage).line + 8, width: w, height: box?.h ?? 0, zIndex: 110, cursor: 'pointer' }}>
-      {box ? <MenuFrame x={0} y={0} w={box.w} h={box.h} skin={skin} style={{ background: '#000314' }} /> : null}
+      {box ? <MenuFrame x={0} y={0} w={box.w} h={box.h} skin={skin} style={{ background: skin.panel }} /> : null}
       <div
         ref={ref}
         className="abs body-text"
@@ -198,7 +198,7 @@ export function App() {
       <>
         {screen}
         <StopButtons skin={skin} />
-        <SideTotals />
+        <SideTotals skin={skin} />
       </>
     );
   } else if (view === 'overview') {
@@ -207,7 +207,7 @@ export function App() {
   return (
     <Stage skin={stageSkin}>
       {screen}
-      {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
+      {menuOpen ? <BuildMenu skin={stageSkin} onClose={() => setMenu(false)} /> : null}
       {finderOpen && view === 'overview' ? <FinderPane skin={skin} /> : null}
       <Notice skin={stageSkin} />
       <ConfirmDialog />

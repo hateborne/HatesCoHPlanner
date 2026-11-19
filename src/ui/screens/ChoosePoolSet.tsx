@@ -176,7 +176,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
       {desc}
       <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
       <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
-      <PickTip gd={gd} rules={rules} pick={pick} />
+      <PickTip gd={gd} skin={skin} rules={rules} pick={pick} />
     </>
   );
 }

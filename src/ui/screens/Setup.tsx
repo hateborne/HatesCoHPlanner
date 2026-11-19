@@ -191,10 +191,10 @@ export function Setup() {
       title="Game version: the patch whose powers and enhancements this build uses"
       value={gd.core.manifest.dataVersion}
       onChange={(e) => void selectVersion(e.target.value)}
-      style={{ fontFamily: "'Montreal'", fontSize: 20, color: '#fff', background: 'linear-gradient(#0c2a6e, #04102e)', border: '2px solid #4f94ff', borderRadius: 22, padding: '0 12px 0 18px', cursor: 'pointer', ...style }}
+      style={{ fontFamily: "'Montreal'", fontSize: 20, color: '#fff', background: `linear-gradient(${skin.select[0]}, ${skin.select[1]})`, border: `2px solid ${skin.menuBorder}`, borderRadius: 22, padding: '0 12px 0 18px', cursor: 'pointer', ...style }}
     >
       {(versions?.versions ?? []).map((v) => (
-        <option key={v.id} value={v.id} style={{ background: '#04102e' }}>
+        <option key={v.id} value={v.id} style={{ background: skin.select[1] }}>
           {v.label}
         </option>
       ))}
@@ -262,11 +262,11 @@ export function Setup() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') setRespecTo(String(respecLevel(respecTo, lowest)));
           }}
-          style={{ width: size * 4.2, height: size * 1.9, background: '#000', border: '2px solid #4f94ff', borderRadius: size, color: '#fff', fontSize: size, textAlign: 'center', boxSizing: 'border-box' }}
+          style={{ width: size * 4.2, height: size * 1.9, background: '#000', border: `2px solid ${skin.menuBorder}`, borderRadius: size, color: '#fff', fontSize: size, textAlign: 'center', boxSizing: 'border-box' }}
         />
       </div>
     ) : null;
-  const nameStyle = { background: '#000', border: '2px solid #4f94ff', borderRadius: 22, color: '#fff', fontSize: 22, padding: '0 20px', boxSizing: 'border-box' as const };
+  const nameStyle = { background: '#000', border: `2px solid ${skin.menuBorder}`, borderRadius: 22, color: '#fff', fontSize: 22, padding: '0 20px', boxSizing: 'border-box' as const };
 
   if (phone) {
     const pg = phoneGeom(stage, false);
