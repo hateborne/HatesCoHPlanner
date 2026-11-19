@@ -9,7 +9,7 @@ import { INFO_LABEL_COLOR, powerInfo, prettyDuration, type InfoEffect } from '..
 import type { BuildRules } from '../../engine/rules.ts';
 import { useTipLevel } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
-import { POPUP_LAYER } from '../floating.ts';
+import { placePopOut, POPUP_LAYER, toStage, type StageRect } from '../floating.ts';
 import { useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
 import type { Skin } from '../skin/skin.ts';
@@ -29,8 +29,9 @@ const NOTE = '#aaaa88'; // its note color
 const W = 760; // a pet power's tooltip width (the Advanced tooltip's)
 const MARK_W = 20; // the totals rows' +/- column (TotalsPanel), so a pet's name lines up with theirs
 const SWITCH = 18; // a pet power's switch, the size of the text beside it
-// the pet pane's sections, remembered apart from the build's totals: Powers and Base start open
-const PANE_SECTIONS: SectionMemory = { key: 'hcp.petpane.sections', dflt: { powers: true, base: true } };
+// the pet pane's sections, remembered apart from the build's totals: Base starts open, the rest
+// (Powers included) closed
+const PANE_SECTIONS: SectionMemory = { key: 'hcp.petpane.sections', dflt: { base: true } };
 
 /**
  * The Pets and Minions rows of a build at a level (petEntries; each card is worked out when first
@@ -56,8 +57,8 @@ export function usePetCards(gd: GameData | null | undefined, rules: BuildRules |
   return useMemo(() => (file && wants && gd && rules && build ? petEntries(gd, rules, build, level) : NONE), [file, wants, gd, rules, build, level]);
 }
 
-/** Which pet's pane is open: its row's key (PetEntry.key), or null. */
-export const usePetPane = create<{ key: string | null }>(() => ({ key: null }));
+/** Which pet's pane is open: its row's key (PetEntry.key), or null, and where its row is (stage px). */
+export const usePetPane = create<{ key: string | null; at?: StageRect }>(() => ({ key: null }));
 
 /** Close the pet pane. */
 const closePane = () => usePetPane.setState({ key: null });
@@ -65,9 +66,12 @@ const closePane = () => usePetPane.setState({ key: null });
 // how many PetPaneLayers are drawn: the pane closes once none is
 let paneHosts = 0;
 
-// the pet pane on the desktop stage: the enhancement picker's top and height (its frame), at a width
-// that fits the attacks' five columns; no client screen has such a pane
-const PANE = { x: 520, y: 90, w: 960, h: 940 };
+// the pet pane on the desktop stage: the enhancement picker's height (its frame), at a width that
+// fits a power's longest effect lines on one line; it pops out of its row (placePopOut). No client
+// screen has such a pane.
+const PANE_W = 672;
+const PANE_H = 940;
+const PANE_TOP = 90; // the picker's top: the highest the pane goes (above it, the title and the level strip)
 
 /** @return How many a row's pets are: the sure ones, and how many more may come ("x6 (+7)", "up to 2"). */
 export function petCount(sources: readonly PetSource[]): string {
@@ -85,14 +89,19 @@ function sourceText(s: PetSource): string {
 
 /**
  * A pet's row in the totals' Pets and Minions section: its name and how many the build makes. Its
- * name glows under the pointer; a click (a tap on a phone) opens its pane (PetPaneLayer).
+ * name glows under the pointer; a click (a tap on a phone) opens its pane (PetPaneLayer), which on
+ * the desktop pops out of the row.
  *
  * @param props.entry The pet's row (its card is worked out when its pane opens).
  */
 export function PetRow({ entry }: { entry: PetEntry }) {
-  const open = () => usePetPane.setState({ key: entry.key });
+  const stage = useStage();
+  const row = useRef<HTMLDivElement>(null);
+  // the pane pops out of the row: where the row is goes with it
+  const open = () => usePetPane.setState({ key: entry.key, at: toStage(row.current?.getBoundingClientRect(), stage) });
   return (
     <div
+      ref={row}
       className="pet-row"
       data-testid={`pet:${entry.key}`}
       onClick={open}
@@ -145,7 +154,8 @@ function PetPane({ gd, skin, entry, build, onSwitch }: { gd: GameData; skin: Ski
   const at = gd.archetype(build.at);
   const phone = stage.phone;
   // a phone keeps a strip above and below the pane, where a tap closes it
-  const box = phone ? { x: 8, y: 64, w: stage.w - 16, h: stage.h - 150 } : PANE;
+  const row = usePetPane((s) => s.at);
+  const box = phone ? { x: 8, y: 64, w: stage.w - 16, h: stage.h - 150 } : placePopOut(row, stage, PANE_W, PANE_H, PANE_TOP);
   const head = phone ? 30 : 34; // title size
   const sub = 16 + 20 * card.sources.length; // a line per making power
   const top = 18 + head + 8 + sub;

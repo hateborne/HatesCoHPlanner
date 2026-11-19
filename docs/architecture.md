@@ -311,14 +311,15 @@ with its owner ("Maneuvers (yours)", "Maneuvers (Enforcers x2)"). A pet power co
 switch says so (`petPowerOn`: `Build.petOn`, else `petPowerDefault`: autos, toggles and a click
 buff that lasts at least its recharge on).
 The totals list the pets (`PetRow`, `src/ui/components/PetCard.tsx`); a click opens the pet pane
-(`usePetPane`, `PetPaneLayer`, drawn by the overview and the side totals): the stats in the totals'
-own panel (`TotalsPanel` with `nonZero`, only the rows that aren't zero, and a Powers section first,
-under a line per making power: "Battle Drones: x3 (Level 19)"), and a switch on each power that can
-move a stat (`buffsPets`, drawn with the overview's `OnSwitch`; the overview's pane only), every
-other power one that does nothing, drawn like the rest so the names line up and greyed out under the
-pointer. Attacks and other powers read alike: the name, then the power info's effect lines. A
-power's name shows its power info on hover or keyboard focus (`useHover.petPower`), a long press on
-a phone (`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
+(`usePetPane`, `PetPaneLayer`, drawn by the overview and the side totals; on the desktop it pops out
+of the row, to its left, `placePopOut`): the stats in the totals' own panel (`TotalsPanel` with
+`nonZero`, only the rows that aren't zero, and a Powers section first, under a line per making
+power: "Battle Drones: x3 (Level 19)"), and a switch on each power that can move a stat
+(`buffsPets`, drawn with the overview's `OnSwitch`; the overview's pane only), every other power one
+that does nothing, drawn like the rest so the names line up and greyed out under the pointer.
+Attacks and other powers read alike: the name, then the power info's effect lines. A power's name
+shows its power info on hover or keyboard focus (`useHover.petPower`), a long press on a phone
+(`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
 (`Floating`'s `lock`, `lockedTurn`), so the pane under it never scrolls away, and one that fits lets
 the pane scroll. The pane closes on Escape or a click outside it, holds the keyboard focus while
 open, and stays open when the window crosses between the phone and desktop layouts. A pet's name in
