@@ -4,8 +4,8 @@ This is the one place the planner takes game data from MidsReborn (AGENTS.md, "M
 untrusted reference"). When no client files exist for an older patch, builds made on it can still
 open on rules close to that patch's. Only the level at which each power becomes available (and so
 the order of each set's powers) comes from Mids' database for that patch. Everything else, every
-number included, is the base version's (its pseudo-pet file, pets/<base>.json, and its power-info
-extras, info/<base>.json, are copied too).
+number included, is the base version's (its pseudo-pet file, pets/<base>.json, its real pets file,
+henchmen/<base>.json, and its power-info extras, info/<base>.json, are copied too).
 
 Usage (from the repo root):
     python -m pipeline.overlay                  # base = the default version in versions.json
@@ -171,6 +171,9 @@ def main() -> int:
     pets = config.DATA_OUT / config.PETS_FOLDER / f"{base}.json"
     if pets.is_file():  # the base's pseudo-pets: only power levels differ
         config.atomic_write(config.DATA_OUT / config.PETS_FOLDER / f"{vid}.json", pets.read_bytes())
+    henchmen = config.DATA_OUT / config.HENCHMEN_FOLDER / f"{base}.json"
+    if henchmen.is_file():  # the base's real pets: only power levels differ
+        config.atomic_write(config.DATA_OUT / config.HENCHMEN_FOLDER / f"{vid}.json", henchmen.read_bytes())
     info = config.DATA_OUT / config.INFO_FOLDER / f"{base}.json"
     if info.is_file():  # the base's power-info extras (the same groups), named for this version
         extras = json.loads(info.read_text(encoding="utf-8"))

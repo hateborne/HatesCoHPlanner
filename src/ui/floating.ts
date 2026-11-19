@@ -129,6 +129,21 @@ export function routeWheel<B>(
 }
 
 /**
+ * What a wheel turn does while a locked floating box shows (the pet pane's power cards): a box cut
+ * short takes the turn even at its end, so the list under it never scrolls away from the pointer
+ * while it is being read; a box that fits lets the turn through to the list. Ctrl + wheel (the
+ * browser's zoom) is left alone.
+ *
+ * @param e The wheel event's deltaY and ctrlKey.
+ * @param box The box's scroll position and sizes.
+ * @return Whether the turn is swallowed, and whether it scrolls the box.
+ */
+export function lockedTurn(e: { deltaY: number; ctrlKey: boolean }, box: BoxScroll): { swallow: boolean; scroll: boolean } {
+  if (e.ctrlKey || !isCut(box)) return { swallow: false, scroll: false };
+  return { swallow: true, scroll: wheelScrollsBox(e, box) };
+}
+
+/**
  * How far Page Up / Page Down scroll a tall floating box: most of a page, so a line stays in view.
  *
  * @param key The KeyboardEvent key.
@@ -159,6 +174,29 @@ const OVERLAY_BAR = 12;
 export function scrollRoom(cut: boolean, measured: number): { bar: number; gutter: number } {
   if (!cut) return { bar: 0, gutter: 0 };
   return measured > 0 ? { bar: measured, gutter: 0 } : { bar: OVERLAY_BAR, gutter: OVERLAY_BAR };
+}
+
+// the gap between a pane that pops out of a row and the panel the row is in, in stage px
+const POP_GAP = 16;
+
+/**
+ * Where a pane that pops out of a row goes on the desktop stage (the pet pane, from its row in the
+ * totals): to the row's left, as the totals sit at the stage's right edge, and level with it as far
+ * as the stage allows, between `top` and the Back / Finish bar. Without a row (opened another way),
+ * centred at `top`.
+ *
+ * @param row The row it pops out of (stage px), if known.
+ * @param stage The stage size.
+ * @param w The pane's width.
+ * @param h The pane's height.
+ * @param top The highest its top may go (the screen's own panels start there).
+ * @return The pane's box (stage px).
+ */
+export function placePopOut(row: StageRect | undefined, stage: { w: number; h: number }, w: number, h: number, top: number): StageRect {
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const x = row ? row.x - w - POP_GAP : (stage.w - w) / 2;
+  const y = row ? row.y + row.h / 2 - h / 2 : top;
+  return { x: clamp(x, 8, stage.w - w - 8), y: clamp(y, top, stage.h - BOTTOM_BAR - h), w, h };
 }
 
 /**

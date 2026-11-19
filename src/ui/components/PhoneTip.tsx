@@ -3,6 +3,7 @@ import type { Archetype } from '../../data/types.ts';
 import { useEscape } from '../escape.ts';
 import { useHover, type PressTip } from '../hover.ts';
 import type { Skin } from '../skin/skin.ts';
+import { PetPowerDetails } from './PetCard.tsx';
 import { AdvancedInfo } from './PowerInfoView.tsx';
 import { EnhDetails, SlotDetails } from './PowerTip.tsx';
 import { useStage } from './Stage.tsx';
@@ -54,6 +55,8 @@ function PhoneTip({ gd, skin, at, level, press }: { gd: GameData; skin: Skin; at
     );
   } else if (press.kind === 'enh') {
     body = <EnhDetails gd={gd} at={at} slots={press.entry.slots} slot={press.slot} level={level} />;
+  } else if (press.kind === 'petPower') {
+    body = <PetPowerDetails gd={gd} at={at} card={press.card} power={press.power} />;
   } else {
     body = <div style={{ whiteSpace: 'pre-line' }}>{press.text}</div>;
   }

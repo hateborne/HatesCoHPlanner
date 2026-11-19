@@ -5,7 +5,7 @@ import { DEFAULT_SERVER } from '../../data/servers.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
-import { setEnh, setExclusive, setOn } from '../../engine/actions.ts';
+import { setEnh, setExclusive, setOn, setPetOn } from '../../engine/actions.ts';
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
@@ -23,6 +23,8 @@ import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
 import { DescTip, EnhTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
+import { PetPaneLayer, usePetCards } from '../components/PetCard.tsx';
+import { petPowerDefault } from '../../engine/petstats.ts';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
@@ -296,6 +298,10 @@ export function Overview({ skin }: { skin: Skin }) {
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
   const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
+  // the pets the build makes, at the totals' level (computeTotals' default)
+  const pets = usePetCards(gd, rules, build, build ? (build.exemplar ?? build.endLevel ?? 49) : 49);
+  // the pet pane's switch: whether a pet power counts in the pets' stats (its default stored as none)
+  const switchPet = (p: Power, on: boolean) => build && setBuild(setPetOn(build, p.n, gd && on === petPowerDefault(gd, p) ? undefined : on));
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
   // an older build whose power sets can't go together: its title alternates with INVALID_TITLE
   const pairInvalid = useMemo(() => !!(gd && build && buildPairProblem(gd, build)), [gd, build]);
@@ -431,7 +437,7 @@ export function Overview({ skin }: { skin: Skin }) {
           items.push(
             <div
               key={`${e.key}:on`}
-              className="abs"
+              className="abs switch-hover"
               title={on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
               onClick={toggleOn}
               {...pressKeys(toggleOn, undefined, on ? 'Counted in totals' : 'Not counted in totals')}
@@ -671,7 +677,7 @@ export function Overview({ skin }: { skin: Skin }) {
           <GameScroll skin={skin} left={P.x + 16} top={P.y + 14} width={P.w - 32} height={P.h - 28} barX={P.x + P.w}>
             {/* a little larger text than the desktop panel; its spacing keeps it readable */}
             <div style={{ zoom: TOTALS_ZOOM }}>
-              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} />
+              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} pets={pets} />
             </div>
           </GameScroll>
         )}
@@ -679,6 +685,7 @@ export function Overview({ skin }: { skin: Skin }) {
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
+        <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
         <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />
       </>
     );
@@ -714,9 +721,10 @@ export function Overview({ skin }: { skin: Skin }) {
       {/* a patch move's changes sit above the totals until dismissed */}
       <PatchNotesBox skin={skin} x={1521} y={TOP + 16} w={420} />
       <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
-        <TotalsPanel gd={gd} t={totals} width={420} />
+        <TotalsPanel gd={gd} t={totals} width={420} pets={pets} />
       </GameScroll>
       <OverviewTips gd={gd} skin={skin} build={build} end={end} />
+      <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker_}

@@ -386,6 +386,24 @@ export function setOn(b: Build, key: string, on: boolean | undefined): Build {
   return nb;
 }
 
+/**
+ * Switch a pet power's share of the pets' stats on or off (the pet pane).
+ *
+ * @param b Build.
+ * @param name The pet power's full name.
+ * @param on Whether it counts; undefined restores its default (petPowerDefault).
+ * @return The build with the switch set.
+ */
+export function setPetOn(b: Build, name: string, on: boolean | undefined): Build {
+  const nb = cloneBuild(b);
+  const next = { ...(nb.petOn ?? {}) };
+  if (on === undefined) delete next[name];
+  else next[name] = on;
+  if (Object.keys(next).length) nb.petOn = next;
+  else delete nb.petOn;
+  return nb;
+}
+
 /** Drop picks and slots above a level (the wizard's Back step). */
 export function truncateAbove(b: Build, level: number): Build {
   const nb = cloneBuild(b);

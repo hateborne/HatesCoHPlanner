@@ -111,6 +111,24 @@ button {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  /* that padding reaches past the heading's box, over the line under it: clicks there go to the
+     line (the totals' first row under a section heading), and those on the heading to its box */
+  pointer-events: none;
+}
+
+/* the pet pane's switches that do nothing: drawn like the rest, greyed out under the pointer */
+.inert-switch .inert-gray,
+.inert-switch:hover .inert-normal {
+  display: none;
+}
+.inert-switch:hover .inert-gray {
+  display: inline;
+}
+
+/* the totals' pet rows: the name glows under the pointer (a click opens the pet's pane) */
+.pet-row:hover .pet-name {
+  color: #ffffff;
+  text-shadow: 0 0 8px #8fd6ff, 0 0 4px #8fd6ff, 0 0 2px #ffffff;
 }
 
 .bar-text {
@@ -585,6 +603,13 @@ button {
 }
 
 /* the picker's drawn switches (SwitchBox): the see-through checkbox's keyboard focus shows on the switch */
+/* an on/off switch that works (OnSwitch in the overview, SwitchBox, the pet pane's) lights up a
+   little under the pointer */
+.switch-box:hover,
+.switch-hover:hover {
+  filter: brightness(1.35);
+}
+
 .switch-box:has(> input:focus-visible) {
   outline: 2px solid var(--menu-border);
   outline-offset: 2px;
