@@ -44,6 +44,16 @@ export interface EvalContext {
   powerBoostsSlotted?(name: string): number;
   /** Entity type of the target for effect requires ('critter' in PvE). */
   targetEntType?: string;
+  /**
+   * Whether the target is the named villain def (`MastermindPets_Droid target.VillainName>`: Equip
+   * Robot's grants to a Battle Drone; TargetTypeMatches in the server's combat eval). Absent: 0.
+   */
+  targetVillain?(name: string): boolean;
+  /**
+   * A property of the target other than its entity type (`kRage target>`: a Grave Knight's rage
+   * meter; `group target>`: a pet's villain group). Absent, or undefined for a name: 0, as before.
+   */
+  targetProp?(name: string): number | string | undefined;
 }
 
 type Val = number | string;
@@ -216,9 +226,12 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
       }
       case 'target>': {
         const name = popStr().toLowerCase();
-        st.push(name === 'enttype' ? (ctx.targetEntType ?? 'critter') : 0);
+        st.push(name === 'enttype' ? (ctx.targetEntType ?? 'critter') : (ctx.targetProp?.(name) ?? 0));
         continue;
       }
+      case 'target.villainname>':
+        st.push(ctx.targetVillain?.(popStr()) ? 1 : 0);
+        continue;
       case 'source.owner>':
       case 'source.creator>':
         if (ctx.ownerProp) {

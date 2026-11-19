@@ -101,6 +101,13 @@ the project)
   PvP-only groups. Like the pets file it changes no build, may be added to a published version
   (`python -m pipeline.info`, from the version's own client, after its pets file), and is optional:
   without it the power info keeps the planner's own wording. `info` is never a version id.
+- A version's real pets file sits beside its folder too (`public/data/henchmen/<id>.json`,
+  `public/data/thunderspy/henchmen/<id>.json`): the pets with powers of their own (Mastermind
+  henchmen, Phantom Army, a patron pool's summon) that the totals' Pets and Minions section and its
+  pet pane show, with their classes' base values and caps. It changes no build, may be added to a
+  published version (`python -m pipeline.henchmen`, from the version's own client), and is optional:
+  the app fetches it only for a build with a power that makes a pet, never waits for it, and without
+  it the section doesn't show. `henchmen` is never a version id.
 - A version's recipe file sits beside its folder in the same way (`public/data/recipes/<id>.json`,
   made by `python -m pipeline.recipes` from the very client the version was made from). Only the
   set finder's shopping list reads it: no link, saved build or loader does. `recipes` and `finder`
@@ -159,7 +166,8 @@ The full map, file by file, is in `docs/architecture.md`.
 ```
 src/data/       game data loading, versions.ts, servers.ts (SERVERS), types.ts
 src/engine/     pure build rules: rules.ts (BuildRules), totals.ts, enhance.ts, setbonus.ts,
-                requires.ts (RPN), validate.ts (checkBuild), schedule.ts, actions.ts, migrate.ts;
+                requires.ts (RPN), validate.ts (checkBuild), schedule.ts, actions.ts, migrate.ts,
+                petcards.ts and petstats.ts (the totals' Pets and Minions rows and pet pane);
                 finder/ (the set finder's engine: ranked swaps of sets into existing slots)
 src/io/         share.ts (#b= links), mids.ts, midsPatches.ts, buildtxt.ts, importProblem.ts,
                 library.ts (IndexedDB), binary.ts, fileName.ts, shopping.ts (the set finder's
@@ -171,8 +179,9 @@ tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for
 e2e/            Playwright browser tests (local only)
 research/       the build research (owner's machine only): community builds -> set finder statistics
 public/data/    generated game data per version, versions.json; <server>/ for other servers;
-                pets/ for each version's pseudo-pets, info/ for its power-info extras and
-                recipes/ for its recipes and salvage (all beside the version folders);
+                pets/ for each version's pseudo-pets, henchmen/ for its real pets, info/ for its
+                power-info extras and recipes/ for its recipes and salvage (all beside the version
+                folders);
                 finder/ for the set finder's build statistics
 public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its icons
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
@@ -237,6 +246,7 @@ python -m pipeline.watch       # a new release on a server's live manifest (Thun
 python -m pipeline.compare --server thunderspy   # report-thunderspy-diff.md: its data against Homecoming's
 python -m pipeline.pets --game-version i28p3     # a published version's pseudo-pet file (its own client)
 python -m pipeline.info --game-version i28p3     # its power-info extras file (its own client, after pets)
+python -m pipeline.henchmen --game-version i28p3 # its real pets file (its own client)
 python -m pipeline.recipes                       # a published version's recipes and salvage (its own client)
 ```
 
@@ -249,7 +259,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `node scripts/audit-dev.mjs` (tools: high and critical advisories, except the few its `ALLOWED` lets through, each with its reason, until a fixed release exists) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.info_test pipeline.pvp_test pipeline.recipes_test pipeline.check_ids_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the power-info extras export, the PvP-only test, the recipe export, the stable ids check); `pipeline/check_ids.py` (every ids file well formed, and every id the base branch has kept unchanged, in each ids file the base branch holds); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.henchmen_test pipeline.info_test pipeline.pvp_test pipeline.recipes_test pipeline.check_ids_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the real pets export, the power-info extras export, the PvP-only test, the recipe export, the stable ids check); `pipeline/check_ids.py` (every ids file well formed, and every id the base branch has kept unchanged, in each ids file the base branch holds); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub

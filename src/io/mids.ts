@@ -9,7 +9,7 @@ import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverByMidsDb, SE
 import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules } from '../engine/rules.ts';
-import { defaultOn, defaultsOf, exclusiveGroups } from '../engine/totals.ts';
+import { defaultOn, defaultsOf, exclusiveGroups, isPetUpgrade } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
 import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readableOn, readablePower } from './importProblem.ts';
 import { PLANNER_APP } from './midsPatches.ts';
@@ -396,6 +396,12 @@ function applyStats(gd: GameData, b: Build, stats: Map<string, boolean>): void {
   }
   for (const [key, on] of stats) {
     const pid = powerOf(key);
+    // a pet upgrade keeps its default (on): Mids leaves clicks out of its stats, upgrades included,
+    // and its switch says nothing about the pets
+    if (pid !== undefined && gd.powerById.has(pid) && isPetUpgrade(gd, gd.power(pid))) {
+      setOn(key, undefined);
+      continue;
+    }
     const d = defaults.get(key) ?? (pid !== undefined && gd.powerById.has(pid) ? defaultOn(gd.power(pid)) : on);
     setOn(key, on === d ? undefined : on);
   }

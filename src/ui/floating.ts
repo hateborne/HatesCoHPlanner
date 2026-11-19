@@ -129,6 +129,21 @@ export function routeWheel<B>(
 }
 
 /**
+ * What a wheel turn does while a locked floating box shows (the pet pane's power cards): a box cut
+ * short takes the turn even at its end, so the list under it never scrolls away from the pointer
+ * while it is being read; a box that fits lets the turn through to the list. Ctrl + wheel (the
+ * browser's zoom) is left alone.
+ *
+ * @param e The wheel event's deltaY and ctrlKey.
+ * @param box The box's scroll position and sizes.
+ * @return Whether the turn is swallowed, and whether it scrolls the box.
+ */
+export function lockedTurn(e: { deltaY: number; ctrlKey: boolean }, box: BoxScroll): { swallow: boolean; scroll: boolean } {
+  if (e.ctrlKey || !isCut(box)) return { swallow: false, scroll: false };
+  return { swallow: true, scroll: wheelScrollsBox(e, box) };
+}
+
+/**
  * How far Page Up / Page Down scroll a tall floating box: most of a page, so a line stays in view.
  *
  * @param key The KeyboardEvent key.

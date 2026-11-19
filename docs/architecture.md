@@ -14,6 +14,7 @@ src/
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
+    henchmen.ts              the shape check of a version's real pets file (readHenchmenFile)
     info.ts                  the shape check of a version's power-info extras file (readInfoFile)
     types.ts                 shapes of the exported JSON
     finderStats.ts           the set finder's build statistics (public/data/finder/): their shape,
@@ -28,6 +29,8 @@ src/
     enhance.ts               enhancement values, ED, origin and set validity, set rarity, help text
     setbonus.ts, totals.ts   set bonuses (rule of 5) and the totals panel
     powerinfo.ts             detailed power numbers (base vs enhanced)
+    petcards.ts              the totals' Pets and Minions rows and cards (petEntries, makesPets)
+    petstats.ts              a pet's stats for its pane: what lands on it (petStats, petPowerOn)
     finder/                  the set finder's engine (see "Set finder" below)
       query.ts               a search: goals and importance, set tags, wanted bonus and depth
       goals.ts               what each stat and power channel is worth to a search (weightsFor)
@@ -68,7 +71,9 @@ src/
                              SetFinder (the set finder's pane, loaded on demand) and
                              FinderShopping (its shopping list)
     components/              game chrome (frames, bars, rings, scrollbars, text, tooltips);
-                             FinderIcon (the set finder's button icon and working name)
+                             FinderIcon (the set finder's button icon and working name);
+                             PetCard (the Pets and Minions rows, the pet pane, usePetCards);
+                             OnSwitch (the totals' on/off switch, overview and pet pane)
     skin/                    metrics.ts (virtual-screen maths), skin.ts (hero/villain/praetorian)
     hover.ts                 hover / tooltip state (kept out of the screens on purpose)
     flags.ts                 SET_FINDER: whether the unfinished set finder's button shows
@@ -93,6 +98,9 @@ public/data/pets/<version>.json  each version's pseudo-pets, beside the version 
                              Thunderspy's in public/data/thunderspy/pets/)
 public/data/info/<version>.json  each version's power-info extras, beside them (generated;
                              Thunderspy's in public/data/thunderspy/info/)
+public/data/henchmen/<version>.json  each version's real pets, beside them (generated;
+                             Thunderspy's in public/data/thunderspy/henchmen/; the totals' Pets
+                             and Minions section and the pet pane read it)
 public/data/recipes/<version>.json  each version's dropped recipes and their salvage, beside the
                              version folders (generated; the set finder's shopping list reads it)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
@@ -104,6 +112,8 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
   overlay.py                 approximate older-patch versions (python -m pipeline.overlay)
   pets.py                    a published version's pseudo-pet file only (python -m pipeline.pets)
   pets_test.py               the pseudo-pet export's tests (python -m unittest pipeline.pets_test; run by CI)
+  henchmen.py                a published version's real pets file only (python -m pipeline.henchmen)
+  henchmen_test.py           its export's tests (python -m unittest pipeline.henchmen_test; run by CI)
   info.py                    a published version's power-info extras file only (python -m pipeline.info)
   info_test.py               its export's tests (python -m unittest pipeline.info_test; run by CI)
   watch.py                   a new release on a server's live manifest (python -m pipeline.watch)
@@ -166,7 +176,14 @@ arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
 damaged or slow one only leaves pet damage out. The version's power-info extras file is fetched the
 same way (`GameData.setInfo`, `src/data/info.ts`, `subscribeInfo`; a file naming another version is
-refused); without it the power info shows no effect notes and keeps the planner's own wording.
+refused); without it the power info shows no effect notes and keeps the planner's own wording. The
+version's real pets file is fetched only once a build has a power that may make a real pet
+(`makesPets`: more EntCreate mods than the pets file lists pseudo-pets for it, decided once the pets
+file's fetch has ended, `GameData.petsSettled`; `GameData.requestHenchmen`, called by the totals'
+hosts through `usePetCards`; once per version),
+taken through `GameData.setHenchmen` (`src/data/henchmen.ts`) and heard through
+`subscribeHenchmen`; a fetch the network fails is asked for again on the build's next change (a
+missing file is not), and without the file the totals show no Pets and Minions section.
 
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
@@ -283,6 +300,27 @@ makes and of the powers it executes, and lists the pets' effects, as the live cl
 (`docs/game-rules.md`, "Pseudo-pet damage"). It lists Fiery Embrace's and Dual Pistols' ammo
 groups and Homecoming's Stalker team crits with the client's notes and chances
 (`docs/game-rules.md`, "Tag modes").
+`petcards.ts` makes the totals' Pets and Minions rows (`petEntries`): each kind of real pet the
+build's powers make at the totals' level and how many, with its card worked out only when first
+shown (`PetEntry.card`): its stats and its attacks and other powers through the power info, run as
+the pet (`powerInfo`'s `runAs`), with the build's upgrades applied (`docs/game-rules.md`, "Real
+pets"). Pets of one name, class and powers other than attacks share a row (Gang War's posse).
+`petstats.ts` works a pet's stats out as the totals work a character's (`attribLines`, `lineBook`
+and `finishTotals` in `totals.ts`, against the pet class's base values and caps): its own powers,
+the other pets' and the creator's that reach it, and the build's pet aura IOs, each source named
+with its owner ("Maneuvers (yours)", "Maneuvers (Enforcers x2)"). A pet power counts when its
+switch says so (`petPowerOn`: `Build.petOn`, else `petPowerDefault`: autos, toggles and a click
+buff that lasts at least its recharge on).
+The totals list the pets (`PetRow`, `src/ui/components/PetCard.tsx`); a click opens the pet pane
+(`usePetPane`, `PetPaneLayer`, drawn by the overview and the side totals): the stats in the totals'
+own panel (`TotalsPanel` with `nonZero`, only the rows that aren't zero, and a Powers section
+first), the attacks with their damage types, and a switch on each power that can move a stat
+(`buffsPets`, `OnSwitch` as in the overview; the overview's pane only). A power's name shows its
+power info on hover or keyboard focus (`useHover.petPower`), a long press on a phone
+(`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
+(`Floating`'s `lock`, `lockedTurn`), so the pane under it never scrolls away, and one that fits lets
+the pane scroll. The pane closes on Escape or a click outside it, holds the keyboard focus while
+open, and stays open when the window crosses between the phone and desktop layouts.
 The engine is pure and synchronous; keep React and the DOM out of it.
 
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per
@@ -293,7 +331,9 @@ build): autos and toggles on, clicks off, except
   Personal Force Field, Nebulous Form), found from their effects;
 - toggles that switch each other off (`exclusiveGroups`: a shared GroupMembership, as the game's
   `character_ShutOffAllTogglePowersInSameGroup` does): only the earliest picked is on. Switching
-  one on in the overview switches the others in its group off.
+  one on in the overview switches the others in its group off;
+- pet upgrades (`isPetUpgrade`: Equip Robot, Train Ninjas, ...) are on, though clicks: switched off,
+  no pet gets them. A Mids import leaves them at that default (Mids leaves clicks out of its stats).
 
 **Set finder (engine).** `src/engine/finder/` ranks *swaps* for a Homecoming build: pieces of one
 enhancement set into slots one power already has. It never moves a slot or changes a power. Its
@@ -442,7 +482,11 @@ ruling.
 - archetype, origin, alignment, primary and secondary;
 - 24 picks with their slots and enhancements;
 - auto-granted powers' slots and on/off switches;
-- an optional stop level (`endLevel`) and the game version (`dataVersion`).
+- an optional stop level (`endLevel`) and the game version (`dataVersion`);
+- the pet pane's switches (`petOn`: pet power full name -> on), only those changed from their
+  default. A share code carries them in an optional field at its end, written only when there are
+  any, so every other build's code is what it was; `checkBuild` keeps the well-formed ones (a dotted
+  name, a boolean, at most 64).
 
 It is persisted per browser tab (sessionStorage, with a localStorage fallback for new tabs). It
 is mirrored into the address bar as `#b=<share code>` with `history.replaceState`, so a reload or

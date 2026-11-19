@@ -139,7 +139,9 @@ INFO_FOLDER = "info"
 # statistics (finder/stats.json, the build research): never game versions either.
 RECIPES_FOLDER = "recipes"
 FINDER_FOLDER = "finder"
-SIDE_FOLDERS = frozenset({PETS_FOLDER, INFO_FOLDER, RECIPES_FOLDER, FINDER_FOLDER})
+# And its real pets' files (henchmen/<version>.json, Exporter.build_henchmen): never game versions.
+HENCHMEN_FOLDER = "henchmen"
+SIDE_FOLDERS = frozenset({PETS_FOLDER, INFO_FOLDER, RECIPES_FOLDER, FINDER_FOLDER, HENCHMEN_FOLDER})
 
 
 def _local(keys: tuple) -> str | None:
@@ -250,7 +252,7 @@ def valid_version_id(v: str) -> bool:
 
     Lower-case letters, digits, "-" and "_" only, starting with a letter or digit, at most 32
     characters, and not a Windows device name, a server's data folder or a folder of side files
-    (pets, info, recipes, finder). Lower case only, because Windows folders ignore case: "I28P4"
+    (pets, info, recipes, finder, henchmen). Lower case only, because Windows folders ignore case: "I28P4"
     would write into "i28p4" while versions.json treated them as two versions. No dots either:
     Windows drops a trailing one, so "i28p4." would also land in "i28p4" (Thunderspy's release 9.6
     is "ts9-6").

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { Power, Powerset } from '../data/types.ts';
+import type { PetCard } from '../engine/petcards.ts';
 import type { BuildEntry } from '../engine/rules.ts';
 
 /**
@@ -16,16 +17,22 @@ export interface HoverState {
   orb: number | null; // 0-based level of the hovered orb (lights that level's pick / slots)
   press: PressTip | null; // phones: what a long press is showing (they have no hover)
   swap: string | null; // set finder: the result row under the pointer (its id), whose gains and losses show
+  petPower: { card: PetCard; power: Power; x: number; y: number; at?: DOMRect } | null; // pet pane: the pet power under the pointer (its power info shows), the point (stage px) and its name (window px)
 }
 
 /**
  * Phones: the tooltip a long press opened, at the press point (window px). A power shows its
  * description, slot details and detailed numbers (with any rule it breaks); a filled slot its
- * enhancement; anything else its help text.
+ * enhancement; a pet's power in the pet pane its power info; anything else its help text.
  */
-export type PressTip = { x: number; y: number } & ({ kind: 'power'; entry: BuildEntry; notes: string[] } | { kind: 'enh'; entry: BuildEntry; slot: number } | { kind: 'text'; text: string });
+export type PressTip = { x: number; y: number } & (
+  | { kind: 'power'; entry: BuildEntry; notes: string[] }
+  | { kind: 'enh'; entry: BuildEntry; slot: number }
+  | { kind: 'text'; text: string }
+  | { kind: 'petPower'; card: PetCard; power: Power }
+);
 
-const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null, press: null, swap: null };
+const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null, press: null, swap: null, petPower: null };
 
 export const useHover = create<HoverState>(() => EMPTY);
 

@@ -136,6 +136,9 @@ export interface Build {
   exemplar?: number; // 0-based exemplar level (undefined = full level)
   endLevel?: number; // 0-based level a build planned short of 50 stops at (View Build / Save mid-leveling)
   respecTo?: number; // Respec build type: the 0-based level it respecs to (absent: built by leveling)
+  // the pets' powers switched from their default in the pet pane, by full name: whether each counts
+  // in the pets' stats (absent: autos, toggles and the click buffs a pet can keep up on)
+  petOn?: Record<string, boolean>;
 }
 
 /**

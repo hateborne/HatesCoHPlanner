@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { floatingRoom, pageKeyStep, placeFloating, routeWheel, scrollRoom, WHEEL_LATCH_MS, wheelScrollsBox, wheelStep, type StageRect } from '../src/ui/floating.ts';
+import { floatingRoom, lockedTurn, pageKeyStep, placeFloating, routeWheel, scrollRoom, WHEEL_LATCH_MS, wheelScrollsBox, wheelStep, type StageRect } from '../src/ui/floating.ts';
 
 // the desktop stage, and the Advanced power tooltip (SlotTip: 760 wide, 34 under the pointer)
 const STAGE = { w: 2000, h: 1125 };
@@ -99,6 +99,25 @@ describe('wheelScrollsBox (which turns a tall tooltip takes)', () => {
     expect(wheelScrollsBox(down, { scrollTop: 0, clientHeight: 600, scrollHeight: 600 })).toBe(false);
     expect(wheelScrollsBox({ deltaY: 0, ctrlKey: false }, box(500))).toBe(false);
     expect(wheelScrollsBox({ deltaY: 100, ctrlKey: true }, box(500))).toBe(false);
+  });
+});
+
+describe("lockedTurn (a locked box cut short takes every turn: the pet pane's power cards)", () => {
+  const tall = (top: number) => ({ scrollTop: top, clientHeight: 1053, scrollHeight: 2000 });
+  const down = { deltaY: 100, ctrlKey: false };
+
+  it('scrolls a box cut short while it can move, and swallows the turn at its end', () => {
+    expect(lockedTurn(down, tall(0))).toEqual({ swallow: true, scroll: true });
+    expect(lockedTurn(down, tall(2000 - 1053))).toEqual({ swallow: true, scroll: false });
+    expect(lockedTurn({ deltaY: -100, ctrlKey: false }, tall(0))).toEqual({ swallow: true, scroll: false });
+  });
+
+  it('lets the turn through when the box fits (nothing to scroll)', () => {
+    expect(lockedTurn(down, { scrollTop: 0, clientHeight: 600, scrollHeight: 600 })).toEqual({ swallow: false, scroll: false });
+  });
+
+  it('leaves Ctrl + wheel (the browser zoom) alone', () => {
+    expect(lockedTurn({ deltaY: 100, ctrlKey: true }, tall(0))).toEqual({ swallow: false, scroll: false });
   });
 });
 

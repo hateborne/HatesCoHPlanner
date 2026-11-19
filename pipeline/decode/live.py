@@ -41,10 +41,14 @@ class LiveData:
     enums: dict                 # {"power.Type": {int: name}, "mod.Aspect": {...}, ...}
     health: dict = field(default_factory=dict)
     fingerprint: dict = field(default_factory=dict)
-    # villain defs, trimmed to what pseudo-pets need: {"Name", "Class", "Power": [{"PowerCategory",
-    # "PowerSet", "Power"}]} (villaindef.bin)
+    # villain defs, trimmed to what pets need: {"Name", "Class", "Power": [{"PowerCategory",
+    # "PowerSet", "Power"}], "DisplayName": its first level's first name's message key,
+    # "VillainGroup": its group (`group target>`: Supremacy reaches "MastermindPets")}
+    # (villaindef.bin)
     villains: list = field(default_factory=list)
-    # villain classes, trimmed: {"Name", "ModTable"} (villain_classes.bin)
+    # villain classes, trimmed: {"Name", "ModTable", and the attribute tables a pet's stats read,
+    # each as the archetypes have them ([{attribute: [per level]}]): CLASS_TABLES}
+    # (villain_classes.bin)
     villain_classes: list = field(default_factory=list)
     # the client's EntCreate param struct (a mod's Params of type 3) in serialized order:
     # [(field name, is a string earray)]
@@ -240,25 +244,62 @@ def _villain_table():
     raise RuntimeError("the client has no VillainDef parse table")
 
 
+# a villain class's attribute tables a pet's stats read (Exporter.build_henchmen), as classes.bin's
+# archetypes have them
+CLASS_TABLES = ("AttribBase", "AttribMin", "AttribMaxTable", "AttribMaxMaxTable", "StrengthMaxTable",
+                "ResistanceMaxTable")
+
+
 def _villains(health) -> tuple[list, list]:
     """Villain defs and villain classes, trimmed to what pseudo-pets need (export.Exporter.build_pets).
 
     The client's power info totals the damage of a pet whose villain def it finds, with that def's
-    class (villain_classes.bin), so both are decoded whole and checked by the health gate.
+    class (villain_classes.bin), so both are decoded whole and checked by the health gate. A def's
+    VillainGroup is an index into villaingroups.bin (villainGroupGetName), kept by name; a client
+    without that bin leaves every group empty (only Supremacy's reach to henchmen reads it), so it
+    is not part of the health gate.
 
     @param health Decode health, filled in for both bins.
     @return (villain defs, villain classes).
     """
     defs = _earray("bin/villaindef.bin", _villain_table(), health=health)
+    try:
+        groups = [g.get("Name") or "" for g in _earray(
+            "bin/villaingroups.bin", P.pick_table("DisplaySingluar", {"Name", "DisplayName", "DisplaySingluar"}))]
+    except (StopIteration, ValueError) as e:  # no such bin, or one the pigg can't give whole
+        print(f"warning: villain groups not read ({type(e).__name__}); pets get no group", flush=True)
+        groups = []
+
+    def group(v: dict) -> str:
+        i = v.get("VillainGroup")
+        return groups[i] if isinstance(i, int) and 0 <= i < len(groups) else ""
+
     villains = [{"Name": v.get("Name") or "", "Class": v.get("Class") or "",
                  "Power": [{k: r.get(k) or "" for k in ("PowerCategory", "PowerSet", "Power")}
-                           for r in v.get("Power") or []]}
+                           for r in v.get("Power") or []],
+                 "DisplayName": _first_display_name(v), "VillainGroup": group(v)}
                 for v in defs]
     classes = _earray("bin/villain_classes.bin",
                       P.pick_table("PrimaryCategory", {"Name", "PrimaryCategory", "ModTable"}),
                       health=health)
-    villain_classes = [{"Name": c.get("Name") or "", "ModTable": c.get("ModTable") or []} for c in classes]
+    villain_classes = [{"Name": c.get("Name") or "", "ModTable": c.get("ModTable") or [],
+                        **{k: [_first_row(c.get(k))] if _first_row(c.get(k)) else [] for k in CLASS_TABLES}}
+                       for c in classes]
     return villains, villain_classes
+
+
+
+def _first_display_name(vdef: dict) -> str:
+    """@return The message key of a villain def's first level's first display name (the name the
+    client's power info gives the pet: levels[0]->displayNames[0]), or ""."""
+    levels = vdef.get("Level") or []
+    names = (levels[0].get("DisplayNames") or []) if levels and isinstance(levels[0], dict) else []
+    return names[0] if names and isinstance(names[0], str) else ""
+
+
+def _first_row(rows) -> dict:
+    """@return The first row of a class's attribute table (one per class: {attribute: [per level]}), or {}."""
+    return rows[0] if rows and isinstance(rows[0], dict) else {}
 
 
 def _origins(health) -> list:

@@ -376,6 +376,110 @@ engine parts are `petDamage` and `petLines` in `src/engine/powerinfo.ts`. Level 
 130.13 (12 ticks of 0.14 plus the 1.44 front hit at Melee_Damage 41.7087; its lines show 13 ticks),
 Irradiated Ground 4.59 (one tick of 0.0825 at Class_Minion_Pets' 55.6599).
 
+## Real pets (the totals' Pets and Minions section and pet pane)
+
+A real pet is one the client's power info lists under its power rather than adding its damage: a
+pet with a power that isn't Auto (pet_IsAutoOnly fails: Mastermind henchmen, Phantom Army, a patron
+pool's summon). The totals list every kind of real pet the build's powers make at the totals'
+level; its pane shows its stats and powers (`src/engine/petcards.ts` and `petstats.ts`, from
+`<server data>/henchmen/<version>.json`).
+The rules, from the OuroV2 source (MapServer `character_pet.c`, Common `character_base.c`) unless
+noted:
+
+- **Level.** An EntCreate mod with a negative scale makes its pet at its creator's combat level
+  (character_CreatePet: combat level + 1, 1-based); one with a positive scale at its table's value,
+  the creator's level for `Ranged_Level`. Every Homecoming henchman uses the first since Issue 28
+  Page 3 ("all Henchmen are summoned at the Mastermind's level", the Homecoming wiki): the older
+  data summoned Battle Drones on `Ranged_Levelminus2`, one or two levels below. Soul Extraction's
+  souls come at the Mastermind's level too: the OuroV2 data summoned them (and Grave Knights) on
+  `Ranged_Levelminus`, one level lower, which its help text still says, and Homecoming's data now
+  summons them on `Ranged_Ones` at scale -1, as it does every henchman. The card reads the pet
+  class's tables at the totals' level.
+- **How many.** Each EntCreate mod spawns when its groups' requirements hold: Battle Drones' second
+  drone needs `combatlevel source> 5 >` (level 6), its third `17 >` (level 18). A mod in a group
+  with a chance below 1, or under one (the chances multiply), may spawn (Gang War: 6 always, 7 more
+  by chance). A requirement on the target names the pet the power must be used on (Soul
+  Extraction's `MastermindPets_Lich target.VillainName>`: the Wraith, on a fallen Lich), which the
+  card says. Spawn delays longer than 5 s spread the pets out, and the card says over how long
+  (Hell on Earth: one every 10 s to 90 s); a summon's shorter delays (Battle Drones' 2 to 4 s) are
+  its animation. A Specter (Necromancy's attacks) has no chance in the data: its EntCreate mod
+  stacks as Ignore, one per attack at a time.
+- **Upgrades.** An upgrade (Equip Robot, Train Ninjas, ...) is a power whose GrantPower,
+  GrantBoostedPower and RevokePower mods sit in a group naming the pet (on in the overview by
+  default, though a click; switched off, no pet gets it):
+  `MastermindPets_Droid target.VillainName>` (TargetTypeMatches in the server's combat eval). The
+  card applies the build's powers to the pet's own in the order it takes them (the server applies
+  the two upgrades in order, character_ApplyPetUpgrade), each mod in its power's order: Equip Thugs
+  revokes the Punk's Pistol and grants Pistols; Upgrade Equipment revokes an Enforcer's Maneuvers and
+  grants it back. A `target.mode?` test reads the modes the pet's own Auto powers set (SetMode),
+  so the card repeats the pass until the powers settle. A grant in a group of chance 0 never lands.
+  Grants by costume (`costume target>`) only change looks and answer 0. A pet's meters (`kRage
+  target>`) start at 0: a grant that holds only past a mark (a Grave Knight's Disembowel, `kRage
+  target> .5 >` after Dark Empowerment) is listed with its condition. The pet is the target, a
+  critter.
+- **Slotting.** Every power of a pet, those an upgrade grants later included, is slotted from the
+  power that made it (character_PetSlotPower from character_CreatePet and character_AddRewardPower),
+  so the summon's enhancements enhance them all; the client's power info shows a summon's pets with
+  the summon's slotting too (power_AddPets).
+- **Attacks** are the pet's powers with damage that reach foes (EntsAffected Foe), their numbers the
+  power info's for the pet's class (`powerInfo`'s `runAs`). The Maintenance Drone's Repair, which
+  costs it hit points to heal a friend, is no attack. A pet's power that makes pets of its own
+  (Upgrade Robot's Seeker Drones) says what it makes.
+- **Stats** are the totals' own, worked out against the pet's class: its base values, minimums and
+  caps (AttribBase, AttribMin, AttribMax, AttribMaxMax, StrengthMax, ResistanceMax: 90% resistance
+  for henchmen, 70% for Class_Henchman_Minion_Small), a Maximum HitPoints mod adding to its hit
+  points (Dark Empowerment's, the posse's minus). Regeneration, recovery, speeds and perception are
+  held at the class minimum (ClampCur; one the class doesn't list is 0), as a character's are: the
+  Maintenance Drone's -999999 regeneration (it can't regenerate) shows as none. What lands on it:
+  - its own powers that are switched on: by default autos, toggles and a click buff that lasts at
+    least as long as its recharge, so the pet can keep it up (a Protector Bot's Force Shield, 240 s
+    recharging in 8 s; a Medic's Stimulant), but not one it can't (a wolf's Howl, 15 s recharging in
+    60 s; Wild Charge), read before the summon's slotting; the pet pane switches each. Their mods on
+    their caster or on the owner and all its pets
+    (CastersOwnerAndAllPets, AffectedsOwnerAndAllPets), at its class's tables and its summon's
+    slotting. A power with a Lifetime is left out, and not listed: Materialization's 100% defense
+    lasts 15 s after a henchman spawns (its power's Lifetime), and its mods also end on events
+    (CancelEvents 2, 17 and 43, not decoded here);
+  - the other pets' powers that are switched on and reach friends (an Enforcer's Maneuvers and
+    Tactics, a Protector Bot's Force Shield, an Ember Demon's Shield of Hellfire), at the caster's
+    class and slotting. The game keeps one copy of a mod per caster (kCasterStackType_Individual:
+    character_combat.c tests an existing mod by template, power and source), so two Enforcers'
+    Maneuvers both land, and an Enforcer gets its own and the other's; a mod the client marks
+    kCollective is tested without the source and lands once whoever casts it (two Protector Bots'
+    Force Shields give one shield's defense). The casters are the pets the build keeps out for sure:
+    not a temporary one (Gang War's posse), a maybe or one made from a fallen henchman;
+  - the Mastermind's powers that are switched on in the overview and reach friends or its pets
+    (Leadership, its secondary's shields and auras, Supremacy, an upgrade's own buffs), at its
+    archetype's tables and slotting; one caster, so one copy each;
+  - pet aura IOs: a set bonus or unique piece's global power that affects "MyPet" (Edict of the
+    Master, Sovereign Right, Call to Arms, Expedient Reinforcement, Command of the Mastermind, Mark
+    of Supremacy, and Homecoming's set bonuses, whose Affected mods are their share for pets), at
+    the character's tables, unenhanced. Every earned copy of a set bonus counts, as it does for the
+    character (the rule of 5 leaves out the rest): each is a power of its own. A unique piece's
+    global counts once.
+
+  Every aura's range is taken as met, and a pet as the one a targeted buff is aimed at (it gets the
+  groups only for the main target, and none only for others). Tests of the pet as the target read its
+  villain def, its group (`group target> MastermindPets eq`: Supremacy's +25% damage, +10% to hit,
+  +10% resistance to every type and +10% area defense reach henchmen only), its class and its combat
+  level; a mod's delayed requirement (DelayedRequires) is tested too, with any distance taken as 0
+  and any tag the pet has (`target.HasTag?`) answered 0, so Supremacy's extra to-hit for henchmen of
+  combat level 23 or lower (FullHenchman) and its pull past 60 ft are left out. Each source is named
+  with its owner: "Maneuvers" (the pet's own), "Maneuvers (Enforcers x2)", "Maneuvers (yours)".
+
+Thunderspy's cards follow the same rules, which no one has checked in its client or in game. The
+Homecoming wiki's set pages (checked 2026-11-18) agree with every henchman's attacks and upgrades;
+where they differ, the data is followed. Thugs' Pistols, Dual Wield and Empty Clips, once Gang War
+is owned at level 18, also summon a posse member (`Pets_Thug_Pose_06`, `PL_FightPreferRanged`,
+CopyBoosts) for 35 s in a hidden Street Cred group, as their own help text says ("summon a Pose to
+fight by your side"; it says up to 30 s): a GlobalChanceMod of -100 on the group's own tag
+(StreetCred1, 2, 3) for 30 s holds each power to once every 30 s, and the Street Cred power it
+executes adds 9% a stack to the StreetCred tag.
+
+Level 50, Homecoming i28p4, both upgrades: a Battle Drone has 578.28 hit points and 18.75% lethal,
+cold and psionic resistance (Equip Robot's Resistance); its Laser Burst does 3 x 0.334 x
+Ranged_Damage of Class_Henchman_Minion.
+
 ## Tag modes (power info)
 
 The live clients' power info (power_AddEffects, with getChanceModString and getChanceModValue:
