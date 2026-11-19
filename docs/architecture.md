@@ -312,14 +312,18 @@ switch says so (`petPowerOn`: `Build.petOn`, else `petPowerDefault`: autos, togg
 buff that lasts at least its recharge on).
 The totals list the pets (`PetRow`, `src/ui/components/PetCard.tsx`); a click opens the pet pane
 (`usePetPane`, `PetPaneLayer`, drawn by the overview and the side totals): the stats in the totals'
-own panel (`TotalsPanel` with `nonZero`, only the rows that aren't zero, and a Powers section
-first), the attacks with their damage types, and a switch on each power that can move a stat
-(`buffsPets`, drawn with the overview's `OnSwitch`; the overview's pane only). A power's name shows its
-power info on hover or keyboard focus (`useHover.petPower`), a long press on a phone
-(`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
+own panel (`TotalsPanel` with `nonZero`, only the rows that aren't zero, and a Powers section first,
+under a line per making power: "Battle Drones: x3 (Level 19)"), and a switch on each power that can
+move a stat (`buffsPets`, drawn with the overview's `OnSwitch`; the overview's pane only), every
+other power one that does nothing, drawn like the rest so the names line up and greyed out under the
+pointer. Attacks and other powers read alike: the name, then the power info's effect lines. A
+power's name shows its power info on hover or keyboard focus (`useHover.petPower`), a long press on
+a phone (`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
 (`Floating`'s `lock`, `lockedTurn`), so the pane under it never scrolls away, and one that fits lets
 the pane scroll. The pane closes on Escape or a click outside it, holds the keyboard focus while
-open, and stays open when the window crosses between the phone and desktop layouts.
+open, and stays open when the window crosses between the phone and desktop layouts. A pet's name in
+the totals glows under the pointer. A heading's lettering (`TitleText`) lets clicks through to the
+line under it, which its fill reaches over.
 The engine is pure and synchronous; keep React and the DOM out of it.
 
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per

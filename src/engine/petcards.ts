@@ -26,7 +26,7 @@ import type { GameData } from '../data/gamedata.ts';
 import type { Archetype, Effect, HenchmenFile, Mod, PetKind, PetMake, Power } from '../data/types.ts';
 import type { Build } from './build.ts';
 import { powerStrength } from './enhance.ts';
-import { petStats, damageTypes, type FieldPet, type OwnerPower, type PetStatsInput } from './petstats.ts';
+import { petStats, type FieldPet, type OwnerPower, type PetStatsInput } from './petstats.ts';
 import { powerInfo, prettyDuration, type BaseAndEnhanced, type InfoEffect, type RunAs } from './powerinfo.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
@@ -42,7 +42,7 @@ export interface PetAttack {
   cast: number; // activation time in seconds
   recharge: BaseAndEnhanced; // seconds
   dpa: BaseAndEnhanced; // damage per second of casting (damage / cast); 0 without a cast time
-  types: string[]; // the damage types it deals ("Energy")
+  lines: InfoEffect[]; // what it does, as the power info's effect lines give it ("3 Ticks of 2.28 energy damage")
   users?: number; // how many of the card's pets have it, when not all do (Gang War's posse each carry one weapon)
   when?: string; // the condition it needs, for a power granted only then ("while its Rage is above 0.5")
 }
@@ -576,7 +576,7 @@ function card(gd: GameData, file: HenchmenFile, at: Archetype, v: Variant, level
         cast: num.cast,
         recharge: num.recharge,
         dpa: { base: dpa(num.damage.base), enh: dpa(num.damage.enh) },
-        types: damageTypes(gd, p),
+        lines: info.effects,
         ...(when ? { when } : {}),
       });
       continue;

@@ -3,9 +3,9 @@ import { create } from 'zustand';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Archetype, Power } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
-import { makesPets, petEntries, type PetAttack, type PetCard, type PetEntry, type PetSource } from '../../engine/petcards.ts';
+import { makesPets, petEntries, type PetCard, type PetEntry, type PetSource } from '../../engine/petcards.ts';
 import { buffsPets, petPowerOn } from '../../engine/petstats.ts';
-import { INFO_LABEL_COLOR, powerInfo, prettyDuration, type BaseAndEnhanced } from '../../engine/powerinfo.ts';
+import { INFO_LABEL_COLOR, powerInfo, prettyDuration, type InfoEffect } from '../../engine/powerinfo.ts';
 import type { BuildRules } from '../../engine/rules.ts';
 import { useTipLevel } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
@@ -25,7 +25,6 @@ import { TotalsPanel, type SectionMemory } from './TotalsPanel.tsx';
 
 const NONE: readonly PetEntry[] = [];
 const noSubscribe = () => () => undefined;
-const DAMAGE = '#ff4b4b'; // the power info's damage color (power_AddBaseStats)
 const NOTE = '#aaaa88'; // its note color
 const W = 760; // a pet power's tooltip width (the Advanced tooltip's)
 const MARK_W = 20; // the totals rows' +/- column (TotalsPanel), so a pet's name lines up with theirs
@@ -70,13 +69,6 @@ let paneHosts = 0;
 // that fits the attacks' five columns; no client screen has such a pane
 const PANE = { x: 520, y: 90, w: 960, h: 940 };
 
-const f2 = (n: number) => n.toFixed(2);
-
-/** @return "enhanced (base)" when they differ, else the one value, as the power info writes them. */
-function pair(v: BaseAndEnhanced, fmt: (n: number) => string): string {
-  return Math.abs(v.enh - v.base) > 1e-9 ? `${fmt(v.enh)} (${fmt(v.base)})` : fmt(v.base);
-}
-
 /** @return How many a row's pets are: the sure ones, and how many more may come ("x6 (+7)", "up to 2"). */
 export function petCount(sources: readonly PetSource[]): string {
   const sure = sources.reduce((t, s) => t + s.count, 0);
@@ -85,15 +77,15 @@ export function petCount(sources: readonly PetSource[]): string {
   return `x${sure}${extra ? ` (+${extra})` : ''}`;
 }
 
-/** @return A source's line: the power, whom it is used on, how many, over and for how long. */
+/** @return A source's line: the power, whom it is used on, how many, over and for how long ("Battle Drones: x3"). */
 function sourceText(s: PetSource): string {
-  const n = s.count ? `${s.count}${s.extra ? ` (up to ${s.extra} more)` : ''}` : `up to ${s.extra}`;
+  const n = s.count ? `x${s.count}${s.extra ? ` (up to ${s.extra} more)` : ''}` : `up to ${s.extra}`;
   return `${s.from}${s.on ? ` on a ${s.on}` : ''}: ${n}${s.over ? ` over ${prettyDuration(s.over)}` : ''}${s.dur ? `, for ${prettyDuration(s.dur)}` : ''}`;
 }
 
 /**
- * A pet's row in the totals' Pets and Minions section: its name and how many the build makes. A
- * click (a tap on a phone) opens its pane (PetPaneLayer).
+ * A pet's row in the totals' Pets and Minions section: its name and how many the build makes. Its
+ * name glows under the pointer; a click (a tap on a phone) opens its pane (PetPaneLayer).
  *
  * @param props.entry The pet's row (its card is worked out when its pane opens).
  */
@@ -101,12 +93,15 @@ export function PetRow({ entry }: { entry: PetEntry }) {
   const open = () => usePetPane.setState({ key: entry.key });
   return (
     <div
+      className="pet-row"
       data-testid={`pet:${entry.key}`}
       onClick={open}
       {...pressKeys(open, undefined, `${entry.name} ${petCount(entry.sources)}`)}
       style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', cursor: 'pointer' }}
     >
-      <span style={{ paddingLeft: MARK_W }}>{entry.name}</span>
+      <span className="pet-name" style={{ paddingLeft: MARK_W }}>
+        {entry.name}
+      </span>
       <span>{petCount(entry.sources)}</span>
     </div>
   );
@@ -152,7 +147,7 @@ function PetPane({ gd, skin, entry, build, onSwitch }: { gd: GameData; skin: Ski
   // a phone keeps a strip above and below the pane, where a tap closes it
   const box = phone ? { x: 8, y: 64, w: stage.w - 16, h: stage.h - 150 } : PANE;
   const head = phone ? 30 : 34; // title size
-  const sub = 16 + 20 * (card.sources.length + 1); // the count, level and sources
+  const sub = 16 + 20 * card.sources.length; // a line per making power
   const top = 18 + head + 8 + sub;
   const zoom = phone ? 1.05 : 1.15;
   const inner = { left: 24, top, width: box.w - 56, height: box.h - top - 20 };
@@ -182,9 +177,9 @@ function PetPane({ gd, skin, entry, build, onSwitch }: { gd: GameData; skin: Ski
         <div className="abs body-text" style={{ left: 24, top: 18, width: box.w - 48 }}>
           <TitleText style={{ fontSize: head }}>{card.name}</TitleText>
           <div style={{ color: TIP.list, fontSize: 16, marginTop: 8, lineHeight: '20px' }}>
-            <div>{`${petCount(card.sources)}, level ${card.level + 1}`}</div>
+            {/* each making power and how many it makes; the level once ("Battle Drones: x3 (Level 19)") */}
             {card.sources.map((s, i) => (
-              <div key={i}>{sourceText(s)}</div>
+              <div key={i}>{`${sourceText(s)}${i ? '' : ` (Level ${card.level + 1})`}`}</div>
             ))}
           </div>
         </div>
@@ -232,8 +227,6 @@ function keepFocusIn(e: React.KeyboardEvent, box: HTMLElement | null): void {
   }
 }
 
-/** A heading inside the Powers section. */
-const SubHead = ({ text }: { text: string }) => <div style={{ color: TIP.name, marginTop: 6 }}>{text}</div>;
 
 /**
  * A pet power's name: the pointer over it shows the power's card (PetPowerTipLayer), and so does
@@ -275,102 +268,90 @@ function PowerName({ card, power, children }: { card: PetCard; power: Power; chi
 
 /**
  * A pet power's switch: whether it counts in the pets' stats (petPowerOn), drawn like the
- * overview's. Only a power that can move a stat (buffsPets) has one.
+ * overview's. Only a power that can move a stat (buffsPets) has a working one, and only in the
+ * overview's pane. Every other one does nothing: it is drawn like the rest (an attack lit, as the
+ * pet always uses it), so the names line up, and greys out under the pointer.
  */
 function PetSwitch({ gd, skin, power, build, onSwitch }: { gd: GameData; skin: Skin; power: Power; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
-  if (!onSwitch || !buffsPets(gd, power)) return <span style={{ display: 'inline-block', width: SWITCH + 8 }} />;
+  const box = { position: 'relative' as const, display: 'inline-block', width: SWITCH, height: SWITCH, marginRight: 8, verticalAlign: -SWITCH / 4, borderRadius: SWITCH / 2 };
+  if (!onSwitch || !buffsPets(gd, power)) {
+    const shown = buffsPets(gd, power) ? petPowerOn(gd, build, power) : true;
+    return (
+      <span aria-hidden className="inert-switch" style={box}>
+        <span className="inert-normal">
+          <OnSwitch skin={skin} on={shown} size={SWITCH} />
+        </span>
+        <span className="inert-gray">
+          <OnSwitch skin={skin} on={false} size={SWITCH} gray />
+        </span>
+      </span>
+    );
+  }
   const on = petPowerOn(gd, build, power);
   const flip = () => onSwitch(power, !on);
   return (
     <span
+      className="switch-hover"
       data-testid={`petswitch:${power.n}`}
       title={on ? "Counted in the pets' stats (click to leave it out)" : "Not counted in the pets' stats (click to count it)"}
       onClick={flip}
       {...pressKeys(flip, undefined, on ? "Counted in the pets' stats" : "Not counted in the pets' stats")}
       aria-pressed={on}
-      style={{ position: 'relative', display: 'inline-block', width: SWITCH, height: SWITCH, marginRight: 8, verticalAlign: -SWITCH / 4, borderRadius: SWITCH / 2, cursor: 'pointer' }}
+      style={{ ...box, cursor: 'pointer' }}
     >
       <OnSwitch skin={skin} on={on} size={SWITCH} />
     </span>
   );
 }
 
-/** One attack's row: name (its damage types under it), damage, cast, recharge and damage per activation. */
-function AttackRow({ gd, skin, card, a, build, onSwitch }: { gd: GameData; skin: Skin; card: PetCard; a: PetAttack; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
-  const click = a.type === 'Click';
+/**
+ * One power in the Powers section: its switch (when it can move a stat), its name (its card on
+ * hover), how many of the pets have it and the condition it needs, then what it does.
+ */
+function PowerBlock({ gd, skin, card, power, name, when, lines, build, onSwitch }: { gd: GameData; skin: Skin; card: PetCard; power: Power; name: string; when?: string; lines: readonly InfoEffect[]; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
   return (
-    <>
+    <div style={{ marginTop: 6 }}>
       <div>
-        <PetSwitch gd={gd} skin={skin} power={a.power} build={build} onSwitch={onSwitch} />
-        <PowerName card={card} power={a.power}>
-          {a.users ? `${a.name} (${a.users} of them)` : a.name}
+        <PetSwitch gd={gd} skin={skin} power={power} build={build} onSwitch={onSwitch} />
+        <PowerName card={card} power={power}>
+          <span style={{ color: INFO_LABEL_COLOR }}>{name}</span>
         </PowerName>
-        {a.types.length ? <div style={{ color: INFO_LABEL_COLOR, fontSize: '0.85em', paddingLeft: SWITCH + 8 }}>{a.types.join(', ')}</div> : null}
-        {a.when ? <div style={{ color: NOTE, fontStyle: 'italic', paddingLeft: SWITCH + 8 }}>{a.when}</div> : null}
       </div>
-      <div style={{ color: DAMAGE, textAlign: 'right' }}>{pair(a.damage, f2)}</div>
-      <div style={{ textAlign: 'right' }}>{click ? prettyDuration(a.cast) : ''}</div>
-      <div style={{ textAlign: 'right' }}>{click ? pair(a.recharge, prettyDuration) : ''}</div>
-      <div style={{ color: DAMAGE, textAlign: 'right' }}>{click && a.cast > 0 ? pair(a.dpa, f2) : ''}</div>
-    </>
+      <div style={{ paddingLeft: SWITCH + 8 }}>
+        {when ? <div style={{ color: NOTE, fontStyle: 'italic' }}>{when}</div> : null}
+        {lines.map((l, j) => (
+          <Fragment key={j}>
+            <div>
+              <Segs segs={l.line} />
+            </div>
+            {l.notes.map((n, k) => (
+              <div key={k} style={{ fontStyle: 'italic', color: NOTE }}>
+                <Segs segs={n} />
+              </div>
+            ))}
+          </Fragment>
+        ))}
+      </div>
+    </div>
   );
 }
 
 /**
- * The pet pane's Powers section: its attacks (damage per activation, enhanced by the summon's
- * slotting with the base in parentheses, and the damage types) and what its other powers do, each
+ * The pet pane's Powers section: its attacks, then its other powers, each with what it does (the
+ * power info's effect lines, enhanced by the summon's slotting with the base in parentheses), its
  * name showing the power's card on hover, and a switch on each power that can move a stat.
  */
 function PetPowers({ gd, skin, card, build, onSwitch }: { gd: GameData; skin: Skin; card: PetCard; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
   const stage = useStage();
+  const shared = { gd, skin, card, build, onSwitch };
   return (
     <div style={{ paddingLeft: MARK_W, fontSize: stage.phone ? 14 : 16 }}>
-      {card.attacks.length ? (
-        <>
-          <SubHead text="Attacks" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', columnGap: stage.phone ? 8 : 14 }}>
-            {/* the power info's own rows, shortened: Average Damage, Activation Time, Recharge Time, Damage Per Activation Time */}
-            {['', 'Damage', 'Activation', 'Recharge', 'Per Act. Time'].map((h, i) => (
-              <div key={i} style={{ color: INFO_LABEL_COLOR, textAlign: i ? 'right' : 'left' }}>
-                {h}
-              </div>
-            ))}
-            {card.attacks.map((a, i) => (
-              <AttackRow key={i} gd={gd} skin={skin} card={card} a={a} build={build} onSwitch={onSwitch} />
-            ))}
-          </div>
-        </>
-      ) : null}
-      {card.powers.length ? (
-        <>
-          <SubHead text="Other Powers" />
-          {card.powers.map((p, i) => (
-            <div key={i} style={{ marginTop: i ? 6 : 0 }}>
-              <div>
-                <PetSwitch gd={gd} skin={skin} power={p.power} build={build} onSwitch={onSwitch} />
-                <PowerName card={card} power={p.power}>
-                  <span style={{ color: INFO_LABEL_COLOR }}>{p.name}</span>
-                </PowerName>
-              </div>
-              <div style={{ paddingLeft: SWITCH + 8 }}>
-                {p.when ? <div style={{ color: NOTE, fontStyle: 'italic' }}>{p.when}</div> : null}
-                {p.lines.map((l, j) => (
-                  <Fragment key={j}>
-                    <div>
-                      <Segs segs={l.line} />
-                    </div>
-                    {l.notes.map((n, k) => (
-                      <div key={k} style={{ fontStyle: 'italic', color: NOTE }}>
-                        <Segs segs={n} />
-                      </div>
-                    ))}
-                  </Fragment>
-                ))}
-              </div>
-            </div>
-          ))}
-        </>
-      ) : null}
+      {card.attacks.map((a, i) => (
+        <PowerBlock key={`a${i}`} {...shared} power={a.power} name={a.users ? `${a.name} (${a.users} of them)` : a.name} when={a.when} lines={a.lines} />
+      ))}
+      {card.powers.map((p, i) => (
+        <PowerBlock key={`p${i}`} {...shared} power={p.power} name={p.name} when={p.when} lines={p.lines} />
+      ))}
     </div>
   );
 }

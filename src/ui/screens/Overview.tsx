@@ -435,7 +435,7 @@ export function Overview({ skin }: { skin: Skin }) {
           items.push(
             <div
               key={`${e.key}:on`}
-              className="abs"
+              className="abs switch-hover"
               title={on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
               onClick={toggleOn}
               {...pressKeys(toggleOn, undefined, on ? 'Counted in totals' : 'Not counted in totals')}

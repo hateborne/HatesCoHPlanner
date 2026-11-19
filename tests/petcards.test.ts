@@ -461,9 +461,8 @@ describe("what lands on a pet (the pet pane's stats)", () => {
     expect([...perLine.keys()]).toEqual([2]);
   });
 
-  it("says what each attack deals, and which powers can move a stat (the pane's switches)", () => {
+  it("says which powers can move a stat (the pane's switches)", () => {
     const drone = card(cards(mastermind('Robotics')), 'Battle Drone');
-    expect(attack(drone, 'Laser Burst')!.types).toEqual(['Energy']);
     expect(buffsPets(gd, attack(drone, 'Laser Burst')!.power)).toBe(false);
     expect(buffsPets(gd, gd.henchmen!.powers['Mastermind_Pets.Thug_Lt.Maneuvers']!)).toBe(true);
     expect(buffsPets(gd, gd.henchmen!.powers['Mastermind_Pets.Protector.Force_Shield']!)).toBe(true);

@@ -293,31 +293,3 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   }
   return { ...finishTotals(gd, classTables(gd, file, pet.cls), level, book), setGroups: [], bonusesOver5: 0, endUsePerSec: endUse, bonuses: [] };
 }
-
-/**
- * The damage types a pet's attack deals: its mods that take hit points from the affected, by type.
- *
- * @param gd Game data (attribute names).
- * @param p The attack.
- * @return The types' names in the order the power first deals each ("Energy", "Smashing").
- */
-export function damageTypes(gd: GameData, p: Power): string[] {
-  const hp = gd.attribByName.get('HitPoints') ?? 80;
-  const out: string[] = [];
-  const walk = (effs: Effect[] | undefined) => {
-    for (const e of effs ?? []) {
-      for (const m of e.m ?? []) {
-        if (m.tg !== 'Affected' || m.asp !== 'Absolute') continue;
-        for (const a of m.a) {
-          if (a < 0 || a >= hp || a % 4 !== 0) continue;
-          const name = gd.core.attribNames.Damage[a / 4]?.dn.replace(/_/g, ' ');
-          if (name && !out.includes(name)) out.push(name);
-        }
-      }
-      walk(e.sub);
-    }
-  };
-  walk(p.eff);
-  walk(p.act);
-  return out;
-}
