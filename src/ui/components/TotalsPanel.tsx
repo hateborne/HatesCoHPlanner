@@ -1,7 +1,9 @@
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useState, type ReactElement, type ReactNode } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
+import type { PetEntry } from '../../engine/petcards.ts';
 import { MEZ, type ChanceSource, type SetBonusStat, type StatLine, type Totals } from '../../engine/totals.ts';
 import { TitleText } from './GameText.tsx';
+import { PetRow } from './PetCard.tsx';
 
 const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
 const DEF_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 1, 0, 2]; // Smash, Lethal, Fire, Cold, Energy, Neg, Psi, Toxic, Melee, Ranged, AoE
@@ -128,14 +130,23 @@ function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, deta
 
 // section open / closed state, remembered per browser; Base starts open, the rest closed
 const OPEN_KEY = 'hcp.totals.sections';
-function readOpen(): Record<string, boolean> {
+const OPEN_DEFAULT: Record<string, boolean> = { base: true };
+
+/**
+ * Read a panel's remembered section state.
+ *
+ * @param key Its localStorage key.
+ * @param dflt The state when none is remembered (or the remembered value is damaged).
+ * @return Section id -> open.
+ */
+function readOpen(key: string, dflt: Record<string, boolean>): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(OPEN_KEY);
+    const raw = localStorage.getItem(key);
     const v: unknown = raw ? JSON.parse(raw) : null;
     // anything but a plain object (a corrupted value) falls back to the default
-    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, boolean>) : { base: true };
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, boolean>) : dflt;
   } catch {
-    return { base: true };
+    return dflt;
   }
 }
 
@@ -171,9 +182,24 @@ export function HeadMark({ open, size = 20 }: { open: boolean; size?: number }) 
 /** A set bonus stat's value in its unit. */
 const statText = (s: SetBonusStat) => (s.unit === '%' ? pct(s.value) : s.unit === 'ft' ? `${s.value.toFixed(1)} ft` : s.value.toFixed(2));
 
+/** A section put ahead of the totals' own (the pet pane's Powers). */
+export interface LeadSection {
+  id: string;
+  title: string;
+  body: () => ReactNode;
+}
+
+/** How a panel remembers its sections: its storage key and the state it starts with. */
+export interface SectionMemory {
+  key: string;
+  dflt: Record<string, boolean>;
+}
+
 /**
  * Totals in collapsible sections (Base, Movement, Damage Resistance, Defense, Debuff Resistance,
- * Status Protection, Status Resistance, Set Bonuses), every line expandable into its sources.
+ * Status Protection, Status Resistance, Pets and Minions, Set Bonuses), every line expandable into
+ * its sources. Pets and Minions lists each kind of pet the build makes; a click opens its pane
+ * (PetPaneLayer). A build that makes none has no such section.
  * A value above its stat's neutral value is green, below it red; positive numbers carry no sign;
  * a value past its archetype cap reads "cap (actual)", the actual 20% darker. Set Bonuses lists
  * each set with the piece counts of every power where it earns a bonus (two or more pieces) and its
@@ -182,14 +208,36 @@ const statText = (s: SetBonusStat) => (s.unit === '%' ? pct(s.value) : s.unit ==
  * (Shield Wall's 20% chance of teleport resistance) adds nothing to its line's value, which reads
  * "0.00% (*)"; it is listed under "Chance", after the line's other sources. Section state is
  * remembered per browser.
+ *
+ * @param props.lead A section ahead of the rest (the pet pane's Powers).
+ * @param props.nonZero Show only the rows whose value isn't zero, and no section left empty (a
+ *   pet's stats).
+ * @param props.memory Where the section state is remembered (default: the build's totals').
  */
-export const TotalsPanel = memo(function TotalsPanel({ gd, t, width }: { gd: GameData; t: Totals; width: number }) {
-  const [openSec, setOpenSec] = useState(readOpen);
+export const TotalsPanel = memo(function TotalsPanel({
+  gd,
+  t,
+  width,
+  pets,
+  lead,
+  nonZero,
+  memory,
+}: {
+  gd: GameData;
+  t: Totals;
+  width: number;
+  pets?: readonly PetEntry[];
+  lead?: LeadSection;
+  nonZero?: boolean;
+  memory?: SectionMemory;
+}) {
+  const mem = memory ?? { key: OPEN_KEY, dflt: OPEN_DEFAULT };
+  const [openSec, setOpenSec] = useState(() => readOpen(mem.key, mem.dflt));
   const toggle = (id: string) => {
     const next = { ...openSec, [id]: !openSec[id] };
     setOpenSec(next);
     try {
-      localStorage.setItem(OPEN_KEY, JSON.stringify(next));
+      localStorage.setItem(mem.key, JSON.stringify(next));
     } catch {
       /* storage unavailable: the state just isn't remembered */
     }
@@ -203,15 +251,26 @@ export const TotalsPanel = memo(function TotalsPanel({ gd, t, width }: { gd: Gam
   /** @return The uncapped percentage of a line past its cap, else undefined. */
   const overPct = (k: string, add = 0) => (capped(k) ? pct(add + L(k)!.value) : undefined);
   const dn = gd.core.attribNames;
-  const section = (id: string, title: string, body: () => ReactNode) => (
-    <div key={id}>
-      <div onClick={() => toggle(id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', marginTop: 8 }} title={openSec[id] ? 'Click to collapse' : 'Click to expand'}>
-        <HeadMark open={!!openSec[id]} />
-        <TitleText style={{ fontSize: 20 }}>{title}</TitleText>
+  /** @return A row, or null when it reads zero and only nonzero rows show. */
+  const row = (zero: number, props: RowProps & { key?: string }): ReactElement | null => {
+    if (nonZero && Math.abs(zero) < EPS) return null;
+    const { key, ...rest } = props;
+    return <Row key={key ?? props.label} {...rest} />;
+  };
+  const section = (id: string, title: string, rows: () => ReactNode) => {
+    const body = rows();
+    // a pet's stats show no section with nothing in it
+    if (nonZero && Array.isArray(body) && !body.some(Boolean)) return null;
+    return (
+      <div key={id}>
+        <div onClick={() => toggle(id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', marginTop: 8 }} title={openSec[id] ? 'Click to collapse' : 'Click to expand'}>
+          <HeadMark open={!!openSec[id]} />
+          <TitleText style={{ fontSize: 20 }}>{title}</TitleText>
+        </div>
+        {openSec[id] ? body : null}
       </div>
-      {openSec[id] ? body() : null}
-    </div>
-  );
+    );
+  };
 
   const hp = t.hpMax.toFixed(1);
   const regen = `${t.regenPerSec.toFixed(2)}/s`;
@@ -222,103 +281,102 @@ export const TotalsPanel = memo(function TotalsPanel({ gd, t, width }: { gd: Gam
   const regenOver = past(t.regenPerSecRaw, t.regenPerSec, `${t.regenPerSecRaw.toFixed(2)}/s`);
   const recovOver = past(t.recovPerSecRaw, t.recovPerSec, `${t.recovPerSecRaw.toFixed(2)}/s`);
   const ft = (x: number) => `${x.toFixed(1)} ft`;
-  const speed = (label: string, key: string, mult: number) => (
-    <Row label={label} value={`${(mult * MPH).toFixed(2)} mph`} openValue={`${(mult * MPH).toFixed(2)} mph (${pct(mult)})`} tone={v(key)} line={L(key)} />
-  );
+  const speed = (label: string, key: string, mult: number) =>
+    row(mult, { label, value: `${(mult * MPH).toFixed(2)} mph`, openValue: `${(mult * MPH).toFixed(2)} mph (${pct(mult)})`, tone: v(key), line: L(key) });
   // the strongest of several lines (defense debuff resistance is given per defense type)
   const strongest = (prefix: RegExp): StatLine | undefined => {
     let best: StatLine | undefined;
     for (const l of t.lines.values()) if (prefix.test(l.key) && (!best || l.value > best.value)) best = l;
     return best;
   };
-  const resRow = (label: string, l: StatLine | undefined) => <Row key={label} label={label} value={pct(l?.value ?? 0)} tone={l?.value ?? 0} line={l} />;
+  const resRow = (label: string, l: StatLine | undefined) => row(l?.value || (l?.chances?.length ?? 0), { label, value: pct(l?.value ?? 0), tone: l?.value ?? 0, line: l });
   const mezKeys = Object.keys(MEZ);
+  const hasSets = t.setGroups.length > 0 || t.bonusesOver5 > 0;
 
   return (
     <div className="body-text" style={{ width, fontSize: 16, lineHeight: 1.3 }}>
-      {section('base', 'Base', () => (
-        <>
-          <Row label="Max HP" value={hp} openValue={`${hp} (${pct(t.hpMax / t.hpBase)})`} tone={t.hpMax - t.hpBase} over={hpOver} line={L('hp')} cap={!!hpOver} />
-          <Row label="Max End" value={t.endMax.toFixed(1)} tone={v('endmax')} line={L('endmax')} />
-          <Row label="Regeneration" value={regen} openValue={`${regen} (${pct(1 + v('regen'))})`} tone={v('regen')} over={regenOver} line={L('regen')} cap={!!regenOver} />
-          <Row label="Recovery" value={recov} openValue={`${recov} (${pct(1 + v('recov'))})`} tone={v('recov')} over={recovOver} line={L('recov')} cap={!!recovOver} />
-          {/* recovery minus what the running toggles drain; expands into each toggle's cost */}
-          <Row
-            label="End Balance"
-            value={`${bal.toFixed(2)}/s`}
-            openValue={`${bal.toFixed(2)}/s (${t.recovPerSec.toFixed(2)} - ${t.endUsePerSec.toFixed(2)})`}
-            tone={bal}
-            line={L('enduse')}
-            fmt={(x) => `${x.toFixed(2)}/s`}
-          />
-          <Row label="Recharge" value={pct(v('rech'))} tone={v('rech')} over={overPct('rech')} line={L('rech')} cap={capped('rech')} />
-          <Row label="Damage" value={pct(v('dmg.00'))} tone={v('dmg.00')} over={overPct('dmg.00')} line={L('dmg.00')} cap={capped('dmg.00')} />
-          <Row label="Accuracy" value={pct(v('acc'))} tone={v('acc')} line={L('acc')} />
-          <Row label="ToHit" value={pct(v('tohit'))} tone={v('tohit')} line={L('tohit')} />
-          <Row label="End Discount" value={pct(v('endrdx'))} tone={v('endrdx')} line={L('endrdx')} />
-          <Row label="Healing" value={pct(v('heal'))} tone={v('heal')} line={L('heal')} />
-          <Row label="Range" value={pct(v('range'))} tone={v('range')} line={L('range')} />
-          <Row label="Perception" value={`${t.perception.toFixed(0)} ft`} tone={v('perc')} line={L('perc')} />
-          <Row label="Stealth (PvE)" value={`${v('stealth').toFixed(0)} ft`} tone={v('stealth')} line={L('stealth')} fmt={ft} />
-        </>
-      ))}
-      {section('movement', 'Movement', () => (
-        <>
-          {speed('Running Speed', 'run', t.speeds.run)}
-          {speed('Flying Speed', 'fly', t.speeds.fly)}
-          {speed('Jumping Speed', 'jumpspd', t.speeds.jump)}
-          <Row label="Max Jump Height" value={`${(t.speeds.jumpHeight * 4).toFixed(2)} ft`} openValue={`${(t.speeds.jumpHeight * 4).toFixed(2)} ft (${pct(t.speeds.jumpHeight)})`} tone={v('jumph')} line={L('jumph')} />
-        </>
-      ))}
+      {lead ? section(lead.id, lead.title, lead.body) : null}
+      {section('base', 'Base', () => [
+        row(t.hpMax, { label: 'Max HP', value: hp, openValue: `${hp} (${pct(t.hpMax / t.hpBase)})`, tone: t.hpMax - t.hpBase, over: hpOver, line: L('hp'), cap: !!hpOver }),
+        row(t.endMax, { label: 'Max End', value: t.endMax.toFixed(1), tone: v('endmax'), line: L('endmax') }),
+        row(t.regenPerSec, { label: 'Regeneration', value: regen, openValue: `${regen} (${pct(1 + v('regen'))})`, tone: v('regen'), over: regenOver, line: L('regen'), cap: !!regenOver }),
+        row(t.recovPerSec, { label: 'Recovery', value: recov, openValue: `${recov} (${pct(1 + v('recov'))})`, tone: v('recov'), over: recovOver, line: L('recov'), cap: !!recovOver }),
+        // recovery minus what the running toggles drain; expands into each toggle's cost
+        row(bal, {
+          label: 'End Balance',
+          value: `${bal.toFixed(2)}/s`,
+          openValue: `${bal.toFixed(2)}/s (${t.recovPerSec.toFixed(2)} - ${t.endUsePerSec.toFixed(2)})`,
+          tone: bal,
+          line: L('enduse'),
+          fmt: (x) => `${x.toFixed(2)}/s`,
+        }),
+        row(v('rech'), { label: 'Recharge', value: pct(v('rech')), tone: v('rech'), over: overPct('rech'), line: L('rech'), cap: capped('rech') }),
+        row(v('dmg.00'), { label: 'Damage', value: pct(v('dmg.00')), tone: v('dmg.00'), over: overPct('dmg.00'), line: L('dmg.00'), cap: capped('dmg.00') }),
+        row(v('acc'), { label: 'Accuracy', value: pct(v('acc')), tone: v('acc'), line: L('acc') }),
+        row(v('tohit'), { label: 'ToHit', value: pct(v('tohit')), tone: v('tohit'), line: L('tohit') }),
+        row(v('endrdx'), { label: 'End Discount', value: pct(v('endrdx')), tone: v('endrdx'), line: L('endrdx') }),
+        row(v('heal'), { label: 'Healing', value: pct(v('heal')), tone: v('heal'), line: L('heal') }),
+        row(v('range'), { label: 'Range', value: pct(v('range')), tone: v('range'), line: L('range') }),
+        row(t.perception, { label: 'Perception', value: `${t.perception.toFixed(0)} ft`, tone: v('perc'), line: L('perc') }),
+        row(v('stealth'), { label: 'Stealth (PvE)', value: `${v('stealth').toFixed(0)} ft`, tone: v('stealth'), line: L('stealth'), fmt: ft }),
+      ])}
+      {section('movement', 'Movement', () => [
+        speed('Running Speed', 'run', t.speeds.run),
+        speed('Flying Speed', 'fly', t.speeds.fly),
+        speed('Jumping Speed', 'jumpspd', t.speeds.jump),
+        row(t.speeds.jumpHeight, { label: 'Max Jump Height', value: `${(t.speeds.jumpHeight * 4).toFixed(2)} ft`, openValue: `${(t.speeds.jumpHeight * 4).toFixed(2)} ft (${pct(t.speeds.jumpHeight)})`, tone: v('jumph'), line: L('jumph') }),
+      ])}
       {section('resistance', 'Damage Resistance', () =>
         RES_ORDER.map((i) => {
           const k = `res.${String(i).padStart(2, '0')}`;
-          return <Row key={k} label={nice(dn.Damage[i]?.dn ?? '')} value={pct(v(k))} tone={v(k)} over={overPct(k)} line={L(k)} cap={capped(k)} />;
+          return row(v(k), { key: k, label: nice(dn.Damage[i]?.dn ?? ''), value: pct(v(k)), tone: v(k), over: overPct(k), line: L(k), cap: capped(k) });
         }),
       )}
       {section('defense', 'Defense', () =>
         DEF_ORDER.map((i) => {
           const k = `def.${String(i).padStart(2, '0')}`;
-          return <Row key={k} label={nice(dn.Defense[i]?.dn ?? '')} value={pct(v(k))} tone={v(k)} over={overPct(k)} line={L(k)} cap={capped(k)} />;
+          return row(v(k), { key: k, label: nice(dn.Defense[i]?.dn ?? ''), value: pct(v(k)), tone: v(k), over: overPct(k), line: L(k), cap: capped(k) });
         }),
       )}
-      {section('debuff', 'Debuff Resistance', () => (
-        <>
-          {resRow('Regeneration', L('resx.Regeneration'))}
-          {resRow('Recovery', L('resx.Recovery'))}
-          {resRow('ToHit', L('resx.ToHit'))}
-          {resRow('Recharge Time', L('resx.RechargeTime'))}
-          {resRow('Defense', strongest(/^resx\.Defense(Type\d+)?$/))}
-          {resRow('Endurance', L('resx.Endurance'))}
-          {resRow('Slow (Run/Fly Speed)', strongest(/^resx\.Speed(Running|Flying)$/))}
-        </>
-      ))}
+      {section('debuff', 'Debuff Resistance', () => [
+        resRow('Regeneration', L('resx.Regeneration')),
+        resRow('Recovery', L('resx.Recovery')),
+        resRow('ToHit', L('resx.ToHit')),
+        resRow('Recharge Time', L('resx.RechargeTime')),
+        resRow('Defense', strongest(/^resx\.Defense(Type\d+)?$/)),
+        resRow('Endurance', L('resx.Endurance')),
+        resRow('Slow (Run/Fly Speed)', strongest(/^resx\.Speed(Running|Flying)$/)),
+      ])}
       {section('protection', 'Status Protection', () =>
         mezKeys.map((a) => {
           const k = `mezprot.${a}`;
-          return <Row key={k} label={MEZ[a]!} value={v(k).toFixed(1)} tone={v(k)} line={L(k)} fmt={(x) => x.toFixed(2)} />;
+          // a line with only a chance source reads zero: it still shows, with its (*)
+          return row(v(k) || (L(k)?.chances?.length ?? 0), { key: k, label: MEZ[a]!, value: v(k).toFixed(1), tone: v(k), line: L(k), fmt: (x) => x.toFixed(2) });
         }),
       )}
       {section('statusres', 'Status Resistance', () => mezKeys.map((a) => resRow(MEZ[a]!, L(`mezres.${a}`))))}
-      {section('sets', 'Set Bonuses', () => (
-        <>
-          {t.setGroups.length === 0 ? <Row label="No set bonuses yet" value="" /> : null}
-          {t.setGroups.map((g) => (
-            <Row
-              key={g.set.id}
-              label={`${g.set.dn} ${g.counts.map((c) => `(${c})`).join(' ')}`}
-              value=""
-              detail={g.stats.map((s, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{s.label}</span>
-                  <span style={{ color: toneColor(s.value, SOURCE) }}>{statText(s)}</span>
-                </div>
+      {pets?.length ? section('pets', 'Pets and Minions', () => pets.map((c) => <PetRow key={c.key} entry={c} />)) : null}
+      {nonZero && !hasSets
+        ? null
+        : section('sets', 'Set Bonuses', () => (
+            <>
+              {t.setGroups.length === 0 ? <Row label="No set bonuses yet" value="" /> : null}
+              {t.setGroups.map((g) => (
+                <Row
+                  key={g.set.id}
+                  label={`${g.set.dn} ${g.counts.map((c) => `(${c})`).join(' ')}`}
+                  value=""
+                  detail={g.stats.map((s, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{s.label}</span>
+                      <span style={{ color: toneColor(s.value, SOURCE) }}>{statText(s)}</span>
+                    </div>
+                  ))}
+                />
               ))}
-            />
+              {t.bonusesOver5 > 0 ? <Row label="Over the rule of 5" value={String(t.bonusesOver5)} /> : null}
+            </>
           ))}
-          {t.bonusesOver5 > 0 ? <Row label="Over the rule of 5" value={String(t.bonusesOver5)} /> : null}
-        </>
-      ))}
     </div>
   );
 });

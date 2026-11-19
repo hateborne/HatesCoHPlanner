@@ -215,12 +215,14 @@ export function CheckBar(props: CheckBarProps) {
  * @param props.skin The current skin.
  * @param props.on Whether it is switched on.
  * @param props.size Its width and height (stage px).
+ * @param props.gray Drawn greyed out, as a bar that can't be chosen draws its box (a switch that
+ *   does nothing: the pet pane's powers that move no stat).
  */
-export function OnSwitch({ skin, on, size }: { skin: Skin; on: boolean; size: number }) {
-  const colors = on ? skin.selected : skin.standard;
+export function OnSwitch({ skin, on, size, gray = false }: { skin: Skin; on: boolean; size: number; gray?: boolean }) {
+  const colors = gray ? skin.unselectable : on ? skin.selected : skin.standard;
   return (
     <span style={{ position: 'absolute', left: size / 2, top: size / 2, width: 0, height: 0, pointerEvents: 'none' }}>
-      <CheckBox skin={skin} colors={colors} base={colors.base} sc={size / 32} down={on} gray={false} />
+      <CheckBox skin={skin} colors={colors} base={colors.base} sc={size / 32} down={on && !gray} gray={gray} />
     </span>
   );
 }

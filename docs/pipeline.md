@@ -141,10 +141,43 @@ effect lines a side per power. The owner uses it to know what to spot-check in t
 `report-thunderspy.md` ("Differences from Homecoming"); re-run it after a new release or a new
 Homecoming default.
 An older patch with no client files left can get an approximate version:
-`python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's
-available level from the configured Mids database (its header names the issue and page). The
-base's pets and info files are copied too (the info file renamed for the new version). Review
+`python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's available
+level from the configured Mids database (its header names the issue and page). The base's pets, real
+pets and info files are copied too (the info file renamed for the new version). Review
 `pipeline/report-<id>.md`, then commit `public/data` and the report through a pull request.
+
+## Real pets (the totals' Pets and Minions section and pet pane)
+
+Beside the pseudo-pets the run writes the version's real pets, `public/data/henchmen/<version>.json`
+(Thunderspy's in `public/data/thunderspy/henchmen/`; Exporter.build_henchmen): the pets the pets
+file leaves out because they run a power that isn't Auto (Mastermind henchmen, Phantom Army, a
+patron pool's summon, Voltaic Sentinel). Per power that makes one it keeps each EntCreate mod in the
+client's template order with what decides whether it spawns (its groups' requirements, and their
+chances multiplied: Battle Drones' second drone past combat level 5, Gang War's extra posse), when
+(its groups' and its own delay: Hell on Earth's one every 10 s) and how long it lasts. A pet's power
+that makes a real pet (Upgrade Robot's Seeker Drones) is kept the same way. Per pet: its name (the
+villain def's first display name, else the mod's own), villain def, class and powers as the client
+lists them, and its villain def's group (`grp`, by name from `villaingroups.bin`: Supremacy reaches
+the group `MastermindPets`; a client without that bin leaves every group empty). Each pet power is
+written whole and by name (no id is allocated), with what it executes and the pseudo-pets it makes
+(`pseudo`, as the pets file holds them). `collective` lists, per pet power (its own and those the
+version grants pets), the mods that stack once whoever casts them (CasterStackType kCollective: two
+Protector Bots' Force Shields give one shield's defense), by their place in the power. Per class:
+the attribute tables its stats read, as core.json's archetypes hold them (`base`, `min`, `max`,
+`maxMax`, `strMax`, `resMax`, cut to hit points, endurance, regeneration, recovery, movement,
+perception and the damage, recharge and resistance caps; a pet of an archetype's class has none:
+core.json has them), and the tables its pets' powers, and the powers the version grants to pets
+(Equip Robot's: a grant in a `<villain def> target.VillainName>` group), read. Upgrades themselves
+are not in the file: the planner reads them from the version's own powers. A pet power's `life` is
+its Lifetime (Materialization, the 15 s spawn shield), which the cards leave out of a pet's standing
+defense.
+
+`python -m pipeline.henchmen [--server S] [--game-version V]` writes only that file, for a version
+published before it existed, from the client the version was made from (`COH_CLIENT` pointing at a
+copy of an older client for an older version); any other client is refused. It changes no build and
+is not part of the version hash. The planner fetches it only for a build with a power that makes a
+pet, and a missing or damaged file only hides the Pets and Minions section. A real pets file is
+regenerated the same way when its format grows, as long as no deploy has published it.
 
 ## Recipes and salvage (the set finder's shopping list)
 

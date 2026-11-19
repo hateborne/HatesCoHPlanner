@@ -7,9 +7,12 @@
  * u8 on (0 default, 1 on, 2 off), varint slotCount, slots: u8 level, enh.
  * enh: varint boost (0 none), u8 flags (1 ioLevel, 2 rel, 4 boosters), then the flagged values.
  * Optional trailer: varint endLevel+1 (0: planned to 50), then the game version id as a string,
- * then varint respecTo+1 (0: a leveling build).
+ * then varint respecTo+1 (0: a leveling build), then, only for a build with a pet power switched
+ * in the pet pane, varint petCount and per switch the pet power's full name as a string and u8 on
+ * (1 on, 2 off).
  * Links made before the trailer end after the granted list or after endLevel; they open with
- * LEGACY_GAME_VERSION (the only data that existed then).
+ * LEGACY_GAME_VERSION (the only data that existed then). A link without pet switches ends after
+ * respecTo, as every link made before them does.
  * The code carries no game server: the link's address does (/HatesCoHPlanner/Homecoming/#b=...),
  * and a code with none in front of it is Homecoming's (serverInLink, serverFromPath).
  */
@@ -26,6 +29,9 @@ const VERSION = 1;
 const MAX_PICKS = 64;
 const MAX_SLOTS = 32;
 const MAX_GRANTED = 512;
+// a build switches a few pet powers; a pet power's full name is under 80 bytes
+const MAX_PET_SWITCHES = 64;
+const MAX_PET_NAME = 160;
 // a full level-50 build's code is under 1,000 characters
 const MAX_PAYLOAD = 64 * 1024;
 
@@ -114,6 +120,15 @@ export async function encodeShare(b: Build): Promise<string> {
   w.varint(b.endLevel === undefined ? 0 : b.endLevel + 1);
   w.netString(b.dataVersion);
   w.varint(b.respecTo === undefined ? 0 : b.respecTo + 1);
+  // written only when there are any, so every other build's link stays as it was
+  const pets = Object.entries(b.petOn ?? {});
+  if (pets.length) {
+    w.varint(pets.length);
+    for (const [name, on] of pets) {
+      w.netString(name);
+      w.u8(onCode(on));
+    }
+  }
   return toBase64Url(await streamBytes(w.done(), 'deflate', true));
 }
 
@@ -169,7 +184,32 @@ async function readShare(payload: string): Promise<Build> {
   const end = r.left > 0 ? r.varint() : 0;
   const dataVersion = r.left > 0 ? r.netString() : LEGACY_GAME_VERSION;
   const rs = r.left > 0 ? r.varint() : 0;
-  return { v: 1, dataVersion, name, at, origin, alignment, primary, secondary, picks, granted, exemplar: ex ? ex - 1 : undefined, endLevel: end ? end - 1 : undefined, ...(rs ? { respecTo: rs - 1 } : {}) };
+  // no prototype: a name from the link is only ever a key (checkBuild keeps the well-formed ones)
+  const petOn = Object.create(null) as Record<string, boolean>;
+  const pc = r.left > 0 ? count(r, MAX_PET_SWITCHES) : 0;
+  for (let i = 0; i < pc; i++) {
+    const len = r.varint();
+    if (len > MAX_PET_NAME) throw new RangeError(`pet power name ${len} bytes long`);
+    const pet = new TextDecoder().decode(r.bytes(len));
+    const on = onValue(r.u8());
+    if (on !== undefined) petOn[pet] = on;
+  }
+  return {
+    v: 1,
+    dataVersion,
+    name,
+    at,
+    origin,
+    alignment,
+    primary,
+    secondary,
+    picks,
+    granted,
+    exemplar: ex ? ex - 1 : undefined,
+    endLevel: end ? end - 1 : undefined,
+    ...(rs ? { respecTo: rs - 1 } : {}),
+    ...(Object.keys(petOn).length ? { petOn } : {}),
+  };
 }
 
 /** @return The full share link for a build, on its server's address. */

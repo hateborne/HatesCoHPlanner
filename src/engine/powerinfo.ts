@@ -10,7 +10,7 @@
  * tags), grouped into rows and effect sentences.
  */
 import type { GameData } from '../data/gamedata.ts';
-import type { Archetype, Effect, InfoNode, Mod, PetPower, Power } from '../data/types.ts';
+import type { Archetype, Effect, InfoNode, Mod, PetCreation, PetPower, Power } from '../data/types.ts';
 import { serverById } from '../data/servers.ts';
 import { infoRequires, type EvalContext } from './requires.ts';
 
@@ -689,6 +689,18 @@ export function tickCount(dur: number, per: number | undefined): number {
   return Math.min(MAX_TICKS, Math.floor(dur / (per ?? 1)) + 1);
 }
 
+/** Who runs a power that isn't the character's own: a real pet, with its class and its creator's. */
+export interface RunAs {
+  cls: string; // the class it runs with (its tables, `arch` requirements)
+  creator: string; // the class of the character that made it (`source.owner>` requirements)
+  // effect lines of the power itself to leave out, by mod and attribute (a pet card shows the pet's
+  // own resistance and defense in its rows); none: every line
+  omit?: (m: Mod, attrib: number) => boolean;
+  // leave out the flag notes ("Ignores buffs and enhancements", "Unresistable"): nearly every
+  // effect of a pet's own powers has them, and a card has no room for them
+  noFlagNotes?: boolean;
+}
+
 /**
  * Build the detailed-info content of a power, PvE, with enhanced and (base) values.
  *
@@ -698,6 +710,9 @@ export function tickCount(dur: number, per: number | undefined): number {
  * @param level 0-based character level (the "as used by level" slider; tables are read at it).
  * @param enh Enhancement strength per attribute offset (powerStrength(...).post); null = unenhanced
  *   (base values only, as for a power the character does not own).
+ * @param runAs A real pet that runs the power in the character's place (the client's power_AddPets
+ *   lists a pet's powers so: its class's tables, the creator's class for `source.owner>`, every
+ *   effect listed as for the character's own power); none: the character runs it.
  */
 export function powerInfo(
   gd: GameData,
@@ -705,6 +720,7 @@ export function powerInfo(
   power: Power,
   level: number,
   enh: Map<number, number> | null,
+  runAs?: RunAs,
 ): PowerInfo {
   const O = offsets(gd);
   const showBoth = enh !== null;
@@ -728,7 +744,19 @@ export function powerInfo(
     inMode: () => false,
     targetEntType: 'critter',
   });
-  const ctx = contextFor(at.n, null);
+  const runCls = runAs?.cls ?? at.n;
+  const ctx = contextFor(runCls, runAs ? runAs.creator : null);
+  /** @return A table's value for the class running the power. */
+  const ownTable = (tbl: string): number => (runAs ? gd.classTable(runAs.cls, tbl, level) : gd.table(at, tbl, level));
+  /**
+   * @return The pseudo-pets a power makes: the pets file's, else (a real pet's power) the real pets
+   *   file's; never both, so none counts twice.
+   */
+  const creationsOf = (name: string): readonly PetCreation[] => gd.pets?.pets[name] ?? gd.henchmen?.pseudo?.[name] ?? [];
+  /** @return A pseudo-pet's power, or what a pet's power executes, by full name. */
+  const petPower = (name: string): PetPower | undefined => gd.pets?.powers[name] ?? gd.henchmen?.powers[name];
+  // the server client's extra pseudo-pet activation (Thunderspy's 1)
+  const plusOf = (): number => (typeof gd.pets?.plus === 'number' ? gd.pets.plus : typeof gd.henchmen?.plus === 'number' ? gd.henchmen.plus : 0);
   const ownTagModes = serverById(gd.server)?.tagModes === 'ownTag';
   const ownGroupRequires = serverById(gd.server)?.infoRequires === 'ownGroup';
   const pvpListed = serverById(gd.server)?.infoPvp === 'listed';
@@ -978,7 +1006,7 @@ export function powerInfo(
     const mods: Pick<Mod, 'pw' | 'pwn' | 'fl'>[] = [...executeMods(src.eff), ...executeMods(src.act), ...pvpOnly];
     for (const m of mods) {
       // the character's powers name what they execute by id; a pet's (from the pets file) by name
-      const named = m.pwn?.map((n) => ({ n, pp: gd.pets?.powers[n] ?? gd.powerByName.get(n.toLowerCase()) })) ?? [];
+      const named = m.pwn?.map((n) => ({ n, pp: gd.pets?.powers[n] ?? gd.powerByName.get(n.toLowerCase()) ?? gd.henchmen?.powers[n] })) ?? [];
       const byId = m.pw?.map((id) => {
         const pp = gd.powerById.get(id);
         return { n: pp?.n ?? '', pp };
@@ -1022,11 +1050,10 @@ export function powerInfo(
   const petDamage = (name: string, cls: string, depth: number, execDepth: number): { base: number; total: number } => {
     let base = 0;
     let total = 0;
-    const file = gd.pets;
-    if (!file || depth >= MAX_PET_DEPTH) return { base, total };
-    const plus = typeof file.plus === 'number' ? file.plus : 0;
-    for (const c of file.pets[name] ?? []) {
-      const powers = c.p.map((pn) => [pn, file.powers[pn]] as const);
+    if (depth >= MAX_PET_DEPTH) return { base, total };
+    const plus = plusOf();
+    for (const c of creationsOf(name)) {
+      const powers = c.p.map((pn) => [pn, petPower(pn)] as const);
       if (powers.some(([, pp]) => pp && pp.type !== 'Auto')) continue;
       const petCls = c.pseudo ? cls : c.cls;
       if (!petCls) continue;
@@ -1043,7 +1070,7 @@ export function powerInfo(
     return { base, total };
   };
 
-  const own: Runner = { cls: at.n, table: (tbl) => gd.table(at, tbl, level), ec: ctx, pet: false };
+  const own: Runner = { cls: runCls, table: ownTable, ec: ctx, pet: false };
   const { base: dmgBase, total: dmgTotal } = totalDamage(power, all, own, 0, 0);
 
   // ---- base stats (power_AddBaseStats) ----
@@ -1207,6 +1234,7 @@ export function powerInfo(
       if (t.hide) continue;
       if (!t.chance && t.tags.length && !t.mode) continue; // the client skips only a tagged group of chance 0
       if (pet && m.tg === 'Caster') continue; // the client doesn't list what a pet does to itself
+      if (!pet && depth === 0 && runAs?.omit?.(m, offset)) continue;
 
       if (offset === 481 || offset === 486 || offset === (gd.attribByName.get('GrantPower') ?? 481) || offset === (gd.attribByName.get('GrantBoostedPower') ?? 486)) {
         // a pet's grant is named; one the version's own data lacks has its name in the pets file
@@ -1218,7 +1246,7 @@ export function powerInfo(
           m.pw?.[0] !== undefined
             ? gd.powerById.get(m.pw[0])?.dn
             : pn !== undefined
-              ? (gd.powerByName.get(pn.toLowerCase())?.dn ?? gd.pets?.names?.[pn])
+              ? (gd.powerByName.get(pn.toLowerCase())?.dn ?? gd.pets?.names?.[pn] ?? gd.henchmen?.powers[pn]?.dn)
               : undefined;
         if (dn) {
           out.push({
@@ -1347,8 +1375,9 @@ export function powerInfo(
       if (t.tags.includes('Overpower') && !noted) note('Overpower'); // else the effect's own note says it, as in game
       for (const n of requiresNotes(t.reqs, false, friendNotes)) note(n);
       if (t.info) notes.push(parseMarkup(t.info, NOTE_COLOR).map((g) => ({ ...g, italic: true })));
-      if (m.fl?.includes('IgnoreStrength')) note(gd.info?.text.IgnoresBuffsAndEnhancements ?? TXT.ignoresBuffs);
-      if (m.fl?.includes('IgnoreResistance')) note(gd.info?.text.Unresistable ?? TXT.unresistable);
+      const flagNotes = !runAs?.noFlagNotes;
+      if (flagNotes && m.fl?.includes('IgnoreStrength')) note(gd.info?.text.IgnoresBuffsAndEnhancements ?? TXT.ignoresBuffs);
+      if (flagNotes && m.fl?.includes('IgnoreResistance')) note(gd.info?.text.Unresistable ?? TXT.unresistable);
       out.push({ line, notes });
     }
   };
@@ -1370,11 +1399,10 @@ export function powerInfo(
    * @param out Where the sentences go.
    */
   const petLines = (name: string, cls: string, both: boolean, depth: number, out: InfoEffect[]): void => {
-    const file = gd.pets;
-    if (!file || depth >= MAX_PET_DEPTH) return;
-    for (const c of file.pets[name] ?? []) {
+    if (depth >= MAX_PET_DEPTH) return;
+    for (const c of creationsOf(name)) {
       if (c.hid) continue;
-      const powers = c.p.map((pn) => [pn, file.powers[pn]] as const);
+      const powers = c.p.map((pn) => [pn, petPower(pn)] as const);
       if (powers.some(([, pp]) => pp && pp.type !== 'Auto')) continue;
       const petCls = c.pseudo ? cls : c.cls;
       if (!petCls) continue;
@@ -1388,7 +1416,7 @@ export function powerInfo(
     }
   };
 
-  effectLines(power.n, all, power.type, power.ap ?? 0, (tbl) => gd.table(at, tbl, level), at.n, showBoth, null, 0, effects);
+  effectLines(power.n, all, power.type, power.ap ?? 0, ownTable, runCls, showBoth, null, 0, effects);
 
   const title = parseMarkup(
     TXT.title

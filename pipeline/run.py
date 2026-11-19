@@ -10,7 +10,8 @@ Usage (from the repo root):
 The game version id names the data folder public/data/<id>/ (public/data/<server>/<id>/ for a
 server other than Homecoming); the version's pseudo-pet file goes beside it, in pets/<id>.json
 (python -m pipeline.pets writes only that file, for a version already published), and its
-power-info extras in info/<id>.json (python -m pipeline.info likewise). It defaults to
+power-info extras in info/<id>.json (python -m pipeline.info likewise) and its real pets in
+henchmen/<id>.json (python -m pipeline.henchmen likewise). It defaults to
 "gameVersion" / "gameLabel" under the server's entry
 in pipeline/patch-watch.json. A version id names one server only: the run refuses an id another
 server already uses.
@@ -135,6 +136,14 @@ def render_report(data, exp, assets, val, warnings=()) -> str:
                  f"what powers execute, {pt['classes']} classes' tables, {pt['bytes']} bytes in "
                  f"pets/{m['dataVersion']}.json). Powers whose PvP-only groups execute powers the damage total "
                  f"counts: {pt['exec']}. EntCreate mods left out: {skipped}.\n")
+    hm = exp.get("henchmen")
+    if hm:
+        skipped = "; ".join(f"{k}: {v}" for k, v in hm["skipped"].items()) or "none"
+        L.append("## Real pets\n")
+        L.append(f"{hm['creators']} powers make {hm['pets']} kinds of real pets for the Pets and Minions cards "
+                 f"({hm['powers']} pet powers, {hm['pseudo']} of them making pseudo-pets, {hm['classes']} "
+                 f"classes, {hm['bytes']} bytes in henchmen/{m['dataVersion']}.json). EntCreate mods left "
+                 f"out: {skipped}.\n")
     rc = exp.get("recipes")
     if rc:
         L.append("## Recipes\n")

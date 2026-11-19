@@ -36,12 +36,13 @@ class EntCreateParamTest(unittest.TestCase):
         p = params([0, 0, 0, 7, 8, 0, 0, 0, 0, 2, 11, 12],
                    {3: "Burn Flames", 4: "PL_StaticObject", 10: "Redirects.A", 11: "Redirects.B"})
         self.assertEqual(ent_create_param(p, HC),
-                         {"EntityDef": "", "Class": "", "Power": ["Redirects.A", "Redirects.B"]})
+                         {"EntityDef": "", "Class": "", "DisplayName": "Burn Flames",
+                          "Power": ["Redirects.A", "Redirects.B"]})
 
     def test_villain_def(self):
         p = params([5, 6, 0, 0, 8, 0, 0, 0, 0, 0], {0: "Pets_Thing", 1: "Class_Minion_Pets", 4: "PL"})
         self.assertEqual(ent_create_param(p, HC),
-                         {"EntityDef": "Pets_Thing", "Class": "Class_Minion_Pets", "Power": []})
+                         {"EntityDef": "Pets_Thing", "Class": "Class_Minion_Pets", "DisplayName": "", "Power": []})
 
     def test_each_client_by_its_layout(self):
         ts = params([5, 0, 0, 0, 8, 0, 0, 0, 0], {0: "Pets_Burn", 4: "PL"})

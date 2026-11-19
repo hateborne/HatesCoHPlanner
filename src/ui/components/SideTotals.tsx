@@ -5,6 +5,9 @@ import { previewBuild, stepsOf, useStore } from '../../state/store.ts';
 import type { Skin } from '../skin/skin.ts';
 import { MenuFrame } from './Chrome.tsx';
 import { TitleText } from './GameText.tsx';
+import { PetPaneLayer, usePetCards } from './PetCard.tsx';
+import { skinOf } from '../../engine/build.ts';
+import { SKINS } from '../skin/skin.ts';
 import { TotalsPanel } from './TotalsPanel.tsx';
 import { phoneGeom } from './Phone.tsx';
 import { useStage } from './Stage.tsx';
@@ -29,12 +32,14 @@ export function SideTotals({ skin }: { skin: Skin }) {
   const { gd, steps, level } = useStore();
   const [open, setOpen] = useState(false);
   const stage = useStage();
-  const totals = useMemo(() => {
+  const preview = useMemo(() => {
     if (!open || !gd || !level) return null;
     const b = previewBuild(gd, steps, level);
     const lvl = stepsOf(steps, level)[level.step]?.level ?? 49;
-    return computeTotals(gd, new BuildRules(gd, b), b, lvl);
+    return { b, lvl, rules: new BuildRules(gd, b) };
   }, [open, gd, steps, level]);
+  const totals = useMemo(() => (preview && gd ? computeTotals(gd, preview.rules, preview.b, preview.lvl) : null), [preview, gd]);
+  const pets = usePetCards(gd, preview?.rules ?? null, preview?.b ?? null, preview?.lvl ?? 49);
   if (!gd) return null;
   const toggle = () => setOpen(!open);
   const line = phoneGeom(stage).line;
@@ -58,11 +63,13 @@ export function SideTotals({ skin }: { skin: Skin }) {
             {/* phones: a little larger text than the desktop pane; its spacing keeps it readable */}
             <div style={{ zoom: stage.phone ? 1.15 : 1 }}>
               <TitleText style={{ fontSize: 20 }}>AT LEVEL {totals.level + 1}</TitleText>
-              <TotalsPanel gd={gd} t={totals} width={(pane.w - 50) / (stage.phone ? 1.15 : 1)} />
+              <TotalsPanel gd={gd} t={totals} width={(pane.w - 50) / (stage.phone ? 1.15 : 1)} pets={pets} />
             </div>
           </div>
         </div>
       ) : null}
+      {/* drawn on the stage, over the pane; its switches are the overview's (none here) */}
+      {open && preview ? <PetPaneLayer gd={gd} skin={SKINS[skinOf(preview.b.alignment)]} entries={pets} build={preview.b} /> : null}
     </>
   );
 }
