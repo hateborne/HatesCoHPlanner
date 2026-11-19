@@ -97,12 +97,14 @@ function sourceText(s: PetSource): string {
 export function PetRow({ entry }: { entry: PetEntry }) {
   const stage = useStage();
   const row = useRef<HTMLDivElement>(null);
-  // the pane pops out of the row: where the row is goes with it
+  // the pane pops out of the row: where the row is goes with it (a click on the open pet's row lands
+  // on the pane's backdrop, which closes it)
   const open = () => usePetPane.setState({ key: entry.key, at: toStage(row.current?.getBoundingClientRect(), stage) });
   return (
     <div
       ref={row}
       className="pet-row"
+      data-pet-row={entry.key}
       data-testid={`pet:${entry.key}`}
       onClick={open}
       {...pressKeys(open, undefined, `${entry.name} ${petCount(entry.sources)}`)}
@@ -119,8 +121,9 @@ export function PetRow({ entry }: { entry: PetEntry }) {
 /**
  * The pet pane of the pet whose row was clicked (usePetPane): its stats read like the build's
  * totals, only the stats that aren't zero, under a Powers section with its attacks and other powers.
- * It closes on Escape, a click (a tap) outside it, or when the build no longer makes the pet; it goes
- * with the screen. It holds the keyboard focus while open.
+ * It closes on Escape, a click (a tap) outside it, its pet's row included (any other click is passed
+ * on to what it lands on), or when the build no longer makes the pet; it goes with the screen. It
+ * holds the keyboard focus while open.
  *
  * @param props.entries The build's Pets and Minions rows (usePetCards).
  * @param props.build The build (its archetype and pet switches).
@@ -168,10 +171,25 @@ function PetPane({ gd, skin, entry, build, onSwitch }: { gd: GameData; skin: Ski
     dialog.current?.focus({ preventScroll: true });
     return () => before?.focus({ preventScroll: true });
   }, []);
+  /**
+   * A click outside: closes the pane and is passed on to what lies under it (a switch, another pet's
+   * row), so it isn't lost. The backdrop keeps taking the wheel, hovers and touches, so the screen
+   * under the open pane stays still. A click on its own pet's row only closes it, and so does a
+   * double-click's second click (a double-click on a row opens the pane and leaves it open).
+   */
+  const away = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.detail > 1) return;
+    const back = e.currentTarget;
+    back.style.pointerEvents = 'none';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    back.style.pointerEvents = '';
+    closePane();
+    if (under instanceof HTMLElement && !under.closest(`[data-pet-row="${CSS.escape(entry.key)}"]`)) under.click();
+  };
   return (
     <>
-      {/* a click outside closes it; under the tooltips (65) and the phone's long-press card (66) */}
-      <div {...POPUP_LAYER} className="abs" onClick={closePane} style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 61, background: 'rgba(0,0,0,0.55)' }} />
+      {/* a click outside closes it (passed on to what is under it); under the tooltips (65) and the phone's long-press card (66) */}
+      <div {...POPUP_LAYER} className="abs" onClick={away} style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 61, background: 'rgba(0,0,0,0.55)' }} />
       <div
         ref={dialog}
         className="abs"

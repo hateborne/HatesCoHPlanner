@@ -291,7 +291,8 @@ export class GameData {
    * @param cls Class name (Class_Brute, Class_Minion_Pets).
    * @param table Table name (case-insensitive).
    * @param level 0-based level, clamped to the table length.
-   * @return The table value, or 0 when the class lacks the table.
+   * @return The table value; when the class lacks the table, 1 for a pet class (as the client) and 0
+   *   for an archetype.
    */
   classTable(cls: string, table: string, level: number): number {
     const t = table.toLowerCase();
@@ -305,7 +306,10 @@ export class GameData {
       return typeof v === 'number' ? v : 0;
     }
     const at = this.archetypeByName.get(cls.toLowerCase());
-    return at ? this.table(at, table, level) : 0;
+    if (at) return this.table(at, table, level);
+    // a pet class lacking the table reads 1, the client's fallback (classes.c class_GetNamedTableValue):
+    // the Assault Bot's Conserve Power names Melee_One, which no pet class has, and gives +100%
+    return this.henchmen?.classes[cls] || this.pets?.classes[cls] ? 1 : 0;
   }
 
   /** @return An archetype attribute table value (e.g. at.max.HitPoints) at a 0-based level. */

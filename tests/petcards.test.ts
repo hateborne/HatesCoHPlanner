@@ -14,6 +14,8 @@ import { makesPets, petCards, petEntries, type PetCard } from '../src/engine/pet
 import { buffsPets } from '../src/engine/petstats.ts';
 import { setPetOn } from '../src/engine/actions.ts';
 import { evalRequires } from '../src/engine/requires.ts';
+import { powerInfo, segText } from '../src/engine/powerinfo.ts';
+import type { Power } from '../src/data/types.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { petCount } from '../src/ui/components/PetCard.tsx';
 import { dataDir, loadData, loadVersionIndex, pid, sid, withHenchmen } from './helpers/data.ts';
@@ -204,6 +206,41 @@ describe('what a card counts', () => {
     const drone = card(cs, 'Maintenance Drone');
     expect(attack(drone, 'Repair')).toBeUndefined();
     expect(drone.powers.map((p) => p.name)).toContain('Repair');
+  });
+
+  it("leaves the pet's own regeneration out of its powers' lines (the Maintenance Drone's can't-regenerate)", () => {
+    const drone = card(cards(mastermind('Robotics')), 'Maintenance Drone');
+    const text = [...drone.attacks, ...drone.powers].flatMap((p) => p.lines.map((l) => l.line.map((s) => s.text).join('')));
+    expect(text.some((t) => /regeneration/i.test(t))).toBe(false);
+    expect(text.some((t) => /100000000/.test(t))).toBe(false);
+  });
+
+  it("reads a table the pet's class lacks as 1, as the client (the Assault Bot's Conserve Power: +100%)", () => {
+    // Melee_One: no pet class has it (class_GetNamedTableValue returns 1.0 then)
+    expect(gd.classTable('Class_Henchman_Minion', 'Melee_One', 49)).toBe(1);
+    expect(gd.classTable('Class_Henchman_Minion', 'Melee_Ones', 49)).toBe(1); // a real table, all ones
+    // an archetype's missing table still reads 0, and so does a class nobody has
+    expect(gd.classTable('Class_Mastermind', 'No_Such_Table', 49)).toBe(0);
+    expect(gd.classTable('Class_No_Such_Class', 'Melee_One', 49)).toBe(0);
+    const bot = card(cards(mastermind('Robotics')), 'Assault Bot');
+    const conserve = bot.powers.find((p) => p.name === 'Conserve Power')!;
+    const lines = conserve.lines.map((l) => l.line.map((s) => s.text).join(''));
+    expect(lines.some((t) => t.includes('+100.00%') && /Endurance Cost/.test(t))).toBe(true);
+  });
+
+  it("leaves the Singularity's Gravitational Pull as it was: the other missing table (Ones) is an Expression's, which reads none", () => {
+    const p = gd.henchmen!.powers['Pets.Singularity.Gravitational_Pull']! as unknown as Power;
+    expect(p.eff![0]!.m![0]).toMatchObject({ t: 'Expression', tbl: 'Ones' });
+    expect(gd.classTable('Class_Minion_Pets', 'Ones', 49)).toBe(1); // the class lacks it
+    const at = gd.archetypeByName.get('class_controller')!;
+    const lines = () => powerInfo(gd, at, p, 49, null, { cls: 'Class_Minion_Pets', creator: 'Class_Controller' }).effects.map((e) => segText(e.line));
+    const now = lines();
+    const spy = vi.spyOn(gd, 'classTable').mockReturnValue(0);
+    try {
+      expect(lines()).toEqual(now);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('shares one card among pets of one name and numbers, each source and weapon counted', () => {

@@ -321,8 +321,11 @@ Attacks and other powers read alike: the name, then the power info's effect line
 shows its power info on hover or keyboard focus (`useHover.petPower`), a long press on a phone
 (`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
 (`Floating`'s `lock`, `lockedTurn`), so the pane under it never scrolls away, and one that fits lets
-the pane scroll. The pane closes on Escape or a click outside it, holds the keyboard focus while
-open, and stays open when the window crosses between the phone and desktop layouts. A pet's name in
+the pane scroll. The pane closes on Escape or a click outside it, its pet's row included; the dimmed
+backdrop takes the click and passes it on to what lies under it (`elementFromPoint`, then `click()`),
+so a switch clicked there still switches, while the wheel, hovers and touches stay on the backdrop.
+A double-click's second click is ignored. It holds the keyboard focus while open, and stays open
+when the window crosses between the phone and desktop layouts. A pet's name in
 the totals glows under the pointer. A heading's lettering (`TitleText`) lets clicks through to the
 line under it, which its fill reaches over.
 The engine is pure and synchronous; keep React and the DOM out of it.

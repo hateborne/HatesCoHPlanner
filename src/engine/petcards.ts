@@ -51,7 +51,7 @@ export interface PetAttack {
 export interface PetPowerLines {
   power: Power; // the power itself (its power info, its switch)
   name: string;
-  lines: InfoEffect[]; // what it does to others and to the pet, except the pet's own resistance and defense
+  lines: InfoEffect[]; // what it does to others and to the pet, except the pet's own resistance, defense and regeneration
   when?: string; // the condition it needs, as PetAttack.when
 }
 
@@ -552,9 +552,11 @@ function card(gd: GameData, file: HenchmenFile, at: Archetype, v: Variant, level
   const hp = gd.attribByName.get('HitPoints') ?? 80;
   const d0 = gd.attribByName.get('DefenseType00') ?? 104;
   const allDef = gd.attribByName.get('Defense') ?? d0 + 80;
-  // the pet's own resistance and defense are its stats': its other powers' lines leave them out
+  const regen = gd.attribByName.get('Regeneration') ?? 232;
+  // the pet's own resistance, defense and regeneration are its stats': its other powers' lines leave
+  // them out (the Maintenance Drone's "can't regenerate", -1000000 x Melee_Ones, reads as none there)
   const selfResDef = (m: Mod, a: number) =>
-    m.tg === 'Caster' && ((m.asp === 'Resistance' && a >= 0 && a < hp) || (m.asp === 'Current' && a >= d0 && a <= allDef));
+    m.tg === 'Caster' && ((m.asp === 'Resistance' && a >= 0 && a < hp) || (m.asp === 'Current' && ((a >= d0 && a <= allDef) || a === regen)));
   const listed: [Power, string | undefined][] = [
     ...own.map((p): [Power, undefined] => [p, undefined]),
     ...[...v.powers.cond.values()].map(({ power, when }): [Power, string] => [power, when]),

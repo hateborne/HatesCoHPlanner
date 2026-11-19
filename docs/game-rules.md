@@ -394,7 +394,9 @@ noted:
   souls come at the Mastermind's level too: the OuroV2 data summoned them (and Grave Knights) on
   `Ranged_Levelminus`, one level lower, which its help text still says, and Homecoming's data now
   summons them on `Ranged_Ones` at scale -1, as it does every henchman. The card reads the pet
-  class's tables at the totals' level.
+  class's tables at the totals' level; a table the class lacks reads 1, as the client's
+  `class_GetNamedTableValue` returns (classes.c): the Assault Bot's Conserve Power names
+  `Melee_One`, which no pet class has, and shows +100% in game.
 - **How many.** Each EntCreate mod spawns when its groups' requirements hold: Battle Drones' second
   drone needs `combatlevel source> 5 >` (level 6), its third `17 >` (level 18). A mod in a group
   with a chance below 1, or under one (the chances multiply), may spawn (Gang War: 6 always, 7 more
