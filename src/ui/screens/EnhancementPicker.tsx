@@ -6,7 +6,7 @@ import type { SlottedEnh } from '../../engine/build.ts';
 import { capLevel } from '../../engine/actions.ts';
 import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, ioLevelRange, isLegacyDuplicate, pieceName, powerStrength, strengthLines, type EnhKind } from '../../engine/enhance.ts';
 import type { BuildEntry } from '../../engine/rules.ts';
-import { CheckBar } from '../components/CheckBar.tsx';
+import { CheckBar, SwitchBox } from '../components/CheckBar.tsx';
 import { FadingText, MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
 import { PHONE_TAB_ROW, phoneTabRows, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
@@ -15,13 +15,45 @@ import { useStore } from '../../state/store.ts';
 import { fitScale, FONTS } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { TitleText } from '../components/GameText.tsx';
-import { TotalsRow } from '../components/TotalsPanel.tsx';
+import { HeadMark, TotalsRow } from '../components/TotalsPanel.tsx';
 import { useEscape } from '../escape.ts';
 import { smf } from '../smf.tsx';
 
 type Tab = 'Training' | 'Origin' | 'Invention' | 'Sets' | 'Special';
 const TABS: Tab[] = ['Training', 'Origin', 'Invention', 'Sets', 'Special'];
 const SPECIAL: EnhKind[] = ['Hamidon', 'Hydra', 'Titan', 'DSync', 'Synthetic', 'Talisman'];
+// the Special tab's groups in order: the Homecoming wiki's Special Enhancements comparison (Hydra,
+// Titan, Hamidon, D-Sync), then the kinds it leaves out (the owner's choice)
+const SPECIAL_GROUPS: { kind: EnhKind; title: string }[] = [
+  { kind: 'Hydra', title: 'Hydra' },
+  { kind: 'Titan', title: 'Titan' },
+  { kind: 'Hamidon', title: 'Hamidon' },
+  { kind: 'DSync', title: 'D-Sync' },
+  { kind: 'Synthetic', title: 'Synthetic Hamidon' },
+  { kind: 'Talisman', title: 'Talisman' },
+  { kind: 'Other', title: 'Other' },
+];
+
+// the Sets and Special groups the player closed ("Sets:Defense Sets", "Special:Hydra"), per browser
+const CLOSED_KEY = 'hcp.pickerClosed';
+
+function readClosed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(CLOSED_KEY);
+    const v: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeClosed(v: Set<string>): void {
+  try {
+    localStorage.setItem(CLOSED_KEY, JSON.stringify([...v]));
+  } catch {
+    /* storage unavailable: the groups just aren't remembered */
+  }
+}
 
 // the last enhancement placed (remembered per browser): an empty slot opens on its tab and set,
 // and a newly chosen piece starts at its level (e.g. the next Steadfast Protection piece at 30)
@@ -119,6 +151,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     }
     return m;
   }, [gd, valid]);
+  // the Special tab's pieces in their groups (SPECIAL_GROUPS), empty groups left out
+  const specialGroups = useMemo(() => {
+    const list = byTab.get('Special') ?? [];
+    return SPECIAL_GROUPS.map((g) => ({ ...g, list: list.filter((b) => enhKind(gd, b) === g.kind) })).filter((g) => g.list.length);
+  }, [gd, byTab]);
   const [last] = useState(readLast);
   const lastTab = !current && last && byTab.has(last.tab) ? last.tab : null;
   const firstTab = (current ? tabOf(enhKind(gd, gd.power(current.boost))) : lastTab) ?? TABS.find((t) => byTab.has(t)) ?? 'Training';
@@ -177,6 +214,34 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     return lastTab === 'Sets' && last?.set !== undefined && sets.some((x) => x.id === last.set) ? last.set : undefined;
   });
   const chosenSet: BoostSet | undefined = setId !== undefined ? gd.boostSetById.get(setId) : undefined;
+  // the sets by set type, in the list's order
+  const setGroups = useMemo(() => {
+    const m = new Map<string, BoostSet[]>();
+    for (const st of sets) m.set(st.grp, [...(m.get(st.grp) ?? []), st]);
+    return [...m];
+  }, [sets]);
+  // the Sets and Special groups closed: as last left in this browser, but the group holding the
+  // slot's piece (or the remembered set) opens
+  const [closed, setClosed] = useState(() => {
+    const c = readClosed();
+    if (chosenSet) c.delete(`Sets:${chosenSet.grp}`);
+    const own = current ? gd.power(current.boost) : undefined;
+    const kind = own ? enhKind(gd, own) : undefined;
+    const g = kind ? SPECIAL_GROUPS.find((x) => x.kind === kind) : undefined;
+    if (g) c.delete(`Special:${g.title}`);
+    return c;
+  });
+  /** Open or close a group, and remember that group only (a group opened for the slot's piece keeps its saved state). */
+  const toggleGroup = (key: string) => {
+    const next = new Set(closed);
+    const nowClosed = !next.delete(key);
+    if (nowClosed) next.add(key);
+    setClosed(next);
+    const saved = readClosed();
+    if (nowClosed) saved.add(key);
+    else saved.delete(key);
+    writeClosed(saved);
+  };
   // where each piece sits in the lists (tabs in order, sets in order, a set's pieces in order): the
   // order several pieces fill the slots in
   const order = useMemo(() => {
@@ -184,10 +249,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     const add = (id: number) => m.has(id) || m.set(id, m.size);
     for (const t of TABS) {
       if (t === 'Sets') for (const st of sets) for (const v of st.slots) v.forEach(add);
+      else if (t === 'Special') for (const g of specialGroups) for (const b of g.list) add(b.id);
       else for (const b of byTab.get(t) ?? []) add(b.id);
     }
     return m;
-  }, [sets, byTab]);
+  }, [sets, specialGroups, byTab]);
 
   /** @return A list row's identity: a set piece's letter (crafted or attuned), else the enhancement. */
   const rowOf = (id: number) => {
@@ -246,7 +312,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     const chosen = picks.find((p) => rangeOf(gd.power(p.boost)))?.ioLevel;
     writeLast({ tab, set: tab === 'Sets' ? setId : undefined, ioLevel: chosen ?? last?.ioLevel });
     const ordered = [...picks].sort((a, b) => (order.get(a.boost) ?? Infinity) - (order.get(b.boost) ?? Infinity));
-    const placed = multi ? ordered.map((enh, i) => ({ slot: targets[i]!, enh })) : [{ slot, enh: sel }];
+    // the clicked slot's own piece, still chosen, stays in its slot; the others fill the rest in order
+    const own = current ? ordered.find((p) => rowOf(p.boost) === rowOf(current.boost)) : undefined;
+    const rest = ordered.filter((p) => p !== own);
+    const free = own ? targets.filter((t) => t !== slot) : targets;
+    const placed = multi ? [...(own ? [{ slot, enh: own }] : []), ...rest.map((enh, i) => ({ slot: free[i]!, enh }))] : [{ slot, enh: sel }];
     // several pieces: each judged in its own slot with the others in (the list was checked for the clicked slot only)
     const why = multi ? (checkPlace?.(placed) ?? null) : null;
     if (why) {
@@ -281,7 +351,8 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     );
   const toggleCap = () => {
     setAtCap(!atCap);
-    if (!atCap) setPicks(picks.map(capped));
+    // the slot's own piece, only looked at, keeps its level (Place would otherwise change it)
+    if (!atCap) setPicks(picks.map((p) => (current && p.boost === current.boost && p.ioLevel === current.ioLevel ? p : capped(p))));
     setLvlDraft(null);
   };
 
@@ -351,6 +422,23 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     </div>
   );
 
+  /** A Sets or Special group's heading: the Totals panel's +/- and the title; a click opens or closes it. */
+  const groupHead = (key: string, title: string) => {
+    const open = !closed.has(key);
+    return (
+      <div
+        data-testid={`group:${key}`}
+        onClick={() => toggleGroup(key)}
+        {...pressKeys(() => toggleGroup(key), undefined, title)}
+        title={open ? 'Click to collapse' : 'Click to expand'}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', marginTop: 8, userSelect: 'none' }}
+      >
+        <HeadMark open={open} size={18} />
+        <TitleText style={{ fontSize: 18 }}>{title}</TitleText>
+      </div>
+    );
+  };
+
   // Desktop: list beside details. Phone: the whole screen, tabs in rows, the list above the details.
   const tabList = TABS.filter((t) => byTab.has(t));
   const phoneG = () => {
@@ -378,24 +466,25 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   const titleText = `${entry.power.dn} -- slot ${slot + 1}`;
   const titleW = fw - (phone ? 24 : 60) - SWITCH_W;
   const titleSize = phone ? Math.min(24, fitScale(FONTS.title_12, titleText, titleW) * FONTS.title_12.size) : 34;
-  const box = phone ? { width: 26, height: 26, margin: 0 } : { width: 20, height: 20, margin: 0 };
+  const capSw = phone ? 34 : 24; // the top switches: the overview's (48 / 30), scaled down
 
   return (
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
-        <MenuFrame x={fx} y={fy} w={fw} h={fh} r25 style={{ background: 'rgba(0,0,20,0.94)' }} />
-        <SetTitle x={G.title[0]!} y={G.title[1]!} size={titleSize} width={titleW} text={titleText} />
+        <MenuFrame x={fx} y={fy} w={fw} h={fh} r25 skin={skin} style={{ background: skin.panel }} />
+        <SetTitle x={G.title[0]!} y={G.title[1]!} size={titleSize} width={titleW} text={titleText} skin={skin} />
         <div className="abs body-text" style={{ left: fx + fw - SWITCH_W - (phone ? 12 : 30), top: fy + (phone ? 10 : 26), width: SWITCH_W, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: phone ? 6 : 0, fontSize: phone ? 15 : 18, color: '#cfe8ff' }}>
           <label title={AT_CAP_HELP} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: phone ? 32 : undefined }}>
             {/* keyed by the glow: each hover on the greyed level box restarts it */}
             <span key={capGlow} className={capGlow ? 'cap-glow' : undefined}>
               Max Slot/Build Level
             </span>{' '}
-            <input type="checkbox" data-testid="picker:atcap" checked={atCap} onChange={toggleCap} style={box} />
+            {/* the overview's totals switch, a little smaller */}
+            <SwitchBox skin={skin} on={atCap} size={capSw} onChange={toggleCap} testId="picker:atcap" />
           </label>
           {phone ? (
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: 32 }}>
-              Select several <input type="checkbox" data-testid="picker:several" checked={several} onChange={() => setSeveral(!several)} style={box} />
+              Select several <SwitchBox skin={skin} on={several} size={capSw} onChange={() => setSeveral(!several)} testId="picker:several" />
             </label>
           ) : null}
         </div>
@@ -409,22 +498,23 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
             // the set names and the chosen set's pieces scroll separately
             <div style={{ display: 'flex', gap: 16, flexDirection: phone ? 'column' : 'row', height: '100%' }}>
               <div className="scroll-y" style={phone ? { maxHeight: Math.round(lh * 0.45), flexShrink: 0 } : { width: 430, height: '100%' }}>
-                {sets.map((s, i) => (
-                  <div key={s.id}>
-                    {i === 0 || sets[i - 1]!.grp !== s.grp ? (
-                      <TitleText style={{ fontSize: 18, marginTop: 8 }}>
-                        {s.grp}
-                      </TitleText>
-                    ) : null}
-                    <div
-                      data-testid={`pickerset:${s.id}`}
-                      onClick={() => setSetId(s.id)}
-                      {...pressKeys(() => setSetId(s.id), undefined, s.dn)}
-                      className="body-text"
-                      style={{ cursor: 'pointer', padding: phone ? '12px 8px' : '3px 8px', borderRadius: 8, color: s.id === setId ? '#88ffaa' : '#cfe8ff', background: s.id === setId ? 'rgba(0,217,25,0.18)' : 'transparent', fontSize: phone ? 19 : 16 }}
-                    >
-                      {s.dn} <span style={{ color: '#8fa1b8', fontSize: 13 }}>({s.minL}-{s.maxL})</span>
-                    </div>
+                {setGroups.map(([grp, list]) => (
+                  <div key={grp}>
+                    {groupHead(`Sets:${grp}`, grp)}
+                    {closed.has(`Sets:${grp}`)
+                      ? null
+                      : list.map((s) => (
+                        <div
+                          key={s.id}
+                          data-testid={`pickerset:${s.id}`}
+                          onClick={() => setSetId(s.id)}
+                          {...pressKeys(() => setSetId(s.id), undefined, s.dn)}
+                          className="body-text"
+                          style={{ cursor: 'pointer', padding: phone ? '12px 8px' : '3px 8px', borderRadius: 8, color: s.id === setId ? '#88ffaa' : '#cfe8ff', background: s.id === setId ? 'rgba(0,217,25,0.18)' : 'transparent', fontSize: phone ? 19 : 16 }}
+                        >
+                          {s.dn} <span style={{ color: '#8fa1b8', fontSize: 13 }}>({s.minL}-{s.maxL})</span>
+                        </div>
+                      ))}
                   </div>
                 ))}
               </div>
@@ -432,12 +522,19 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                 {chosenSet ? enhList(chosenSet.slots.map((v) => gd.power(v[0]!)).filter((b) => canSlot(gd, entry.power, b, originIndex) && allowed(b)), chosenSet.dn) : <div className="desc-text">Choose a set.</div>}
               </div>
             </div>
+          ) : tab === 'Special' ? (
+            specialGroups.map((g) => (
+              <div key={g.kind}>
+                {groupHead(`Special:${g.title}`, g.title)}
+                {closed.has(`Special:${g.title}`) ? null : enhList(g.list)}
+              </div>
+            ))
           ) : (
             enhList(byTab.get(tab) ?? [])
           )}
         </div>
         {/* selection details and controls */}
-        <MenuFrame x={dx} y={dy} w={dw} h={dh} />
+        <MenuFrame x={dx} y={dy} w={dw} h={dh} skin={skin} />
         <div className="abs body-text scroll-y" style={{ left: ix, top: iy, width: iw, height: dh - (phone ? 20 : 30), fontSize: phone ? 19 : 16, color: '#cfe8ff' }}>
           {selBoost && sel ? (
             <>
@@ -476,7 +573,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') commitLevel();
                       }}
-                      style={{ width: phone ? 90 : 70, height: phone ? 44 : undefined, background: atCap ? '#222' : '#000', color: '#fff', border: '1px solid #4f94ff' }}
+                      style={{ width: phone ? 90 : 70, height: phone ? 44 : undefined, background: atCap ? '#222' : '#000', color: '#fff', border: `1px solid ${skin.menuBorder}` }}
                     />
                   </label>
                 ) : null}
@@ -500,8 +597,8 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                   </label>
                 ) : null}
                 {withAlt.length ? (
-                  <label style={phone ? { display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44 } : undefined}>
-                    <input type="checkbox" data-testid="picker:attuned" checked={attuned} onChange={toggleAttuned} style={phone ? { width: 28, height: 28, margin: 0 } : undefined} /> Attuned
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: phone ? 8 : 6, minHeight: phone ? 44 : undefined, cursor: 'pointer' }}>
+                    <SwitchBox skin={skin} on={attuned} size={phone ? 30 : 20} onChange={toggleAttuned} testId="picker:attuned" /> Attuned
                   </label>
                 ) : null}
                 {boosted ? (

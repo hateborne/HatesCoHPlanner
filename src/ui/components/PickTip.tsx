@@ -3,6 +3,7 @@ import type { GameData } from '../../data/gamedata.ts';
 import type { Power } from '../../data/types.ts';
 import type { BuildEntry, BuildRules } from '../../engine/rules.ts';
 import { useHover } from '../hover.ts';
+import type { Skin } from '../skin/skin.ts';
 import { useTipLevel } from '../../state/store.ts';
 import { AdvancedInfo } from './PowerInfoView.tsx';
 import { SlotTip, usePointer } from './PowerTip.tsx';
@@ -44,10 +45,11 @@ export function pressPickTip(rules: BuildRules, power: Power, pick: number, pt: 
  * (pressPickTip, PhoneTipLayer).
  *
  * @param props.gd Game data.
+ * @param props.skin The current skin (the box's colours).
  * @param props.rules Rules of the build before this pick (a power already in it keeps its slots).
  * @param props.pick The pick being made: the numbers are at its level.
  */
-export function PickTip({ gd, rules, pick }: { gd: GameData; rules: BuildRules; pick: number }) {
+export function PickTip({ gd, skin, rules, pick }: { gd: GameData; skin: Skin; rules: BuildRules; pick: number }) {
   const desc = useHover((h) => h.desc);
   const power = desc?.p;
   const tipLevel = useTipLevel();
@@ -57,5 +59,5 @@ export function PickTip({ gd, rules, pick }: { gd: GameData; rules: BuildRules; 
   if (!power || tipLevel !== 'advanced' || phone) return null;
   const level = rules.pickLevel(pick);
   const entry = pickEntry(entries, power, level);
-  return <SlotTip gd={gd} power={power} x={mouse.current.x} y={mouse.current.y} avoid={desc?.at} advanced={<AdvancedInfo gd={gd} at={rules.at} entry={entry} level={level} />} />;
+  return <SlotTip gd={gd} skin={skin} power={power} x={mouse.current.x} y={mouse.current.y} avoid={desc?.at} advanced={<AdvancedInfo gd={gd} at={rules.at} entry={entry} level={level} />} />;
 }

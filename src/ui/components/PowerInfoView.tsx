@@ -2,12 +2,12 @@ import { Fragment, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Archetype } from '../../data/types.ts';
 import { powerStrength } from '../../engine/enhance.ts';
-import { INFO_LABEL_COLOR, powerInfo, type InfoRow, type Seg } from '../../engine/powerinfo.ts';
+import { INFO_LABEL_COLOR, powerInfo, type InfoRow, type PowerInfo, type Seg } from '../../engine/powerinfo.ts';
 import type { BuildEntry } from '../../engine/rules.ts';
 import { TIP_PX } from './PowerTip.tsx';
 
 /** Colored runs; a "\n" run breaks the line as the client's <br> does. */
-function Segs({ segs }: { segs: readonly Seg[] }) {
+export function Segs({ segs }: { segs: readonly Seg[] }) {
   return (
     <>
       {segs.map((s, i) => {
@@ -28,7 +28,7 @@ function Segs({ segs }: { segs: readonly Seg[] }) {
 }
 
 /** A two-column "Label: value" table (the stats and target blocks). */
-function Rows({ rows }: { rows: InfoRow[] }) {
+export function Rows({ rows }: { rows: InfoRow[] }) {
   if (!rows.length) return null;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: TIP_PX * 1.5 }}>
@@ -56,17 +56,36 @@ const Divider = () => <div style={{ borderTop: '1px solid #5a6aa8', margin: `${T
  * @param props.level 0-based character level the values are shown at.
  */
 export function AdvancedInfo({ gd, at, entry, level }: { gd: GameData; at: Archetype; entry: BuildEntry; level: number }) {
-  // the version's pets file may arrive while this is open: its pet damage shows then
-  const pets = useSyncExternalStore(gd.subscribePets, () => gd.pets);
-  // and its info file (the client's effect notes, grants and wording)
-  const extras = useSyncExternalStore(gd.subscribeInfo, () => gd.info);
+  const files = useInfoFiles(gd);
   const info = useMemo(() => {
-    void pets; // read through gd: recomputed when the pets or info file arrives
-    void extras;
+    void files; // read through gd: recomputed when the pets or info file arrives
     const enhs = entry.slots.filter((s) => s.level <= level).map((s) => s.enh);
     const str = powerStrength(gd, at, entry.power, enhs, level).post;
     return powerInfo(gd, at, entry.power, level, str);
-  }, [gd, at, entry, level, pets, extras]);
+  }, [gd, at, entry, level, files]);
+  return <InfoBlocks info={info} />;
+}
+
+/**
+ * The version's optional files a power info reads, as they arrive: its pets file (pet damage) and
+ * its info file (the client's effect notes, grants and wording). Put in a memo's dependencies, so
+ * the info is worked out again when one comes.
+ *
+ * @param gd Game data.
+ * @return Both files (null while missing).
+ */
+export function useInfoFiles(gd: GameData): readonly [unknown, unknown] {
+  const pets = useSyncExternalStore(gd.subscribePets, () => gd.pets);
+  const extras = useSyncExternalStore(gd.subscribeInfo, () => gd.info);
+  return useMemo(() => [pets, extras] as const, [pets, extras]);
+}
+
+/**
+ * A power info's stats and target tables and its effect lines, with dividers between them.
+ *
+ * @param props.info The power info (powerInfo).
+ */
+export function InfoBlocks({ info }: { info: PowerInfo }) {
   const blocks: ReactNode[] = [];
   if (info.stats.length) blocks.push(<Rows key="s" rows={info.stats} />);
   if (info.target.length) blocks.push(<Rows key="t" rows={info.target} />);

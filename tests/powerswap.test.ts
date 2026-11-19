@@ -4,9 +4,11 @@
  * Respec, which asks nothing.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import { earlierOption, laterPick } from '../src/engine/actions.ts';
 import { newBuild, type Build } from '../src/engine/build.ts';
+import { BuildRules } from '../src/engine/rules.ts';
 import { levelSteps } from '../src/engine/schedule.ts';
-import { useStore } from '../src/state/store.ts';
+import { autoAdvanceReady, previewBuild, useStore } from '../src/state/store.ts';
 import { loadData, pid, sid } from './helpers/data.ts';
 
 const gd = loadData();
@@ -85,7 +87,7 @@ describe('swapping a power on the overview', () => {
 
   it('takes the player to the slots it freed, each keeping its level', async () => {
     swap(peacebringer(), 1, QUANTUM);
-    expect(st().confirm!.text).toMatch(/^Changing Incandescence to Quantum Acceleration for the level 1 power choice frees 2 enhancement slots \(gained at level /);
+    expect(st().confirm!.text).toMatch(/^Changing Incandescence to Quantum Acceleration for the level 1 power choice frees 2 enhancement slots\. You'll place them next\.$/);
     st().closeConfirm(true);
     await tick();
     const l = st().level!;
@@ -120,5 +122,227 @@ describe('swapping a power on the overview', () => {
     // a leveling build still asks
     swap(peacebringer(), 0, INNER_LIGHT, /*advanced=*/ true);
     expect(st().confirm).not.toBeNull();
+  });
+});
+
+describe('taking a power the build has later at an earlier pick', () => {
+  const GLINT = pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Glinting_Eye');
+  const CJ = pid(gd, 'Pool.Leaping.Combat_Jumping');
+  // a slot level between picks 3 and 6, and one after pick 6
+  const slotBetween = gd.core.schedule.slot.find((l) => l > P[3]! && l < P[6]!)!;
+  const slotAfter = gd.core.schedule.slot.find((l) => l > P[6]!)!;
+
+  /** Combat Jumping at pick 3 (a slot gained before pick 6 and one after), Glinting Eye at pick 6. */
+  function build(respecTo?: number): Build {
+    const b = peacebringer(respecTo);
+    b.picks[3] = { power: CJ, level: P[3]!, slots: [{ level: P[3]!, enh: { boost: RECH, ioLevel: 49 } }, { level: slotBetween, enh: { boost: RECH, ioLevel: 49 } }, { level: slotAfter }] };
+    b.picks[6] = { power: GLINT, level: P[6]!, slots: [{ level: P[6]!, enh: { boost: DMG, ioLevel: 49 } }] };
+    return b;
+  }
+
+  it('offers the later power on the earlier pick', () => {
+    swap(build(), 3, GLINT);
+    // it was offered: chosen and Finish pressed, the question is up
+    expect(st().confirm).not.toBeNull();
+  });
+
+  it('a leveling build moves the old power up, freeing the slots gained before its new level', async () => {
+    swap(build(), 3, GLINT);
+    const c = st().confirm!;
+    expect(c.text).toBe(
+      `Taking Glinting Eye at level ${P[3]! + 1} moves Combat Jumping to level ${P[6]! + 1}. It frees 1 enhancement slot gained before level ${P[6]! + 1}; you'll place it next. The following enhancements will be dropped:`,
+    );
+    expect(c.sections).toEqual([{ heading: '', lines: ['Invention: Recharge Reduction (50)'] }]);
+    st().closeConfirm(true);
+    await tick();
+    const l = st().level!;
+    expect(l.freed).toBe(true);
+    expect(l.flow![0]!.slotLevels).toEqual([slotBetween]);
+    const b = l.base;
+    expect(b.picks[3]).toEqual({ power: GLINT, level: P[3], slots: [{ level: P[3], enh: { boost: DMG, ioLevel: 49 } }] });
+    expect(b.picks[6]).toEqual({ power: CJ, level: P[6], slots: [{ level: P[6], enh: { boost: RECH, ioLevel: 49 } }, { level: slotAfter }], on: undefined });
+  });
+
+  it('a leveling build refuses when the old power cannot be taken at the later level', async () => {
+    const b = build();
+    // four other pools between the two picks: Combat Jumping's would be a fifth
+    b.picks[4] = { power: pid(gd, 'Pool.Speed.Hasten'), level: P[4]!, slots: [{ level: P[4]! }] };
+    b.picks[5] = { power: pid(gd, 'Pool.Fighting.Boxing'), level: P[5]!, slots: [{ level: P[5]! }] };
+    b.picks[7] = { power: pid(gd, 'Pool.Leadership.Assault'), level: P[7]!, slots: [{ level: P[7]! }] };
+    b.picks[8] = { power: pid(gd, 'Pool.Flight.Combat_Flight'), level: P[8]!, slots: [{ level: P[8]! }] };
+    b.picks[9] = { power: GLINT, level: P[9]!, slots: [{ level: P[9]! }] };
+    b.picks[6] = null;
+    swap(b, 3, GLINT);
+    const c = st().confirm!;
+    expect(c.title).toBe("Can't swap these powers");
+    expect(c.text).toMatch(/^Taking Glinting Eye at level 4 would move Combat Jumping to level \d+, but Combat Jumping can't be taken there: /);
+    st().closeConfirm(true);
+    await tick();
+    expect(st().view).toBe('level');
+    expect(st().level!.sub).toBe('power');
+    expect(st().build).toBe(b);
+  });
+
+  it('a Respec build empties the later pick and has the old power chosen there again', async () => {
+    const orig = build(49);
+    swap(orig, 3, GLINT);
+    const c = st().confirm!;
+    expect(c.text).toBe(
+      `Selecting Glinting Eye instead of Combat Jumping at level ${P[3]! + 1} will require that Combat Jumping be reselected at level ${P[6]! + 1}, as well as reinserting enhancement slots.`,
+    );
+    expect(c.sections).toEqual([{ heading: 'The following enhancements will be dropped:', lines: ['Invention: Recharge Reduction (50)', 'Invention: Recharge Reduction (50)'] }]);
+    st().closeConfirm(true);
+    await tick();
+    // the level-10 power screen, Combat Jumping offered first
+    let l = st().level!;
+    expect([l.sub, l.mode, l.pendingPower, l.chain?.freed]).toEqual(['power', 'edit', CJ, [slotBetween, slotAfter]]);
+    expect(l.base.picks[6]).toBeNull();
+    st().finishLevel();
+    await tick();
+    // then the freed slots
+    l = st().level!;
+    expect(l.freed).toBe(true);
+    expect(l.flow![0]!.slotLevels).toEqual([slotBetween, slotAfter]);
+    expect(l.base.picks[6]).toEqual({ power: CJ, level: P[6], slots: [], on: undefined });
+    // Cancel undoes it all
+    st().cancelLevel();
+    expect(st().build).toBe(orig);
+  });
+
+  it('greys a later power that cannot be taken this early, saying why', () => {
+    const b = build();
+    // the primary's power that opens latest
+    const set = gd.powerset(sid(gd, 'Peacebringer_Offensive.Luminous_Blast'));
+    const k = set.av.indexOf(Math.max(...set.av));
+    const nova = set.p[k]!;
+    const late = P.findIndex((lv) => lv >= set.av[k]!);
+    b.picks[late + 2] = { power: nova, level: P[late + 2]!, slots: [{ level: P[late + 2]! }] };
+    const base = { ...b, picks: b.picks.map((p, i) => (i === 3 ? null : p)) };
+    const o = earlierOption(gd, base, 3, new BuildRules(gd, base).powerOption(nova, 3));
+    expect(o.state).toBe('unavailable');
+    expect(o.reason).toMatch(new RegExp(`^Your level ${P[late + 2]! + 1} power, and it can't be taken here: Available at level `));
+    expect(earlierOption(gd, base, 3, new BuildRules(gd, base).powerOption(GLINT, 3)).state).toBe('available');
+  });
+
+  it('asks nothing in Advanced Respec', () => {
+    swap(build(49), 3, GLINT, /*advanced=*/ true);
+    expect(st().confirm).toBeNull();
+    expect(st().level!.chain).toBeDefined();
+  });
+});
+
+describe('review fixes', () => {
+  const GLINT = pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Glinting_Eye');
+  const NOVA = pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Bright_Nova');
+  const BOLT = pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Bright_Nova_Bolt');
+  const CJ = pid(gd, 'Pool.Leaping.Combat_Jumping');
+  const LEAP = pid(gd, 'Pool.Leaping.Leap');
+  const between = gd.core.schedule.slot.find((l) => l > P[3]! && l < P[6]!)!;
+
+  it('moving a form power up keeps what its granted powers hold, freeing only their early slots', async () => {
+    const b = peacebringer();
+    b.picks[3] = { power: NOVA, level: P[3]!, slots: [{ level: P[3]! }] };
+    b.picks[6] = { power: GLINT, level: P[6]!, slots: [{ level: P[6]! }] };
+    const after = gd.core.schedule.slot.find((l) => l > P[6]!)!;
+    b.granted[BOLT] = { slots: [{ level: P[3]!, enh: { boost: RECH, ioLevel: 49 } }, { level: between, enh: { boost: DMG, ioLevel: 49 } }, { level: after, enh: { boost: DMG, ioLevel: 49 } }] };
+    swap(b, 3, GLINT);
+    const c = st().confirm!;
+    expect(c.text).toMatch(/^Taking Glinting Eye at level 4 moves Bright Nova to level 10\. It frees 1 enhancement slot gained before level 10; you'll place it next\. The following enhancements will be dropped:$/);
+    expect(c.sections![0]!.lines).toEqual(['Invention: Damage (50) (in Bright Nova Bolt)']);
+    st().closeConfirm(true);
+    await tick();
+    const nb = st().level!.base;
+    expect(nb.granted[BOLT]!.slots).toEqual([{ level: P[3]!, enh: { boost: RECH, ioLevel: 49 } }, { level: after, enh: { boost: DMG, ioLevel: 49 } }]);
+    expect(st().level!.flow![0]!.slotLevels).toEqual([between]);
+  });
+
+  it('lists the picks a swap leaves breaking a rule, and asks even when nothing is dropped', () => {
+    const b = peacebringer();
+    const leapAt = P.findIndex((l) => l >= 13);
+    b.picks[3] = { power: CJ, level: P[3]!, slots: [{ level: P[3]! }] };
+    b.picks[4] = { power: pid(gd, 'Pool.Leaping.Long_Jump'), level: P[4]!, slots: [{ level: P[4]! }] };
+    b.picks[leapAt] = { power: LEAP, level: P[leapAt]!, slots: [{ level: P[leapAt]! }] };
+    swap(b, 3, pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Gleaming_Blast'));
+    const c = st().confirm!;
+    expect(c.text).toBe('Changing Combat Jumping to Gleaming Blast for the level 4 power choice.');
+    expect(c.sections).toEqual([{ heading: 'These picks will be flagged in red (they no longer meet a rule):', lines: [`Level ${P[leapAt]! + 1}: ${gd.power(LEAP).dn} (Requirements not met)`] }]);
+  });
+
+  it('a Respec build levels as usual past its respec level', () => {
+    // respec to 4: picks 3 (level 4) and 6 (level 10) straddle it, so pick 6 takes the leveling path
+    const b = peacebringer(P[3]!);
+    b.picks[3] = { power: CJ, level: P[3]!, slots: [{ level: P[3]! }] };
+    b.picks[6] = { power: GLINT, level: P[6]!, slots: [{ level: P[6]! }] };
+    delete b.endLevel; // continued past its respec level
+    swap(b, 3, GLINT, /*advanced=*/ true);
+    expect(st().confirm!.text).toMatch(/^Taking Glinting Eye at level 4 moves Combat Jumping to level 10\./);
+  });
+
+  it('the totals preview never holds the power twice', () => {
+    const b = peacebringer();
+    b.picks[3] = { power: CJ, level: P[3]!, slots: [{ level: P[3]! }] };
+    b.picks[6] = { power: GLINT, level: P[6]!, slots: [{ level: P[6]! }] };
+    useStore.setState({ gd, steps, build: b, view: 'overview', level: undefined, confirm: null, advancedRespec: false });
+    st().editPick(3);
+    st().choosePower(GLINT);
+    const pv = previewBuild(gd, steps, st().level!);
+    expect(pv.picks.filter((p) => p?.power === GLINT)).toHaveLength(1);
+    expect(pv.picks[6]?.power).toBe(CJ);
+  });
+
+  it('a pick past the stop level is not offered for taking earlier', () => {
+    const b = peacebringer();
+    b.picks[9] = { power: GLINT, level: P[9]!, slots: [{ level: P[9]! }] };
+    expect(laterPick(b, 3, GLINT)).toBe(9);
+    expect(laterPick({ ...b, endLevel: P[5]! }, 3, GLINT)).toBe(-1);
+  });
+
+  it('ignores the second click of a double-click in Advanced Respec', () => {
+    expect(autoAdvanceReady()).toBe(true);
+    expect(autoAdvanceReady()).toBe(false);
+  });
+});
+
+describe("level 1's orb", () => {
+  /** Reopen level 1 from its orb: its primary pick, then its secondary. */
+  const reopenLevelOne = (b: Build) => {
+    useStore.setState({ gd, steps, build: b, view: 'overview', level: undefined, confirm: null, advancedRespec: false });
+    const level1 = steps.find((s) => s.level === 0)!;
+    st().editPick(level1.picks[0]!, level1.picks.slice(1));
+    return level1;
+  };
+
+  it('opens the primary pick, then the secondary, then the overview', () => {
+    const level1 = reopenLevelOne(peacebringer());
+    expect(st().level).toMatchObject({ mode: 'edit', pickInStep: 0 });
+    st().choosePower(BOLT); // unchanged: no question
+    st().finishLevel();
+    expect(st().view).toBe('level');
+    expect(st().level).toMatchObject({ mode: 'edit', pickInStep: level1.picks.indexOf(1) });
+    st().finishLevel();
+    expect(st().view).toBe('overview');
+    expect(st().level).toBeUndefined();
+  });
+
+  it('goes on to the secondary after a swap it asked about, keeping the swap', async () => {
+    reopenLevelOne(peacebringer());
+    st().choosePower(INNER_LIGHT);
+    st().finishLevel();
+    st().closeConfirm(true);
+    await tick();
+    expect(st().view).toBe('level');
+    expect(st().level?.pickInStep).toBe(1);
+    expect(st().build!.picks[0]!.power).toBe(INNER_LIGHT);
+    // Cancel on the secondary keeps the primary's change
+    st().cancelLevel();
+    expect(st().view).toBe('overview');
+    expect(st().build!.picks[0]!.power).toBe(INNER_LIGHT);
+  });
+
+  it('stops at the first screen on Cancel', () => {
+    reopenLevelOne(peacebringer());
+    st().cancelLevel();
+    expect(st().view).toBe('overview');
+    expect(st().build!.picks[0]!.power).toBe(BOLT);
   });
 });

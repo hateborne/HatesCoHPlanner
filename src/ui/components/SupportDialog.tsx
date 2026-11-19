@@ -31,7 +31,7 @@ export function SupportDialog({ skin, onClose }: { skin: Skin; onClose: () => vo
     <>
       <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 90, background: 'rgba(0,0,0,0.45)' }} onClick={onClose} />
       <div className="abs" role="dialog" aria-label="Support HateCoHPlanner" style={{ left: x, top: y, width: w, height: h, zIndex: 91 }}>
-        <MenuFrame x={0} y={0} w={w} h={h} skin={skin} style={{ background: '#000314' }} />
+        <MenuFrame x={0} y={0} w={w} h={h} skin={skin} style={{ background: skin.panel }} />
         <div className="abs" style={{ left: 28, top: 22, width: w - 56, color: skin.desc, fontFamily: "'Montreal'", fontSize: px, lineHeight: `${Math.round(1.3 * px)}px`, zIndex: 5 }}>
           <div style={{ fontSize: px * 1.35, fontWeight: 'bold', marginBottom: px * 0.6 }}>DON&apos;T SEND ME YOUR MONEY!</div>
           <div style={{ marginBottom: px * 0.3 }}>Send it where it actually helps:</div>

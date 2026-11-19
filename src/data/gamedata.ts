@@ -1,8 +1,9 @@
+import { readHenchmenFile } from './henchmen.ts';
 import { readInfoFile } from './info.ts';
 import { readPetsFile } from './pets.ts';
 import { dataRoot, DEFAULT_SERVER, type GameServer } from './servers.ts';
 import type { GameVersion } from './versions.ts';
-import type { Archetype, BoostSet, BoostsFile, Core, InfoFile, PetsFile, Power, Powerset } from './types.ts';
+import type { Archetype, BoostSet, BoostsFile, Core, HenchmenFile, InfoFile, PetsFile, Power, Powerset } from './types.ts';
 
 /** Where an enhancement sits inside an IO set. */
 export interface BoostSetRef {
@@ -53,13 +54,23 @@ export class GameData {
   // the version's pseudo-pets (pets/<version>.json): set when that optional file arrives, so a
   // power's pet damage shows from then on; null while it is missing
   pets: PetsFile | null = null;
-  // who to tell when the pets file arrives (subscribePets)
+  // whether the pets file's fetch has ended (taken, refused or failed): the Pets and Minions cards
+  // read it to tell a power's real pets from its pseudo-pets before asking for the real pets file
+  petsSettled = false;
+  // who to tell when the pets file arrives, or its fetch ends (subscribePets)
   private readonly petsListeners = new Set<() => void>();
   // the version's power-info extras (info/<version>.json): set when that optional file arrives, so
   // the power info shows the client's effect notes, grants and wording from then on; null while missing
   info: InfoFile | null = null;
   // who to tell when the info file arrives (subscribeInfo)
   private readonly infoListeners = new Set<() => void>();
+  // the version's real pets (henchmen/<version>.json): set when that optional file arrives, so the
+  // Pets and Minions cards show from then on; null while it is missing or not asked for yet
+  henchmen: HenchmenFile | null = null;
+  // who to tell when the real pets file arrives (subscribeHenchmen)
+  private readonly henchmenListeners = new Set<() => void>();
+  // fetches the real pets file (set by loadGameData); requestHenchmen calls it once
+  private henchmenLoader: (() => void) | null = null;
 
   /**
    * Index a loaded data set.
@@ -170,8 +181,16 @@ export class GameData {
     const file = readPetsFile(raw);
     if (!file) return false;
     this.pets = file;
+    this.petsSettled = true;
     for (const l of [...this.petsListeners]) l();
     return true;
+  }
+
+  /** Mark the pets file's fetch as ended, taken or not, and tell those waiting (subscribePets). */
+  settlePets(): void {
+    if (this.petsSettled) return;
+    this.petsSettled = true;
+    for (const l of [...this.petsListeners]) l();
   }
 
   /**
@@ -191,6 +210,54 @@ export class GameData {
     for (const l of [...this.infoListeners]) l();
     return true;
   }
+
+  /**
+   * Take the version's real pets file, when it is one, and tell those waiting for it.
+   *
+   * Optional and loaded apart, like the pets file: a file with any part malformed is ignored (the
+   * Pets and Minions cards then don't show) rather than trusted (readHenchmenFile).
+   *
+   * @param raw The parsed henchmen/<version>.json.
+   * @return Whether it was taken.
+   */
+  setHenchmen(raw: unknown): boolean {
+    const file = readHenchmenFile(raw);
+    if (!file) return false;
+    this.henchmen = file;
+    for (const l of [...this.henchmenListeners]) l();
+    return true;
+  }
+
+  /**
+   * Set how the real pets file is fetched; requestHenchmen runs it the first time a build needs it.
+   *
+   * @param load Starts the fetch (and takes the file through setHenchmen when it comes).
+   */
+  setHenchmenLoader(load: () => void): void {
+    this.henchmenLoader = load;
+  }
+
+  /**
+   * Fetch the version's real pets file, once: only a build with a power that makes a pet asks for
+   * it, so other builds download nothing more. Never waited for (subscribeHenchmen hears it).
+   */
+  requestHenchmen(): void {
+    const load = this.henchmenLoader;
+    this.henchmenLoader = null;
+    load?.();
+  }
+
+  /**
+   * Hear when the real pets file arrives, so the totals show the Pets and Minions cards (for
+   * useSyncExternalStore, with `henchmen` as the snapshot).
+   *
+   * @param listener Called once the file is taken.
+   * @return Stops listening.
+   */
+  readonly subscribeHenchmen = (listener: () => void): (() => void) => {
+    this.henchmenListeners.add(listener);
+    return () => this.henchmenListeners.delete(listener);
+  };
 
   /**
    * Hear when the info file arrives, so a panel open by then shows its extras (for
@@ -217,25 +284,32 @@ export class GameData {
   };
 
   /**
-   * Value of a class's named mod table at a 0-based level, for a pseudo-pet's power: the pet file's
-   * table for that class first (a villain class's, or one core.json lacks for an archetype), else
-   * the archetype's from core.json.
+   * Value of a class's named mod table at a 0-based level, for a pet's power: the pets file's table
+   * for that class first (a villain class's, or one core.json lacks for an archetype), then the real
+   * pets file's, else the archetype's from core.json.
    *
    * @param cls Class name (Class_Brute, Class_Minion_Pets).
    * @param table Table name (case-insensitive).
    * @param level 0-based level, clamped to the table length.
-   * @return The table value, or 0 when the class lacks the table.
+   * @return The table value; when the class lacks the table, 1 for a pet class (as the client) and 0
+   *   for an archetype.
    */
   classTable(cls: string, table: string, level: number): number {
-    const idx = this.pets?.classes[cls]?.[table.toLowerCase()];
-    if (idx !== undefined) {
-      const vals = this.pets?.tables[idx];
+    const t = table.toLowerCase();
+    const fromPets = this.pets?.classes[cls]?.[t];
+    const fromHenchmen = this.henchmen?.classes[cls]?.mod[t];
+    const vals =
+      fromPets !== undefined ? this.pets?.tables[fromPets] : fromHenchmen !== undefined ? this.henchmen?.tables[fromHenchmen] : undefined;
+    if (fromPets !== undefined || fromHenchmen !== undefined) {
       if (!Array.isArray(vals) || vals.length === 0) return 0;
       const v = vals[Math.max(0, Math.min(vals.length - 1, level))];
       return typeof v === 'number' ? v : 0;
     }
     const at = this.archetypeByName.get(cls.toLowerCase());
-    return at ? this.table(at, table, level) : 0;
+    if (at) return this.table(at, table, level);
+    // a pet class lacking the table reads 1, the client's fallback (classes.c class_GetNamedTableValue):
+    // the Assault Bot's Conserve Power names Melee_One, which no pet class has, and gives +100%
+    return this.henchmen?.classes[cls] || this.pets?.classes[cls] ? 1 : 0;
   }
 
   /** @return An archetype attribute table value (e.g. at.max.HitPoints) at a 0-based level. */
@@ -251,14 +325,18 @@ export class GameData {
 export const PETS_FOLDER = 'pets';
 /** Folder beside them holding each version's power-info extras (info/<version>.json). */
 export const INFO_FOLDER = 'info';
+/** Folder beside them holding each version's real pets (henchmen/<version>.json). */
+export const HENCHMEN_FOLDER = 'henchmen';
 
 /**
  * Fetch one game version's exported data set from the site.
  *
  * The version's pseudo-pet and power-info extras files are fetched once these four have arrived,
  * and never waited for: each is attached when it comes (GameData.setPets, setInfo), and a slow,
- * missing or damaged one only leaves pet damage or the extras out. The build always opens on the
- * four files alone, and a load that fails on them fetches neither extra file.
+ * missing or damaged one only leaves pet damage or the extras out. The real pets file is fetched
+ * the same way, but only when a build first asks for it (GameData.requestHenchmen), and asked for
+ * again after a network failure. The build
+ * always opens on the four files alone, and a load that fails on them fetches no extra file.
  *
  * @param server The server the version belongs to.
  * @param base Site base URL (import.meta.env.BASE_URL).
@@ -282,15 +360,25 @@ export async function loadGameData(server: GameServer, base: string, version: Ga
   ]);
   const gd = new GameData({ core, powersets, powers, boosts }, server.id);
   // the optional files beside the version folder: fetched now, never waited for
-  const extra = (folder: string, take: (raw: unknown) => boolean): void => {
+  const extra = (folder: string, take: (raw: unknown) => boolean, done?: () => void): void => {
     void (async (): Promise<unknown> => {
       const r = await fetch(`${data}${folder}/${version.id}.json${q}`);
       return r.ok ? await r.json() : null;
     })()
       .then((raw) => take(raw))
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => done?.());
   };
-  extra(PETS_FOLDER, (raw) => gd.setPets(raw));
+  extra(PETS_FOLDER, (raw) => gd.setPets(raw), () => gd.settlePets());
   extra(INFO_FOLDER, (raw) => gd.setInfo(raw, version.id));
+  // the real pets file only once a build asks for it (requestHenchmen); a fetch the network fails
+  // is armed again for the next ask (a missing or refused file is not)
+  const loadHenchmen = (): void => {
+    void (async (): Promise<void> => {
+      const r = await fetch(`${data}${HENCHMEN_FOLDER}/${version.id}.json${q}`);
+      if (r.ok) gd.setHenchmen(await r.json());
+    })().catch(() => gd.setHenchmenLoader(loadHenchmen));
+  };
+  gd.setHenchmenLoader(loadHenchmen);
   return gd;
 }

@@ -146,8 +146,34 @@ export function exclusiveGroups(entries: BuildEntry[]): BuildEntry[][] {
 }
 
 /**
+ * Whether a power upgrades pets (Equip Robot, Train Ninjas, ...): one of its grant or revoke mods sits
+ * in a group whose requirements name a pet (`MastermindPets_Droid target.VillainName>`).
+ *
+ * @param gd Game data (attribute offsets).
+ * @param p The power.
+ * @return True for a pet upgrade.
+ */
+export function isPetUpgrade(gd: GameData, p: Power): boolean {
+  const known = upgrades.get(p);
+  if (known !== undefined) return known;
+  const grants = new Set(['GrantPower', 'GrantBoostedPower', 'RevokePower'].map((n) => gd.attribByName.get(n)).filter((a): a is number => a !== undefined));
+  const walk = (effs: Effect[] | undefined, named: boolean): boolean =>
+    (effs ?? []).some((e) => {
+      const here = named || (e.req ?? []).some((t) => t.toLowerCase() === 'target.villainname>');
+      return (here && (e.m ?? []).some((m) => m.a.some((a) => grants.has(a)))) || walk(e.sub, here);
+    });
+  const is = walk(p.eff, false) || walk(p.act, false);
+  upgrades.set(p, is);
+  return is;
+}
+
+// isPetUpgrade's answers, per power: defaultsOf asks for every power of a build on each change
+const upgrades = new WeakMap<Power, boolean>();
+
+/**
  * Whether each of a build's powers counts in the totals by default: defaultOn, except emergency
- * toggles (off), and in each exclusive group only the earliest picked of those still on.
+ * toggles (off), and in each exclusive group only the earliest picked of those still on. A pet
+ * upgrade is on: switched off, its pets go without it (petcards.ts).
  *
  * @param gd Game data.
  * @param entries The build's entries.
@@ -155,7 +181,7 @@ export function exclusiveGroups(entries: BuildEntry[]): BuildEntry[][] {
  */
 export function defaultsOf(gd: GameData, entries: BuildEntry[]): Map<string, boolean> {
   const out = new Map<string, boolean>();
-  for (const e of entries) out.set(e.key, defaultOn(e.power) && !isEmergencyToggle(gd, e.power));
+  for (const e of entries) out.set(e.key, (defaultOn(e.power) || isPetUpgrade(gd, e.power)) && !isEmergencyToggle(gd, e.power));
   for (const g of exclusiveGroups(entries)) {
     let kept = false;
     for (const e of g) {
@@ -168,7 +194,7 @@ export function defaultsOf(gd: GameData, entries: BuildEntry[]): Map<string, boo
 }
 
 /** @return Whether a mod lands on the caster (self buffs, own auras, PBAoE team buffs). */
-function affectsSelf(p: Power, m: Mod): boolean {
+export function affectsSelf(p: Power, m: Mod): boolean {
   if (m.tg === 'Caster') return true;
   if (m.tg !== 'Affected') return false;
   const ea = p.ea ?? [p.tgt];
@@ -188,7 +214,15 @@ const onCharacter = (e: Effect) => !e.fl?.includes('SecondaryTargetsOnly');
  */
 const standing = (m: Mod) => m.app !== 'OnDeactivate' && m.app !== 'OnExpire';
 
-function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) => void): void {
+/**
+ * Walk the standing mods of effect groups that always land: no chance below 1, no PPM, not only on
+ * secondary targets, requirements met.
+ *
+ * @param effs The groups.
+ * @param ctx Requirement context.
+ * @param fn Called per mod.
+ */
+export function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m: Mod) => void): void {
   for (const e of effs ?? []) {
     if (e.ch !== undefined && e.ch < 1) continue;
     if (e.ppm) continue;
@@ -299,10 +333,23 @@ const defenseNameOf = (gd: GameData, i: number) => gd.core.attribNames.Defense[i
  */
 function modLines(gd: GameData, at: Archetype, level: number, p: Power, m: Mod, strength: Map<number, number> | null): ModLine[] {
   if (!affectsSelf(p, m)) return [];
+  return attribLines(gd, m, gd.table(at, m.tbl, level) * m.sc, strength);
+}
+
+/**
+ * The totals lines a mod adds to when it lands, its magnitude read from some class's table: the
+ * character's own (modLines), or a pet's or its creator's (a pet's stats, petstats.ts).
+ *
+ * @param gd Game data.
+ * @param m The mod.
+ * @param base Its unenhanced magnitude: the caster's class table at its level x the mod's scale.
+ * @param strength The caster's enhancement strength for the power by attribute, or null for none.
+ * @return One entry per line the mod touches (a zero value included).
+ */
+export function attribLines(gd: GameData, m: Mod, base: number, strength: Map<number, number> | null): ModLine[] {
   if (m.t !== 'Magnitude' && m.t !== 'Duration') return [];
   const out: ModLine[] = [];
   const add = (key: string, label: string, value: number) => out.push({ key, label, value });
-  const base = gd.table(at, m.tbl, level) * m.sc;
   for (const a of m.a) {
     const name = gd.attribName.get(a) ?? '';
     let mag = m.t === 'Duration' ? (m.mag ?? 1) : base;
@@ -564,15 +611,21 @@ export function runningLines(
 }
 
 /**
+ * The attribute tables a character's totals read: an archetype's, or a pet's class's (PetClass,
+ * whose missing tables are empty: every value then falls back to its default).
+ */
+export type ClassTables = Pick<Archetype, 'base' | 'min' | 'max' | 'maxMax' | 'strMax' | 'resMax'>;
+
+/**
  * The archetype's cap on a totals line, for the lines that have one: damage resistance, damage
  * and recharge.
  *
- * @param at The archetype.
+ * @param at The archetype (or a pet's class tables).
  * @param key The line's key ('res.03', 'dmg.00', 'rech').
  * @param level 0-based level.
  * @return The cap in the line's unit, or undefined for a line without one.
  */
-export function lineCap(at: Archetype, key: string, level: number): number | undefined {
+export function lineCap(at: ClassTables, key: string, level: number): number | undefined {
   const dm = /^res\.(\d+)$/.exec(key);
   if (dm) return GameData.attrAt(at.resMax, `DamageType${dm[1]}`, level, 0.75);
   const dd = /^dmg\.(\d+)$/.exec(key);
@@ -589,8 +642,15 @@ export function lineCap(at: Archetype, key: string, level: number): number | und
  * @param b The build (for per-power toggles).
  * @param level 0-based level to compute at (default 49, or the exemplar level).
  */
-export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): Totals {
-  const at: Archetype = rules.at;
+/** Totals lines being summed: each made on first use, every contribution kept as a source. */
+export interface LineBook {
+  lines: Map<string, StatLine>;
+  line: (key: string, label: string) => StatLine; // the line, made on first use
+  add: (key: string, label: string, v: number, src: string) => void; // a nonzero contribution and its source
+}
+
+/** @return An empty LineBook. */
+export function lineBook(): LineBook {
   const lines = new Map<string, StatLine>();
   const line = (key: string, label: string): StatLine => {
     let l = lines.get(key);
@@ -606,6 +666,12 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     l.value += v;
     l.sources.push({ name: src, value: v });
   };
+  return { lines, line, add };
+}
+
+export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): Totals {
+  const at: Archetype = rules.at;
+  const { lines, line, add } = lineBook();
 
   const damageName = (i: number) => damageNameOf(gd, i);
   const defenseName = (i: number) => defenseNameOf(gd, i);
@@ -697,6 +763,32 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     add('enduse', 'End use', -cost, t.name); // per toggle, negative: what drains the endurance bar
   }
 
+  return {
+    ...finishTotals(gd, at, level, { lines, line, add }),
+    setGroups,
+    bonusesOver5,
+    endUsePerSec: endUse,
+    bonuses,
+  };
+}
+
+/** What finishTotals works out from summed lines: everything in Totals but the set bonuses and toggle costs. */
+export type FinishedTotals = Omit<Totals, 'setGroups' | 'bonusesOver5' | 'endUsePerSec' | 'bonuses'>;
+
+/**
+ * Finish summed totals lines against a class: "All" defense folded into each type, caps applied,
+ * and hit points, endurance, regeneration, recovery, movement and perception worked out from the
+ * class's base values, minimums and caps.
+ *
+ * @param gd Game data.
+ * @param at The class's attribute tables (the character's archetype, or a pet's class).
+ * @param level 0-based level.
+ * @param book The summed lines; their sources are sorted and their caps set here.
+ * @return The finished totals.
+ */
+export function finishTotals(gd: GameData, at: ClassTables, level: number, book: LineBook): FinishedTotals {
+  const { lines, line } = book;
+  const defenseName = (i: number) => defenseNameOf(gd, i);
   // Fold the "all types" defense into each typed defense, apply caps.
   const allDef = lines.get('def.base');
   for (let i = 0; i < gd.core.attribNames.Defense.length; i++) {
@@ -722,14 +814,18 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
   const hpLine = line('hp', 'Max HP');
   hpLine.cap = hpCap;
   hpLine.capped = hpMax;
-  const endMax = 100 + (lines.get('endmax')?.value ?? 0);
+  // a class's maximum endurance (every archetype's is 100) and what its powers add
+  const endMax = GameData.attrAt(at.max, 'Endurance', level, 100) + (lines.get('endmax')?.value ?? 0);
   // CalcCur: the class base times (1 + the summed mods), e.g. Fly's 1.5 x (1 + 1.61)
   const cur = (attr: string, dflt: number, key: string) => GameData.attrAt(at.base, attr, level, dflt) * (1 + (lines.get(key)?.value ?? 0));
   // ClampCur against attrMax: the class maximum plus Maximum-aspect raises, which ClampMax holds
   // under the class's MaxMax (Super Speed lifts the run cap from 6.46 to 8.398)
   const capOf = (attr: string, key: string) =>
     Math.min(GameData.attrAt(at.max, attr, level, 1e9) + (lines.get(`max.${key}`)?.value ?? 0), GameData.attrAt(at.maxMax, attr, level, 1e9));
-  const capped = (attr: string, dflt: number, key: string) => Math.min(cur(attr, dflt, key), capOf(attr, key));
+  // ClampCur against attrMin too: the class minimum (one it doesn't list is 0), so a class that
+  // can't regenerate (the Maintenance Drone's -999999 regeneration) shows none, not a loss
+  const floorOf = (attr: string) => GameData.attrAt(at.min, attr, level, 0);
+  const capped = (attr: string, dflt: number, key: string) => Math.max(floorOf(attr), Math.min(cur(attr, dflt, key), capOf(attr, key)));
   const regenRaw = cur('Regeneration', 0.25, 'regen');
   const recovRaw = cur('Recovery', 1, 'recov');
   // per second: the regeneration or recovery value as a share of max HP or endurance
@@ -739,13 +835,11 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     lines,
     hpMax,
     hpBase,
-    regenPerSec: perSec(Math.min(regenRaw, capOf('Regeneration', 'regen')), hpMax),
-    recovPerSec: perSec(Math.min(recovRaw, capOf('Recovery', 'recov')), endMax),
+    regenPerSec: perSec(Math.max(floorOf('Regeneration'), Math.min(regenRaw, capOf('Regeneration', 'regen'))), hpMax),
+    recovPerSec: perSec(Math.max(floorOf('Recovery'), Math.min(recovRaw, capOf('Recovery', 'recov'))), endMax),
     regenPerSecRaw: perSec(regenRaw, hpMax),
     recovPerSecRaw: perSec(recovRaw, endMax),
     hpRaw: hpBase + (lines.get('hp')?.value ?? 0),
-    setGroups,
-    bonusesOver5,
     speeds: {
       run: capped('SpeedRunning', 1, 'run'),
       fly: capped('SpeedFlying', 1.5, 'fly'),
@@ -755,8 +849,6 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
     // perception mods are fractions of the base radius (+0.6 = +60%), unlike stealth's feet
     perception: capped('PerceptionRadius', 500, 'perc'),
     endMax,
-    endUsePerSec: endUse,
-    bonuses,
   };
 }
 

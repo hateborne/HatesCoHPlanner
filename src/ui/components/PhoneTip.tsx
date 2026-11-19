@@ -3,6 +3,7 @@ import type { Archetype } from '../../data/types.ts';
 import { useEscape } from '../escape.ts';
 import { useHover, type PressTip } from '../hover.ts';
 import type { Skin } from '../skin/skin.ts';
+import { PetPowerDetails } from './PetCard.tsx';
 import { AdvancedInfo } from './PowerInfoView.tsx';
 import { EnhDetails, SlotDetails } from './PowerTip.tsx';
 import { useStage } from './Stage.tsx';
@@ -55,6 +56,8 @@ function PhoneTip({ gd, skin, at, level, press }: { gd: GameData; skin: Skin; at
     );
   } else if (press.kind === 'enh') {
     body = <EnhDetails gd={gd} at={at} slots={press.entry.slots} slot={press.slot} level={level} />;
+  } else if (press.kind === 'petPower') {
+    body = <PetPowerDetails gd={gd} at={at} card={press.card} power={press.power} />;
   } else {
     body = <div style={{ whiteSpace: 'pre-line' }}>{press.text}</div>;
   }
@@ -66,7 +69,7 @@ function PhoneTip({ gd, skin, at, level, press }: { gd: GameData; skin: Skin; at
         className="abs scroll-y"
         role="tooltip"
         onClick={close}
-        style={{ left: MARGIN, width: stage.w - 2 * MARGIN, ...place, zIndex: 67, boxSizing: 'border-box', padding: `${PX * 0.6}px ${PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: PX * 0.6, fontFamily: "'Montreal'", fontSize: PX, lineHeight: 1.3, color: '#ffffff' }}
+        style={{ left: MARGIN, width: stage.w - 2 * MARGIN, ...place, zIndex: 67, boxSizing: 'border-box', padding: `${PX * 0.6}px ${PX * 0.8}px`, background: skin.panel, border: `2px solid ${skin.panelBorder}`, borderRadius: PX * 0.6, fontFamily: "'Montreal'", fontSize: PX, lineHeight: 1.3, color: '#ffffff' }}
       >
         {body}
       </div>

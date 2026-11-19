@@ -41,6 +41,31 @@ def strip_k(name):
     return name[1:] if isinstance(name, str) and name.startswith("k") else name
 
 
+# a pet class's attribute tables in the real pets file -> the decoded villain class's
+# (live.CLASS_TABLES), named as core.json names an archetype's
+PET_CLASS_TABLES = {"base": "AttribBase", "min": "AttribMin", "max": "AttribMaxTable", "maxMax": "AttribMaxMaxTable",
+                    "strMax": "StrengthMaxTable", "resMax": "ResistanceMaxTable"}
+# the base, minimum, maximum and cap attributes the planner's totals read: hit points, endurance,
+# regeneration, recovery, movement and perception
+_PET_STAT_ATTRS = frozenset({"HitPoints", "Endurance", "Regeneration", "Recovery", "SpeedRunning",
+                             "SpeedFlying", "SpeedJumping", "JumpHeight", "PerceptionRadius"})
+
+
+def pet_class_attr(table: str, attr: str) -> bool:
+    """Whether the real pets file keeps an attribute of a pet class's table: what a pet's stats read.
+
+    @param table The table's key in the file (PET_CLASS_TABLES).
+    @param attr The attribute's name.
+    @return True for the base, minimum, maximum and cap of a stat the totals show, the damage and
+        recharge caps (strMax) and the resistance caps (resMax).
+    """
+    if table in ("base", "min", "max", "maxMax"):
+        return attr in _PET_STAT_ATTRS
+    if table == "strMax":
+        return attr.startswith("DamageType") or attr == "RechargeTime"
+    return attr.startswith("DamageType")
+
+
 ENT_CREATE_PARAM = 3  # the param type of an EntCreate mod's Params (the client tests `*params == 3`)
 
 
@@ -53,8 +78,8 @@ def ent_create_param(params, layout: list) -> dict | None:
 
     @param params A mod's decoded Params ({"n": param type, "words", "strings"}), or None.
     @param layout [(field name, is a string earray)] in serialized order.
-    @return {"EntityDef", "Class", "Power": [names]} (empty when absent), or None when the Params
-        aren't an EntCreate struct or its words don't fit the layout exactly.
+    @return {"EntityDef", "Class", "DisplayName", "Power": [names]} (empty when absent), or None
+        when the Params aren't an EntCreate struct or its words don't fit the layout exactly.
     """
     if not params or params.get("n") != ENT_CREATE_PARAM or not layout:
         return None
@@ -76,7 +101,7 @@ def ent_create_param(params, layout: list) -> dict | None:
     if i != len(words):
         return None
     return {"EntityDef": got.get("EntityDef") or "", "Class": got.get("Class") or "",
-            "Power": got.get("Power") or []}
+            "DisplayName": got.get("DisplayName") or "", "Power": got.get("Power") or []}
 
 
 def grant_attribs(attribs: dict) -> set[int]:
@@ -106,10 +131,17 @@ class Exporter:
         self.cats = {c["Name"].lower(): c for c in live.powercats}
         self.E = live.enums
         self.grant_attribs = grant_attribs(live.attribs)
+        # villain defs and classes by lower-cased name, and the archetypes' classes (pets)
+        self.villains = {v["Name"].lower(): v for v in live.villains}
+        self.vclasses = {c["Name"].lower(): c for c in live.villain_classes}
+        self.pclasses = {c["Name"].lower(): c for c in live.classes}
         # no_frames: enhancements left without frame art because the client has no frame columns
         self.report: dict = {"missing_text": Counter(), "unresolved_refs": Counter(),
                              "pvp_effects_dropped": 0, "no_frames": 0}
         self.used_tables: set[str] = set()
+        # conv_mod marks a mod that stacks once whoever casts it (CasterStackType kCollective) with
+        # "cst" while this is set (build_henchmen's `collective`)
+        self.mark_collective = False
         # the PvP-only test by requirement (pipeline/pvp.py): the current one, or a published
         # version's own (use_pvp_test)
         self.pvp_test_id = PVP_TEST
@@ -247,6 +279,8 @@ class Exporter:
             o["fl"] = names
         if a.get("BoostModAllowed"):
             o["bma"] = a["BoostModAllowed"]
+        if self.mark_collective and self.enum("mod.CasterStackType", a.get("CasterStackType", 0)) == "Collective":
+            o["cst"] = 1  # build_henchmen's `collective` only: never in a version's powers
         if set(a["Attrib"]) & self.grant_attribs:
             names = [self.power_name(n) for n in param_power_names(a["Params"])]
             if ids:
@@ -581,6 +615,67 @@ class Exporter:
         """@return The offset of the client's special attribute with this name, or None."""
         return next((o for o, a in self.L.attribs.items() if a.get("kind") == "special" and a["name"] == name), None)
 
+    def _villain(self, name: str) -> dict | None:
+        """@return The villain def with this name (any case), or None."""
+        return self.villains.get((name or "").lower())
+
+    def _pet_class(self, par: dict, vdef: dict | None) -> dict | None:
+        """The class a pet that isn't a PseudoPet runs with: the mod's Class (a villain class or an
+        archetype), else its villain def's class (character_CreatePet, the power info's pet branch).
+
+        @param par The mod's EntCreate params.
+        @param vdef Its villain def, or None.
+        @return The decoded class, or None when it has none.
+        """
+        c = par["Class"].lower()
+        cls = (self.vclasses.get(c) or self.pclasses.get(c)) if c else None
+        if cls is None and vdef is not None:
+            cls = self.vclasses.get(vdef["Class"].lower())
+        return cls
+
+    def _pseudo_creation(self, a: dict, hidden: bool, skipped: Counter) -> dict | None:
+        """One EntCreate mod's pseudo-pet as the pets file holds it (build_pets), or None.
+
+        @param a The decoded mod.
+        @param hidden A group around it is HideFromInfo.
+        @param skipped Why mods are left out, counted.
+        @return {"p", "def"?, "hid"?, "dur"?, "boosts"?, "pseudo"? | "cls"}, or None for a mod left
+            out: no params, no powers, a real pet (a power that isn't Auto) or no class.
+        """
+        par = ent_create_param(a.get("Params"), self.L.ent_create_layout)
+        if par is None:
+            skipped["no EntCreate params"] += 1
+            return None
+        vdef = self._villain(par["EntityDef"]) if par["EntityDef"] else None
+        if par["EntityDef"] and vdef is None:
+            skipped["unknown villain def"] += 1
+        names, from_def = self._pet_powers(par, vdef)
+        if not names:
+            skipped["no powers"] += 1
+            return None
+        if any(self.enum("power.Type", self.pw[n]["Type"]) != "Auto" for n in names):
+            skipped["not auto only (a real pet)"] += 1
+            return None
+        flags = set(self.mod_flags(a.get("Flags") or []))
+        o: dict = {"p": names}
+        if from_def:
+            o["def"] = from_def
+        if hidden and config.SERVER.pet_skip_hidden:
+            o["hid"] = 1
+        if a.get("Duration"):
+            o["dur"] = num(a["Duration"])
+        if "CopyBoosts" in flags:
+            o["boosts"] = 1
+        if "PseudoPet" in flags:
+            o["pseudo"] = 1
+            return o
+        cls = self._pet_class(par, vdef)
+        if cls is None:
+            skipped["no class"] += 1
+            return None
+        o["cls"] = cls["Name"]
+        return o
+
     def build_pets(self) -> dict:
         """The pseudo-pets whose damage the client's power info adds to the power that creates them.
 
@@ -613,48 +708,10 @@ class Exporter:
             (config.Server.pet_extra), when it has one.
         """
         ent = self._special("EntCreate")
-        villains = {v["Name"].lower(): v for v in self.L.villains}
-        vclasses = {c["Name"].lower(): c for c in self.L.villain_classes}
-        pclasses = {c["Name"].lower(): c for c in self.L.classes}
         skipped: Counter = Counter()
 
         def creation(a, hidden: bool) -> dict | None:
-            par = ent_create_param(a.get("Params"), self.L.ent_create_layout)
-            if par is None:
-                skipped["no EntCreate params"] += 1
-                return None
-            vdef = villains.get(par["EntityDef"].lower()) if par["EntityDef"] else None
-            if par["EntityDef"] and vdef is None:
-                skipped["unknown villain def"] += 1
-            names, from_def = self._pet_powers(par, vdef)
-            if not names:
-                skipped["no powers"] += 1
-                return None
-            if any(self.enum("power.Type", self.pw[n]["Type"]) != "Auto" for n in names):
-                skipped["not auto only (a real pet)"] += 1
-                return None
-            flags = set(self.mod_flags(a.get("Flags") or []))
-            o: dict = {"p": names}
-            if from_def:
-                o["def"] = from_def
-            if hidden and config.SERVER.pet_skip_hidden:
-                o["hid"] = 1
-            if a.get("Duration"):
-                o["dur"] = num(a["Duration"])
-            if "CopyBoosts" in flags:
-                o["boosts"] = 1
-            if "PseudoPet" in flags:
-                o["pseudo"] = 1
-                return o
-            c = par["Class"].lower()
-            cls = (vclasses.get(c) or pclasses.get(c)) if c else None
-            if cls is None and vdef is not None:
-                cls = vclasses.get(vdef["Class"].lower())
-            if cls is None:
-                skipped["no class"] += 1
-                return None
-            o["cls"] = cls["Name"]
-            return o
+            return self._pseudo_creation(a, hidden, skipped)
 
         execute = self._special("ExecutePower")
         grants = {o for o in (self._special("GrantPower"), self._special("GrantBoostedPower")) if o is not None}
@@ -749,10 +806,10 @@ class Exporter:
 
         made = [c for cs in pets.values() for c in cs]
         for name in sorted({c["cls"] for c in made if "cls" in c}):
-            if name.lower() in vclasses:
-                add(vclasses[name.lower()], set())
+            if name.lower() in self.vclasses:
+                add(self.vclasses[name.lower()], set())
             else:
-                add(pclasses[name.lower()], kept_tables)  # an archetype: core.json has the rest
+                add(self.pclasses[name.lower()], kept_tables)  # an archetype: core.json has the rest
         if any(c.get("pseudo") for c in made):
             for c in self.L.classes:  # a PseudoPet runs with its caster's class, any archetype
                 if c["Name"] not in classes:
@@ -768,6 +825,336 @@ class Exporter:
                             "pet_powers": len({p for c in made for p in c["p"]}), "exec": len(dropped),
                             "classes": len(classes), "skipped": dict(sorted(skipped.items())),
                             "no_entcreate": ent is None}}
+
+    # ---- real pets (henchmen) ------------------------------------------------------------------
+    def conv_pet_power(self, name: str) -> dict:
+        """A pet's power in the site's short form, by name: what the power info and the pet cards read.
+
+        conv_power's fields without its id, its slotting and its requirements, with granted and
+        executed powers named (`pwn`), so nothing allocates an id: no build names a pet's power.
+
+        @param name The power's full name.
+        @return {"dn", "type", "tgt", "acc"?, "rech"?, "end"?, "rng"?, "cast"?, "ap"?, "rad"?,
+            "arc"?, "maxT"?, "intr"?, "ign"?, "si"?: 0 (the power info hides it), "life"?: seconds it
+            lasts once the pet has it (Materialization's spawn shield), "area"?, "ea"?, "atk"?, "eff"?,
+            "act"?}.
+        """
+        r = self.pw[name]
+        o: dict = {"dn": self.text(r["DisplayName"]), "type": self.enum("power.Type", r["Type"])}
+        fields = {"Accuracy": ("acc", 1.0), "RechargeTime": ("rech", 0.0), "EnduranceCost": ("end", 0.0),
+                  "Range": ("rng", 0.0), "TimeToActivate": ("cast", 0.0), "ActivatePeriod": ("ap", 0.0),
+                  "Radius": ("rad", 0.0), "Arc": ("arc", 0.0), "MaxTargetsHit": ("maxT", 0),
+                  "InterruptTime": ("intr", 0.0), "IgnoreStrength": ("ign", 0), "ShowInInfo": ("si", 1),
+                  "Lifetime": ("life", 0.0)}
+        for k, (dst, dv) in fields.items():
+            v = r.get(k, dv)
+            if v != dv:
+                o[dst] = num(v)
+        area = self.enum("power.EffectArea", r["EffectArea"])
+        if area != "Character":
+            o["area"] = area
+        o["tgt"] = self.enum("power.Target", r["Target"])
+        ea = [self.enum("power.EntsAffected", v) for v in r.get("EntsAffected") or []]
+        if ea and ea != [o["tgt"]]:
+            o["ea"] = ea
+        if r.get("AttackTypes"):
+            o["atk"] = r["AttackTypes"]
+        for src, dst in (("Effect", "eff"), ("ActivationEffect", "act")):
+            effs = self.conv_effects(r.get(src), ids=False)
+            if effs:
+                o[dst] = effs
+        return o
+
+    def _pet_grants(self) -> set[str]:
+        """The powers the version's powers grant to their pets: the targets of grant mods in a
+        group that names a pet (`<villain def> target.VillainName>`, as Equip Robot does), so their
+        tables go with the pets' classes.
+
+        @return Their full names.
+        """
+        out: set[str] = set()
+
+        def walk(effs, names_pet: bool) -> None:
+            for e in effs or []:
+                if self.pvp_only(e):
+                    continue
+                here = names_pet or any(str(t).lower() == "target.villainname>" for t in e.get("Requires") or [])
+                walk(e.get("Effect"), here)
+                if not here:
+                    continue
+                for a in e.get("AttribMod") or []:
+                    if set(a["Attrib"]) & self.grant_attribs:
+                        out.update(n for n in (self.power_name(x) for x in param_power_names(a.get("Params"))) if n)
+
+        for name in self.exported_names:
+            rec = self.pw[name]
+            walk(rec.get("Effect"), False)
+            walk(rec.get("ActivationEffect"), False)
+        return out
+
+    def _collective_mods(self, names) -> dict[str, list[int]]:
+        """Which mods of pets' powers stack once whoever casts them: CasterStackType kCollective,
+        where the game leaves the caster out of its stacking test (character_combat.c), so two
+        Protector Bots' Force Shields give one shield's defense.
+
+        @param names The powers' full names (the pets' own and those the version grants them).
+        @return {power: [index]} for the powers with such a mod; an index counts the power's mods as
+            the site lays them out: its effect groups, then its activation groups, each group's own
+            mods before its sub-groups.
+        """
+        out: dict[str, list[int]] = {}
+        self.mark_collective = True
+        try:
+            for n in names:
+                rec = self.pw[n]
+                found: list[int] = []
+                index = 0
+
+                def walk(groups: list) -> None:
+                    nonlocal index
+                    for g in groups:
+                        for m in g.get("m") or []:
+                            if m.get("cst"):
+                                found.append(index)
+                            index += 1
+                        walk(g.get("sub") or [])
+
+                walk(self.conv_effects(rec.get("Effect"), ids=False))
+                walk(self.conv_effects(rec.get("ActivationEffect"), ids=False))
+                if found:
+                    out[n] = found
+        finally:
+            self.mark_collective = False
+        return out
+
+    def build_henchmen(self) -> dict:
+        """The real pets the version's powers summon, for the planner's Pets and Minions cards.
+
+        A real pet is what the pets file leaves out: a pet that runs a power other than Auto
+        (Mastermind henchmen, Phantom Army, a patron pool's summon, Voltaic Sentinel). The file
+        keeps, per power that makes one, each EntCreate mod in the client's template order with
+        what decides whether it spawns: its groups' requirements and chance (Battle Drones makes
+        its second drone past combat level 5). Per pet: its name (its villain def's first display
+        name, else the mod's DisplayName), villain def, class and powers as the client lists them
+        (_pet_powers). Each pet power whole and by name (conv_pet_power), with what it executes; the
+        pseudo-pets the pets' powers make, as the pets file holds them ("pseudo"); which mods of the
+        pets' powers stack once whoever casts them ("collective"); and per class the attribute
+        tables its stats read (base values and caps) and the tables its pets' powers, and the powers
+        the version grants to pets (_pet_grants), scale by.
+
+        The file sits beside the version folders (<server data>/henchmen/<version>.json), so a
+        published folder never changes. Nothing here allocates an id or changes core.json, and the
+        report's counts are left as they were. Call after build().
+
+        @return {"plus"?: the server's extra pseudo-pet activation (config.Server.pet_extra), "makes":
+            {power: [{"pet", "req"?: [requirements of each group around the mod], "ch"?: the chance
+            of its groups all landing, "del"?: seconds before it spawns, "dur"?: lifetime when under
+            9999 s,
+            "pseudo"?: 1 (runs with its creator's class)}]}, "pets": {key: {"dn", "vd"?: villain def, "grp"?: its villain group, "cls"?, "p": [powers],
+            "def"?: how many come from the villain def}}, "powers": {name: power}, "pseudo"?:
+            {pet power: [creation as in the pets file]}, "collective"?: {power: [mod index]}
+            (_collective_mods), "classes": {class: {"base"?, "min"?, "max"?, "maxMax"?, "strMax"?, "resMax"?:
+            the attribute tables a pet's stats read, as core.json's archetypes hold them
+            (PET_CLASS_TABLES; an archetype's class has only "mod": core.json has the rest), "mod":
+            {table: index into tables}}}, "tables": [values], "summary": counts}.
+        """
+        ent = self._special("EntCreate")
+        execute = self._special("ExecutePower")
+        skipped: Counter = Counter()
+        kept_tables, kept_pvp = set(self.used_tables), self.report["pvp_effects_dropped"]
+        kept_text = Counter(self.report["missing_text"])
+
+        def templates(effs, reqs: list, chance: float, delay: float):
+            """The mods of effect groups in the client's template order (a group's sub-groups first),
+            PvP-only groups left out.
+
+            @param effs The groups.
+            @param reqs The requirements of the groups around them.
+            @param chance The chance of the groups around them all landing (a sub-group rolls only
+                when its group did).
+            @param delay The groups around them's delay in seconds.
+            @return (mod, requirements, chance, delay) per mod.
+            """
+            for e in effs or []:
+                if self.pvp_only(e):
+                    continue
+                r = reqs + ([list(e["Requires"])] if e.get("Requires") else [])
+                ch = chance * e.get("Chance", 1.0)
+                dl = delay + (e.get("Delay") or 0.0)
+                yield from templates(e.get("Effect"), r, ch, dl)
+                for a in e.get("AttribMod") or []:
+                    yield a, r, ch, dl
+
+        makes: dict[str, list] = {}
+        pets: dict[str, dict] = {}
+        carried: set[str] = set()
+        frontier: list[str] = []
+
+        def carry(name: str) -> None:
+            if name not in carried:
+                carried.add(name)
+                frontier.append(name)
+
+        def pet_key(par: dict, vdef: dict | None, power: str, index: int, entry: dict) -> str:
+            """@return The pet's key: its villain def's name, else the creating power's name and the
+            mod's place in it; a def made with other powers or another class gets "~2", "~3", ..."""
+            base = vdef["Name"] if vdef else f"{power}#{index}"
+            key, n = base, 1
+            while key in pets and (pets[key]["p"], pets[key].get("cls")) != (entry["p"], entry.get("cls")):
+                n += 1
+                key = f"{base}~{n}"
+            return key
+
+        def real_pets(name: str) -> list[dict]:
+            """The real pets a power's EntCreate mods make, each with what decides whether it
+            spawns; their kinds go into `pets` and their powers are carried.
+
+            @param name The power's full name.
+            @return One entry per EntCreate mod that makes a real pet, in the client's order.
+            """
+            rec = self.pw[name]
+            made: list[dict] = []
+            mods = [*templates(rec.get("Effect"), [], 1.0, 0.0), *templates(rec.get("ActivationEffect"), [], 1.0, 0.0)]
+            for a, reqs, chance, delay in mods:
+                if ent is None or ent not in a["Attrib"]:
+                    continue
+                par = ent_create_param(a.get("Params"), self.L.ent_create_layout)
+                if par is None:
+                    skipped["no EntCreate params"] += 1
+                    continue
+                vdef = self._villain(par["EntityDef"]) if par["EntityDef"] else None
+                names, from_def = self._pet_powers(par, vdef)
+                if not names:
+                    skipped["no powers"] += 1
+                    continue
+                if all(self.enum("power.Type", self.pw[n]["Type"]) == "Auto" for n in names):
+                    continue  # a pseudo-pet: the pets file's
+                flags = set(self.mod_flags(a.get("Flags") or []))
+                entry: dict = {"dn": self.text((vdef or {}).get("DisplayName") or "") or self.text(par["DisplayName"])}
+                if vdef:
+                    entry["vd"] = vdef["Name"]
+                    if vdef.get("VillainGroup"):
+                        entry["grp"] = vdef["VillainGroup"]
+                if "PseudoPet" not in flags:
+                    cls = self._pet_class(par, vdef)
+                    if cls is None:
+                        skipped["no class"] += 1
+                        continue
+                    entry["cls"] = cls["Name"]
+                entry["p"] = names
+                if from_def:
+                    entry["def"] = from_def
+                key = pet_key(par, vdef, name, len(made), entry)
+                pets.setdefault(key, entry)
+                c: dict = {"pet": key}
+                if any(reqs):
+                    c["req"] = [r for r in reqs if r]
+                if chance != 1.0:
+                    c["ch"] = num(chance)
+                if delay + (a.get("Delay") or 0.0) > 0:
+                    c["del"] = num(delay + (a.get("Delay") or 0.0))
+                if 0 < (a.get("Duration") or 0) < 9999:
+                    c["dur"] = num(a["Duration"])
+                if "PseudoPet" in flags:
+                    c["pseudo"] = 1
+                made.append(c)
+                for p in names:
+                    carry(p)
+            return made
+
+        for name in sorted(self.exported_names):
+            made = real_pets(name)
+            if made:
+                makes[name] = made
+
+        # what the pets' powers make and execute runs as the pet: its pseudo-pets (as the pets file
+        # holds them), its real pets and its executed powers come along
+        pseudo: dict[str, list] = {}
+        while frontier:
+            n = frontier.pop()
+            rec = self.pw[n]
+            if ent is not None:
+                found = []
+                for a, hidden in self.client_templates(rec):
+                    if ent not in a["Attrib"]:
+                        continue
+                    c = self._pseudo_creation(a, hidden, Counter())
+                    if c is not None:
+                        found.append(c)
+                        for p in c["p"]:
+                            carry(p)
+                if found:
+                    pseudo[n] = found
+                # a pet's power that makes a real pet (Upgrade Robot's Seeker Drones): listed as a
+                # summon's, so its card can say what it makes
+                if n not in makes:
+                    made = real_pets(n)
+                    if made:
+                        makes[n] = made
+            for a in self.walk_mods(rec):
+                if execute is not None and execute in a["Attrib"]:
+                    for t in (self.power_name(x) for x in param_power_names(a.get("Params"))):
+                        if t:
+                            carry(t)
+
+        powers = {n: self.conv_pet_power(n) for n in sorted(carried)}
+        granted = self._pet_grants()
+        tables = {a["Table"].lower() for n in carried for a in self.walk_mods(self.pw[n]) if a.get("Table")}
+        tables |= {a["Table"].lower() for n in granted for a in self.walk_mods(self.pw[n]) if a.get("Table")}
+        collective = self._collective_mods(sorted(carried | granted))
+        self.used_tables, self.report["pvp_effects_dropped"] = kept_tables, kept_pvp
+        self.report["missing_text"] = kept_text
+
+        pool: dict[tuple, int] = {}
+        pool_list: list[list] = []
+
+        def index(vals: tuple) -> int:
+            if vals not in pool:
+                pool[vals] = len(pool_list)
+                pool_list.append(list(vals))
+            return pool[vals]
+
+        def compact(vals) -> float | list:
+            """@return Per-level values, or one value when every level has it."""
+            v = [num(x) for x in vals or []]
+            return v[0] if v and all(x == v[0] for x in v) else v
+
+        classes: dict[str, dict] = {}
+
+        def add(c: dict, skip: set[str]) -> None:
+            mod = {mt["Name"].lower(): index(tuple(num(x) for x in mt["Values"])) for mt in c["ModTable"]
+                   if mt["Name"].lower() in tables and mt["Name"].lower() not in skip}
+            o: dict = {}
+            for key, src in PET_CLASS_TABLES.items():
+                table = {k: v for k, v in sorted(self.compact_attr_table(c.get(src)).items()) if pet_class_attr(key, k)}
+                if table:
+                    o[key] = table
+            o["mod"] = dict(sorted(mod.items()))
+            classes[c["Name"]] = o
+
+        named = {p["cls"] for p in pets.values() if "cls" in p} | {c["cls"] for cs in pseudo.values() for c in cs if "cls" in c}
+        for cname in sorted(named):
+            if cname.lower() in self.vclasses:
+                add(self.vclasses[cname.lower()], set())
+            elif cname.lower() in self.pclasses:
+                add({"Name": cname, "ModTable": self.pclasses[cname.lower()]["ModTable"]}, kept_tables)
+        if any(c.get("pseudo") for cs in [*makes.values(), *pseudo.values()] for c in cs):
+            for c in self.L.classes:  # a PseudoPet runs with its creator's class, any archetype
+                if c["Name"] not in classes:
+                    add({"Name": c["Name"], "ModTable": c["ModTable"]}, kept_tables)
+        classes = {k: v for k, v in classes.items() if v.get("mod") or v.get("max")}
+        out: dict = {"plus": config.SERVER.pet_extra} if config.SERVER.pet_extra else {}
+        out.update({"makes": dict(sorted(makes.items())), "pets": dict(sorted(pets.items())), "powers": powers})
+        if pseudo:
+            out["pseudo"] = dict(sorted(pseudo.items()))
+        if collective:
+            out["collective"] = collective
+        out["classes"] = dict(sorted(classes.items()))
+        out["tables"] = pool_list
+        out["summary"] = {"creators": len(makes), "pets": len(pets), "powers": len(powers),
+                          "pseudo": len(pseudo), "classes": len(classes),
+                          "skipped": dict(sorted(skipped.items())), "no_entcreate": ent is None}
+        return out
 
     # ---- archetypes ---------------------------------------------------------------------------
     def info_tree(self, effs, keep_pvp: bool = False) -> list:
@@ -1225,6 +1612,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
             pass
     out = ex.build()
     pets = ex.build_pets()       # beside the version folder; changes nothing build() made
+    henchmen = ex.build_henchmen()  # likewise
     warnings: list[str] = forced_respec_warnings(live.classes, ex.class_cats, ex.cats, ex.sets)
     if not reproduced:
         warnings.append(f"WARNING: {data_rel(version)}'s effect groups differ from what its PvP-only test "
@@ -1328,6 +1716,8 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
 
     pets_summary = write_pets(pets, version)
     warnings += pet_warnings(pets_summary)
+    henchmen_summary = write_henchmen(henchmen, version)
+    warnings += henchmen_warnings(henchmen_summary)
     info_summary = write_info(ex.build_info(info_powers(out), pets["powers"], version), version)
     warnings += info_warnings(info_summary)
     recipes_summary = write_recipes(version, warnings, assets=assets, replace_icons=not add_only_icons)
@@ -1354,7 +1744,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added,
             "mids": mids, "warnings": warnings, "version": version, "root": root, "frames": frames,
             "icons": icon_plan["summary"] if icon_plan else None, "pets": pets_summary,
-            "info": info_summary, "recipes": recipes_summary}
+            "henchmen": henchmen_summary, "info": info_summary, "recipes": recipes_summary}
 
 
 def write_recipes(version: str, warnings: list[str], assets: bool = True, replace_icons: bool = False) -> dict | None:
@@ -1394,6 +1784,33 @@ def write_pets(pets: dict, version: str) -> dict:
     config.atomic_write(config.DATA_OUT / config.PETS_FOLDER / f"{version}.json", text)
     summary["bytes"] = len(text.encode("utf-8"))
     return summary
+
+
+def write_henchmen(henchmen: dict, version: str) -> dict:
+    """Write a version's real pets file, <server data>/henchmen/<version>.json (Exporter.build_henchmen).
+
+    @param henchmen build_henchmen()'s result; its summary is taken out of it.
+    @param version Game version id.
+    @return The summary, with the file's size ("bytes").
+    """
+    summary = henchmen.pop("summary")
+    text = _dump(henchmen)
+    config.atomic_write(config.DATA_OUT / config.HENCHMEN_FOLDER / f"{version}.json", text)
+    summary["bytes"] = len(text.encode("utf-8"))
+    return summary
+
+
+def henchmen_warnings(summary: dict) -> list[str]:
+    """@return What a real pets export should tell the owner: an EntCreate param layout that reads
+    none of the client's pet mods, or a client that names no EntCreate attribute."""
+    out = []
+    if summary["no_entcreate"]:
+        out.append("WARNING: the client names no EntCreate attribute; no pets for the Pets and Minions cards")
+    bad = summary["skipped"].get("no EntCreate params", 0)
+    if bad:
+        out.append(f"WARNING: {bad} EntCreate mods have Params this client's EntCreate param layout "
+                   "doesn't read; their real pets are left out (check LiveData.ent_create_layout)")
+    return out
 
 
 def write_info(info: dict, version: str) -> dict:

@@ -5,13 +5,13 @@ import { DEFAULT_SERVER } from '../../data/servers.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
-import { setEnh, setExclusive, setOn } from '../../engine/actions.ts';
+import { setEnh, setExclusive, setOn, setPetOn } from '../../engine/actions.ts';
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
 import { openSetFinder, useFinderOpen } from '../../state/finderOpen.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
-import { CheckBar } from '../components/CheckBar.tsx';
+import { CheckBar, OnSwitch } from '../components/CheckBar.tsx';
 import { FINDER_NAME, FinderIcon } from '../components/FinderIcon.tsx';
 import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleAlt, type TitleEdit } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
@@ -22,6 +22,8 @@ import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
 import { DescTip, EnhTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
+import { PetPaneLayer, usePetCards } from '../components/PetCard.tsx';
+import { petPowerDefault } from '../../engine/petstats.ts';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { TotalsPanel } from '../components/TotalsPanel.tsx';
@@ -167,7 +169,7 @@ function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Ski
           <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
           {/* on whole device pixels, so the bars inside tile without seams */}
           <div className="abs" style={{ left: snap(8), top: snap(paneTop), width: paneW, height: paneH, zIndex: 71 }}>
-            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: skin.panel }} />
             <div className="abs scroll-y" style={{ left: 0, top: 0, width: paneW, height: paneH }}>
               <div style={{ position: 'relative', height: y + 8 }}>{rows}</div>
             </div>
@@ -224,9 +226,14 @@ function OrbLight({ level, style }: { level: number; style: CSSProperties }) {
   return lit ? <div className="abs hover-light" style={style} /> : null;
 }
 
-/** One level orb; it blinks once a second while a power or slot taken at its level is hovered. */
-function LevelOrb({ level, className, style, title, onClick, children }: { level: number; className: string; style: CSSProperties; title: string; onClick: () => void; children: ReactNode }) {
+/**
+ * One level orb; it blinks once a second while a power or slot taken at its level is hovered.
+ * It shows `face` (the powers picked there, or the slots added) and the level number while hovered;
+ * a `bare` face (power icons) is drawn without the orb's ring and fill.
+ */
+function LevelOrb({ level, className, style, title, onClick, face, bare, children }: { level: number; className: string; style: CSSProperties; title: string; onClick: () => void; face: ReactNode; bare?: boolean; children: ReactNode }) {
   const blinking = useHover((h) => h.blink === level);
+  const hovered = useHover((h) => h.orb === level);
   return (
     <div
       onClick={onClick}
@@ -235,11 +242,11 @@ function LevelOrb({ level, className, style, title, onClick, children }: { level
       onMouseLeave={() => useHover.setState((h) => (h.orb === level ? { orb: null } : h))}
       title={title}
       className={className}
-      style={style}
+      style={bare && !hovered ? { ...style, border: '2px solid transparent', background: 'transparent' } : style}
     >
       {/* under the number, so the number stays readable while the orb lights */}
-      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: 0 }} /> : null}
-      <span style={{ position: 'relative', zIndex: 1 }}>{children}</span>
+      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: hovered ? 0 : 2 }} /> : null}
+      {hovered ? <span style={{ position: 'relative', zIndex: 1 }}>{children}</span> : face}
     </div>
   );
 }
@@ -251,10 +258,10 @@ function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; buil
   const hint = useShiftHint();
   return (
     <>
-      {ringTip && tipLevel !== 'off' ? <EnhTip key={`${ringTip.entry.key}:${ringTip.slot}`} gd={gd} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
+      {ringTip && tipLevel !== 'off' ? <EnhTip key={`${ringTip.entry.key}:${ringTip.slot}`} gd={gd} skin={skin} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
       {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} hint={hint} /> : null}
       {tip && tipLevel === 'advanced' ? (
-        <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
+        <SlotTip gd={gd} skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
       ) : null}
     </>
   );
@@ -292,6 +299,10 @@ export function Overview({ skin }: { skin: Skin }) {
   const finderUp = useFinderOpen((s) => s.up);
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
   const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
+  // the pets the build makes, at the totals' level (computeTotals' default)
+  const pets = usePetCards(gd, rules, build, build ? (build.exemplar ?? build.endLevel ?? 49) : 49);
+  // the pet pane's switch: whether a pet power counts in the pets' stats (its default stored as none)
+  const switchPet = (p: Power, on: boolean) => build && setBuild(setPetOn(build, p.n, gd && on === petPowerDefault(gd, p) ? undefined : on));
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
   // an older build whose power sets can't go together: its title alternates with INVALID_TITLE
   const pairInvalid = useMemo(() => !!(gd && build && buildPairProblem(gd, build)), [gd, build]);
@@ -343,6 +354,7 @@ export function Overview({ skin }: { skin: Skin }) {
     const items: ReactElement[] = [];
     const u = g.unit;
     let primY = g.start;
+    let bottom = 0; // the lowest thing drawn so far: a row's slot rings or its rule note
     for (const grp of list) {
       primY += g.row;
       const top = primY;
@@ -386,6 +398,8 @@ export function Overview({ skin }: { skin: Skin }) {
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
             onClick={e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            // a pick flagged in red still opens on a click, so the rule it breaks can be fixed
+            fixable
             onLongPress={longBar}
             onHover={(h, at) => hoverOn(e, h, at)}
           />,
@@ -410,7 +424,7 @@ export function Overview({ skin }: { skin: Skin }) {
                 play('powerselect2');
                 setBuild(setExclusive(build, members.map((m) => m.id), v ? Number(v) : undefined));
               }}
-              style={{ left: g.barCX + barW + 8, top: y - (g.phone ? 24 : 16), width: SELECT_W, height: g.phone ? 48 : 32, fontFamily: "'Montreal'", fontSize: 15, color: '#fff', background: 'linear-gradient(#0c2a6e, #04102e)', border: '2px solid #4f94ff', borderRadius: 16, padding: '0 6px 0 10px', cursor: 'pointer', zIndex: 9 }}
+              style={{ left: g.barCX + barW + 8, top: y - (g.phone ? 24 : 16), width: SELECT_W, height: g.phone ? 48 : 32, fontFamily: "'Montreal'", fontSize: 15, color: '#fff', background: `linear-gradient(${skin.select[0]}, ${skin.select[1]})`, border: `2px solid ${skin.menuBorder}`, borderRadius: 16, padding: '0 6px 0 10px', cursor: 'pointer', zIndex: 9 }}
             >
               <option value="">Off</option>
               {members.map((m) => (
@@ -424,13 +438,15 @@ export function Overview({ skin }: { skin: Skin }) {
           items.push(
             <div
               key={`${e.key}:on`}
-              className="abs"
+              className="abs switch-hover"
               title={on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
               onClick={toggleOn}
               {...pressKeys(toggleOn, undefined, on ? 'Counted in totals' : 'Not counted in totals')}
               {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
-              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: 'pointer', border: '2px solid #4f94ff', background: on ? 'radial-gradient(#7fff7f, #00a020)' : '#111', boxShadow: on ? '0 0 8px #3f3' : 'none', zIndex: 9 }}
-            />,
+              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: 'pointer', zIndex: 9 }}
+            >
+              <OnSwitch skin={skin} on={on} size={g.sw} />
+            </div>,
           );
         }
         e.slots.forEach((s, i) => {
@@ -484,9 +500,13 @@ export function Overview({ skin }: { skin: Skin }) {
           );
         });
         primY += g.row;
+        // its slot rings, or the bar itself (CheckBar's 19s half height) for a power with no slots
+        bottom = Math.max(bottom, e.slots.length ? y + g.ringDy + g.ring / 2 : y + 19 * S);
         if (flagged.length) {
+          const noteTop = g.phone ? y + g.ringDy + g.ring / 2 + 2 : primY - 30 * u + 30 * S;
+          bottom = Math.max(bottom, noteTop + (g.phone ? 22 : 18));
           items.push(
-            <div key={`${e.key}:issue`} className="abs body-text" style={{ left: g.barCX, top: g.phone ? y + g.ringDy + g.ring / 2 + 2 : primY - 30 * u + 30 * S, fontSize: g.phone ? 16 : 13, color: '#ff6060', whiteSpace: 'nowrap' }}>
+            <div key={`${e.key}:issue`} className="abs body-text" style={{ left: g.barCX, top: noteTop, fontSize: g.phone ? 16 : 13, color: '#ff6060', whiteSpace: 'nowrap' }}>
               {flagged[0]!.message}
             </div>,
           );
@@ -496,9 +516,12 @@ export function Overview({ skin }: { skin: Skin }) {
       // the set's frame from the bar's x, as specMenu draws it
       items.splice(boxAt, 0, <SetFrame key={`b${grp.set?.id ?? 'x'}`} skin={skin} x={g.barCX} y={top - 30 * u} w={g.boxW} h={primY - top - 35 * u} />);
     }
+    // the column ends as far under its last row as the first set's frame starts below the top, so a
+    // column that fits doesn't scroll through empty space
+    const colEnd = bottom + (g.start + g.row - 30 * u);
     return (
       <GameScroll key={key} skin={skin} left={view.left} top={view.top} width={view.width} height={view.height} barX={bar.x} barTop={bar.top} barHeight={bar.height}>
-        <div style={{ position: 'relative', height: Math.max(0, Math.ceil(primY + 30 * u)) }}>{items}</div>
+        <div style={{ position: 'relative', height: list.length ? Math.max(0, Math.ceil(colEnd)) : 0 }}>{items}</div>
       </GameScroll>
     );
   };
@@ -521,17 +544,43 @@ export function Overview({ skin }: { skin: Skin }) {
     shown.map((s, i) => {
       const isPick = s.picks.length > 0;
       const filled = isPick ? s.picks.every((k) => build.picks[k]) : rules.slotsUsed(s.level) >= s.slots;
+      const { orb } = skin;
+      // the powers picked here (level 1's two overlap), else the slots the level adds
+      // (a pick not made yet keeps its place as an empty red circle)
+      const icons = s.picks.map((k) => {
+        const p = build.picks[k];
+        return p ? gd.power(p.power).icon || 'power_missing' : null;
+      });
+      // the icons fill the whole orb (its 2px ring is hidden under them)
+      const inner = size;
+      const one = icons.length > 1 ? Math.round(inner * 0.72) : inner;
+      const bare = icons.some((n) => n);
+      const face = bare ? (
+        icons.map((n, j) => {
+          const at: CSSProperties = { position: 'absolute', left: (j ? inner - one : 0) - 2, top: (j ? inner - one : 0) - 2, width: one, height: one, borderRadius: '50%', zIndex: 1 - j };
+          return n ? (
+            <img key={j} src={icon('powers', n)} alt="" draggable={false} style={at} />
+          ) : (
+            <div key={j} style={{ ...at, boxSizing: 'border-box', border: '1px solid #f33', background: '#300' }} />
+          );
+        })
+      ) : (
+        <span style={{ position: 'relative', zIndex: 1 }}>{isPick ? s.level + 1 : `+${s.slots}`}</span>
+      );
       return (
         <LevelOrb
           key={s.level}
           level={s.level}
           onClick={() => {
             if (!isPick) return editSlots(s.level);
-            editPick(s.picks[0]!);
+            // every pick of the level in turn: level 1's primary power, then its secondary
+            editPick(s.picks[0]!, s.picks.slice(1));
           }}
           title={orbTitle(s)}
+          face={face}
+          bare={bare}
           className="abs body-text"
-          style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? '#ffd200' : '#4f94ff'}`, background: filled ? (isPick ? '#6b5400' : '#0b3d9a') : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
+          style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? orb.pickRing : orb.slotRing}`, background: filled ? (isPick ? orb.pickFill : orb.slotFill) : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
         >
           {s.level + 1}
         </LevelOrb>
@@ -562,7 +611,7 @@ export function Overview({ skin }: { skin: Skin }) {
             <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOaOpen(false)} />
             <div className="abs" style={{ left: oaX - (PW * POP) / 2, top: cy + h / 2 + 6, width: PW * POP, height: PH * POP, zIndex: 71 }}>
               <div className="abs" style={{ left: 0, top: 0, width: PW, height: PH, zoom: POP }}>
-                <MenuFrame x={0} y={0} w={PW} h={PH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+                <MenuFrame x={0} y={0} w={PW} h={PH} skin={skin} style={{ background: skin.panel }} />
                 <OriginAlignPane
                   skin={skin}
                   x={0}
@@ -629,7 +678,7 @@ export function Overview({ skin }: { skin: Skin }) {
           <GameScroll skin={skin} left={P.x + 16} top={P.y + 14} width={P.w - 32} height={P.h - 28} barX={P.x + P.w}>
             {/* a little larger text than the desktop panel; its spacing keeps it readable */}
             <div style={{ zoom: TOTALS_ZOOM }}>
-              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} />
+              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} pets={pets} />
             </div>
           </GameScroll>
         )}
@@ -637,6 +686,7 @@ export function Overview({ skin }: { skin: Skin }) {
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
+        <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
         {finderUp ? null : <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />}
       </>
     );
@@ -672,9 +722,10 @@ export function Overview({ skin }: { skin: Skin }) {
       {/* a patch move's changes sit above the totals until dismissed */}
       <PatchNotesBox skin={skin} x={1521} y={TOP + 16} w={420} />
       <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
-        <TotalsPanel gd={gd} t={totals} width={420} />
+        <TotalsPanel gd={gd} t={totals} width={420} pets={pets} />
       </GameScroll>
       <OverviewTips gd={gd} skin={skin} build={build} end={end} />
+      <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker_}
