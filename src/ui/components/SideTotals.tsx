@@ -12,6 +12,12 @@ import { pressKeys } from '../press.ts';
 
 // phones: the tab over the panel's right edge, in stage px
 const PHONE_TAB = { w: 40, h: 150 };
+// desktop: the tab below the power columns (Choose a New Power's end at 864, the slot screens' pool
+// column at 754) and above the bottom bar (1061), narrow enough to touch only the info box's
+// border: higher up it hid the pool column's scroll bar
+const DESKTOP_TAB = { top: 866, w: 38, h: 190 };
+// the tab's border (its right side open): the lettering's line is the width inside it, so it centers
+const TAB_BORDER = 3;
 
 /**
  * Collapsible totals tab on the right edge of the level-up screens: the game's screens have no
@@ -32,7 +38,7 @@ export function SideTotals({ skin }: { skin: Skin }) {
   if (!gd) return null;
   const toggle = () => setOpen(!open);
   const line = phoneGeom(stage).line;
-  const tab = stage.phone ? { ...PHONE_TAB, top: Math.round(stage.h * 0.3) } : { top: 470, w: 46, h: 190 };
+  const tab = stage.phone ? { ...PHONE_TAB, top: Math.round(stage.h * 0.3) } : DESKTOP_TAB;
   const pane = stage.phone ? { top: line + 6, w: stage.w - PHONE_TAB.w - 6, h: stage.h - line - 6 - 110 } : { top: 90, w: 470, h: 930 };
   return (
     <>
@@ -40,7 +46,7 @@ export function SideTotals({ skin }: { skin: Skin }) {
         className="abs"
         onClick={toggle}
         {...pressKeys(toggle, undefined, open ? 'Hide totals' : 'Show totals')}
-        style={{ right: 0, top: tab.top, width: tab.w, height: tab.h, cursor: 'pointer', zIndex: 60, writingMode: 'vertical-rl', textAlign: 'center', fontSize: stage.phone ? 20 : 24, lineHeight: `${tab.w}px`, fontFamily: "'ParagonCity', 'MontrealHeavy', sans-serif", border: '3px solid var(--menu-border)', borderRight: 'none', borderRadius: '16px 0 0 16px', background: skin.panel, backgroundClip: 'padding-box' }}
+        style={{ right: 0, top: tab.top, width: tab.w, height: tab.h, cursor: 'pointer', zIndex: 60, writingMode: 'vertical-rl', textAlign: 'center', fontSize: stage.phone ? 20 : 24, lineHeight: `${tab.w - TAB_BORDER}px`, fontFamily: "'ParagonCity', 'MontrealHeavy', sans-serif", border: `${TAB_BORDER}px solid var(--menu-border)`, borderRight: 'none', borderRadius: '16px 0 0 16px', background: skin.panel, backgroundClip: 'padding-box' }}
         title={open ? 'Hide totals' : 'Show totals at this level'}
       >
         <TitleText style={{ transform: 'none' }}>TOTALS</TitleText>

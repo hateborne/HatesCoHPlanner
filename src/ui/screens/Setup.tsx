@@ -5,6 +5,7 @@ import type { GameData } from '../../data/gamedata.ts';
 import { serverOf } from '../../data/servers.ts';
 import type { Archetype } from '../../data/types.ts';
 import { ALIGNMENTS, carryOrigin, hasWork, skinOf, type Alignment } from '../../engine/build.ts';
+import { saveFirstText } from '../../io/library.ts';
 import { levelUpRespec, pairProblem, respecOnlyNote, setsGoTogether, startingLocks, startingSets } from '../../engine/rules.ts';
 import { askOverRemembered, useStore } from '../../state/store.ts';
 import { BulbSpark } from '../components/AdvancedRespec.tsx';
@@ -158,9 +159,10 @@ export function Setup() {
     if (at === undefined || pri === undefined || sec === undefined || origin === undefined) return;
     // a new build replaces the current one (and this tab's address): ask first when it has any work
     if (build && hasWork(build)) {
+      const keep = await saveFirstText(build, 'Saved builds / Import');
       const ok = await useStore.getState().askConfirm({
         title: 'Start a new build?',
-        text: `This replaces ${build.name ? `"${build.name}"` : 'your current build'}. Save it first (Saved builds / Import) if you want to keep it.`,
+        text: `This replaces ${build.name ? `"${build.name}"` : 'your current build'}.${keep}`,
         okLabel: 'Start new',
       });
       if (!ok) return;

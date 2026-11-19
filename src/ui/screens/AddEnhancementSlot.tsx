@@ -19,7 +19,7 @@ import { SLOT_FLASH_TICKS } from '../electric.ts';
 import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar, titleBarEnd } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
-import { PHONE_PAD, phoneGeom, phonePanel as phoneFrame, PhoneTabs, type PhoneGeom, type Rect } from '../components/Phone.tsx';
+import { PHONE_PAD, PHONE_SET_GAP, phoneGeom, phonePanel as phoneFrame, PhoneTabs, type PhoneGeom, type Rect } from '../components/Phone.tsx';
 import { Sprite } from '../components/Sprite.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { fitScale, FONTS, S, SY, textWidth, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
@@ -89,6 +89,7 @@ interface PanelGeom {
   boxW: number; // inner set frame width
   start: number; // primY before the first set
   row: number; // POWER_SPEC_HT
+  setGap?: number; // phones: how far a set after another starts below the row after its last power (none: a whole row, the game's)
   tail: number; // content height past the last primY (makes max scroll = doc - view)
   unit: number; // virtual-y to stage px for the in-row offsets
 }
@@ -139,6 +140,7 @@ function phonePanel(pg: PhoneGeom): PanelGeom {
     boxW: P.w - 106,
     start: -10 * S,
     row: PHONE_ROW,
+    setGap: PHONE_SET_GAP,
     tail: 50,
     unit: S,
   };
@@ -335,7 +337,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     const u = g.unit;
     let primY = g.start;
     for (const grp of list) {
-      primY += g.row;
+      primY += g.setGap !== undefined && grp !== list[0] ? g.setGap : g.row;
       const top = primY;
       const boxAt = items.length; // the set frame goes in behind this set's heading and bars
       items.push(<GameText key={`h${grp.set?.id ?? 'x'}`} font="title_12" scale={S} x={g.headCX} y={top - 23 * u} align="center" colors={skin.heading} text={grp.title} />);
@@ -422,7 +424,10 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     );
   };
 
-  const title = respec ? 'CHOOSE ALL ENHANCEMENT SLOTS:' : 'ADD AN ENHANCEMENT SLOT';
+  // a slot screen within a Respec build's respec (a reopened slot level, a swap's freed slots) is
+  // titled and labelled as the respec's own
+  const respecWords = respec || (preview!.respecTo !== undefined && L <= preview!.respecTo);
+  const title = respecWords ? 'CHOOSE ALL ENHANCEMENT SLOTS:' : 'ADD AN ENHANCEMENT SLOT';
   /**
    * A panel's sets. The respec screen lists the third panel in the order the character got the
    * sets (ppPowerSets): the inherent sets from character creation first, then pools as picked
@@ -462,9 +467,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   // screen's height scale, measured in game) -- drawn as unscaled 4K pixels it came out tiny, over
   // the title bar; this screen's longer title pushes it right of the bar
   const levelLine = (x: number, y: number) =>
-    respec && phone ? (
+    respecWords && phone ? (
       <GameText font="title_12" scale={S} x={x} y={y} align="right" colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
-    ) : respec ? (
+    ) : respecWords ? (
       <GameText font="title_12" scale={SY} x={Math.max(vx(450), titleBarEnd(title) + vx(10))} y={vy(30)} colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
     ) : (
       <GameText font="title_14" scale={S} x={x} y={y} align="right" colors={skin.heading} text={`LEVEL ${L + 1}`} />

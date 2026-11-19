@@ -7,6 +7,7 @@ import { cloneBuild, type Build, type Pick, type Slot, type SlottedEnh } from '.
 import type { Power } from '../data/types.ts';
 import { canSlot, ioLevelRange, levelsAbove } from './enhance.ts';
 import { BuildRules, MAX_BOUGHT_SLOTS, MAX_LEVEL, type BuildEntry, type PowerOption } from './rules.ts';
+import { lowestFreeLevels } from './schedule.ts';
 
 function originIndex(gd: GameData, b: Build): number {
   return gd.core.origins.findIndex((o) => o.id === b.origin);
@@ -336,6 +337,63 @@ export function addSlot(b: Build, key: string, level: number, freeLevel: number)
   const free = slots[0]!;
   const rest = [...slots.slice(1), { level }].sort((a, c) => a.level - c.level);
   ref.set([free, ...rest]);
+  return nb;
+}
+
+/**
+ * Book a Respec build's slots within its respec again, so each sits at or after the level its power
+ * is taken whenever the respec's slot levels allow it.
+ *
+ * The game keeps no level for a slot, so within the respec a slot's level is the planner's own
+ * bookkeeping: the levels the respec's empty slots hold are handed out again among them with
+ * lowestFreeLevels, powers taken earliest first. Slots kept from earlier screens can otherwise hold
+ * the levels a later power needs, and that power gets levels below its own (Protector Bots, taken at
+ * 12, with slots at 3 and 9). A slot holding an enhancement keeps its level (it is locked where it
+ * is, as the slot screens treat it); slots after the respec level, and Leveling builds, are left as
+ * they are. Each power's slots stay in level order.
+ *
+ * @param gd Game data.
+ * @param b The build.
+ * @return The build with the respec's empty slots booked again (the same build when nothing moves).
+ */
+export function rebookRespecSlots(gd: GameData, b: Build): Build {
+  const top = b.respecTo;
+  if (top === undefined) return b;
+  const movable = (s: Slot, i: number) => i > 0 && s.level <= top && !s.enh;
+  const held: { key: string; owned: number; level: number }[] = [];
+  for (const e of new BuildRules(gd, b).entries()) {
+    const raw = e.key.startsWith('grant:') ? b.granted[Number(e.key.slice(6))]?.slots : b.picks[Number(e.key.slice(5))]?.slots;
+    raw?.forEach((s, i) => {
+      if (movable(s, i)) held.push({ key: e.key, owned: e.level, level: s.level });
+    });
+  }
+  const levels = lowestFreeLevels(
+    held.map((h) => h.level),
+    held.map((h) => h.owned),
+    top,
+  );
+  if (levels.every((lv, k) => lv === held[k]!.level)) return b;
+  const byKey = new Map<string, { was: number[]; now: number[] }>();
+  held.forEach((h, k) => {
+    const v = byKey.get(h.key) ?? { was: [], now: [] };
+    v.was.push(h.level);
+    v.now.push(levels[k]!);
+    byKey.set(h.key, v);
+  });
+  const nb = cloneBuild(b);
+  for (const [key, { was, now }] of byKey) {
+    now.sort((x, y) => x - y);
+    // a power whose empty slots keep the same levels is left exactly as it is
+    if (now.join() === [...was].sort((x, y) => x - y).join()) continue;
+    const ref = slotsFor(nb, key);
+    if (!ref) continue;
+    let j = 0;
+    const moved = ref.slots.map((s, i) => (movable(s, i) ? { ...s, level: now[j++]! } : s));
+    // bought slots stay in level order: re-sorted only when a new level breaks it (an empty slot
+    // moving past a locked one), so a slotted ring moves place only then
+    const sorted = moved.slice(1).every((s, i, all) => !i || all[i - 1]!.level <= s.level);
+    ref.set(sorted ? moved : [moved[0]!, ...moved.slice(1).sort((x, y) => x.level - y.level)]);
+  }
   return nb;
 }
 

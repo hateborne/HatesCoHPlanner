@@ -4,6 +4,7 @@
  * and checks.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import { rebookRespecSlots } from '../src/engine/actions.ts';
 import { newBuild } from '../src/engine/build.ts';
 import { BuildRules } from '../src/engine/rules.ts';
 import { levelSteps, respecSteps, stepSlotLevels } from '../src/engine/schedule.ts';
@@ -61,6 +62,57 @@ const slotAndNext = () => {
   }
   useStore.getState().finishLevel();
 };
+
+describe("booking a respec's slots again (rebookRespecSlots)", () => {
+  const P = gd.core.schedule.power;
+  const RECH = pid(gd, 'Boosts.Crafted_Recharge.Crafted_Recharge');
+  const HASTEN = pid(gd, 'Pool.Speed.Hasten');
+  /** A Blaster whose Hasten (pick 6) holds empty slots at levels 2 and 41 and a slotted one at 28, its level 1 power one at 20. */
+  const blaster = (respecTo: number | undefined) => {
+    const b = newBuild({
+      dataVersion: gd.core.manifest.dataVersion,
+      name: 'Rebook',
+      at: gd.archetypeByName.get('class_blaster')!.id,
+      origin: gd.core.origins[0]!.id,
+      alignment: 'Hero',
+      primary: sid(gd, 'Blaster_Ranged.Fire_Blast'),
+      secondary: sid(gd, 'Blaster_Support.Fire_Manipulation'),
+      pickCount: P.length,
+      server: gd.server,
+      respecTo,
+    });
+    b.picks[0] = { power: pid(gd, 'Blaster_Ranged.Fire_Blast.Flares'), level: P[0]!, slots: [{ level: P[0]! }, { level: 20 }] };
+    b.picks[6] = { power: HASTEN, level: P[6]!, slots: [{ level: P[6]! }, { level: 2 }, { level: 28, enh: { boost: RECH, ioLevel: 49 } }, { level: 40 }] };
+    return b;
+  };
+
+  it("gives each empty slot a level at or after its power's when the respec's levels allow it", () => {
+    const b = rebookRespecSlots(gd, blaster(29));
+    expect(b.picks[0]!.slots.map((s) => s.level)).toEqual([P[0], 2]);
+    // Hasten's: the slotted one keeps its level (locked), the level 41 one (after the respec) stays
+    expect(b.picks[6]!.slots.map((s) => s.level)).toEqual([P[6], 20, 28, 40]);
+    expect(b.picks[6]!.slots.map((s) => s.enh?.boost)).toEqual([undefined, undefined, RECH, undefined]);
+  });
+
+  it('keeps a slotted slot where it is, the empty ones moving round it in level order', () => {
+    const b = blaster(29);
+    // the empty slot below Hasten's level is the only one to move: to 20, past nothing
+    b.picks[6]!.slots = [{ level: P[6]! }, { level: 2 }, { level: 15, enh: { boost: RECH, ioLevel: 49 } }];
+    const after = rebookRespecSlots(gd, b);
+    expect(after.picks[6]!.slots.map((s) => [s.level, s.enh?.boost])).toEqual([
+      [P[6], undefined],
+      [15, RECH],
+      [20, undefined],
+    ]);
+  });
+
+  it('leaves a Leveling build, and a respec already booked so, as they are', () => {
+    const lev = blaster(undefined);
+    expect(rebookRespecSlots(gd, lev)).toBe(lev);
+    const done = rebookRespecSlots(gd, blaster(29));
+    expect(rebookRespecSlots(gd, done)).toBe(done);
+  });
+});
 
 describe('respec step order (uiReSpec.c)', () => {
   const flow = respecSteps(steps, 49);

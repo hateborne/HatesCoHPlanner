@@ -462,7 +462,7 @@ selectors (`useShallow`) and call its actions.
 **Swapping a power.** Any pick can be reopened from the overview, enhancements or not, from its
 power bar (one flagged in red too, so the rule it breaks can be fixed: `CheckBar`'s `fixable`) or
 its level orb, which reopens every pick of the level in turn (level 1: its primary power, then its
-secondary; `LevelCtx.then`, carried through a swap's question and freed-slot screen; Cancel stops
+secondary, or the other way round on a Respec build, as its respec asks them; `LevelCtx.then`, carried through a swap's question and freed-slot screen; Cancel stops
 there, keeping the picks already finished). Finish swaps it (`swapPick` in `src/engine/actions.ts`,
 called by the store's `finishSwap`): the pick keeps its slots and the enhancements the new power
 takes; the rest are dropped, slots past the new power's maximum (all of them for a power that takes
@@ -485,7 +485,16 @@ offered on a reopened earlier one when it could be taken there with that later p
 - **Within the respec (or an earlier pick that held nothing):** the later pick is emptied
   (`takeEarlier`), the old power's enhancements are dropped, and the player chooses that pick again
   (the old power offered first, `LevelCtx.chain`), then places its freed slots. Advanced Respec
-  skips the question and says how many enhancements were dropped (`notify`).
+  skips the question and says how many enhancements were dropped (`notify`). The pick chosen again
+  may itself take a power the build has later still: the move starts from the swap so far, the
+  chain goes on to that pick, and the freed slots gather until they are placed.
+
+Within a Respec build's respec, where the planner picks slot levels itself (the respec's slot
+screen, a swap's freed slots), the respec's empty slots are booked again afterwards
+(`rebookRespecSlots`), so a slot sits at or after its power's level whenever the respec's levels
+allow it; a slot holding an enhancement keeps its level, and a slot level reopened from its orb
+keeps the level the player placed. Such screens reopened from the overview carry the respec's own
+title and "Current Respec Level" line.
 
 Every swap question also lists the picks the swap leaves breaking a rule (`newlyFlagged`: they are
 flagged in red, never changed), and asks for that alone. The power screen's Totals show the build

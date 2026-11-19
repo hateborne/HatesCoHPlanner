@@ -7,7 +7,7 @@ import { fitToPatch } from '../../engine/migrate.ts';
 import type { Issue } from '../../engine/rules.ts';
 import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../../io/buildtxt.ts';
 import { describeImportFailure, noBuildSave, readBuildFile, unknownServer } from '../../io/importProblem.ts';
-import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/library.ts';
+import { deleteBuild, listBuilds, saveBuild, savedName, saveFirstText, type SavedBuild } from '../../io/library.ts';
 import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, notReadableOn, parseMidsText } from '../../io/mids.ts';
 import { midsMadeOn } from '../../io/midsPatches.ts';
 import { decodeShare, shareLink } from '../../io/share.ts';
@@ -156,9 +156,35 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
     console.error(`saved builds: ${what}`, e);
     say(what === 'saved' ? saveFailedText(ofBuild) : "Couldn't delete that build: this browser's storage refused.");
   };
-  /** Save the open build in this browser, then remind the player that only this browser has it. */
-  const saveHere = (b: Build) =>
-    saveBuild(b).then(
+  /**
+   * Save the open build in this browser, then remind the player that only this browser has it. A
+   * saved build of the same name is replaced, or kept beside it, as the player chooses.
+   */
+  const saveHere = async (b: Build) => {
+    let id: number | undefined;
+    const name = savedName(b);
+    // those of that name, newest first (as the list is); unreadable storage: the save says so below
+    const named = await listBuilds().then(
+      (all) => all.filter((s) => s.name === name),
+      () => [],
+    );
+    const same = named[0];
+    if (same) {
+      // several of that name (kept both before): Replace overwrites the newest, and says so
+      const which = named.length > 1 ? `${named.length} builds named "${cleanName(name)}" are already saved in this browser. Replace the newest one` : `A build named "${cleanName(name)}" is already saved in this browser. Replace it`;
+      const answer = await useStore.getState().askThreeWay({
+        title: 'Replace the saved build?',
+        text: `${which} with this one, or keep both?`,
+        okLabel: 'Replace',
+        altLabel: 'Keep both',
+      });
+      if (answer === 'ok') id = same.id;
+      else if (answer !== 'alt') {
+        if (answer === 'cancel') say('Not saved.');
+        return;
+      }
+    }
+    return saveBuild(b, id).then(
       () => {
         void refresh();
         say('Saved in this browser.');
@@ -167,6 +193,7 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
       },
       (e: unknown) => storageFailed(e, 'saved'),
     );
+  };
   /**
    * The open build's own game data and Mids map, for exports: New Build's version picker may be
    * showing another version, and the build must be written out against the data it was made on.
@@ -190,9 +217,10 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
     const current = useStore.getState().build;
     if (!current) return (await askOverRemembered('Replace your last build?', loading, 'Replace')) === 'go';
     if (!hasWork(current)) return true;
+    const keep = await saveFirstText(current);
     return useStore.getState().askConfirm({
       title: 'Replace the current build?',
-      text: `${loading} replaces ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+      text: `${loading} replaces ${current.name ? `"${current.name}"` : 'your current build'}.${keep}`,
       okLabel: 'Replace',
     });
   };

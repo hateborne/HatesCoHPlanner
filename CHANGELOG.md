@@ -26,6 +26,12 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - Clicking the level 1 orb on the build screen now lets you change both level 1 powers, primary then secondary, and a power marked in red can be clicked to change it.
 - The Continue button on the server list always shows which server your build is on, even with a long build name.
 - A detailed power tooltip no longer keeps the wrong size or place when its extra details finish loading.
+- Saving a build under a name already saved in the browser asks whether to replace that build or keep both.
+- Right after you save a build, replacing it no longer tells you to save it first.
+- On the level-up screens the Totals tab sits lower, so it no longer hides the pool powers' scroll bar.
+- On phones, the pool power sets on the build and slot screens no longer leave large gaps between them.
+- In a respec, slots placed on the slot screen sit at or after the level their power was taken whenever the respec's levels allow it.
+- A respec build's levels reopened from the build screen show the respec's own titles, and level 1 asks for the secondary power first, as the respec does.
 
 ## v1.1.0 - November 17, 2026
 

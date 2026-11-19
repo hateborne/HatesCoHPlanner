@@ -6,13 +6,14 @@ import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, versionServer, withServer, type GameServer } from '../data/servers.ts';
 import { loadVersions, missingVersionNote, normalizeVersion, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
-import { addSlot, laterPick, moveLater, raiseToCap, setPick, swapPick, takeEarlier, type SwapPiece } from '../engine/actions.ts';
+import { addSlot, laterPick, moveLater, raiseToCap, rebookRespecSlots, setPick, swapPick, takeEarlier, type SwapPiece } from '../engine/actions.ts';
 import { pieceName } from '../engine/enhance.ts';
 import { cleanName, cloneBuild, hasWork, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules, buildPairProblem, levelUpRespec, MAX_LEVEL } from '../engine/rules.ts';
 import { checkBuild } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { describeImportFailure, ImportProblem, refusedBuild, unknownServer, wrongServer } from '../io/importProblem.ts';
+import { saveFirstText } from '../io/library.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
 import { stageLayout } from '../ui/stageLayout.ts';
 import { lastServer, rememberServer } from './lastServer.ts';
@@ -547,10 +548,37 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
   if (l.mode !== 'edit') return setPick(gd, l.base, pick, l.pendingPower);
   // a level reopened from the overview: the build Finish would make (store.finishSwap), so the
   // totals never count a power twice or show slots the swap drops
-  if (l.chain) return swapPick(gd, l.base, pick, l.pendingPower).build;
+  if (l.chain) {
+    const next = laterPick(l.base, pick, l.pendingPower);
+    return next < 0 ? swapPick(gd, l.base, pick, l.pendingPower).build : takeEarlier(gd, l.base, pick, next).build;
+  }
   const later = laterPick(l.orig, pick, l.pendingPower);
   if (later < 0) return swapPick(gd, l.orig, pick, l.pendingPower).build;
   return l.orig.picks[pick] && !inRespec(gd, l.orig, later) ? moveLater(gd, l.orig, pick, later).result.build : takeEarlier(gd, l.orig, pick, later).build;
+}
+
+/**
+ * The build a finished slot screen leaves: within a Respec build's respec, where the planner picked
+ * the slots' levels (the respec's slot screen, a swap's freed slots), its empty slots booked again
+ * (rebookRespecSlots), as slots kept from earlier screens may hold the levels a later power needs.
+ *
+ * Done once the screen is finished, not while it shows (it tells its own slots by their levels), and
+ * only on the flow's last screen (the respec's slot screen ends its flow; a freed-slot screen is a
+ * flow of one), so Back never meets a screen whose slots were booked again under it. A slot level
+ * reopened from the overview keeps the level the player placed: its slots may go on any power, at
+ * that level.
+ *
+ * @param gd Game data.
+ * @param steps The leveling steps.
+ * @param l The screen being finished.
+ * @param b The build it made (previewBuild).
+ * @return The build to keep.
+ */
+function booked(gd: GameData, steps: LevelStep[], l: LevelCtx, b: Build): Build {
+  const step = stepsOf(steps, l)[l.step];
+  const top = b.respecTo;
+  if (l.sub !== 'slots' || !l.flow || l.step !== l.flow.length - 1 || !step || top === undefined || !l.pendingSlots.length) return b;
+  return stepSlotLevels(step).some((lv) => lv <= top) ? rebookRespecSlots(gd, b) : b;
 }
 
 /**
@@ -768,8 +796,8 @@ async function finishSwap(gd: GameData, steps: LevelStep[], level: LevelCtx): Pr
   const pick = currentPick(steps, level);
   const power = level.pendingPower;
   if (power === undefined || pick < 0) return;
-  // a power the build takes at a later pick, taken here instead
-  const later = level.chain ? -1 : laterPick(level.orig, pick, power);
+  // a power the build takes at a later pick, taken here instead (in a chain, later than the swap so far)
+  const later = laterPick(level.chain ? level.base : level.orig, pick, power);
   if (later >= 0) return takeEarlierFlow(gd, steps, level, pick, later);
   const old = level.chain ? null : level.orig.picks[pick];
   const sw = swapPick(gd, level.chain ? level.base : level.orig, pick, power);
@@ -852,7 +880,9 @@ function openNext(then: readonly number[] | undefined): void {
  * respec (or for an earlier pick that held nothing) L is emptied instead: A leaves with its
  * enhancements, and the player chooses L again (A offered first), then places A's bought slots.
  * Both ask first, listing the picks it flags (Advanced Respec asks nothing within the respec);
- * Cancel stays on the power screen, and Undo Swap later on undoes it all.
+ * Cancel stays on the power screen, and Undo Swap later on undoes it all. A pick being chosen again
+ * (a chain) may take a later power too: the move starts from the swap so far, the chain goes on to
+ * that later pick, and the slots to place gather along it.
  *
  * @param gd Game data.
  * @param steps The leveling steps.
@@ -861,7 +891,9 @@ function openNext(then: readonly number[] | undefined): void {
  * @param later The later pick holding B (L).
  */
 async function takeEarlierFlow(gd: GameData, steps: LevelStep[], level: LevelCtx, pick: number, later: number): Promise<void> {
-  const orig = level.orig;
+  // the build the move starts from: a pick being chosen again (a chain) moves within the swap so far,
+  // and Undo Swap still goes back to the build before it all (level.orig)
+  const orig = level.chain ? level.base : level.orig;
   const st = useStore.getState();
   const old = orig.picks[pick];
   const b = gd.power(orig.picks[later]!.power).dn;
@@ -888,7 +920,7 @@ async function takeEarlierFlow(gd: GameData, steps: LevelStep[], level: LevelCtx
       okLabel: 'OK',
     });
     if (!ok || !sameScreen(useStore.getState().level, level)) return;
-    finishWith(orig, put.build, put.freed, level.then);
+    finishWith(level.orig, put.build, [...(level.chain?.freed ?? []), ...put.freed], level.then);
     return;
   }
   // within a Respec build's respec (or nothing at E): L is chosen again
@@ -916,7 +948,7 @@ async function takeEarlierFlow(gd: GameData, steps: LevelStep[], level: LevelCtx
   // A offered first at L when it can be taken there
   const offer = old && new BuildRules(gd, moved.build).powerOption(old.power, later).state === 'available' ? offerAgain(gd, moved.build, later, old.power) : {};
   useStore.setState({
-    level: { step, pickInStep: steps[step]!.picks.indexOf(later), mode: 'edit', sub: 'power', base: moved.build, orig, ...offer, pendingSlots: [], chain: { freed: moved.freed }, ...(level.then?.length ? { then: level.then } : {}) },
+    level: { step, pickInStep: steps[step]!.picks.indexOf(later), mode: 'edit', sub: 'power', base: moved.build, orig: level.orig, ...offer, pendingSlots: [], chain: { freed: [...(level.chain?.freed ?? []), ...moved.freed] }, ...(level.then?.length ? { then: level.then } : {}) },
   });
 }
 
@@ -1382,7 +1414,7 @@ export const useStore = create<Store>((set, get) => ({
       void finishSwap(gd, steps, level);
       return;
     }
-    const b = previewBuild(gd, steps, level);
+    const b = booked(gd, steps, level, previewBuild(gd, steps, level));
     persist(b);
     if (level.mode === 'edit') {
       set({ build: b, view: 'overview', level: undefined });
@@ -1695,9 +1727,10 @@ if (typeof window !== 'undefined') {
         // link to the build already open replaces nothing)
         if (current && hasWork(current)) {
           if ((await encodeShare(current)) === m[1] && serverOf(current) === serverOf(b)) return;
+          const keep = await saveFirstText(current);
           const ok = await useStore.getState().askConfirm({
             title: 'Replace the current build?',
-            text: `The link opens ${incoming}, replacing ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+            text: `The link opens ${incoming}, replacing ${current.name ? `"${current.name}"` : 'your current build'}.${keep}`,
             okLabel: 'Replace',
           });
           if (!ok) {

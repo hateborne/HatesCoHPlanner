@@ -118,6 +118,8 @@ const MULTI_HEAD = { color: '#ffd200', fontWeight: 'bold' } as const;
 
 // "FULL!" over a piece Ctrl+Clicked past the slots there are: the slot screen's fadingText, a little smaller
 const FULL_SCALE = 1;
+// a chosen piece's colour: its row's ring, and the count of chosen pieces beside a set's name
+const CHOSEN_COLOR = '#00d919';
 
 /**
  * Enhancement picker for one slot: only enhancements the game would accept in this power for
@@ -331,6 +333,9 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   const levelRange: [number, number] | null = ranged.length
     ? [Math.min(...ranged.map((p) => rangeOf(gd.power(p.boost))![0])), Math.max(...ranged.map((p) => rangeOf(gd.power(p.boost))![1]))]
     : null;
+  // the chosen pieces stand at different levels (one with none stored reads as the top of its range,
+  // as the level box shows it)
+  const mixedLevels = new Set(ranged.map((p) => p.ioLevel ?? rangeOf(gd.power(p.boost))![1])).size > 1;
   const setLevel = (n: number) =>
     setPicks(
       picks.map((p) => {
@@ -359,11 +364,11 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   const values = selBoost && sel && !multi ? enhLines(gd, at, entry.power, sel, 49) : [];
   // several pieces: what they add together, after ED
   const total = multi ? strengthLines(gd, entry.power, powerStrength(gd, at, entry.power, picks, 49).post) : [];
-  /** Clamp a typed level into the pieces' range (an unreadable entry keeps the current level). */
+  /** Clamp a typed level into the pieces' range (an empty or unreadable entry keeps the current levels). */
   const commitLevel = () => {
     if (lvlDraft === null || !levelRange) return;
     const n = Math.round(Number(lvlDraft)) - 1;
-    if (Number.isFinite(n)) setLevel(Math.max(levelRange[0], Math.min(levelRange[1], n)));
+    if (lvlDraft.trim() !== '' && Number.isFinite(n)) setLevel(Math.max(levelRange[0], Math.min(levelRange[1], n)));
     setLvlDraft(null);
   };
   useEscape(onClose);
@@ -375,6 +380,13 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   };
   // several pieces from one set are titled by the set ("Unbreakable Guard:")
   const pickSets = new Set(picks.map((p) => gd.boostSetOf.get(p.boost)?.set.id));
+  // how many chosen pieces each set holds: the set list shows them, so a piece chosen in a set no
+  // longer shown isn't forgotten
+  const chosenIn = new Map<number, number>();
+  for (const p of picks) {
+    const id = gd.boostSetOf.get(p.boost)?.set.id;
+    if (id !== undefined) chosenIn.set(id, (chosenIn.get(id) ?? 0) + 1);
+  }
   const oneSet = multi && pickSets.size === 1 ? gd.boostSetOf.get(picks[0]!.boost)?.set : undefined;
 
   /**
@@ -422,8 +434,12 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     </div>
   );
 
-  /** A Sets or Special group's heading: the Totals panel's +/- and the title; a click opens or closes it. */
-  const groupHead = (key: string, title: string) => {
+  /**
+   * A Sets or Special group's heading: the Totals panel's +/- and the title; a click opens or closes it.
+   *
+   * @param chosen How many chosen pieces its sets hold, shown while it is closed.
+   */
+  const groupHead = (key: string, title: string, chosen = 0) => {
     const open = !closed.has(key);
     return (
       <div
@@ -435,6 +451,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
       >
         <HeadMark open={open} size={18} />
         <TitleText style={{ fontSize: 18 }}>{title}</TitleText>
+        {!open && chosen ? <span style={{ color: CHOSEN_COLOR, fontSize: 14, marginLeft: 8 }}>({chosen})</span> : null}
       </div>
     );
   };
@@ -500,21 +517,26 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
               <div className="scroll-y" style={phone ? { maxHeight: Math.round(lh * 0.45), flexShrink: 0 } : { width: 430, height: '100%' }}>
                 {setGroups.map(([grp, list]) => (
                   <div key={grp}>
-                    {groupHead(`Sets:${grp}`, grp)}
+                    {groupHead(`Sets:${grp}`, grp, list.reduce((t, s) => t + (chosenIn.get(s.id) ?? 0), 0))}
                     {closed.has(`Sets:${grp}`)
                       ? null
-                      : list.map((s) => (
-                        <div
-                          key={s.id}
-                          data-testid={`pickerset:${s.id}`}
-                          onClick={() => setSetId(s.id)}
-                          {...pressKeys(() => setSetId(s.id), undefined, s.dn)}
-                          className="body-text"
-                          style={{ cursor: 'pointer', padding: phone ? '12px 8px' : '3px 8px', borderRadius: 8, color: s.id === setId ? '#88ffaa' : '#cfe8ff', background: s.id === setId ? 'rgba(0,217,25,0.18)' : 'transparent', fontSize: phone ? 19 : 16 }}
-                        >
-                          {s.dn} <span style={{ color: '#8fa1b8', fontSize: 13 }}>({s.minL}-{s.maxL})</span>
-                        </div>
-                      ))}
+                      : list.map((s) => {
+                        const chosen = chosenIn.get(s.id) ?? 0;
+                        return (
+                          <div
+                            key={s.id}
+                            data-testid={`pickerset:${s.id}`}
+                            onClick={() => setSetId(s.id)}
+                            {...pressKeys(() => setSetId(s.id), undefined, s.dn)}
+                            className="body-text"
+                            // a set holding chosen pieces is lit (the shown set more brightly) and counts them
+                            style={{ cursor: 'pointer', padding: phone ? '12px 8px' : '3px 8px', borderRadius: 8, color: s.id === setId || chosen ? '#88ffaa' : '#cfe8ff', background: s.id === setId ? 'rgba(0,217,25,0.18)' : chosen ? 'rgba(0,217,25,0.07)' : 'transparent', fontSize: phone ? 19 : 16 }}
+                          >
+                            {s.dn} <span style={{ color: '#8fa1b8', fontSize: 13 }}>({s.minL}-{s.maxL})</span>
+                            {chosen ? <span data-testid={`pickerset-chosen:${s.id}`} style={{ color: CHOSEN_COLOR, fontSize: 13, marginLeft: 6 }}>{chosen} chosen</span> : null}
+                          </div>
+                        );
+                      })}
                   </div>
                 ))}
               </div>
@@ -559,7 +581,10 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                       min={levelRange[0] + 1}
                       max={levelRange[1] + 1}
                       disabled={atCap}
-                      value={lvlDraft ?? String((ranged[0]?.ioLevel ?? levelRange[1]) + 1)}
+                      // pieces at different levels (each at its own cap, or chosen apart) show none
+                      // of them; a level typed in sets them all
+                      value={lvlDraft ?? (mixedLevels ? '' : String((ranged[0]?.ioLevel ?? levelRange[1]) + 1))}
+                      placeholder={mixedLevels ? 'Mixed' : undefined}
                       onChange={(e) => {
                         // keep what is typed ("2" on the way to "25"); apply at once only when in range
                         const v = e.target.value;

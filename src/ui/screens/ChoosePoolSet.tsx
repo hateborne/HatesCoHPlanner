@@ -53,8 +53,9 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
 
   const choices = rules.newSetChoices(kind, pick);
   const chosen = setId !== undefined ? gd.powerset(setId) : undefined;
-  // reopened from the overview: a power the build takes later can be taken here instead
-  const earlier = level.mode === 'edit' && !level.chain;
+  // reopened from the overview, or chosen again after a swap: a power the build takes later can be
+  // taken here instead
+  const earlier = level.mode === 'edit';
   const powers = chosen ? chosen.p.map((pid) => rules.powerOption(pid, pick)).map((o) => (earlier ? earlierOption(gd, level.base, pick, o) : o)) : [];
   const desc = <PoolDesc skin={skin} phone={phone} power={power !== undefined ? gd.power(power) : undefined} chosen={chosen} />;
   const setBars = (x0: number, y0: number, wd: number) =>
