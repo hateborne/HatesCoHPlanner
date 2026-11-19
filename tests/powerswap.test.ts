@@ -302,3 +302,47 @@ describe('review fixes', () => {
     expect(autoAdvanceReady()).toBe(false);
   });
 });
+
+describe("level 1's orb", () => {
+  /** Reopen level 1 from its orb: its primary pick, then its secondary. */
+  const reopenLevelOne = (b: Build) => {
+    useStore.setState({ gd, steps, build: b, view: 'overview', level: undefined, confirm: null, advancedRespec: false });
+    const level1 = steps.find((s) => s.level === 0)!;
+    st().editPick(level1.picks[0]!, level1.picks.slice(1));
+    return level1;
+  };
+
+  it('opens the primary pick, then the secondary, then the overview', () => {
+    const level1 = reopenLevelOne(peacebringer());
+    expect(st().level).toMatchObject({ mode: 'edit', pickInStep: 0 });
+    st().choosePower(BOLT); // unchanged: no question
+    st().finishLevel();
+    expect(st().view).toBe('level');
+    expect(st().level).toMatchObject({ mode: 'edit', pickInStep: level1.picks.indexOf(1) });
+    st().finishLevel();
+    expect(st().view).toBe('overview');
+    expect(st().level).toBeUndefined();
+  });
+
+  it('goes on to the secondary after a swap it asked about, keeping the swap', async () => {
+    reopenLevelOne(peacebringer());
+    st().choosePower(INNER_LIGHT);
+    st().finishLevel();
+    st().closeConfirm(true);
+    await tick();
+    expect(st().view).toBe('level');
+    expect(st().level?.pickInStep).toBe(1);
+    expect(st().build!.picks[0]!.power).toBe(INNER_LIGHT);
+    // Cancel on the secondary keeps the primary's change
+    st().cancelLevel();
+    expect(st().view).toBe('overview');
+    expect(st().build!.picks[0]!.power).toBe(INNER_LIGHT);
+  });
+
+  it('stops at the first screen on Cancel', () => {
+    reopenLevelOne(peacebringer());
+    st().cancelLevel();
+    expect(st().view).toBe('overview');
+    expect(st().build!.picks[0]!.power).toBe(BOLT);
+  });
+});
