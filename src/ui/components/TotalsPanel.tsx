@@ -153,9 +153,13 @@ function readOpen(key: string, dflt: Record<string, boolean>): Record<string, bo
 /**
  * A section heading's +/- drawn as bars in the title colors with a 1 device px black outline,
  * centred on the title caps (0..0.8em above the baseline). Neither title font's hyphen works:
- * RedCircle's is a square block and Montreal's sits at x-height, half the plus's width.
+ * RedCircle's is a square block and Montreal's sits at x-height, half the plus's width. The
+ * enhancement picker's collapsible groups use it too.
+ *
+ * @param props.open Whether the section is open (a minus) or closed (a plus).
+ * @param props.size The heading's font size (px).
  */
-function HeadMark({ open }: { open: boolean }) {
+export function HeadMark({ open, size = 20 }: { open: boolean; size?: number }) {
   const box = { position: 'absolute' as const };
   const fill = 'linear-gradient(var(--title-top), var(--title-bottom))';
   const ring = 'var(--dev-px, 1px)';
@@ -163,7 +167,7 @@ function HeadMark({ open }: { open: boolean }) {
   const v = { left: '0.24em', top: '0.14em', width: '0.12em', height: '0.52em' };
   const bars = open ? [h] : [h, v];
   return (
-    <span style={{ display: 'inline-block', position: 'relative', width: '0.9em', height: '0.8em', fontSize: 20, flex: 'none' }}>
+    <span style={{ display: 'inline-block', position: 'relative', width: '0.9em', height: '0.8em', fontSize: size, flex: 'none' }}>
       {/* outlines first, then fills, so the plus has no black seam where its bars cross */}
       {bars.map((b, i) => (
         <span key={`o${i}`} style={{ ...box, ...b, background: '#000', boxShadow: `0 0 0 ${ring} #000` }} />

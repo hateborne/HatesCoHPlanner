@@ -14,10 +14,10 @@ import { useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
 import type { Skin } from '../skin/skin.ts';
 import { smf } from '../smf.tsx';
+import { OnSwitch } from './CheckBar.tsx';
 import { MenuFrame } from './Chrome.tsx';
 import { GameScroll } from './GameScroll.tsx';
 import { TitleText } from './GameText.tsx';
-import { OnSwitch } from './OnSwitch.tsx';
 import { InfoBlocks, Segs, useInfoFiles } from './PowerInfoView.tsx';
 import { Floating, TIP, TIP_PX } from './PowerTip.tsx';
 import { useStage } from './Stage.tsx';
@@ -29,6 +29,7 @@ const DAMAGE = '#ff4b4b'; // the power info's damage color (power_AddBaseStats)
 const NOTE = '#aaaa88'; // its note color
 const W = 760; // a pet power's tooltip width (the Advanced tooltip's)
 const MARK_W = 20; // the totals rows' +/- column (TotalsPanel), so a pet's name lines up with theirs
+const SWITCH = 18; // a pet power's switch, the size of the text beside it
 // the pet pane's sections, remembered apart from the build's totals: Powers and Base start open
 const PANE_SECTIONS: SectionMemory = { key: 'hcp.petpane.sections', dflt: { powers: true, base: true } };
 
@@ -195,7 +196,7 @@ function PetPane({ gd, skin, entry, build, onSwitch }: { gd: GameData; skin: Ski
               width={(inner.width - 12) / zoom}
               nonZero
               memory={PANE_SECTIONS}
-              lead={{ id: 'powers', title: 'Powers', body: () => <PetPowers gd={gd} card={card} build={build} onSwitch={onSwitch} /> }}
+              lead={{ id: 'powers', title: 'Powers', body: () => <PetPowers gd={gd} skin={skin} card={card} build={build} onSwitch={onSwitch} /> }}
             />
           </div>
         </GameScroll>
@@ -276,35 +277,36 @@ function PowerName({ card, power, children }: { card: PetCard; power: Power; chi
  * A pet power's switch: whether it counts in the pets' stats (petPowerOn), drawn like the
  * overview's. Only a power that can move a stat (buffsPets) has one.
  */
-function PetSwitch({ gd, power, build, onSwitch }: { gd: GameData; power: Power; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
-  if (!onSwitch || !buffsPets(gd, power)) return <span style={{ display: 'inline-block', width: 26 }} />;
+function PetSwitch({ gd, skin, power, build, onSwitch }: { gd: GameData; skin: Skin; power: Power; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
+  if (!onSwitch || !buffsPets(gd, power)) return <span style={{ display: 'inline-block', width: SWITCH + 8 }} />;
   const on = petPowerOn(gd, build, power);
+  const flip = () => onSwitch(power, !on);
   return (
-    <OnSwitch
-      testId={`petswitch:${power.n}`}
-      on={on}
-      size={16}
-      glow={6}
-      onToggle={() => onSwitch(power, !on)}
-      label={on ? "Counted in the pets' stats" : "Not counted in the pets' stats"}
+    <span
+      data-testid={`petswitch:${power.n}`}
       title={on ? "Counted in the pets' stats (click to leave it out)" : "Not counted in the pets' stats (click to count it)"}
-      style={{ display: 'inline-block', marginRight: 8, verticalAlign: '-2px' }}
-    />
+      onClick={flip}
+      {...pressKeys(flip, undefined, on ? "Counted in the pets' stats" : "Not counted in the pets' stats")}
+      aria-pressed={on}
+      style={{ position: 'relative', display: 'inline-block', width: SWITCH, height: SWITCH, marginRight: 8, verticalAlign: -SWITCH / 4, borderRadius: SWITCH / 2, cursor: 'pointer' }}
+    >
+      <OnSwitch skin={skin} on={on} size={SWITCH} />
+    </span>
   );
 }
 
 /** One attack's row: name (its damage types under it), damage, cast, recharge and damage per activation. */
-function AttackRow({ gd, card, a, build, onSwitch }: { gd: GameData; card: PetCard; a: PetAttack; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
+function AttackRow({ gd, skin, card, a, build, onSwitch }: { gd: GameData; skin: Skin; card: PetCard; a: PetAttack; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
   const click = a.type === 'Click';
   return (
     <>
       <div>
-        <PetSwitch gd={gd} power={a.power} build={build} onSwitch={onSwitch} />
+        <PetSwitch gd={gd} skin={skin} power={a.power} build={build} onSwitch={onSwitch} />
         <PowerName card={card} power={a.power}>
           {a.users ? `${a.name} (${a.users} of them)` : a.name}
         </PowerName>
-        {a.types.length ? <div style={{ color: INFO_LABEL_COLOR, fontSize: '0.85em', paddingLeft: 26 }}>{a.types.join(', ')}</div> : null}
-        {a.when ? <div style={{ color: NOTE, fontStyle: 'italic', paddingLeft: 26 }}>{a.when}</div> : null}
+        {a.types.length ? <div style={{ color: INFO_LABEL_COLOR, fontSize: '0.85em', paddingLeft: SWITCH + 8 }}>{a.types.join(', ')}</div> : null}
+        {a.when ? <div style={{ color: NOTE, fontStyle: 'italic', paddingLeft: SWITCH + 8 }}>{a.when}</div> : null}
       </div>
       <div style={{ color: DAMAGE, textAlign: 'right' }}>{pair(a.damage, f2)}</div>
       <div style={{ textAlign: 'right' }}>{click ? prettyDuration(a.cast) : ''}</div>
@@ -319,7 +321,7 @@ function AttackRow({ gd, card, a, build, onSwitch }: { gd: GameData; card: PetCa
  * slotting with the base in parentheses, and the damage types) and what its other powers do, each
  * name showing the power's card on hover, and a switch on each power that can move a stat.
  */
-function PetPowers({ gd, card, build, onSwitch }: { gd: GameData; card: PetCard; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
+function PetPowers({ gd, skin, card, build, onSwitch }: { gd: GameData; skin: Skin; card: PetCard; build: Build; onSwitch?: (p: Power, on: boolean) => void }) {
   const stage = useStage();
   return (
     <div style={{ paddingLeft: MARK_W, fontSize: stage.phone ? 14 : 16 }}>
@@ -334,7 +336,7 @@ function PetPowers({ gd, card, build, onSwitch }: { gd: GameData; card: PetCard;
               </div>
             ))}
             {card.attacks.map((a, i) => (
-              <AttackRow key={i} gd={gd} card={card} a={a} build={build} onSwitch={onSwitch} />
+              <AttackRow key={i} gd={gd} skin={skin} card={card} a={a} build={build} onSwitch={onSwitch} />
             ))}
           </div>
         </>
@@ -345,12 +347,12 @@ function PetPowers({ gd, card, build, onSwitch }: { gd: GameData; card: PetCard;
           {card.powers.map((p, i) => (
             <div key={i} style={{ marginTop: i ? 6 : 0 }}>
               <div>
-                <PetSwitch gd={gd} power={p.power} build={build} onSwitch={onSwitch} />
+                <PetSwitch gd={gd} skin={skin} power={p.power} build={build} onSwitch={onSwitch} />
                 <PowerName card={card} power={p.power}>
                   <span style={{ color: INFO_LABEL_COLOR }}>{p.name}</span>
                 </PowerName>
               </div>
-              <div style={{ paddingLeft: 26 }}>
+              <div style={{ paddingLeft: SWITCH + 8 }}>
                 {p.when ? <div style={{ color: NOTE, fontStyle: 'italic' }}>{p.when}</div> : null}
                 {p.lines.map((l, j) => (
                   <Fragment key={j}>

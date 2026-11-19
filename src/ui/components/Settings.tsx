@@ -267,7 +267,7 @@ function PhoneMenu({ skin }: { skin: Skin }) {
           <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
           {/* on whole device pixels, so the bars inside tile without seams */}
           <div className="abs" style={{ left: snap(stage.w - PANE.right - paneW), top: snap(paneTop), width: paneW, height: paneH, zIndex: 71 }}>
-            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: skin.panel }} />
             <div className="abs scroll-y" style={{ left: 0, top: 0, width: paneW, height: paneH }}>
               <div style={{ position: 'relative', height: y }}>{rows}</div>
             </div>

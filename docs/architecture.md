@@ -72,8 +72,7 @@ src/
                              FinderShopping (its shopping list)
     components/              game chrome (frames, bars, rings, scrollbars, text, tooltips);
                              FinderIcon (the set finder's button icon and working name);
-                             PetCard (the Pets and Minions rows, the pet pane, usePetCards);
-                             OnSwitch (the totals' on/off switch, overview and pet pane)
+                             PetCard (the Pets and Minions rows, the pet pane, usePetCards)
     skin/                    metrics.ts (virtual-screen maths), skin.ts (hero/villain/praetorian)
     hover.ts                 hover / tooltip state (kept out of the screens on purpose)
     flags.ts                 SET_FINDER: whether the unfinished set finder's button shows
@@ -315,7 +314,7 @@ The totals list the pets (`PetRow`, `src/ui/components/PetCard.tsx`); a click op
 (`usePetPane`, `PetPaneLayer`, drawn by the overview and the side totals): the stats in the totals'
 own panel (`TotalsPanel` with `nonZero`, only the rows that aren't zero, and a Powers section
 first), the attacks with their damage types, and a switch on each power that can move a stat
-(`buffsPets`, `OnSwitch` as in the overview; the overview's pane only). A power's name shows its
+(`buffsPets`, drawn with the overview's `OnSwitch`; the overview's pane only). A power's name shows its
 power info on hover or keyboard focus (`useHover.petPower`), a long press on a phone
 (`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
 (`Floating`'s `lock`, `lockedTurn`), so the pane under it never scrolls away, and one that fits lets

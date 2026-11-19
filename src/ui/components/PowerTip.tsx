@@ -264,7 +264,7 @@ export function DescTip({ skin, power, x, y, avoid, hint }: { skin: Skin; power:
         const h = Math.max(ring + 2 * pad, b.h);
         return (
           <>
-            <MenuFrame x={b.x} y={b.y} w={w} h={h} skin={skin} style={{ background: '#000314' }} />
+            <MenuFrame x={b.x} y={b.y} w={w} h={h} skin={skin} style={{ background: skin.panel }} />
             <Sprite src={ui('creation/powers/powers_description_iconring', skin)} x={b.x - ring / 2} y={b.y + h / 2 - ring / 2} w={ring} h={ring} z={3} />
             <Sprite src={icon('powers', power.icon || 'power_missing')} x={b.x - 16 * S} y={b.y + h / 2 - 16 * S} w={32 * S} h={32 * S} z={4} />
             <div
@@ -322,7 +322,7 @@ export function SlotDetails({ gd, power, longColor }: { gd: GameData; power: Pow
  * The game's power hover tooltip box (screenshot: a dark panel with a thin rounded blue border):
  * the slot details, and in the Advanced view a divider and the detailed info below them.
  */
-export function SlotTip({ gd, power, x, y, avoid, hint, advanced, w = 640 }: { gd: GameData; power: Power; x: number; y: number; avoid?: DOMRect; hint?: boolean; advanced?: ReactNode; w?: number }) {
+export function SlotTip({ gd, skin, power, x, y, avoid, hint, advanced, w = 640 }: { gd: GameData; skin: Skin; power: Power; x: number; y: number; avoid?: DOMRect; hint?: boolean; advanced?: ReactNode; w?: number }) {
   return (
     <Floating
       key={power.id}
@@ -336,7 +336,7 @@ export function SlotTip({ gd, power, x, y, avoid, hint, advanced, w = 640 }: { g
         <div
           ref={ref}
           className="abs scroll-y"
-          style={{ left: b.x, top: b.y, width: (advanced ? 760 : w) + b.bar, maxHeight: b.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + b.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: TIP.text }}
+          style={{ left: b.x, top: b.y, width: (advanced ? 760 : w) + b.bar, maxHeight: b.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + b.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: skin.panel, border: `2px solid ${skin.panelBorder}`, borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: TIP.text }}
         >
           <SlotDetails gd={gd} power={power} />
           {advanced ? (
@@ -433,7 +433,7 @@ function RarityText({ r }: { r: SetRarity }) {
  * @param props.slot Index of the hovered slot.
  * @param props.level 0-based character level (attuned values and help-text numbers).
  */
-export function EnhTip({ gd, at, slots, slot, level, x, y }: { gd: GameData; at: Archetype; slots: Slot[]; slot: number; level: number; x: number; y: number }) {
+export function EnhTip({ gd, skin, at, slots, slot, level, x, y }: { gd: GameData; skin: Skin; at: Archetype; slots: Slot[]; slot: number; level: number; x: number; y: number }) {
   if (!slots[slot]?.enh) return null;
   return (
     <Floating
@@ -447,7 +447,7 @@ export function EnhTip({ gd, at, slots, slot, level, x, y }: { gd: GameData; at:
         <div
           ref={ref2}
           className="abs scroll-y"
-          style={{ left: box.x, top: box.y, width: 620 + box.bar, maxHeight: box.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + box.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: '#ffffff' }}
+          style={{ left: box.x, top: box.y, width: 620 + box.bar, maxHeight: box.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + box.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: skin.panel, border: `2px solid ${skin.panelBorder}`, borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: '#ffffff' }}
         >
           <EnhDetails gd={gd} at={at} slots={slots} slot={slot} level={level} />
         </div>

@@ -583,3 +583,9 @@ button {
   border-color: #cfe8ff;
   box-shadow: 0 0 14px rgba(79, 148, 255, 0.9);
 }
+
+/* the picker's drawn switches (SwitchBox): the see-through checkbox's keyboard focus shows on the switch */
+.switch-box:has(> input:focus-visible) {
+  outline: 2px solid var(--menu-border);
+  outline-offset: 2px;
+}

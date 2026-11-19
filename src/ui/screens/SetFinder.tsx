@@ -178,21 +178,21 @@ function SearchLabel({ idle }: { idle: string }) {
 }
 
 /** The search form: priorities, kinds of sets, the wanted bonus and the additional ones, set type. */
-function SearchForm({ sections, groups, phone }: { sections: StatSection[]; groups: string[]; phone: boolean }) {
+function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: StatSection[]; groups: string[]; phone: boolean }) {
   const { query, setQuery } = useFinder(useShallow((s) => ({ query: s.query, setQuery: s.setQuery })));
   const select: CSSProperties = {
     fontFamily: "'Montreal'",
     fontSize: 16,
     color: '#fff',
-    background: 'linear-gradient(#0c2a6e, #04102e)',
-    border: '2px solid #4f94ff',
+    background: `linear-gradient(${skin.select[0]}, ${skin.select[1]})`,
+    border: `2px solid ${skin.menuBorder}`,
     borderRadius: 16,
     padding: '0 6px 0 10px',
     height: phone ? 48 : 34,
     cursor: 'pointer',
     minWidth: 0,
   };
-  const option: CSSProperties = { background: '#04102e' };
+  const option: CSSProperties = { background: skin.select[1] };
   const head = (text: string) => <TitleText style={{ fontSize: 18, marginTop: 14, marginBottom: 4 }}>{text}</TitleText>;
 
   /** Set, change or clear priority `i`; a goal can be picked once. */
@@ -716,12 +716,12 @@ export default function SetFinder({ skin }: { skin: Skin }) {
     return (
       <div className="overlay" onClick={close}>
         <div onClick={(e) => e.stopPropagation()}>
-          <MenuFrame x={6} y={6} w={W - 12} h={bottom - 6} r25 style={{ background: 'rgba(0,0,20,0.95)' }} skin={skin} />
+          <MenuFrame x={6} y={6} w={W - 12} h={bottom - 6} r25 style={{ background: skin.panel }} skin={skin} />
           <SetTitle x={18} y={18} size={24} width={W - 60} text={FINDER_NAME} skin={skin} />
           <PhoneTabs skin={skin} labels={PHONE_TABS.map((t, i) => (i === 2 && kept.length ? `Kept (${kept.length})` : t))} active={tab} onChange={setTab} y={tabsY} x={16} width={W - 20} clickSounds={['powerselect2']} />
           <div className="abs scroll-y" style={{ left: 16, top, width: W - 32, height: listH }}>
             {tab === 0 ? (
-              <SearchForm sections={sections} groups={groups} phone />
+              <SearchForm skin={skin} sections={sections} groups={groups} phone />
             ) : tab === 1 ? (
               <ResultList gd={gd} phone hasSlots={hasSlots} />
             ) : tab === LIST_TAB ? (
@@ -788,7 +788,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
     return (
       <div className="overlay" onClick={close}>
         <div onClick={(e) => e.stopPropagation()}>
-          <MenuFrame x={F.x} y={F.y} w={F.w} h={F.h} r25 style={{ background: 'rgba(0,0,20,0.95)' }} skin={skin} />
+          <MenuFrame x={F.x} y={F.y} w={F.w} h={F.h} r25 style={{ background: skin.panel }} skin={skin} />
           <SetTitle x={F.x + 40} y={F.y + 20} size={34} width={F.w - 80} text={`${FINDER_NAME}: Shopping List`} skin={skin} />
           <MenuFrame x={sets.x} y={paneY} w={sets.w} h={paneH} skin={skin} />
           <div className="abs scroll-y" style={{ left: sets.x + 14, top: paneY + 12, width: sets.w - 28, height: paneH - 24 }}>
@@ -814,10 +814,10 @@ export default function SetFinder({ skin }: { skin: Skin }) {
   return (
     <div className="overlay" onClick={close}>
       <div onClick={(e) => e.stopPropagation()}>
-        <MenuFrame x={F.x} y={F.y} w={F.w} h={F.h} r25 style={{ background: 'rgba(0,0,20,0.95)' }} skin={skin} />
+        <MenuFrame x={F.x} y={F.y} w={F.w} h={F.h} r25 style={{ background: skin.panel }} skin={skin} />
         <SetTitle x={F.x + 40} y={F.y + 20} size={34} width={F.w - 80} text={FINDER_NAME} skin={skin} />
         <div className="abs scroll-y" style={{ left: form.x, top: paneY, width: form.w, height: paneH }}>
-          <SearchForm sections={sections} groups={groups} phone={false} />
+          <SearchForm skin={skin} sections={sections} groups={groups} phone={false} />
         </div>
         <MenuFrame x={list.x} y={paneY} w={list.w} h={paneH} skin={skin} />
         <div className="abs scroll-y" style={{ left: list.x + 14, top: paneY + 12, width: list.w - 28, height: paneH - 24 }}>

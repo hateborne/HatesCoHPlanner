@@ -14,6 +14,7 @@ import { decodeShare, shareLink } from '../../io/share.ts';
 import { askOverRemembered, shareServer, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
+import type { Skin } from '../skin/skin.ts';
 import { useStage } from '../components/Stage.tsx';
 import { TitleText } from '../components/GameText.tsx';
 import { safeFileName } from '../../io/fileName.ts';
@@ -69,7 +70,7 @@ export function saveFailedText(server: GameServer): string {
 }
 
 /** Save / load / share / Mids import-export, in the in-game skin. */
-export function BuildMenu({ onClose }: { onClose: () => void }) {
+export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }) {
   const { gd, build, loadBuild, versions } = useStore();
   useEscape(onClose);
   const [saved, setSaved] = useState<SavedBuild[]>([]);
@@ -313,8 +314,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
-        <MenuFrame x={L.frame[0]!} y={L.frame[1]!} w={L.frame[2]!} h={L.frame[3]!} r25 style={{ background: 'rgba(0,0,20,0.95)' }} />
-        <SetTitle x={L.title[0]!} y={L.title[1]!} size={phone ? 28 : 36} text="Build menu" />
+        <MenuFrame x={L.frame[0]!} y={L.frame[1]!} w={L.frame[2]!} h={L.frame[3]!} r25 skin={skin} style={{ background: skin.panel }} />
+        <SetTitle x={L.title[0]!} y={L.title[1]!} size={phone ? 28 : 36} text="Build menu" skin={skin} />
         <div style={L.wrap}>
         <div className={phone ? 'body-text' : 'abs body-text'} style={leftStyle}>
           <TitleText style={{ fontSize: 22 }}>THIS BUILD</TitleText>
@@ -411,7 +412,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
               dropFile(f);
             }}
             placeholder={`Paste ${takes.length > 1 ? `${takes.slice(0, -1).join(', ')}, or ${takes[takes.length - 1]}` : takes[0]}.${fileKinds.length ? ' Or drop a file here.' : ''}`}
-            style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: dropping ? '#001a3a' : '#000', color: '#cfe8ff', border: `2px ${dropping ? 'dashed #9fd0ff' : 'solid #4f94ff'}`, borderRadius: 10, padding: 10, fontSize: 14 }}
+            style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: dropping ? '#001a3a' : '#000', color: '#cfe8ff', border: `2px ${dropping ? 'dashed #9fd0ff' : `solid ${skin.menuBorder}`}`, borderRadius: 10, padding: 10, fontSize: 14 }}
           />
           <div style={btn(0, BOX_Y + BOX_H + 20)}>
             <button className="info-button" style={{ position: 'static' }} onClick={() => void doImport(text, from ?? undefined)} disabled={!text.trim()}>
