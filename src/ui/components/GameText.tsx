@@ -116,6 +116,11 @@ export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align =
           WebkitBackgroundClip: 'text',
           backgroundClip: 'text',
           color: 'transparent',
+          // italic text on its own layer: inside the skewed box, Chrome (157, at some zoom and
+          // display-scale pairs, e.g. 0.81 x 1.35) skipped painting the text-clipped gradient,
+          // leaving only the black outline copy until a repaint (opening DevTools); measured
+          // on the owner's machine, where this and dropping the skew were the only fixes
+          willChange: f.italic ? 'transform' : undefined,
         }}
       >
         {text}

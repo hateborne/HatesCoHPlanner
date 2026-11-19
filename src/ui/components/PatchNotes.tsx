@@ -81,7 +81,7 @@ export function PatchNotesBar({ skin, y }: { skin: Skin; y: number }) {
           <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
           {/* on whole device pixels, so the frame's pieces tile without seams */}
           <div className="abs" style={{ left: snap(8), top: snap(paneTop), width: paneW, height: paneH, zIndex: 71 }}>
-            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: skin.panel }} />
             <SetTitle skin={skin} x={18} y={16} size={22} width={paneW - 36} text={notes.title} />
             <GameScroll skin={skin} left={22} top={64} width={paneW - 56} height={paneH - 64 - 84} barX={paneW - 14}>
               <div className="body-text" style={{ fontSize: 19, lineHeight: `${LINE + 2}px`, color: '#e8f4ff' }}>

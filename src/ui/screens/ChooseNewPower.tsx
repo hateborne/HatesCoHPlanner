@@ -261,7 +261,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
       <PowerColumn skin={skin} g={desktopColumn(2, extraButtons ? 0 : UP)} sets={extra} pending={level.pendingPower} onPick={onPick} onHover={hoverPower} flash={lockFlash} />
       {desc}
       {buttons}
-      <PickTip gd={gd} rules={rules} pick={pick} />
+      <PickTip gd={gd} skin={skin} rules={rules} pick={pick} />
     </>
   );
 }

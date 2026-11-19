@@ -16,13 +16,13 @@ import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { ElectricFlash, preloadElectricFlash } from '../components/ElectricFlash.tsx';
 import { SLOT_FLASH_TICKS } from '../electric.ts';
-import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
+import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar, titleBarEnd } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PHONE_PAD, phoneGeom, phonePanel as phoneFrame, PhoneTabs, type PhoneGeom, type Rect } from '../components/Phone.tsx';
 import { Sprite } from '../components/Sprite.tsx';
 import { useStage } from '../components/Stage.tsx';
-import { fitScale, FONTS, S, STAGE_W, SY, textWidth, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
+import { fitScale, FONTS, S, SY, textWidth, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { smf } from '../smf.tsx';
@@ -208,7 +208,7 @@ function HoveredInfo({ gd, phone }: { gd: GameData; phone?: PhoneGeom }) {
 }
 
 /** The slot-details / Advanced tooltip for the power bar under the pointer. */
-function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: number }) {
+function SlotTipLayer({ gd, skin, atId, level }: { gd: GameData; skin: Skin; atId: number; level: number }) {
   const tip = useHover((h) => h.tip);
   const tipLevel = useTipLevel();
   const hint = useShiftHint();
@@ -216,6 +216,7 @@ function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: 
   return (
     <SlotTip
       gd={gd}
+      skin={skin}
       power={tip.entry.power}
       x={tip.x}
       y={tip.y}
@@ -457,13 +458,14 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     });
   };
   // which level the slots belong to: a planner extra on the slot screen; in a respec the game's own
-  // line, drawn unscaled at screen pixel (1000, 30) (uiReSpec.c prnt(1000, 30, ...)), so on the
-  // 3840 x 2160 reference it is small text just above the title bar
+  // line, placed and sized as the power screens draw it (ChooseNewPower: prnt(450 sx, 30 sy) at the
+  // screen's height scale, measured in game) -- drawn as unscaled 4K pixels it came out tiny, over
+  // the title bar; this screen's longer title pushes it right of the bar
   const levelLine = (x: number, y: number) =>
     respec && phone ? (
       <GameText font="title_12" scale={S} x={x} y={y} align="right" colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
     ) : respec ? (
-      <GameText font="title_12" scale={STAGE_W / 3840} x={(1000 * STAGE_W) / 3840} y={(30 * STAGE_W) / 3840} colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
+      <GameText font="title_12" scale={SY} x={Math.max(vx(450), titleBarEnd(title) + vx(10))} y={vy(30)} colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
     ) : (
       <GameText font="title_14" scale={S} x={x} y={y} align="right" colors={skin.heading} text={`LEVEL ${L + 1}`} />
     );
@@ -509,7 +511,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       )}
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), panelGroups(i), i))}
       <HoveredInfo gd={gd} />
-      <SlotTipLayer gd={gd} atId={preview!.at} level={L} />
+      <SlotTipLayer gd={gd} skin={skin} atId={preview!.at} level={L} />
       {counter()}
       {noSlotFades}
       <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />
