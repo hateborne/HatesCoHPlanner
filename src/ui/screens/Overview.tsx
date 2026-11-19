@@ -397,6 +397,8 @@ export function Overview({ skin }: { skin: Skin }) {
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
             onClick={e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            // a pick flagged in red still opens on a click, so the rule it breaks can be fixed
+            fixable
             onLongPress={longBar}
             onHover={(h, at) => hoverOn(e, h, at)}
           />,
@@ -570,7 +572,8 @@ export function Overview({ skin }: { skin: Skin }) {
           level={s.level}
           onClick={() => {
             if (!isPick) return editSlots(s.level);
-            editPick(s.picks[0]!);
+            // every pick of the level in turn: level 1's primary power, then its secondary
+            editPick(s.picks[0]!, s.picks.slice(1));
           }}
           title={orbTitle(s)}
           face={face}

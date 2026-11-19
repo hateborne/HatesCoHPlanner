@@ -24,6 +24,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ### Fixed
 
+- Clicking the level 1 orb on the build screen now lets you change both level 1 powers, primary then secondary, and a power marked in red can be clicked to change it.
 - The Continue button on the server list always shows which server your build is on, even with a long build name.
 - A detailed power tooltip no longer keeps the wrong size or place when its extra details finish loading.
 

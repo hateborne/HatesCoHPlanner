@@ -26,6 +26,7 @@ interface CheckBarProps {
   clickSounds?: string[]; // played on a click (default: the level-up screens' powerselect2)
   hoverSounds?: boolean; // the character creator's N_MouseEnter / N_MouseExit (drawHybridBar)
   onClick?: () => void;
+  fixable?: boolean; // planner extra: an 'unselectable' bar that still takes a click, to fix it (the overview's rule breaks)
   onRightClick?: () => void; // planner extra: right-click undoes (e.g. removes a slot placed at this level)
   onLongPress?: (pt: { x: number; y: number }) => void; // phones: press and hold (window px), in place of hovering
   onHover?: (on: boolean, at?: DOMRect) => void; // at: the bar's outline (window px) when the pointer enters
@@ -55,11 +56,11 @@ function brighten(c: string, amt: number): string {
  * meat over the same box, no check box, the label centered.
  */
 export function CheckBar(props: CheckBarProps) {
-  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, hitPad = 0, isPower, noBox, clickSounds, hoverSounds, onClick, onRightClick, onLongPress, onHover, title, testId } = props;
+  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, hitPad = 0, isPower, noBox, clickSounds, hoverSounds, onClick, fixable, onRightClick, onLongPress, onHover, title, testId } = props;
   useFontsReady();
   const { phone } = useStage();
   const [hover, setHover] = useState(false);
-  const selectable = state !== 'unselectable' && !!onClick;
+  const selectable = (state !== 'unselectable' || !!fixable) && !!onClick;
   const chosen = down || state === 'selected';
   const colors: ElemColors = state === 'unselectable' ? skin.unselectable : chosen ? skin.selected : skin.standard;
   const lit = hover && selectable;

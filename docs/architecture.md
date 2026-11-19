@@ -507,15 +507,19 @@ Arachnos Soldier or Widow can only train to 24 through a respec, so their builds
 builds to 24 at least (`startBuild`, `respecOnlyNote`; New Build greys Leveling for them). Screens read the store with narrow
 selectors (`useShallow`) and call its actions.
 
-**Swapping a power.** Any pick can be reopened from the overview, enhancements or not. Finish
-swaps it (`swapPick` in `src/engine/actions.ts`, called by the store's `finishSwap`): the pick
-keeps its slots and the enhancements the new power takes; the rest are dropped, slots past the
-new power's maximum (all of them for a power that takes none) are freed, and powers the old one
-granted go with their slots. When that drops or frees anything the store asks first
-(`askConfirm` with `sections` listing what is dropped and kept, and the power names in the game's
-yellow through `highlight`); Cancel stays on the power screen. Freed slots are placed on one slot
-screen holding just them (`LevelCtx.freed`, a one-step `flow`), each keeping its level: a slot can
-only go on a power owned by its level (outside a respec), and Cancel there undoes the whole swap.
+**Swapping a power.** Any pick can be reopened from the overview, enhancements or not, from its
+power bar (one flagged in red too, so the rule it breaks can be fixed: `CheckBar`'s `fixable`) or
+its level orb, which reopens every pick of the level in turn (level 1: its primary power, then its
+secondary; `LevelCtx.then`, carried through a swap's question and freed-slot screen; Cancel stops
+there, keeping the picks already finished). Finish swaps it (`swapPick` in `src/engine/actions.ts`,
+called by the store's `finishSwap`): the pick keeps its slots and the enhancements the new power
+takes; the rest are dropped, slots past the new power's maximum (all of them for a power that takes
+none) are freed, and powers the old one granted go with their slots. When that drops or frees
+anything the store asks first (`askConfirm` with `sections` listing what is dropped and kept, and
+the power names in the game's yellow through `highlight`); Cancel stays on the power screen. Freed
+slots are placed on one slot screen holding just them (`LevelCtx.freed`, a one-step `flow`), each
+keeping its level: a slot can only go on a power owned by its level (outside a respec), and Cancel
+there undoes the whole swap.
 
 A power the build takes at a later pick (one the overview shows: not past its stop level) is
 offered on a reopened earlier one when it could be taken there with that later pick empty
