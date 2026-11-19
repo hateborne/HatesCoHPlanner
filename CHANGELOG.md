@@ -26,6 +26,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - Clicking the level 1 orb on the build screen now lets you change both level 1 powers, primary then secondary, and a power marked in red can be clicked to change it.
 - The Continue button on the server list always shows which server your build is on, even with a long build name.
 - A detailed power tooltip no longer keeps the wrong size or place when its extra details finish loading.
+- Detailed power info no longer shows 0.00 for effects whose strength is a fixed 1, such as Inner Will's protection and the inherent meters.
 - Saving a build under a name already saved in the browser asks whether to replace that build or keep both.
 - Right after you save a build, replacing it no longer tells you to save it first.
 - On the level-up screens the Totals tab sits lower, so it no longer hides the pool powers' scroll bar.
