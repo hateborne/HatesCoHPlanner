@@ -95,16 +95,11 @@ export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align =
         transformOrigin: `0 ${baseOff}px`,
         pointerEvents: 'none',
         zIndex: z,
-        // the two copies stack by their own z-index inside this box (below)
-        isolation: 'isolate',
         ...style,
       }}
     >
-      {/* explicit z-indexes: on some Chrome windows the black outline copy painted over the colored
-          one (black labels until any repaint, e.g. opening DevTools); document order alone was
-          not enough */}
       {f.outline ? (
-        <span aria-hidden style={{ ...layer, color: '#000', textShadow: ring(d), zIndex: 0 }}>
+        <span aria-hidden style={{ ...layer, color: '#000', textShadow: ring(d) }}>
           {text}
         </span>
       ) : null}
@@ -121,7 +116,11 @@ export function GameText({ font: key, scale, x, y: yIn, centerY, colors, align =
           WebkitBackgroundClip: 'text',
           backgroundClip: 'text',
           color: 'transparent',
-          zIndex: 1,
+          // italic text on its own layer: inside the skewed box, Chrome (157, at some zoom and
+          // display-scale pairs, e.g. 0.81 x 1.35) skipped painting the text-clipped gradient,
+          // leaving only the black outline copy until a repaint (opening DevTools); measured
+          // on the owner's machine, where this and dropping the skew were the only fixes
+          willChange: f.italic ? 'transform' : undefined,
         }}
       >
         {text}

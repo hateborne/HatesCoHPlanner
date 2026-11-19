@@ -88,13 +88,10 @@ button {
   transform-origin: 0 100%;
   white-space: nowrap;
   letter-spacing: 1px;
-  /* the outline copy under the colored one by z-index, not document order alone (see GameText) */
-  isolation: isolate;
 }
 .title-text .title-o {
   position: absolute;
   inset: 0;
-  z-index: 0;
   color: #000;
   /* ttFontBitmapAddOutline: the glyph dilated by one screen pixel in all 8 directions, opaque */
   --o: var(--dev-px, 1px);
@@ -114,7 +111,6 @@ button {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  z-index: 1;
 }
 
 .bar-text {
