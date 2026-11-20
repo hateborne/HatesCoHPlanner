@@ -11,7 +11,8 @@ import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules, isArchetypeInherent } from '../engine/rules.ts';
 import { defaultOn, defaultsOf, exclusiveGroups, isPetUpgrade } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
-import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readableOn, readablePower, tooLong } from './importProblem.ts';
+import { ImportProblem, noMids, READABLE, readable, readableOn, readablePower, tooLong } from './importProblem.ts';
+import { IMPORT_LIMITS } from './limits.ts';
 import { PLANNER_APP } from './midsPatches.ts';
 import { numericVersion } from '../version.ts';
 
@@ -57,7 +58,7 @@ export function notReadableOn(s: GameServer, text: string): ImportProblem {
   const t = text.trim();
   // the same limits as everywhere (parseMidsText), before anything looks at the text
   if (!t) return new ImportProblem("there's nothing to import", 'Paste a share link.');
-  if (t.length > MAX_BUILD_FILE) return TOO_LONG();
+  if (t.length > IMPORT_LIMITS.text) return TOO_LONG();
   if (/\|(MBD|MxDz);/.test(t) || t.startsWith('{')) return midsUnavailable(s);
   return new ImportProblem("it isn't a build the planner recognizes", readableOn(s));
 }
@@ -509,9 +510,6 @@ async function brotli() {
   }
 }
 
-// The most a Mids build's JSON may hold once decompressed: a real .mbd is tens of KB, the same
-// ceiling a build file gets (MAX_BUILD_FILE)
-const MAX_MBD_JSON = MAX_BUILD_FILE;
 const BROTLI_STEP = 64 * 1024; // output bytes asked of the decoder per call
 
 /**
@@ -631,12 +629,12 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
   const align = MIDS_ALIGN[r.i32()] ?? 'Hero';
   const name = r.netString();
   const nSets = r.i32();
-  if (nSets >= MAX_MBD_SETS) throw DAMAGED_CODE();
+  if (nSets >= LIMITS.sets) throw DAMAGED_CODE();
   const sets: string[] = [];
   for (let i = 0; i <= nSets; i++) sets.push(r.netString());
   r.i32(); // last power
   const nPowers = r.i32();
-  if (nPowers >= MAX_MBD_POWERS) throw DAMAGED_CODE();
+  if (nPowers >= LIMITS.powers) throw DAMAGED_CODE();
   // Mids added fields as its save format went on (MidsCharacterFileFormat: PriorVersion 3.10,
   // ThisVersion 3.20): a power's ProcInclude from 3.10, a power's InherentSlotsUsed and a slot's
   // IsInherent only from 3.20. A 3.10 code read with the 3.20 fields runs off its data.
@@ -694,7 +692,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
       }
     }
     const nSlots = r.i8();
-    if (nSlots >= MAX_MBD_SLOTS) throw DAMAGED_CODE();
+    if (nSlots >= LIMITS.slots) throw DAMAGED_CODE();
     const slots: MbdSlot[] = [];
     held = false;
     for (let k = 0; k <= nSlots; k++) {
@@ -726,7 +724,7 @@ export type MidsParsed = { kind: 'mbd'; mbd: Mbd } | { kind: 'mxdz'; raw: Uint8A
 export async function parseMidsText(text: string): Promise<MidsParsed> {
   const trimmed = text.trim();
   if (!trimmed) throw new ImportProblem("there's nothing to import", 'Paste a share link, a Mids share code or a build file, or drop a file on the box.');
-  if (trimmed.length > MAX_BUILD_FILE) throw TOO_LONG();
+  if (trimmed.length > IMPORT_LIMITS.text) throw TOO_LONG();
   if (trimmed.startsWith('{')) {
     let json: unknown;
     try {
@@ -760,7 +758,7 @@ export async function parseMidsText(text: string): Promise<MidsParsed> {
   await brotli(); // outside the try: a decoder that won't load says so itself (reload the page)
   let json: unknown;
   try {
-    json = JSON.parse(new TextDecoder().decode(await brotliDecompress(fromBase64(b64), MAX_MBD_JSON)));
+    json = JSON.parse(new TextDecoder().decode(await brotliDecompress(fromBase64(b64), /*limit=*/ IMPORT_LIMITS.text)));
   } catch {
     throw mbdHead ? DAMAGED_CODE() : new ImportProblem("it isn't a build the planner recognizes", READABLE);
   }
@@ -783,10 +781,8 @@ function looksBinary(text: string): boolean {
 /** A Mids share code whose data won't decode. */
 const DAMAGED_CODE = () => new ImportProblem('the Mids share code is damaged', 'Copy it again from where it was posted, or ask for a new one.');
 
-// Counts no real Mids build comes near (8 power sets, ~40 power entries, 6 slots a power)
-const MAX_MBD_SETS = 32;
-const MAX_MBD_POWERS = 512;
-const MAX_MBD_SLOTS = 64;
+// counts no real Mids build comes near
+const LIMITS = IMPORT_LIMITS.mids;
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const optStr = (v: unknown) => v === undefined || v === null || typeof v === 'string';
@@ -811,9 +807,9 @@ function isMbdSlot(s: unknown): boolean {
 function isMbd(j: unknown): j is Mbd {
   if (!isObj(j) || typeof j.Class !== 'string' || !optStr(j.Origin) || !optStr(j.Alignment) || !optStr(j.Name)) return false;
   if (j.BuiltWith !== undefined && j.BuiltWith !== null && !(isObj(j.BuiltWith) && optStr(j.BuiltWith.Database) && optStr(j.BuiltWith.GameVersion))) return false;
-  if (j.PowerSets !== undefined && !(Array.isArray(j.PowerSets) && j.PowerSets.length <= MAX_MBD_SETS && j.PowerSets.every(optStr))) return false;
+  if (j.PowerSets !== undefined && !(Array.isArray(j.PowerSets) && j.PowerSets.length <= LIMITS.sets && j.PowerSets.every(optStr))) return false;
   const entries = j.PowerEntries;
-  if (!Array.isArray(entries) || entries.length > MAX_MBD_POWERS) return false;
+  if (!Array.isArray(entries) || entries.length > LIMITS.powers) return false;
   return entries.every(
     (p) =>
       isObj(p) &&
@@ -821,7 +817,7 @@ function isMbd(j: unknown): j is Mbd {
       optNum(p.Level) &&
       (p.StatInclude === undefined || p.StatInclude === null || typeof p.StatInclude === 'boolean') &&
       Array.isArray(p.SlotEntries) &&
-      p.SlotEntries.length <= MAX_MBD_SLOTS &&
+      p.SlotEntries.length <= LIMITS.slots &&
       p.SlotEntries.every(isMbdSlot),
   );
 }

@@ -89,6 +89,10 @@ export function skinOf(a: string): 'hero' | 'villain' | 'praetorian' {
   return n === 'Villain' ? 'villain' : n === 'Praetorian' ? 'praetorian' : 'hero';
 }
 
+// The most pet switches a build keeps (Build.petOn): a build switches a few. checkBuild keeps no
+// more, and a share link is read with no more (src/io/limits.ts).
+export const MAX_PET_SWITCHES = 64;
+
 // The lowest relative level a TO/DO/SO keeps: share links hold it in one byte offset by 8. Any
 // piece 4 or more levels below the character is outleveled and gives nothing, so lower ones are
 // kept at this.
