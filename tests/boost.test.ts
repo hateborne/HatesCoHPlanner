@@ -42,29 +42,27 @@ function brute(buildUp?: boolean, embrace?: boolean): Build {
   return b;
 }
 const boostOf = (b: Build, d: GameData = gd) => damageBoost(d, new BuildRules(d, b), L50);
-/** A power's info in a build: its stats rows as [label, text] and its numbers. */
+/** A power's info in a build: its stats rows as { label: text }, its effect lines and its numbers. */
 function info(b: Build, power: string, enh: Map<number, number> | null = new Map(), d: GameData = gd) {
   const rules = new BuildRules(d, b);
   const pi = powerInfo(d, rules.at, d.powerByName.get(power.toLowerCase())!, L50, enh, undefined, damageBoost(d, rules, L50));
-  return { rows: pi.stats.map((r) => [r.label, segText(r.value)] as const), numbers: pi.numbers };
+  return { rows: Object.fromEntries(pi.stats.map((r) => [r.label, segText(r.value)])), lines: pi.effects.map((e) => segText(e.line)), numbers: pi.numbers };
 }
-const labels = (rows: readonly (readonly [string, string])[]) => rows.map(([l]) => l);
+const f2 = (n: number) => n.toFixed(2);
 
 describe('damageBoost', () => {
   it('counts nothing for clicks left off', () => {
     const bo = boostOf(brute());
     expect(bo.str.get(SMASHING)).toBe(0);
-    expect(bo.names).toEqual([]);
     expect(bo.tags).toEqual([]);
   });
 
-  it('Build Up switched on adds its strength to every damage type and is named', () => {
+  it('Build Up switched on adds its strength to every damage type', () => {
     const bo = boostOf(brute(true));
     const want = gd.table(gd.archetypeByName.get('class_brute')!, 'Melee_Buff_Dmg', L50) * 8;
     expect(want).toBeCloseTo(0.8, 6);
     expect(bo.str.get(SMASHING)).toBeCloseTo(want, 6);
     expect(bo.str.get(FIRE)).toBeCloseTo(want, 6);
-    expect(bo.names).toEqual(['Build Up']);
     expect(bo.tags).toEqual([]);
   });
 
@@ -78,15 +76,13 @@ describe('damageBoost', () => {
     const bo = boostOf(brute(undefined, true));
     expect(bo.tags).toEqual(['fieryembrace']);
     expect(bo.str.get(FIRE)).toBe(0);
-    expect(bo.names).toEqual([]);
   });
 
-  it('Dominator Embrace of Fire is a plain damage buff: named, no tag', () => {
+  it('Dominator Embrace of Fire is a plain damage buff: strength, no tag', () => {
     const b = build(gd, 'Class_Dominator', 'Dominator_Control.Fire_Control', 'Dominator_Assault.Fiery_Assault');
     put(gd, b, 3, 'Dominator_Assault.Fiery_Assault.Fiery_Embrace', true);
     const bo = boostOf(b);
     expect(bo.tags).toEqual([]);
-    expect(bo.names).toEqual(['Embrace of Fire']);
     expect(bo.str.get(FIRE)!).toBeGreaterThan(bo.str.get(SMASHING)!);
   });
 });
@@ -94,32 +90,34 @@ describe('damageBoost', () => {
 describe('powerInfo with damage boosts', () => {
   const SCORCH = 'Brute_Melee.Fiery_Melee.Scorch';
 
-  it('adds no rows when nothing boosts', () => {
-    const plain = info(brute(), SCORCH);
-    expect(labels(plain.rows).some((l) => l.startsWith('With '))).toBe(false);
+  it('changes nothing when nothing boosts', () => {
+    const enh = new Map([[FIRE, 0.95]]);
+    const plain = info(brute(), SCORCH, enh);
+    const rules = new BuildRules(gd, brute());
+    const bare = powerInfo(gd, rules.at, gd.powerByName.get(SCORCH.toLowerCase())!, L50, enh);
     expect(plain.numbers.damageBoosted).toBeCloseTo(plain.numbers.damage.enh, 6);
+    expect(plain.rows['Average Damage:']).toBe(`${f2(plain.numbers.damage.enh)} (${f2(plain.numbers.damage.base)})`);
+    expect(plain.lines).toEqual(bare.effects.map((e) => segText(e.line)));
   });
 
-  it('Build Up on: a heading and the three damage rows again, at base x (1 + enhancement + 0.8)', () => {
+  it('Build Up on: the damage rows and the damage lines read base x (1 + enhancement + 0.8)', () => {
     const enh = new Map([[FIRE, 0.95]]);
     const plain = info(brute(), SCORCH, enh);
     const up = info(brute(true), SCORCH, enh);
-    // the rows above the block are untouched
-    expect(up.rows.slice(0, 3)).toEqual(plain.rows.slice(0, 3));
-    expect(labels(up.rows).slice(0, 7)).toEqual([
-      'Average Damage:',
-      'Damage Per Activation Time:',
-      'Damage Per Cast Cycle:',
-      'With Build Up:',
-      'Average Damage:',
-      'Damage Per Activation Time:',
-      'Damage Per Cast Cycle:',
-    ]);
-    expect(up.rows[3]![1]).toBe('');
     const base = up.numbers.damage.base;
     expect(up.numbers.damage.enh).toBeCloseTo(base * 1.95, 4);
     expect(up.numbers.damageBoosted).toBeCloseTo(base * (1 + 0.95 + 0.8), 4);
-    expect(up.rows[4]![1]).toBe(up.numbers.damageBoosted.toFixed(2));
+    // the same rows, the boosted damage in place of the enhanced, and one row naming the boost
+    expect(Object.keys(up.rows).filter((k) => k !== 'Damage Includes:')).toEqual(Object.keys(plain.rows));
+    expect(up.rows['Damage Includes:']).toBe('Build Up');
+    expect(plain.rows['Damage Includes:']).toBeUndefined();
+    expect(up.rows['Average Damage:']).toBe(`${f2(base * 2.75)} (${f2(base)})`);
+    expect(up.rows['Recharge Time:']).toBe(plain.rows['Recharge Time:']);
+    expect(up.rows['Endurance Cost:']).toBe(plain.rows['Endurance Cost:']);
+    expect(up.rows['Accuracy:']).toBe(plain.rows['Accuracy:']);
+    // its main hit's line: enhanced x 2.75 / 1.95
+    const hit = (ls: string[]) => Number(ls.find((l) => l.includes('fire damage on target') && !l.includes('Ticks'))!.split(' ')[0]);
+    expect(hit(up.lines)).toBeCloseTo((hit(plain.lines) * 2.75) / 1.95, 1);
   });
 
   it("holds the boosted damage under the archetype's cap", () => {
@@ -130,18 +128,18 @@ describe('powerInfo with damage boosts', () => {
     expect(n.damageBoosted).toBeCloseTo(n.damage.base * 7, 4);
   });
 
-  it('Fiery Embrace on: its tagged damage counts in the damage rows, base and enhanced; no block', () => {
+  it('Fiery Embrace on: its tagged damage counts in the damage rows, base and enhanced', () => {
     const off = info(brute(), SCORCH);
     const on = info(brute(undefined, true), SCORCH);
     expect(on.numbers.damage.base).toBeGreaterThan(off.numbers.damage.base);
     expect(on.numbers.damage.enh).toBeCloseTo(on.numbers.damage.base, 6);
-    expect(labels(on.rows).some((l) => l.startsWith('With '))).toBe(false);
+    expect(on.rows['Average Damage:']).toBe(f2(on.numbers.damage.base));
+    expect(on.rows['Damage Includes:']).toBe('Fiery Embrace');
   });
 
-  it('Fiery Embrace and Build Up on: the block boosts the tagged damage too', () => {
+  it('Fiery Embrace and Build Up on: the tagged damage is boosted too', () => {
     const fe = info(brute(undefined, true), SCORCH);
     const both = info(brute(true, true), SCORCH);
-    expect(labels(both.rows)).toContain('With Build Up:');
     expect(both.numbers.damage.base).toBeCloseTo(fe.numbers.damage.base, 6);
     expect(both.numbers.damageBoosted).toBeCloseTo(fe.numbers.damage.base * 1.8, 4);
   });
@@ -179,23 +177,80 @@ describe('powerInfo with damage boosts', () => {
     expect(boostOf(ss()).modes.has('unleashmight')).toBe(false);
     expect(boostOf(ss(true)).modes.has('unleashmight')).toBe(true);
     expect(on.numbers.damage.base).toBeGreaterThan(off.numbers.damage.base);
-    expect(labels(on.rows)).toContain('With Rage:');
+    expect(on.numbers.damageBoosted).toBeGreaterThan(on.numbers.damage.enh);
     // a build without Rage keeps the client's rule: the Might group counts
     const none = build(gd, 'Class_Brute', 'Brute_Melee.Super_Strength', 'Brute_Defense.Fiery_Aura');
     put(gd, none, 0, KO);
     expect(info(none, KO).numbers.damage.base).toBeCloseTo(on.numbers.damage.base, 6);
   });
 
-  it('the heading says so when other bonuses add damage beside the clicks', () => {
-    const b = brute(true);
+  it('only damage is boosted: a heal, a shield and a power without damage read as before', () => {
+    const b = build(gd, 'Class_Tanker', 'Tanker_Defense.Fiery_Aura', 'Tanker_Melee.Fiery_Melee');
+    put(gd, b, 0, 'Tanker_Defense.Fiery_Aura.Healing_Flames');
+    put(gd, b, 1, 'Tanker_Defense.Fiery_Aura.Fire_Shield');
+    put(gd, b, 2, 'Tanker_Melee.Fiery_Melee.Build_Up', true);
+    const at = gd.archetypeByName.get('class_tanker')!;
+    for (const name of ['Tanker_Defense.Fiery_Aura.Healing_Flames', 'Tanker_Defense.Fiery_Aura.Fire_Shield', 'Tanker_Melee.Fiery_Melee.Build_Up']) {
+      const boosted = info(b, name);
+      const bare = powerInfo(gd, at, gd.powerByName.get(name.toLowerCase())!, L50, new Map());
+      expect(boosted.lines, name).toEqual(bare.effects.map((e) => segText(e.line)));
+      expect(boosted.rows, name).toEqual(Object.fromEntries(bare.stats.map((r) => [r.label, segText(r.value)])));
+      expect(boosted.numbers.heal, name).toEqual(bare.numbers.heal);
+    }
+  });
+
+  it('"Damage Includes" names the clicks, the raised modes and other bonuses that count', () => {
+    const b = brute(true, true);
     put(gd, b, 5, 'Pool.Leadership.Assault');
-    const bo = boostOf(b);
-    expect(bo.other).toBe(true);
-    expect(boostOf(brute(true)).other).toBe(false);
-    expect(labels(info(b, SCORCH).rows)).toContain('With Build Up and damage bonuses:');
+    expect(info(b, SCORCH).rows['Damage Includes:']).toBe('Build Up, Fiery Embrace, other bonuses');
     const quiet = brute();
     put(gd, quiet, 5, 'Pool.Leadership.Assault');
-    expect(labels(info(quiet, SCORCH).rows)).toContain('With damage bonuses:');
+    expect(info(quiet, SCORCH).rows['Damage Includes:']).toBe('other bonuses');
+    // a power without damage has no such row
+    expect(info(b, 'Brute_Melee.Fiery_Melee.Build_Up').rows['Damage Includes:']).toBeUndefined();
+  });
+
+  it("a pet that copies its creator's mods by its villain def takes the boost (Rain of Fire); one that doesn't takes none (Caltrops)", () => {
+    const blaster = (aim?: boolean): Build => {
+      const b = build(gd, 'Class_Blaster', 'Blaster_Ranged.Fire_Blast', 'Blaster_Support.Gadgets');
+      put(gd, b, 2, 'Blaster_Ranged.Fire_Blast.Aim', aim);
+      return b;
+    };
+    const aim = boostOf(blaster(true)).str.get(FIRE)!;
+    expect(aim).toBeGreaterThan(0.3);
+    const rain = info(blaster(true), 'Blaster_Ranged.Fire_Blast.Rain_of_Fire').numbers;
+    expect(rain.damage.base).toBeGreaterThan(0);
+    expect(rain.damageBoosted).toBeCloseTo(rain.damage.base * (1 + aim), 3);
+    expect(info(blaster(), 'Blaster_Ranged.Fire_Blast.Rain_of_Fire').numbers.damageBoosted).toBeCloseTo(rain.damage.base, 6);
+    const caltrops = info(blaster(true), 'Blaster_Support.Gadgets.Caltrops').numbers;
+    expect(caltrops.damage.base).toBeGreaterThan(0);
+    expect(caltrops.damageBoosted).toBeCloseTo(caltrops.damage.base, 6);
+  });
+
+  it("a strike-from-stealth bonus is not counted as always on (Mask Presence, Shinobi)", () => {
+    const scrapper = build(gd, 'Class_Scrapper', 'Scrapper_Melee.Claws', 'Scrapper_Defense.Psionic_Armor');
+    put(gd, scrapper, 5, 'Scrapper_Defense.Psionic_Armor.Mask_Presence');
+    expect(boostOf(scrapper).str.get(SMASHING)).toBe(0);
+    const blaster = build(gd, 'Class_Blaster', 'Blaster_Ranged.Fire_Blast', 'Blaster_Support.Ninja_Training');
+    put(gd, blaster, 5, 'Blaster_Support.Ninja_Training.Kyokan');
+    expect(boostOf(blaster).str.get(SMASHING)).toBe(0);
+  });
+
+  it("a foe debuff is not counted against its caster (Stalker Genetic Corruption's damage debuff)", () => {
+    const b = build(gd, 'Class_Stalker', 'Stalker_Melee.Claws', 'Stalker_Defense.Bio_Organic_Armor');
+    put(gd, b, 5, 'Stalker_Defense.Bio_Organic_Armor.Genetic_Corruption');
+    expect(boostOf(b).str.get(SMASHING)).toBe(0);
+  });
+
+  it('a heal is a damage type too, and takes no damage boost even with strength on every type', () => {
+    const rules = new BuildRules(gd, brute(true));
+    const bo = { ...damageBoost(gd, rules, L50), str: new Map<number, number>() };
+    for (let off = 0; off < 80; off += 4) bo.str.set(off, 0.8);
+    const at = gd.archetypeByName.get('class_tanker')!;
+    const p = gd.powerByName.get('tanker_defense.fiery_aura.healing_flames')!;
+    const lines = (b?: typeof bo) => powerInfo(gd, at, p, L50, new Map(), undefined, b).effects.map((e) => segText(e.line));
+    expect(lines(bo)).toEqual(lines());
+    expect(lines().some((l) => l.includes('heal'))).toBe(true);
   });
 
   it("a pseudo-pet that copies its creator's mods takes the boost (Burn), by base x (1 + 0.7)", () => {
@@ -223,7 +278,6 @@ describe('powerInfo with damage boosts', () => {
     const p = gd.powerByName.get(SCORCH.toLowerCase())!;
     const at = gd.archetypeByName.get('class_brute')!;
     const a = powerInfo(gd, at, p, L50, null);
-    expect(labels(a.stats.map((r) => [r.label, segText(r.value)] as const)).some((l) => l.startsWith('With '))).toBe(false);
     expect(a.numbers.damageBoosted).toBeCloseTo(a.numbers.damage.base, 6);
   });
 });
@@ -235,7 +289,6 @@ describe('Thunderspy', () => {
     put(ts, b, 0, 'Brute_Melee.Fiery_Melee.Scorch');
     put(ts, b, 2, 'Brute_Melee.Fiery_Melee.Build_Up', true);
     const bo = boostOf(b, ts);
-    expect(bo.names).toEqual(['Build Up']);
     expect(bo.str.get(FIRE)!).toBeGreaterThan(0);
     const n = info(b, 'Brute_Melee.Fiery_Melee.Scorch', new Map(), ts).numbers;
     expect(n.damageBoosted).toBeCloseTo(n.damage.base * (1 + bo.str.get(FIRE)!), 4);

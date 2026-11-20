@@ -272,6 +272,13 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   running powers counts once. Chance and PPM procs are left out, and a "Null" mod only carries a
   number for help text (Luck of the Gambler's recharge comes from its set's global bonus).
 
+- A group tagged `StealthCrit` is not counted: the damage bonus of a strike from stealth (Mask
+  Presence's +50%, Shinobi's +25%, 0.75 s each), which its toggle would otherwise give as if always
+  there (the owner's decision, November 20, 2026).
+- What the totals count lands on the character, so a requirement that the target is not the
+  source (`entref target> entref source> eq !`: the foe-only damage debuff of a Stalker's Genetic
+  Corruption, whose power also reaches its caster) fails there (`targetIsSource`).
+
 ## To-hit and the defense soft cap (set finder)
 
 - `CalcToHit` (MapServer/src/entity/character_combat.c): the chance to hit starts from the attacker's
@@ -534,31 +541,32 @@ Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d
   tick chance, not its group's: Homecoming's Blaster Charged Brawl (Electricity Manipulation) reads
   "-100.00% recovery rate for 2.00s on target", its group's 20% unshown.
 
-## Boosted damage (power info; the planner's own rows)
+## Boosted damage (power info; the planner's own)
 
-The client's power info shows a power's damage with its own enhancements only. The planner adds
-rows the client doesn't have (`damageBoost` in `src/engine/boost.ts`, `powerInfo`'s `boost`; the
-owner's decisions, November 19, 2026):
+The client's power info shows a power's damage with its own enhancements only. In a tooltip the
+planner counts the build's damage boosts too (`damageBoost` in `src/engine/boost.ts`, `powerInfo`'s
+`boost`; the owner's decisions, November 19, 2026):
 
 - The boosts are the powers the totals count: set bonuses, running autos and toggles, and clicks
   switched on with their totals switch (Build Up, Aim, Rage, Follow Up). A click switched on
   counts as always running, as in the totals.
-- When they add damage strength, a heading and the three damage rows again follow the damage
-  rows. The heading names the clicks switched on ("With Build Up:"), adds "and damage bonuses"
-  when something else adds strength too (set bonuses, toggles, autos), and reads "With damage
-  bonuses:" when no click is among them. Each damage
-  template at magnitude x min(1 + its enhancement strength + the character's strength for its
-  damage type, the archetype's strength cap). The cap holds enhancements and buffs together
-  (`strMax`: 5 at level 50, a Brute's 7). A template that ignores strength takes none.
+- The three damage rows and every damage line read the boosted damage in place of the enhanced
+  one, "boosted (base)": each damage template at magnitude x min(1 + its enhancement strength +
+  the character's strength for its damage type, the archetype's strength cap). No row or line is
+  added. The cap holds enhancements and buffs together (`strMax`: 5 at level 50, a Brute's 7). A
+  template that ignores strength takes none. Only damage is boosted: heals, buffs, debuffs and
+  every other line read as before.
 - An executed power (ExecutePower) is the character's own, so it takes the character's strength
   with or without CopyBoosts.
 - A pet gets a copy of its creator's strength mods when it is made if it has CopyCreatorMods
   (character_CreatePet, character_pet.c: the creator's Strength-aspect mods are copied to the
-  pet). Homecoming's data has the flag on the EntCreate mod (Burn's patch), so such a pet takes
-  the build's damage strength, under its creator's cap (a pet class's own cap isn't exported). A
-  pet without the flag stays at its enhanced value. The source and Thunderspy keep the flag on
-  the villain def, which the export doesn't read: those pets (Homecoming's Rain of Fire, all of
-  Thunderspy's) take none (@TODO export the villain def's flag).
+  pet). The flag is the villain def's, and on Homecoming also the EntCreate mod's; the pets file
+  carries either as the creation's `mods` (Burn's patch, Rain of Fire, Blizzard, Ice Storm: yes;
+  Caltrops: no). Such a pet takes the build's damage strength, under its creator's cap (a pet
+  class's own cap isn't exported); a pet without it stays at its enhanced value.
+- One row, "Damage Includes:", names what the damage counts beyond the power's own enhancements:
+  the clicks switched on that add strength, Fiery Embrace when its groups counted, and "other
+  bonuses" for the rest (set bonuses, toggles, autos). It is left out when nothing is counted.
 - Fiery Embrace (Brute, Scrapper, Tanker and others' versions) gives no strength: its
   GlobalChanceMod raises the FieryEmbrace tag, which the export doesn't name, so the link is a
   table in `boost.ts` (a power named `*.Fiery_Embrace` that carries a GlobalChanceMod). While it

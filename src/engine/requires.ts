@@ -45,6 +45,11 @@ export interface EvalContext {
   /** Entity type of the target for effect requires ('critter' in PvE). */
   targetEntType?: string;
   /**
+   * The target is the character itself (the totals: what lands on the character), so
+   * `entref target> entref source> eq` holds; absent: the two differ (an effect on someone else).
+   */
+  targetIsSource?: boolean;
+  /**
    * Whether the target is the named villain def (`MastermindPets_Droid target.VillainName>`: Equip
    * Robot's grants to a Battle Drone; TargetTypeMatches in the server's combat eval). Absent: 0.
    */
@@ -220,13 +225,15 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
       case 'owner>': {
         const name = popStr().toLowerCase();
         if (name === 'enttype') st.push('player');
+        else if (name === 'entref') st.push('source');
         else if (name.startsWith('arch') || name.startsWith('rank')) st.push(ctx.prop('archetype'));
         else st.push(ctx.prop(name));
         continue;
       }
       case 'target>': {
         const name = popStr().toLowerCase();
-        st.push(name === 'enttype' ? (ctx.targetEntType ?? 'critter') : (ctx.targetProp?.(name) ?? 0));
+        if (name === 'entref') st.push(ctx.targetIsSource ? 'source' : 'target');
+        else st.push(name === 'enttype' ? (ctx.targetEntType ?? 'critter') : (ctx.targetProp?.(name) ?? 0));
         continue;
       }
       case 'target.villainname>':

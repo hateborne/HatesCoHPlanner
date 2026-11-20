@@ -8,7 +8,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 ### New
 
 - The totals have a Pets and Minions section: click a pet to open its own stats and powers, counting your upgrades, summon slotting, pet aura enhancements, Supremacy, your powers that buff pets and the other pets' buffs, with switches for the pets' own powers.
-- The detailed power tooltip shows an attack's damage with your damage bonuses and with Build Up, Aim and similar powers you switch on in the build screen's totals; with Fiery Embrace switched on, its extra fire damage counts too.
+- The detailed power tooltip's damage now counts your damage bonuses and the powers you switch on in the build screen's totals, such as Build Up, Aim and Rage; Fiery Embrace's extra fire damage counts only while it is switched on.
 - Advanced Respec: set the new Respec button to Advanced (or click the ticked Respec bubble on New Build) and each power you click moves you straight to the next pick.
 - Powers can be swapped from the build screen even when they hold enhancements: the planner lists which enhancements will be dropped and kept, and asks first unless Advanced Respec is on.
 - When a new power can't hold the old one's slots, you place the freed slots right away.
@@ -26,6 +26,8 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ### Fixed
 
+- Mask Presence and Shinobi no longer add their strike-from-stealth damage bonus to the totals as if it were always on.
+- A Stalker's Genetic Corruption no longer lowers your own damage in the totals: its damage debuff is for enemies.
 - Clicking the level 1 orb on the build screen now lets you change both level 1 powers, primary then secondary, and a power marked in red can be clicked to change it.
 - The Continue button on the server list always shows which server your build is on, even with a long build name.
 - A detailed power tooltip no longer keeps the wrong size or place when its extra details finish loading.

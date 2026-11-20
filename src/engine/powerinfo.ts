@@ -137,9 +137,8 @@ const TXT = {
   rechargeTime: 'Recharge Time:',
   damagePerAct: 'Damage Per Activation Time:',
   damagePerCast: 'Damage Per Cast Cycle:',
-  withBoosts: 'With {names}:',
-  withBoostsAndBonuses: 'With {names} and damage bonuses:',
-  withBonuses: 'With damage bonuses:',
+  damageIncludes: 'Damage Includes:',
+  otherBonuses: 'other bonuses',
   enduranceCost: 'Endurance Cost:',
   accuracy: 'Accuracy:',
   interruptTime: 'Interrupt Time:',
@@ -723,7 +722,8 @@ export interface RunAs {
  *   lists a pet's powers so: its class's tables, the creator's class for `source.owner>`, every
  *   effect listed as for the character's own power); none: the character runs it.
  * @param boost The build's damage boosts (damageBoost): the tag modes its running powers raise
- *   count in the damage, and rows with the boosted damage follow the damage rows; none: neither.
+ *   count in the damage, and the damage rows and damage lines read the boosted damage in place of
+ *   the enhanced one; none: neither.
  */
 export function powerInfo(
   gd: GameData,
@@ -941,11 +941,14 @@ export function powerInfo(
    * @param dur Its duration in seconds (0: applied once).
    * @return The expected number of times it lands.
    */
+  // the raised tag modes that counted in this power's damage (for the "Damage Includes" row)
+  const raisedTags = new Set<string>();
   const expectedHits = (t: Tmpl, dur: number): number => {
     const tag = t.modeTag;
     const switched = tag !== null && !!boost?.switchTags.some((x) => tag.includes(x));
     const raised = switched && boost!.tags.some((x) => tag!.includes(x));
     if (switched && !raised) return 0;
+    if (raised) for (const x of boost!.tags) if (tag!.includes(x)) raisedTags.add(x);
     const chance = dur ? t.tick : raised ? t.shown : t.chance;
     if (!dur) return chance;
     const ticks = tickCount(dur, t.m.per);
@@ -1012,13 +1015,13 @@ export function powerInfo(
    * (its own class's isn't in the data).
    *
    * @param t The template.
-   * @param run The class running its power.
+   * @param mods Its power's runner takes the character's damage strength (`Runner.mods`).
    * @param enhStr Its enhancement strength (0 for a power run without its enhancements).
    * @return The multiplier.
    */
-  const strengthWith = (t: Tmpl, run: Runner, enhStr: number): number => {
+  const strengthWith = (t: Tmpl, mods: boolean, enhStr: number): number => {
     if (t.m.fl?.includes('IgnoreStrength')) return 1;
-    if (!boost || !run.mods) return 1 + enhStr;
+    if (!boost || !mods) return 1 + enhStr;
     const cap = boost.cap.get(t.attrib) ?? Infinity;
     return Math.max(0, Math.min(1 + enhStr + (boost.str.get(t.attrib) ?? 0), cap));
   };
@@ -1056,8 +1059,8 @@ export function powerInfo(
       const n = expectedHits(t, dur);
       base += -mag * n;
       total += -mag * n * (1 + enhStr);
-      boosted += -mag * n * strengthWith(t, run, enhStr);
-      bare += -mag * n * strengthWith(t, run, 0);
+      boosted += -mag * n * strengthWith(t, run.mods, enhStr);
+      bare += -mag * n * strengthWith(t, run.mods, 0);
     }
     const pets = petDamage(src, run, depth, execDepth);
     const exec = execDamage(src, run, depth, execDepth);
@@ -1130,16 +1133,17 @@ export function powerInfo(
 
   const ENT_CREATE = gd.attribByName.get('EntCreate') ?? 469;
   /**
-   * Whether a pseudo-pet copies its creator's mods: the EntCreate mods of the creating power that
-   * match the creation (duration, CopyBoosts, PseudoPet) all have CopyCreatorMods. Homecoming's data
-   * has the flag on the mod; a server whose data keeps it on the villain def (Thunderspy's) has none
-   * here, so its pets take no strength (@TODO export the villain def's flag).
+   * Whether a pseudo-pet copies its creator's mods (CopyCreatorMods): the pets file says so
+   * (`mods`, from the EntCreate mod's flag or its villain def's). For a file made before it carried
+   * that, the EntCreate mods of the creating power that match the creation (duration, CopyBoosts,
+   * PseudoPet) all have the flag (Homecoming's mods; a villain def's isn't in the version's files).
    *
    * @param src The creating power's effect groups.
    * @param c The creation.
    * @return True when it does.
    */
   const copiesMods = (src: { eff?: Effect[]; act?: Effect[] }, c: PetCreation): boolean => {
+    if (c.mods) return true;
     const found: Mod[] = [];
     const walk = (effs: Effect[] | undefined): void => {
       for (const e of effs ?? []) {
@@ -1255,26 +1259,31 @@ export function powerInfo(
   const pair = (enhV: number, baseV: number, fmt: (n: number) => string, suffix = ''): string =>
     showBoth && enhV !== baseV ? `${fmt(enhV)}${suffix} (${fmt(baseV)}${suffix})` : `${fmt(showBoth ? enhV : baseV)}${suffix}`;
 
+  // with the build's damage boosts the damage rows read the boosted damage in place of the
+  // enhanced one: "boosted (base)"
+  const dmgShown = boost ? dmgBoosted : dmgTotal;
   if (dmgBase) {
-    stats.push(row(TXT.totalDamage, `<color #ff4b4b>${pair(dmgTotal, dmgBase, f2)}`));
+    stats.push(row(TXT.totalDamage, `<color #ff4b4b>${pair(dmgShown, dmgBase, f2)}`));
   }
   const timed = power.type !== 'Auto';
   if (timed && dmgBase && cast) {
-    stats.push(row(TXT.damagePerAct, `<color #ff4b4b>${pair(dmgTotal / cast, dmgBase / cast, f2)}`));
+    stats.push(row(TXT.damagePerAct, `<color #ff4b4b>${pair(dmgShown / cast, dmgBase / cast, f2)}`));
   }
   if (timed && dmgBase) {
     const dpc = dmgBase / (cast + baseRech);
-    const dpcEnh = dmgTotal / (cast + enhRech);
+    const dpcEnh = dmgShown / (cast + enhRech);
     stats.push(row(TXT.damagePerCast, `<color #ff4b4b>${pair(dpcEnh, dpc, f2)}`));
   }
-  // the same rows with the build's damage boosts, under a heading naming the clicks switched on;
-  // left out when the boosts change nothing the rows above show
-  if (boost && dmgBase && f2(dmgBoosted) !== f2(showBoth ? dmgTotal : dmgBase)) {
-    const heading = !boost.names.length ? TXT.withBonuses : boost.other ? TXT.withBoostsAndBonuses : TXT.withBoosts;
-    stats.push({ label: heading.replace('{names}', boost.names.join(', ')), value: [] });
-    stats.push(row(TXT.totalDamage, `<color #ff4b4b>${f2(dmgBoosted)}`));
-    if (timed && cast) stats.push(row(TXT.damagePerAct, `<color #ff4b4b>${f2(dmgBoosted / cast)}`));
-    if (timed) stats.push(row(TXT.damagePerCast, `<color #ff4b4b>${f2(dmgBoosted / (cast + enhRech))}`));
+  // one row naming what the damage above counts beyond the power's own enhancements: the clicks
+  // switched on, the tag modes raised, and whatever else adds damage strength
+  if (boost && dmgBase) {
+    const grew = f2(dmgBoosted) !== f2(dmgTotal);
+    const what = [
+      ...(grew ? boost.names : []),
+      ...[...raisedTags].map((x) => boost.tagNames.get(x) ?? '').filter((n) => n && !(grew && boost.names.includes(n))),
+      ...(grew && boost.other ? [TXT.otherBonuses] : []),
+    ];
+    if (what.length) stats.push({ label: TXT.damageIncludes, value: [{ text: what.join(', '), color: '#ffffff' }] });
   }
   if (timed) {
     stats.push(row(TXT.activationTime, `<color #ffffff>${prettyDuration(cast)}`));
@@ -1359,6 +1368,8 @@ export function powerInfo(
    * @param pet The pet's lifetime (its EntCreate mod's Duration) when the power is a pet's.
    * @param depth How many pets deep the power runs.
    * @param out Where the sentences go.
+   * @param mods Its runner takes the character's damage strength: with the build's boosts, its
+   *   damage lines read the boosted value in place of the enhanced one (strengthWith).
    */
   const effectLines = (
     name: string,
@@ -1371,8 +1382,9 @@ export function powerInfo(
     pet: { dur: number } | null,
     depth: number,
     out: InfoEffect[],
+    mods: boolean,
   ): void => {
-    petLines(name, cls, both, depth, out);
+    petLines(name, cls, both, depth, out, mods);
     const groups = markAllTypes(tmpls, O);
     // the power's own notes came from the info file (none until it arrives, or where its groups differ)
     const noted = !!gd.info?.notes[name];
@@ -1421,7 +1433,9 @@ export function powerInfo(
 
       const { mag: fMag, dur: fDuration } = magAndDur(table(m.tbl), m);
       if (m.fl?.includes('HideZero') && fMag === 0) continue;
-      const boosted = both ? eff(offset) : 0;
+      // damage dealt only (a negative magnitude): a heal is a damage type too, and takes no damage boost
+      const dmgLine = isDamageOff(offset) && eType === 'Abs' && fMag < 0;
+      const boosted = !both ? 0 : dmgLine ? strengthWith(t, mods, eff(offset)) - 1 : eff(offset);
       const cancelOnMiss = !!m.fl?.includes('CancelOnMiss');
       const fChance = t.shown * 100;
       const fTick = t.tick * 100;
@@ -1547,9 +1561,11 @@ export function powerInfo(
    * @param both The creating power shows enhanced values.
    * @param depth How many pets deep it runs.
    * @param out Where the sentences go.
+   * @param mods The creating power's runner takes the character's damage strength.
    */
-  const petLines = (name: string, cls: string, both: boolean, depth: number, out: InfoEffect[]): void => {
+  const petLines = (name: string, cls: string, both: boolean, depth: number, out: InfoEffect[], mods: boolean): void => {
     if (depth >= MAX_PET_DEPTH) return;
+    const src = name === power.n ? power : (petPower(name) ?? {});
     for (const c of creationsOf(name)) {
       if (c.hid) continue;
       const powers = c.p.map((pn) => [pn, petPower(pn)] as const);
@@ -1561,12 +1577,12 @@ export function powerInfo(
         if (!pp) return;
         const shown = both && (i < (c.def ?? 0) || !!c.boosts);
         const table = (tbl: string) => gd.classTable(petCls, tbl, level);
-        effectLines(pn, petTemplates(pn, pp, pctx), pp.type, pp.ap ?? 0, table, petCls, shown, { dur: c.dur ?? 0 }, depth + 1, out);
+        effectLines(pn, petTemplates(pn, pp, pctx), pp.type, pp.ap ?? 0, table, petCls, shown, { dur: c.dur ?? 0 }, depth + 1, out, mods && copiesMods(src, c));
       });
     }
   };
 
-  effectLines(power.n, all, power.type, power.ap ?? 0, ownTable, runCls, showBoth, null, 0, effects);
+  effectLines(power.n, all, power.type, power.ap ?? 0, ownTable, runCls, showBoth, null, 0, effects, /*mods=*/ true);
 
   const title = parseMarkup(
     TXT.title

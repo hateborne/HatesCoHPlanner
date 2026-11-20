@@ -204,6 +204,7 @@ export interface PetCreation {
   def?: number; // how many of them (the first) come from its villain def; the rest are the mod's own
   dur?: number; // the mod's Duration: each pet power counts max(1, floor(dur / its ap) + PetsFile.plus) times
   boosts?: number; // 1: CopyBoosts, the pet's damage takes the caster's enhancements
+  mods?: number; // 1: CopyCreatorMods (its mod's or its villain def's), the pet takes the caster's strength buffs
   pseudo?: number; // 1: PseudoPet, the pet runs with its caster's class
   cls?: string; // otherwise the class it runs with (the mod's Class, else its villain def's)
   hid?: number; // 1: the client lists none of its effects (Homecoming's, for a mod under a HideFromInfo group); its damage counts

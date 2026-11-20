@@ -1,5 +1,5 @@
 /**
- * The build's damage boosts, for the power info's boosted damage rows: the character-wide damage
+ * The build's damage boosts, for the damage a power info shows: the character-wide damage
  * strength the totals count (set bonuses, running toggles and autos, clicks switched on such as
  * Build Up and Aim), the archetype's cap on it, and the tag modes and power modes its running
  * powers raise (Fiery Embrace, Rage).
@@ -15,6 +15,7 @@ export interface DamageBoost {
   cap: Map<number, number>; // damage attribute offset -> the archetype's cap on 1 + enhancements + strength (5 = 500%)
   names: string[]; // the click powers switched on that add damage strength, in build order ("Build Up")
   other: boolean; // something besides those clicks adds damage strength too (set bonuses, toggles, autos)
+  tagNames: Map<string, string>; // raised tag -> the power raising it ("Fiery Embrace")
   switchTags: readonly string[]; // tag modes a power switches, in lower case: their groups count only while raised
   tags: string[]; // those the running powers raise ('fieryembrace')
   switchModes: Set<string>; // power modes a power of the build sets (SetMode), in lower case: tested groups follow them
@@ -70,10 +71,11 @@ function workOut(gd: GameData, rules: BuildRules, level: number): DamageBoost {
   const chanceMod = gd.attribByName.get('GlobalChanceMod') ?? 484;
   const setMode = gd.attribByName.get('SetMode') ?? 473;
   const modeNames = gd.core.attribNames.Mode ?? [];
-  const names: string[] = [];
   const tags: string[] = [];
-  const switchModes = new Set<string>();
+  const names: string[] = [];
+  const tagNames = new Map<string, string>();
   const rest = new Map(str); // the strength left once the named clicks' own is taken off
+  const switchModes = new Set<string>();
   /** Collect the modes a power's groups set, whatever their chance or requirements. */
   const modesOf = (effs: Effect[] | undefined): void => {
     for (const g of effs ?? []) {
@@ -100,10 +102,13 @@ function workOut(gd: GameData, rules: BuildRules, level: number): DamageBoost {
     for (const [end, tag] of TAG_RAISERS) {
       if (!lower.endsWith(end) || tags.includes(tag)) continue;
       const has = [...(p.eff ?? []), ...(p.act ?? [])].some((g) => (g.m ?? []).some((m) => m.a.includes(chanceMod)));
-      if (has) tags.push(tag);
+      if (has) {
+        tags.push(tag);
+        tagNames.set(tag, p.dn);
+      }
     }
   }
   const modes = new Set([...switchModes].filter((n) => st.ctx.inMode?.(n)));
   const other = [...rest.values()].some((v) => Math.abs(v) > 1e-9);
-  return { str, cap, names, other, switchTags: SWITCH_TAGS, tags, switchModes, modes };
+  return { str, cap, names, other, tagNames, switchTags: SWITCH_TAGS, tags, switchModes, modes };
 }

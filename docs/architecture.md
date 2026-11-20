@@ -299,7 +299,7 @@ makes and of the powers it executes, and lists the pets' effects, as the live cl
 (`docs/game-rules.md`, "Pseudo-pet damage"). It lists Fiery Embrace's and Dual Pistols' ammo
 groups and Homecoming's Stalker team crits with the client's notes and chances
 (`docs/game-rules.md`, "Tag modes"). Given a build's damage boosts (`damageBoost`, `boost.ts`: what
-the totals count, clicks switched on included), it adds the damage rows again with them, and counts
+the totals count, clicks switched on included), its damage rows and damage lines read the boosted damage, and it counts
 Fiery Embrace's groups while it is switched on (`docs/game-rules.md`, "Boosted damage"); every
 Advanced tooltip passes them (`AdvancedInfo`'s `rules`).
 `petcards.ts` makes the totals' Pets and Minions rows (`petEntries`): each kind of real pet the

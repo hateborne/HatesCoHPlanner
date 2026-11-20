@@ -164,6 +164,16 @@ class BuildPetsTest(unittest.TestCase):
         self.assertEqual(self.pets["summary"]["skipped"],
                          {"no class": 1, "not auto only (a real pet)": 1})
 
+    def test_copies_creator_mods_by_the_villain_def(self):
+        # a pet whose villain def has CopyCreatorMods takes its creator's strength buffs ("mods")
+        data = live()
+        data.villains[0]["CopyCreatorMods"] = 1
+        ex = Exporter(data)
+        ex.exported_names = {"Blaster_Ranged.Fire_Blast.Burn"}
+        ex.used_tables = {"melee_damage"}
+        made = ex.build_pets()["pets"]["Blaster_Ranged.Fire_Blast.Burn"]
+        self.assertEqual([c.get("mods") for c in made], [None, 1])
+
     def test_pet_powers_and_tables(self):
         # what a pet's power executes is the pet's to run (its damage counts), whatever its type
         self.assertEqual(sorted(self.pets["powers"]),

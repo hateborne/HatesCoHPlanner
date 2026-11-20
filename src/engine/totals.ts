@@ -218,6 +218,10 @@ const standing = (m: Mod) => m.app !== 'OnDeactivate' && m.app !== 'OnExpire';
  * Walk the standing mods of effect groups that always land: no chance below 1, no PPM, not only on
  * secondary targets, requirements met.
  *
+ * A group tagged StealthCrit is left out: the bonus of a strike from stealth (Mask Presence's +50%
+ * damage, Shinobi's +25%, each lasting 0.75 s), which a toggle would otherwise give as if always
+ * there (the owner's decision, November 20, 2026).
+ *
  * @param effs The groups.
  * @param ctx Requirement context.
  * @param fn Called per mod.
@@ -227,6 +231,7 @@ export function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m
     if (e.ch !== undefined && e.ch < 1) continue;
     if (e.ppm) continue;
     if (!onCharacter(e)) continue;
+    if (e.tag?.some((t) => t.toLowerCase() === 'stealthcrit')) continue;
     if (!evalRequires(e.req, ctx)) continue;
     for (const m of e.m ?? []) if (standing(m)) fn(m);
     walkEffects(e.sub, ctx, fn);
@@ -488,7 +493,8 @@ export interface TotalsState {
  */
 export function totalsState(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): TotalsState {
   const owned = rules.ownedAt(level);
-  const ctx: EvalContext = { ...rules.ctx(level, owned), targetEntType: 'player' };
+  // what the totals count lands on the character: the target is a player, and is the source
+  const ctx: EvalContext = { ...rules.ctx(level, owned), targetEntType: 'player', targetIsSource: true };
   // defaults from the whole build, so which form of an exclusive group runs doesn't change with
   // the level the totals are worked out at
   const defaults = defaultsOf(gd, rules.entries());

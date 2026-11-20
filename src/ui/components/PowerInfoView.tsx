@@ -35,13 +35,10 @@ export function Rows({ rows }: { rows: InfoRow[] }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: TIP_PX * 1.5 }}>
       {rows.map((r, i) => (
         <Fragment key={i}>
-          {/* a row without a value is a heading across both columns */}
-          <div style={{ color: INFO_LABEL_COLOR, gridColumn: r.value.length ? undefined : '1 / -1' }}>{r.label}</div>
-          {r.value.length ? (
-            <div style={{ color: '#ffffff' }}>
-              <Segs segs={r.value} />
-            </div>
-          ) : null}
+          <div style={{ color: INFO_LABEL_COLOR }}>{r.label}</div>
+          <div style={{ color: '#ffffff' }}>
+            <Segs segs={r.value} />
+          </div>
         </Fragment>
       ))}
     </div>
@@ -58,8 +55,8 @@ const Divider = () => <div style={{ borderTop: '1px solid #5a6aa8', margin: `${T
  *
  * @param props.entry The hovered power with its slots (their enhancements give the enhanced values).
  * @param props.level 0-based character level the values are shown at.
- * @param props.rules Rules view of the build the power is in: its damage boosts (damageBoost) give
- *   the boosted damage rows.
+ * @param props.rules Rules view of the build the power is in: its damage boosts (damageBoost) are
+ *   counted in the damage shown.
  */
 export function AdvancedInfo({ gd, at, entry, level, rules }: { gd: GameData; at: Archetype; entry: BuildEntry; level: number; rules: BuildRules }) {
   const files = useInfoFiles(gd);
