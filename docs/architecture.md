@@ -61,6 +61,7 @@ src/
     importProblem.ts         import failures in plain words (ImportProblem), file reading
     library.ts               builds saved in the browser (IndexedDB)
     binary.ts                byte reader / writer helpers, size-capped decompression
+    limits.ts                IMPORT_LIMITS: every limit an import keeps to, by format
     fileName.ts              safe names for downloaded files
     shopping.ts              the set finder's shopping list as the browser keeps it (localStorage)
   state/store.ts             zustand store: data, current build, level-up flow, dialogs
@@ -314,8 +315,9 @@ calm generic message, with the details in the browser console. What an import co
 New import code throws `ImportProblem` for every failure the user can fix.
 
 **Import limits.** Everything imported comes from strangers, so no input may make the tab do
-unbounded work. Decompression stops at a ceiling (`MAX_INFLATED` in `src/io/binary.ts` for share
-links and `|MxDz;` codes, the 2 MB build-file size for `|MBD;` Brotli data), counts past any real
+unbounded work. Every limit is in one table, by format (`IMPORT_LIMITS` in `src/io/limits.ts`).
+Decompression stops at a ceiling (`inflated` for share links and `|MxDz;` codes, the 2 MB
+build-file size, `text`, for `|MBD;` Brotli data), counts past any real
 build's are refused (picks, slots, granted powers, Mids power entries and sets; a `/build_save`
 file's powers, slots and the lines its reader can't place), pasted text and files over 2 MB are
 refused, and a `.mbd` whose fields have the wrong types is reported as damaged (`isMbd`). Downloaded file names are cleaned (`src/io/fileName.ts`). `tests/importlimits.test.ts`

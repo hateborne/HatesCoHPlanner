@@ -1,4 +1,5 @@
 /** Little-endian byte writer/reader with .NET BinaryWriter string and varint support. */
+import { IMPORT_LIMITS } from './limits.ts';
 
 export class ByteWriter {
   private buf = new Uint8Array(1024);
@@ -124,11 +125,7 @@ export class ByteReader {
   }
 }
 
-// The most a decompressed build may hold. A share link's or a Mids code's data is a few KB; a
-// stream that inflates past this is damaged or built to exhaust the tab's memory.
-export const MAX_INFLATED = 1 << 20;
-
-/** Decompressed data larger than the caller's limit (see MAX_INFLATED). */
+/** Decompressed data larger than the caller's limit (IMPORT_LIMITS.inflated unless it names one). */
 export class TooLarge extends Error {}
 
 /**
@@ -140,11 +137,12 @@ export class TooLarge extends Error {}
  * @param data The input bytes.
  * @param format The zlib format.
  * @param compress Compress (true) or decompress (false).
- * @param limit The most bytes the output may hold (default: MAX_INFLATED when decompressing).
+ * @param limit The most bytes the output may hold (default: IMPORT_LIMITS.inflated when
+ *   decompressing: a stream that inflates past it is damaged, or built to exhaust the tab's memory).
  * @return The output bytes.
  * @raise TooLarge when the output passes `limit`.
  */
-export async function streamBytes(data: Uint8Array, format: 'deflate' | 'deflate-raw', compress: boolean, limit = compress ? Infinity : MAX_INFLATED): Promise<Uint8Array> {
+export async function streamBytes(data: Uint8Array, format: 'deflate' | 'deflate-raw', compress: boolean, limit = compress ? Infinity : IMPORT_LIMITS.inflated): Promise<Uint8Array> {
   const stream = compress ? new CompressionStream(format) : new DecompressionStream(format);
   const reader = new Blob([data]).stream().pipeThrough(stream).getReader();
   const chunks: Uint8Array[] = [];

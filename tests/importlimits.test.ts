@@ -1,7 +1,7 @@
 /**
  * Limits on what an import may make the tab do: a share link or Mids code from a stranger must be
  * refused with a readable message, quickly, however it was built. Decompressed data has a ceiling
- * (MAX_INFLATED / the 2 MB build-file size), counts past any real build's are refused, and a Mids
+ * (IMPORT_LIMITS.inflated / the 2 MB build-file size), counts past any real build's are refused, and a Mids
  * file whose fields have the wrong types is reported as damaged instead of failing part way. A
  * /build_save file is held to the same: its length, its powers, its slots and the lines it can't place.
  */
@@ -9,13 +9,18 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { brotliCompressSync, deflateSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
-import { ByteWriter, MAX_INFLATED, streamBytes, toBase64, toBase64Url, TooLarge } from '../src/io/binary.ts';
+import { MAX_PET_SWITCHES } from '../src/engine/build.ts';
+import { ByteWriter, streamBytes, toBase64, toBase64Url, TooLarge } from '../src/io/binary.ts';
 import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../src/io/buildtxt.ts';
 import { safeFileName } from '../src/io/fileName.ts';
 import { ImportProblem } from '../src/io/importProblem.ts';
+import { IMPORT_LIMITS } from '../src/io/limits.ts';
 import { importMbd, importMidsText, parseMidsText, type Mbd, type MidsMap } from '../src/io/mids.ts';
 import { decodeShare } from '../src/io/share.ts';
 import { loadData } from './helpers/data.ts';
+
+// what a share link's or a Mids code's data may inflate to
+const MAX_INFLATED = IMPORT_LIMITS.inflated;
 
 // brotli-wasm's default (web) build fetches its .wasm, which Node can't: use its Node build
 vi.mock('brotli-wasm', async () => {
@@ -175,5 +180,19 @@ describe('export file names', () => {
     expect(safeFileName('a<b>c:d"e|f?g*h\u0007.mbd')).toBe('a_b_c_d_e_f_g_h_.mbd');
     expect(safeFileName('.mbd')).toBe('build.mbd');
     expect(safeFileName('Fire Farmer.mbd')).toBe('Fire Farmer.mbd');
+  });
+});
+
+describe('the import limits table', () => {
+  it('holds the numbers each reader has always had (a share link is never read with lower ones)', () => {
+    expect(IMPORT_LIMITS).toEqual({
+      text: 2_000_000,
+      inflated: 1_048_576,
+      link: { payload: 65_536, picks: 64, slots: 32, granted: 512, petSwitches: 64, petName: 160 },
+      mids: { sets: 32, powers: 512, slots: 64 },
+      buildTxt: { powers: 512, slots: 64, skipped: 200 },
+    });
+    // one number for the pet switches a checked build keeps and a link reads
+    expect(IMPORT_LIMITS.link.petSwitches).toBe(MAX_PET_SWITCHES);
   });
 });

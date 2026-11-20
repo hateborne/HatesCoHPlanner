@@ -26,7 +26,8 @@ import { slotsFor } from '../engine/actions.ts';
 import { cleanName, cloneBuild, MIN_REL_LEVEL, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { BuildRules, respecOnlyNote } from '../engine/rules.ts';
 import { leveledSlotShortfall, lowestFreeLevels } from '../engine/schedule.ts';
-import { ImportProblem, MAX_BUILD_FILE, READABLE, readable, readablePower, tooLong } from './importProblem.ts';
+import { ImportProblem, READABLE, readable, readablePower, tooLong } from './importProblem.ts';
+import { IMPORT_LIMITS } from './limits.ts';
 
 /** One enhancement line of a build.txt. */
 export interface TxtEnh {
@@ -64,12 +65,9 @@ export interface TxtImport {
   warnings: string[];
 }
 
-// Counts no /build_save file comes near (about 60 power lines with the inherents, 6 slots a power,
-// no line the reader can't place): past them the text isn't one, and is refused before anything is
-// built from it
-const MAX_TXT_POWERS = 512;
-const MAX_TXT_SLOTS = 64;
-const MAX_TXT_SKIPPED = 200;
+// counts no /build_save file comes near: past them the text isn't one, and is refused before
+// anything is built from it
+const LIMITS = IMPORT_LIMITS.buildTxt;
 
 /** @return The problem for a file listing more powers or slots than any build holds. */
 const TOO_MANY = () => new ImportProblem('it lists more powers or slots than a build can hold', 'Save the build again in game with /build_save, then import the new build.txt.');
@@ -93,7 +91,7 @@ const firstLine = (lines: string[]) => lines.find((l) => l.trim() !== '')?.trim(
  *   build file may be is none (the import then reports it as too long).
  */
 export function isBuildTxt(text: string): boolean {
-  if (text.length > MAX_BUILD_FILE) return false;
+  if (text.length > IMPORT_LIMITS.text) return false;
   const lines = text.split(/\r?\n/);
   const head = HEADER.exec(firstLine(lines));
   return !!head && /^Class_/i.test(head[4]!) && lines.some((l) => l.trim() === 'Character Profile:') && !/\|(MBD|MxDz);/.test(text);
@@ -105,11 +103,11 @@ export function isBuildTxt(text: string): boolean {
  * @param text The file's text.
  * @return The parsed file.
  * @raise ImportProblem when the header line is missing, no power is listed, or the text is longer
- *   or lists more than any build does (MAX_BUILD_FILE, MAX_TXT_POWERS, MAX_TXT_SLOTS,
- *   MAX_TXT_SKIPPED).
+ *   or lists more than any build does (IMPORT_LIMITS: the text's length, and a /build_save
+ *   file's powers, slots and lines the reader can't place).
  */
 export function parseBuildTxt(text: string): BuildTxt {
-  if (text.length > MAX_BUILD_FILE) throw tooLong();
+  if (text.length > IMPORT_LIMITS.text) throw tooLong();
   const lines = text.split(/\r?\n/);
   const head = HEADER.exec(firstLine(lines));
   if (!head) throw new ImportProblem("it isn't a /build_save file", READABLE);
@@ -125,7 +123,7 @@ export function parseBuildTxt(text: string): BuildTxt {
     if (!inList) continue;
     const p = POWER.exec(line);
     if (p) {
-      if (out.powers.length >= MAX_TXT_POWERS) throw TOO_MANY();
+      if (out.powers.length >= LIMITS.powers) throw TOO_MANY();
       out.powers.push({ level: Number(p[1]), name: `${p[2]}.${p[3]}.${p[4]}`, slots: [] });
       continue;
     }
@@ -134,11 +132,11 @@ export function parseBuildTxt(text: string): BuildTxt {
     const last = out.powers[out.powers.length - 1];
     const e = ENH.exec(line);
     if (indented && last && (line === 'EMPTY' || e)) {
-      if (last.slots.length >= MAX_TXT_SLOTS) throw TOO_MANY();
+      if (last.slots.length >= LIMITS.slots) throw TOO_MANY();
       last.slots.push(line === 'EMPTY' || !e ? null : { name: e[1]!, level: Number(e[2]), boosters: Number(e[3] ?? 0) });
     } else {
       // a real file has none: this many lines the reader can't place is some other text
-      if (out.skipped.length >= MAX_TXT_SKIPPED) throw new ImportProblem("it isn't a /build_save file", READABLE);
+      if (out.skipped.length >= LIMITS.skipped) throw new ImportProblem("it isn't a /build_save file", READABLE);
       out.skipped.push(line);
     }
   }
