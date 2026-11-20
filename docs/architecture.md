@@ -77,7 +77,7 @@ src/
     hover.ts                 hover / tooltip state (kept out of the screens on purpose)
     flags.ts                 SET_FINDER: whether the unfinished set finder's button shows
     escape.ts                Escape-key stack (useEscape)
-    sound.ts                 game UI sounds and menu music
+    sound.ts                 game UI sounds and menu music (both off until switched on; see below)
 tests/                       vitest; tests/helpers/data.ts loads public/data like the site does
   fixtures/builds/           forum builds (Mids data chunks, .mbd files) the browser tests recreate
 e2e/                         Playwright browser tests (playwright.config.ts; local only)
@@ -289,6 +289,18 @@ files over 2 MB are refused, and a `.mbd` whose fields have the wrong types is r
 covers these; new import code keeps to them. The published page also carries a
 Content-Security-Policy (`vite.config.ts`, built pages only): everything is loaded from the site
 itself, so a new outside resource needs the policy changed with it.
+
+**Sound and music.** Both switches start off and stay off until switched on (`startsMuted` in the
+store; Music reads as any switch does), so a first visit downloads no sound at all: the menu music
+is the largest file the site has (2 to 5 MB a track) and used to start on the first click. While
+Sound is on, the 59 interface sounds (1.5 MB together) are fetched ahead of their first play, a few
+at a time, so none lags (`loadSounds` in `src/ui/sound.ts`): at once when Sound is switched on, and
+once the page is up for a visitor who left it on. They are kept as object URLs and played from
+memory (hence `blob:` in the policy's `media-src`). The list of their names is read from
+`public/assets/sounds/` at build time (`__HCP_UI_SOUNDS__` in `vite.config.ts`), so it can't fall
+out of step with the files; a browser that can't play Ogg Vorbis fetches none. The music's one
+track (the alignment's on screen) is fetched when it first plays. `tests/sound.test.ts` covers
+these.
 
 **Engine.** `BuildRules` (`src/engine/rules.ts`) answers every question the screens ask: what can
 be picked at a level, what is auto-granted, where slots can go, what is wrong with the build.

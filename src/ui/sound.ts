@@ -2,15 +2,71 @@
  * The client's own front-end sounds (sndPlay names from the UI source, lower-cased file names
  * under assets/sounds/) and the login-screen music, each with its own remembered on/off switch
  * in the store.
+ *
+ * Both start off, and nothing is downloaded for a switch that is off. While Sound is on, every
+ * interface sound is fetched ahead of its first play (loadSounds): at once when it is switched on,
+ * and once the page is up for a visitor who left it on. The music's one track is fetched when it
+ * first plays.
  */
 import { useStore } from '../state/store.ts';
 import type { SkinName } from './skin/skin.ts';
 
+// written in by vite.config.ts's define: the names of the interface sounds the site carries (the
+// files under public/assets/sounds/ but the menu music); missing where Vite doesn't compile the code
+declare const __HCP_UI_SOUNDS__: readonly string[] | undefined;
+
+/** The interface sounds the site carries: file names without their extension, lower case. */
+export const UI_SOUNDS: readonly string[] = typeof __HCP_UI_SOUNDS__ === 'undefined' ? [] : __HCP_UI_SOUNDS__;
+
 const cache = new Map<string, HTMLAudioElement>();
 const missing = new Set<string>(); // names with no file (e.g. N_Archetype_Class_Sentinel)
+// sounds fetched ahead of their first play, each as an object URL of its bytes: played from memory,
+// with no download and no cache check when first heard
+const loaded = new Map<string, string>();
+// how many are fetched at a time, so they never crowd out the page's own downloads
+const LOAD_AT_ONCE = 4;
+let loading = false; // a loadSounds run is under way
 
 function url(name: string): string {
   return `${import.meta.env.BASE_URL}assets/sounds/${name.toLowerCase()}.ogg`;
+}
+
+/** @return Whether this browser plays the sounds' format (Ogg Vorbis): one that can't is spared the downloads. */
+function playsOgg(): boolean {
+  try {
+    return typeof Audio === 'function' && new Audio().canPlayType('audio/ogg; codecs="vorbis"') !== '';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetch every interface sound not fetched yet, a few at a time, so none lags when it first plays.
+ *
+ * Only while Sound is on: called with it off it fetches nothing, and switched off part way it
+ * stops, leaving the rest for the next time it is on. A sound that fails to download is left for
+ * its first play, which fetches it as before.
+ *
+ * @return A promise settled when the run is over (for tests; callers don't wait).
+ */
+export function loadSounds(): Promise<void> {
+  if (loading || useStore.getState().muted || !playsOgg()) return Promise.resolve();
+  loading = true;
+  const queue = UI_SOUNDS.filter((n) => !loaded.has(n));
+  const fetchNext = async (): Promise<void> => {
+    for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
+      if (useStore.getState().muted) return;
+      try {
+        const r = await fetch(url(name));
+        if (r.ok) loaded.set(name, URL.createObjectURL(await r.blob()));
+      } catch {
+        /* left for its first play */
+      }
+    }
+  };
+  return Promise.all(Array.from({ length: LOAD_AT_ONCE }, fetchNext)).then(() => {
+    loading = false;
+  });
 }
 
 /**
@@ -25,7 +81,8 @@ export function play(name: string, opts?: { noInterrupt?: boolean }): void {
   try {
     let a = cache.get(name);
     if (!a) {
-      a = new Audio(url(name));
+      // from memory when it was fetched ahead, else straight from the site
+      a = new Audio(loaded.get(name.toLowerCase()) ?? url(name));
       a.volume = 0.6;
       a.addEventListener('error', () => missing.add(name), { once: true });
       cache.set(name, a);
@@ -113,9 +170,14 @@ function relock(): void {
   listenForGesture(true);
 }
 
+/** @return Whether a view shows the planner itself (its own downloads are done). */
+const pageUp = (view: string) => view !== 'loading' && view !== 'error';
+
 if (typeof window !== 'undefined') {
   listenForGesture(true);
   useStore.subscribe((s, prev) => {
     if (s.musicOn !== prev.musicOn) syncMusic();
+    // Sound switched on; or left on by an earlier visit, once the page is up (its downloads first)
+    if (!s.muted && (prev.muted || (pageUp(s.view) && !pageUp(prev.view)))) void loadSounds();
   });
 }

@@ -24,6 +24,10 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - The enhancement picker can put every piece in at your build's level or the set's top level, and raise them when the build levels further.
 - Ctrl+Click (or Select several on phones) picks several enhancements at once and fills the power's empty slots in one go, with their total shown after enhancement diversification.
 
+### Improved
+
+- Sound and music now start switched off, and are only downloaded once you switch them on (the Sound and Music buttons in the bottom bar, or the phone menu); the planner remembers your choice.
+
 ### Fixed
 
 - Mask Presence and Shinobi no longer add their strike-from-stealth damage bonus to the totals as if it were always on.

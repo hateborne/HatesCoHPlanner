@@ -15,7 +15,6 @@ import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelSt
 import { describeImportFailure, ImportProblem, refusedBuild, unknownServer, wrongServer } from '../io/importProblem.ts';
 import { saveFirstText } from '../io/library.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
-import { stageLayout } from '../ui/stageLayout.ts';
 import { lastServer, rememberServer } from './lastServer.ts';
 import { returning, trackUse } from './lastUsed.ts';
 import { tabTitle } from './tabTitle.ts';
@@ -102,8 +101,8 @@ interface Store {
   view: View;
   build?: Build;
   level?: LevelCtx;
-  muted: boolean; // the Sound switch, off is muted (this tab's; new tabs start from the last change in any tab)
-  musicOn: boolean; // the login-screen music switch (this tab's, like muted; on by default, off on phones)
+  muted: boolean; // the Sound switch, off is muted (this tab's; new tabs start from the last change in any tab; off until switched on)
+  musicOn: boolean; // the login-screen music switch (this tab's, like muted; off until switched on)
   setupAlign: Alignment; // the alignment picked on the setup screen (its skin and backdrop)
   tips: TipMode; // hover tooltip setting (the browser's: open tabs follow a change in any tab)
   shift: boolean; // Shift held: Enabled tooltips show the Advanced view
@@ -693,14 +692,20 @@ function swapPieceLabel(gd: GameData, b: Build, p: SwapPiece, pickKey: string): 
 }
 
 
-/** @return The Music switch when the browser remembers none: off on phones (the phone layout), on elsewhere. */
-function defaultMusic(): boolean {
-  try {
-    const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-    return !stageLayout(window.innerWidth, window.innerHeight, touch).dims.phone;
-  } catch {
-    return true;
-  }
+/**
+ * Whether Sound starts off (muted) for what the browser has stored for it.
+ *
+ * Sound and Music both start off and stay off until switched on: a page that plays nothing
+ * downloads none of the sounds (ui/sound.ts). Sound's stored value is "1" for muted and "0" for on,
+ * as it always was, so only a visitor who switched it on here before starts with it on; a first
+ * visit, cleared storage and blocked storage all start silent. Music reads as any switch does
+ * (readSwitch): on only when stored as on.
+ *
+ * @param stored The stored hcp.muted value (null: none).
+ * @return True unless it was switched on.
+ */
+export function startsMuted(stored: string | null): boolean {
+  return stored !== '0';
 }
 
 /** @return Whether a step's picks are made and its slots (if it grants any) are all placed. */
@@ -1008,19 +1013,12 @@ export const useStore = create<Store>((set, get) => ({
   view: 'loading',
   muted: (() => {
     try {
-      return localStorage.getItem('hcp.muted') === '1';
+      return startsMuted(localStorage.getItem('hcp.muted'));
     } catch {
-      return false;
+      return true;
     }
   })(),
-  musicOn: (() => {
-    try {
-      const v = localStorage.getItem('hcp.music');
-      return v === null ? defaultMusic() : v !== '0';
-    } catch {
-      return defaultMusic();
-    }
-  })(),
+  musicOn: readSwitch('hcp.music'),
 
   menuOpen: false,
   advancedRespec: readSwitch('hcp.advancedRespec'),

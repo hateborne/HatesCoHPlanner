@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import { createHash } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { notFoundRedirect, SERVERS } from './src/data/servers.ts';
@@ -92,7 +93,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'", // React style props
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "media-src 'self'",
+  "media-src 'self' blob:", // interface sounds fetched ahead of their first play are played from memory (ui/sound.ts)
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -126,6 +127,20 @@ function release(): { version: string; commit: string } {
 
 const RELEASE = release();
 
+/**
+ * The interface sounds the site carries: every sound file but the menu music, which loads only when
+ * Music is on. The page fetches them all when Sound is on (ui/sound.ts loadSounds), so it needs their
+ * names; read from the folder here, the list can't fall out of step with the files.
+ *
+ * @return Their file names without the extension, sorted.
+ */
+function uiSounds(): string[] {
+  return readdirSync(new URL('./public/assets/sounds', import.meta.url))
+    .filter((f) => f.endsWith('.ogg') && !f.includes('menumusic'))
+    .map((f) => f.slice(0, -'.ogg'.length))
+    .sort();
+}
+
 // Served from https://hateborne.github.io/HatesCoHPlanner/ so every asset URL is under this base.
 export default defineConfig({
   base: '/HatesCoHPlanner/',
@@ -136,6 +151,8 @@ export default defineConfig({
     __HCP_VERSION__: JSON.stringify(RELEASE.version),
     __HCP_COMMIT__: JSON.stringify(RELEASE.commit),
     __HCP_SET_FINDER__: JSON.stringify(process.env.HCP_SET_FINDER === '1'),
+    // the interface sounds' names, for fetching them when Sound is on (src/ui/sound.ts)
+    __HCP_UI_SOUNDS__: JSON.stringify(uiSounds()),
   },
   // brotli-wasm locates its .wasm relative to its own module; pre-bundling breaks that in dev.
   optimizeDeps: { exclude: ['brotli-wasm'] },
