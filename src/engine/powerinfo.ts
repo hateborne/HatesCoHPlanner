@@ -13,6 +13,7 @@ import type { GameData } from '../data/gamedata.ts';
 import type { Archetype, Effect, InfoNode, Mod, PetCreation, PetPower, Power } from '../data/types.ts';
 import { serverById } from '../data/servers.ts';
 import type { DamageBoost } from './boost.ts';
+import { aimedAt, nobody, withModes, withOwner } from './context.ts';
 import { infoRequires, type EvalContext } from './requires.ts';
 
 /** A run of text, optionally colored (CSS hex) and italic. */
@@ -743,19 +744,17 @@ export function powerInfo(
    * The requirement context of a power run by a class: the character's own powers (no creator),
    * or a pseudo-pet's, whose `source.owner>` / `source.creator>` read the class that made it.
    */
-  const contextFor = (cls: string, creator: string | null): EvalContext => ({
-    ownsPower: () => false,
-    ownsSet: () => false,
-    prop: (name) => {
+  const contextFor = (cls: string, creator: string | null): EvalContext => {
+    const who = nobody((name) => {
       if (isClassProp(name)) return cls;
       if (name === 'level') return level + 1;
       if (name === 'alignment' || name === 'type') return 'hero';
       return '';
-    },
-    ...(creator === null ? {} : { ownerProp: (name: string) => (isClassProp(name) ? creator : 0) }),
-    inMode: () => false,
-    targetEntType: 'critter',
-  });
+    });
+    // the client's power info reads no modes, and an attack lands on a foe
+    const run = withModes(aimedAt(who, { type: 'critter', isSource: false }), () => false);
+    return creator === null ? run : withOwner(run, (name) => (isClassProp(name) ? creator : 0));
+  };
   const runCls = runAs?.cls ?? at.n;
   const ctx = contextFor(runCls, runAs ? runAs.creator : null);
   /** @return A table's value for the class running the power. */
@@ -1269,7 +1268,9 @@ export function powerInfo(
   if (timed && dmgBase && cast) {
     stats.push(row(TXT.damagePerAct, `<color #ff4b4b>${pair(dmgShown / cast, dmgBase / cast, f2)}`));
   }
-  if (timed && dmgBase) {
+  // a power with neither a cast time nor a recharge has no cycle to divide by (a pet's Self
+  // Destruct): the row is left out, as the one above is for a power with no cast time
+  if (timed && dmgBase && cast + baseRech > 0 && cast + enhRech > 0) {
     const dpc = dmgBase / (cast + baseRech);
     const dpcEnh = dmgShown / (cast + enhRech);
     stats.push(row(TXT.damagePerCast, `<color #ff4b4b>${pair(dpcEnh, dpc, f2)}`));

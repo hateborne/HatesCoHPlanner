@@ -12,6 +12,7 @@ import { GameData } from '../data/gamedata.ts';
 import type { Archetype, BoostSet, Effect, Mod, Power } from '../data/types.ts';
 import type { Build, Slot } from './build.ts';
 import { boostMods, effectiveness, powerStrength } from './enhance.ts';
+import { aimedAt } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
 import { earnedBonuses, type EarnedBonus } from './setbonus.ts';
@@ -494,7 +495,7 @@ export interface TotalsState {
 export function totalsState(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): TotalsState {
   const owned = rules.ownedAt(level);
   // what the totals count lands on the character: the target is a player, and is the source
-  const ctx: EvalContext = { ...rules.ctx(level, owned), targetEntType: 'player', targetIsSource: true };
+  const ctx = aimedAt(rules.ctx(level, owned), { type: 'player', isSource: true });
   // defaults from the whole build, so which form of an exclusive group runs doesn't change with
   // the level the totals are worked out at
   const defaults = defaultsOf(gd, rules.entries());

@@ -5,6 +5,7 @@
 import type { GameData } from '../data/gamedata.ts';
 import type { BoostSet, BoostSetBonus, Power } from '../data/types.ts';
 import type { BuildEntry } from './rules.ts';
+import { nobody, withSlotted } from './context.ts';
 import { evalRequires } from './requires.ts';
 import { effectiveness, shortName } from './enhance.ts';
 
@@ -72,12 +73,7 @@ export function earnedBonuses(gd: GameData, entries: BuildEntry[], level = 49): 
     }
     for (const { set, letters, pieces } of bySet.values()) {
       const n = letters.size;
-      const ctx = {
-        ownsPower: () => false,
-        ownsSet: () => false,
-        prop: () => 0,
-        powerBoostsSlotted: (nm: string) => names.filter((x) => x === nm.toLowerCase()).length,
-      };
+      const ctx = withSlotted(nobody(), { inPower: (nm) => names.filter((x) => x === nm.toLowerCase()).length });
       for (const b of set.bon) {
         if (n < b.min || n > b.max) continue;
         if (b.req && !evalRequires(b.req, ctx)) continue;

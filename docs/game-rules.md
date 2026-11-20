@@ -277,7 +277,8 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   there (the owner's decision, November 20, 2026).
 - What the totals count lands on the character, so a requirement that the target is not the
   source (`entref target> entref source> eq !`: the foe-only damage debuff of a Stalker's Genetic
-  Corruption, whose power also reaches its caster) fails there (`targetIsSource`).
+  Corruption, whose power also reaches its caster) fails there (`aimedAt` in
+  `src/engine/context.ts`: every context names its whole target, and none is copied by hand).
 - A pet's stats read the same requirement by who the caster is: only a pet's own power has its
   caster for its target. The creator's powers and another pet's do not, so the defense Grant Cover
   gives everyone but its caster reaches a Brute's Mu Striker (as Maneuvers' does) and a group for

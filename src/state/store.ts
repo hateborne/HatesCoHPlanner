@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, versionServer, withServer, type GameServer } from '../data/servers.ts';
 import { loadVersions, missingVersionNote, normalizeVersion, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
+import { STALLED_MS, Watch } from '../data/watch.ts';
 import { addSlot, laterPick, moveLater, raiseToCap, rebookRespecSlots, setPick, swapPick, takeEarlier, type SwapPiece } from '../engine/actions.ts';
 import { pieceName } from '../engine/enhance.ts';
 import { cleanName, cloneBuild, hasWork, newBuild, type Alignment, type Build } from '../engine/build.ts';
@@ -15,7 +16,6 @@ import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelSt
 import { describeImportFailure, ImportProblem, refusedBuild, unknownServer, wrongServer } from '../io/importProblem.ts';
 import { saveFirstText } from '../io/library.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
-import { stageLayout } from '../ui/stageLayout.ts';
 import { lastServer, rememberServer } from './lastServer.ts';
 import { returning, trackUse } from './lastUsed.ts';
 import { tabTitle } from './tabTitle.ts';
@@ -102,8 +102,8 @@ interface Store {
   view: View;
   build?: Build;
   level?: LevelCtx;
-  muted: boolean; // the Sound switch, off is muted (this tab's; new tabs start from the last change in any tab)
-  musicOn: boolean; // the login-screen music switch (this tab's, like muted; on by default, off on phones)
+  muted: boolean; // the Sound switch, off is muted (this tab's; new tabs start from the last change in any tab; off until switched on)
+  musicOn: boolean; // the login-screen music switch (this tab's, like muted; off until switched on)
   setupAlign: Alignment; // the alignment picked on the setup screen (its skin and backdrop)
   tips: TipMode; // hover tooltip setting (the browser's: open tabs follow a change in any tab)
   shift: boolean; // Shift held: Enabled tooltips show the Advanced view
@@ -271,18 +271,57 @@ function restoreNotes(b: Build): PatchNotes | null {
   }
 }
 
+/** A download behind one of the two caches below, while it is under way. */
+interface UnderWay {
+  made: Promise<unknown>; // the download, as its cache holds it
+  watch: Watch; // hears of what the download receives, and gives it up
+}
+// the downloads behind the two caches below that have not ended yet (retryLoad looks through them)
+const underWay = new Set<UnderWay>();
+
+/**
+ * Keep one download per key for the page, watched while it is under way.
+ *
+ * A download that fails leaves its cache, so the next ask fetches again. With `retry`, so does one
+ * that has stalled (nothing received for STALLED_MS): it is given up and started anew, as Try again
+ * would do. New Build's picks ask that way, since New Build has no Try again of its own; nothing
+ * else does, so a download someone else waits for is never given up behind their back.
+ *
+ * @param cache The cache.
+ * @param key What the download is kept under.
+ * @param start Starts the download, handed the watch on it.
+ * @param retry Whether a cached download that has stalled is given up and started anew.
+ * @return The cached download, or the one just started.
+ */
+function kept<T>(cache: Map<string, Promise<T>>, key: string, start: (watch: Watch) => Promise<T>, retry: boolean): Promise<T> {
+  const have = cache.get(key);
+  if (have) {
+    const stalled = retry ? [...underWay].find((u) => u.made === have && u.watch.quiet(STALLED_MS)) : undefined;
+    if (!stalled) return have;
+    underWay.delete(stalled);
+    cache.delete(key);
+    stalled.watch.cancel();
+  }
+  const watch = new Watch();
+  const made = start(watch);
+  const d: UnderWay = { made, watch };
+  underWay.add(d);
+  made.then(
+    () => underWay.delete(d),
+    () => {
+      underWay.delete(d);
+      // a failed fetch may be retried (unless a retry already put a newer one in its place)
+      if (cache.get(key) === made) cache.delete(key);
+    },
+  );
+  cache.set(key, made);
+  return made;
+}
+
 // one fetch of each server's version list per page (revalidated on every visit: see loadVersions)
 const versionCache = new Map<string, Promise<GameVersions>>();
-function versionsFor(s: GameServer): Promise<GameVersions> {
-  let p = versionCache.get(s.id);
-  if (!p) {
-    const made = loadVersions(dataRoot(s, import.meta.env.BASE_URL));
-    // a failed fetch may be retried (unless a retry already put a newer one in its place)
-    made.catch(() => versionCache.get(s.id) === made && versionCache.delete(s.id));
-    p = made;
-    versionCache.set(s.id, p);
-  }
-  return p;
+function versionsFor(s: GameServer, retry = false): Promise<GameVersions> {
+  return kept(versionCache, s.id, (watch) => loadVersions(dataRoot(s, import.meta.env.BASE_URL), watch), retry);
 }
 
 /**
@@ -307,17 +346,8 @@ export function shareServer(named: { server?: GameServer }, version: string | un
 
 // one fetch per game version per page: switching back to a version already seen is instant
 const dataCache = new Map<string, Promise<GameData>>();
-function dataFor(s: GameServer, v: GameVersion): Promise<GameData> {
-  const key = `${s.id}/${v.id}`;
-  let p = dataCache.get(key);
-  if (!p) {
-    const made = loadGameData(s, import.meta.env.BASE_URL, v);
-    // a failed fetch may be retried (unless a retry already put a newer one in its place)
-    made.catch(() => dataCache.get(key) === made && dataCache.delete(key));
-    p = made;
-    dataCache.set(key, p);
-  }
-  return p;
+function dataFor(s: GameServer, v: GameVersion, retry = false): Promise<GameData> {
+  return kept(dataCache, `${s.id}/${v.id}`, (watch) => loadGameData(s, import.meta.env.BASE_URL, v, watch), retry);
 }
 
 /**
@@ -710,14 +740,20 @@ function swapPieceLabel(gd: GameData, b: Build, p: SwapPiece, pickKey: string): 
 }
 
 
-/** @return The Music switch when the browser remembers none: off on phones (the phone layout), on elsewhere. */
-function defaultMusic(): boolean {
-  try {
-    const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-    return !stageLayout(window.innerWidth, window.innerHeight, touch).dims.phone;
-  } catch {
-    return true;
-  }
+/**
+ * Whether Sound starts off (muted) for what the browser has stored for it.
+ *
+ * Sound and Music both start off and stay off until switched on: a page that plays nothing
+ * downloads none of the sounds (ui/sound.ts). Sound's stored value is "1" for muted and "0" for on,
+ * as it always was, so only a visitor who switched it on here before starts with it on; a first
+ * visit, cleared storage and blocked storage all start silent. Music reads as any switch does
+ * (readSwitch): on only when stored as on.
+ *
+ * @param stored The stored hcp.muted value (null: none).
+ * @return True unless it was switched on.
+ */
+export function startsMuted(stored: string | null): boolean {
+  return stored !== '0';
 }
 
 /** @return Whether a step's picks are made and its slots (if it grants any) are all placed. */
@@ -1006,8 +1042,9 @@ export const useStore = create<Store>((set, get) => ({
     if (!s || get().view !== 'setup') return false;
     const seq = ++serverSeq;
     try {
-      const versions = await versionsFor(s);
-      const gd = await dataFor(s, resolveVersion(versions, undefined).version);
+      // a pick again of a server whose download has stalled starts it anew (New Build has no Try again)
+      const versions = await versionsFor(s, /*retry=*/ true);
+      const gd = await dataFor(s, resolveVersion(versions, undefined).version, /*retry=*/ true);
       // left New Build while it loaded, or a newer switch was asked for
       if (get().view !== 'setup' || seq !== serverSeq) return false;
       forget(get().build);
@@ -1026,19 +1063,12 @@ export const useStore = create<Store>((set, get) => ({
   view: 'loading',
   muted: (() => {
     try {
-      return localStorage.getItem('hcp.muted') === '1';
+      return startsMuted(localStorage.getItem('hcp.muted'));
     } catch {
-      return false;
+      return true;
     }
   })(),
-  musicOn: (() => {
-    try {
-      const v = localStorage.getItem('hcp.music');
-      return v === null ? defaultMusic() : v !== '0';
-    } catch {
-      return defaultMusic();
-    }
-  })(),
+  musicOn: readSwitch('hcp.music'),
 
   menuOpen: false,
   advancedRespec: readSwitch('hcp.advancedRespec'),
@@ -1162,7 +1192,8 @@ export const useStore = create<Store>((set, get) => ({
     if (gd?.core.manifest.dataVersion === id) return true;
     const server = shownServer();
     try {
-      const data = await dataFor(server, v);
+      // a pick again of a version whose download has stalled starts it anew (New Build has no Try again)
+      const data = await dataFor(server, v, /*retry=*/ true);
       // left New Build while it loaded, the server changed, or a newer version or server was picked
       if (get().view !== 'setup' || get().server !== server.id || seq !== serverSeq) return false;
       set({ gd: data, steps: levelSteps(data.core) });
@@ -1204,9 +1235,23 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   retryLoad() {
-    // a download that never answers stays in these as a pending promise
-    versionCache.clear();
-    dataCache.clear();
+    // A download still coming in is kept: the new load waits for it too, and starting it over
+    // would only throw away what it has (and, for one that has no answer yet, its place in line).
+    // One that has stalled (nothing received for STALLED_MS) is given up: its requests are cancelled, so
+    // the browser lets go of them, and its files are asked for past the browser's cache
+    // (Watch.cancel). All else, what has arrived included, leaves the caches and is fetched
+    // afresh, as Try again has always done.
+    const coming = new Set<Promise<unknown>>();
+    for (const d of [...underWay]) {
+      if (d.watch.quiet(STALLED_MS)) {
+        underWay.delete(d);
+        d.watch.cancel();
+      } else coming.add(d.made);
+    }
+    const caches: Map<string, Promise<unknown>>[] = [versionCache, dataCache];
+    for (const cache of caches) {
+      for (const [key, made] of cache) if (!coming.has(made)) cache.delete(key);
+    }
     set({ view: 'loading' });
     void get().load();
   },

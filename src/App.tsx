@@ -152,8 +152,10 @@ function PhoneToast({ skin, text, onClose }: { skin: Skin; text: string; onClose
 }
 
 // how long the loading screen shows before it offers Try again. Nothing is cancelled when it does:
-// a slow connection's downloads carry on and still open the page
-const SLOW_LOAD_MS = 20_000;
+// a slow connection's downloads carry on and still open the page (and pressing it keeps them too:
+// only a download that has received nothing for STALLED_MS is given up: see retryLoad). By then
+// every file that got no answer has been asked for again by itself (ask, in src/data/watch.ts).
+const SLOW_LOAD_MS = 10_000;
 
 /** A Try again button in the planner's button style, for the loading and error screens. */
 function TryAgain({ px, onClick }: { px: number; onClick: () => void }) {
@@ -166,8 +168,10 @@ function TryAgain({ px, onClick }: { px: number; onClick: () => void }) {
 
 /**
  * The loading screen. After SLOW_LOAD_MS with no question on screen (the server list and the return
- * question wait on the player, not on a download) it offers Try again, which fetches everything
- * afresh (retryLoad): a download that never answers would otherwise hold the page here for good.
+ * question wait on the player, not on a download) it offers Try again, which starts the load again
+ * (retryLoad): a download that has gone quiet is given up and asked for anew, one still coming in
+ * is kept. A download that never answers would otherwise hold the page here for good. After a
+ * press it is offered again after the same wait.
  */
 function LoadingScreen() {
   const stage = useStage();

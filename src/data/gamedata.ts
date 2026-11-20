@@ -4,6 +4,7 @@ import { fetchJson } from './packed.ts';
 import { readPetsFile } from './pets.ts';
 import { dataRoot, DEFAULT_SERVER, type GameServer } from './servers.ts';
 import type { GameVersion } from './versions.ts';
+import type { Watch } from './watch.ts';
 import type { Archetype, BoostSet, BoostsFile, Core, HenchmenFile, InfoFile, PetsFile, Power, Powerset } from './types.ts';
 
 /** Where an enhancement sits inside an IO set. */
@@ -342,24 +343,31 @@ export const HENCHMEN_FOLDER = 'henchmen';
  * @param server The server the version belongs to.
  * @param base Site base URL (import.meta.env.BASE_URL).
  * @param version The version to load (its hash keeps browsers from mixing in stale cached files).
+ * @param watch A watch on the four files' downloads (watch.ts): it hears of what they receive, and
+ *   giving it up fails the load at once. The extra files are not under it.
  * @return Indexed game data.
  */
-export async function loadGameData(server: GameServer, base: string, version: GameVersion): Promise<GameData> {
+export async function loadGameData(server: GameServer, base: string, version: GameVersion, watch?: Watch): Promise<GameData> {
   const data = dataRoot(server, base);
   const root = `${data}${version.id}/`;
   const q = version.hash ? `?v=${version.hash}` : '';
   // the four files every build opens on: by their brotli copies where the site has them (packed.ts)
   const get = async <T,>(f: string): Promise<T> => {
-    const r = await fetchJson(root + f, q);
+    const r = await fetchJson(root + f, q, /*copies=*/ undefined, watch);
     if (!r.ok) throw new Error(`game data ${version.id}/${f} is missing (HTTP ${r.status})`);
     return (await r.json()) as T;
   };
-  const [core, powersets, powers, boosts] = await Promise.all([
-    get<Core>('core.json'),
-    get<Powerset[]>('powersets.json'),
-    get<Power[]>('powers.json'),
-    get<BoostsFile>('boosts.json'),
-  ]);
+  let files: [Core, Powerset[], Power[], BoostsFile];
+  try {
+    files = await Promise.all([get<Core>('core.json'), get<Powerset[]>('powersets.json'), get<Power[]>('powers.json'), get<BoostsFile>('boosts.json')]);
+  } catch (e) {
+    // one file failed, so the load has: the others are not left under way with nobody waiting
+    watch?.cancel();
+    throw e;
+  }
+  const [core, powersets, powers, boosts] = files;
+  // given up just as its last file arrived: nobody waits for it, so its extra files aren't fetched
+  if (watch?.signal.aborted) throw new Error(`the download of ${version.id} was given up`);
   const gd = new GameData({ core, powersets, powers, boosts }, server.id);
   // the optional files beside the version folder: fetched now, never waited for
   const extra = (folder: string, take: (raw: unknown) => boolean, done?: () => void): void => {

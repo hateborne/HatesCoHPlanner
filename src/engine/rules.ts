@@ -8,6 +8,7 @@ import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Archetype, Power, Powerset } from '../data/types.ts';
 import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { canSlot, ioLevelRange, levelsAbove, shortName } from './enhance.ts';
+import { aimedAt, nobody, withProps, withSlotted } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { countAtLevel, countForLevel } from './schedule.ts';
 import { isExclusiveToggle } from './totals.ts';
@@ -181,11 +182,7 @@ export function respecOnlyNote(gd: GameData, at: Archetype): { title: string; te
  * @return The sets, in the data's order.
  */
 export function startingSets(gd: GameData, cat: string, at: Archetype): Powerset[] {
-  const ctx: EvalContext = {
-    ownsPower: () => false,
-    ownsSet: () => false,
-    prop: (n: string) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0),
-  };
+  const ctx = nobody((n) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0));
   // a level-1 power a player can buy: Thunderspy's client has no SetRequires, and hides its staff-only
   // sets (Organic Armor) by their powers' BuyRequires ("accesslevel char> 0 >") instead
   return gd
@@ -871,18 +868,17 @@ export class BuildRules {
     const cur = e.slots[slot];
     const curName = cur?.enh && cur.level <= last && e.level <= last ? shortName(gd.power(cur.enh.boost)).toLowerCase() : '';
     const inPower = others.map((o) => shortName(o).toLowerCase());
-    const ctx: EvalContext = {
-      ...base,
-      boostsSlotted: (n) => {
+    const ctx = withSlotted(base, {
+      all: (n) => {
         const k = n.toLowerCase();
         return (counts.get(k) ?? 0) - (k === curName ? 1 : 0);
       },
-      powerBoostsSlotted: (n) => inPower.filter((x) => x === n.toLowerCase()).length,
-    };
+      inPower: (n) => inPower.filter((x) => x === n.toLowerCase()).length,
+    });
     if (evalRequires(boost.slr, ctx)) return null;
 
     // which part failed: the same test with nothing else slotted, then also at level 50
-    const alone: EvalContext = { ...ctx, boostsSlotted: () => 0, powerBoostsSlotted: () => 0 };
+    const alone = withSlotted(ctx, { all: () => 0, inPower: () => 0 });
     if (evalRequires(boost.slr, alone)) {
       const named = new Set(boost.slr.map((t) => t.toLowerCase()));
       const where = this.entries().find((o) =>
@@ -890,7 +886,7 @@ export class BuildRules {
       );
       return where ? `Unique, also slotted in ${where.power.dn}` : 'Unique piece';
     }
-    if (evalRequires(boost.slr, { ...alone, prop: (n) => (n === 'level' ? MAX_LEVEL + 1 : base.prop(n)) })) return 'Needs level 50';
+    if (evalRequires(boost.slr, withProps(alone, (n) => (n === 'level' ? MAX_LEVEL + 1 : undefined)))) return 'Needs level 50';
     const classes = boost.slr.filter((t) => /^Class_/i.test(t)).map((t) => gd.archetypeByName.get(t.toLowerCase())?.dn ?? t);
     return classes.length ? `Only for ${classes.join(' or ')}` : 'Not slottable by this character';
   }
@@ -918,7 +914,7 @@ export interface CharacterTraits {
 function characterContext(gd: GameData, at: Archetype, who: CharacterTraits, level: number, owned: Set<number>, ownedSets: Set<number>): EvalContext {
   const origin = gd.core.origins.find((o) => o.id === who.origin);
   const align = toAlignment(who.alignment).toLowerCase();
-  return {
+  const self: EvalContext = {
     ownsPower: (name) => {
       const p = gd.powerByName.get(name.toLowerCase());
       return !!p && owned.has(p.id);
@@ -961,8 +957,9 @@ function characterContext(gd: GameData, at: Archetype, who: CharacterTraits, lev
           return 0;
       }
     },
-    targetEntType: 'critter',
   };
+  // until someone aims it (the totals at the character, a pet card at a pet), a power lands on a foe
+  return aimedAt(self, { type: 'critter', isSource: false });
 }
 
 /**
