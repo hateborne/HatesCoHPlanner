@@ -272,7 +272,9 @@ touches configuration or dependencies.
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
-bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+bump=<patch|minor|major>`); it publishes `main` only and runs one at a time. It goes to both
+GitHub Pages and the site's own domain unless a target is picked (`-f target=pages` or
+`-f target=domain`), which is for deploying one of them again after it failed.
 
 ## Versions and releases
 
