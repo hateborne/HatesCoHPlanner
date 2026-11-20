@@ -237,7 +237,7 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
       if (m) {
         // a link's address names its server (/HatesCoHPlanner/Homecoming/#b=...); a bare code is the
         // server's its game version belongs to (Homecoming's for a code from before servers)
-        const named = serverInLink(t, import.meta.env.BASE_URL);
+        const named = serverInLink(t, import.meta.env.BASE_URL, location.host);
         if (named.unknown) throw unknownServer(named.unknown);
         const code = await decodeShare(m[1]!);
         const b = withServer(code, shareServer(named, code.dataVersion));

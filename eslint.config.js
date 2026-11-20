@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'public/', 'IGNORE/', 'pipeline/', 'tools/', 'coverage/'] },
+  { ignores: ['dist/', 'dist-own/', 'node_modules/', 'public/', 'IGNORE/', 'pipeline/', 'tools/', 'coverage/'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

@@ -4,6 +4,7 @@ IGNORE/
 # Node / Vite
 node_modules/
 dist/
+dist-own/
 *.local
 .vite/
 coverage/

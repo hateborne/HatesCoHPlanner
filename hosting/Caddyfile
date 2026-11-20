@@ -1,0 +1,48 @@
+# The planner on its own domain: the files of the newest release, as they are (docs/hosting.md).
+# The release's files were built for the root path, so the address is cohplanner.hateborne.com/Homecoming/.
+{
+	servers {
+		# A visitor only ever asks for files, so a request arrives at once: a connection that sends
+		# its request slowly, or none at all, is dropped instead of held open.
+		timeouts {
+			read_header 10s
+			read_body 10s
+			idle 2m
+		}
+		max_header_size 32kb
+	}
+}
+
+cohplanner.hateborne.com {
+	root * /srv/planner/current
+
+	# As GitHub Pages answers: a file is asked for again after 10 minutes, so a new release reaches
+	# every visitor. Without it a browser guesses, and can keep an old page for days.
+	header Cache-Control "max-age=600"
+	header X-Content-Type-Options "nosniff"
+
+	# The release brings its own compressed copies (name.br, name.gz): nothing is compressed here,
+	# so a burst of requests for the game data costs no processor time.
+	file_server {
+		precompressed br gzip
+	}
+
+	handle_errors {
+		header X-Content-Type-Options "nosniff"
+
+		# An address with no file gets the site's own "not found" page. It sends on a server
+		# address written in another case, and a link made under GitHub Pages' /HatesCoHPlanner/ path.
+		@missing expression `{http.error.status_code} == 404`
+		handle @missing {
+			header Cache-Control "max-age=600"
+			rewrite * /404.html
+			file_server
+		}
+
+		# Any other error says what it is, and is not kept by the browser.
+		handle {
+			header Cache-Control "no-store"
+			respond "{http.error.status_code} {http.error.status_text}"
+		}
+	}
+}

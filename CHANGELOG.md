@@ -24,6 +24,10 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - The enhancement picker can put every piece in at your build's level or the set's top level, and raise them when the build levels further.
 - Ctrl+Click (or Select several on phones) picks several enhancements at once and fills the power's empty slots in one go, with their total shown after enhancement diversification.
 
+### Improved
+
+- The planner's game data is about two thirds smaller to download in recent versions of Firefox and Safari, so it opens faster there.
+
 ### Fixed
 
 - A page still loading after 20 seconds offers Try again instead of waiting forever, and a download problem is explained in plain words.
