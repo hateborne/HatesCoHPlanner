@@ -322,9 +322,9 @@ shows its power info on hover or keyboard focus (`useHover.petPower`), a long pr
 (`PhoneTipLayer`); a card cut short takes every wheel turn while it shows, at its end too
 (`Floating`'s `lock`, `lockedTurn`), so the pane under it never scrolls away, and one that fits lets
 the pane scroll. The pane closes on Escape or a click outside it, its pet's row included; the dimmed
-backdrop takes the click and passes it on to what lies under it (`elementFromPoint`, then `click()`),
-so a switch clicked there still switches, while the wheel, hovers and touches stay on the backdrop.
-A double-click's second click is ignored. It holds the keyboard focus while open, and stays open
+backdrop takes the click, and the wheel, hovers and touches, so a click outside only closes it (the
+owner's choice, as the enhancement picker's). A double-click's second click is ignored. It holds the
+keyboard focus while open, and stays open
 when the window crosses between the phone and desktop layouts. A pet's name in
 the totals glows under the pointer. A heading's lettering (`TitleText`) lets clicks through to the
 line under it, which its fill reaches over.
