@@ -11,6 +11,8 @@ src/
   version.ts                 the planner's release version (stamped by the deploy)
   data/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
+    packed.ts                the data files' brotli copies on GitHub Pages: fetchJson asks for a copy
+                             where the browser unpacks brotli itself, else for the file
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
@@ -59,6 +61,7 @@ src/
     importProblem.ts         import failures in plain words (ImportProblem), file reading
     library.ts               builds saved in the browser (IndexedDB)
     binary.ts                byte reader / writer helpers, size-capped decompression
+    limits.ts                IMPORT_LIMITS: every limit an import keeps to, by format
     fileName.ts              safe names for downloaded files
     shopping.ts              the set finder's shopping list as the browser keeps it (localStorage)
   state/store.ts             zustand store: data, current build, level-up flow, dialogs
@@ -139,6 +142,12 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
                              up, and the statistics in tables (npm run research)
 tools/                       standard-library Python decoders for client file formats
 scripts/release-version.mjs  the version a deploy publishes (plain Node; run by pages.yml)
+scripts/precompress.mjs      pre-compressed copies of a built site's text files (run by pages.yml
+                             on the build for the site's own domain)
+scripts/deploy-report.mjs    what a deploy did for each target, GitHub Pages and the domain (run by
+                             pages.yml's last job)
+hosting/                     the site's own domain (docs/hosting.md): Caddyfile, planner-update.sh
+                             and its systemd service and timer
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 .github/workflows/           ci.yml (pull request checks), pages.yml (tag a release and deploy main,
@@ -169,7 +178,14 @@ docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 **Loading.** The app fetches its game server's `versions.json` (Homecoming's is
 `public/data/versions.json`), then loads the game version the current build asks for (the default
 for a new build), with `?v=<hash>` against stale caches. The New Build screen's version picker
-switches versions; each version is fetched once per page. The version's pseudo-pet file is fetched
+switches versions; each version is fetched once per page. GitHub Pages sends a file gzip-compressed
+and nothing smaller, so its deploy puts a brotli copy beside each data file (`name.json.br`, about a
+third of what gzip makes of it; `scripts/precompress.mjs`) and marks its build (`HCP_BROTLI=1`).
+There the four files of a version are asked for by their copies in a browser that unpacks brotli
+itself (`fetchJson` in `src/data/packed.ts`); a browser that doesn't, and any copy that is missing,
+stalls (`COPY_STALL_MS`) or won't unpack or parse, gets the file exactly as before, so a copy
+never makes a load fail or read anything else. The copies exist in the published site only, never in `public/data`; the site's own
+domain needs none (its web server sends brotli to every browser, `docs/hosting.md`). The version's pseudo-pet file is fetched
 once those files have arrived and is never waited for (`loadGameData`): it is attached when it
 arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
@@ -191,7 +207,12 @@ Pages serves those addresses. It also writes `404.html` (`notFoundPage`): a serv
 another case or with more after it (`/HatesCoHPlanner/homecoming/x`) goes on to that server's page
 with its `#b=` code (`notFoundRedirect`, written into the page and allowed by its hash in the page's
 CSP); anything else gets a "not found" page linking to the planner, so an unknown server's link is
-never opened as Homecoming. On load, a share link opens on the server its address names (none:
+never opened as Homecoming. The site base is GitHub Pages' `/HatesCoHPlanner/` (`PAGES_BASE`)
+unless the build is told another (`HCP_BASE`, `siteBase` in `vite.config.ts`): the deploy's second
+build, for the site's own domain, has `/`, so its addresses are `/<path>/#b=<share code>`. There a
+link made on GitHub Pages still opens: its 404 page sends `/HatesCoHPlanner/<path>/` on to
+`/<path>/`, and a pasted one is read the same (`onThisSite`); on GitHub Pages both do exactly
+what they did (`docs/hosting.md`). On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
 unless the address names another server. After a long break (`RETURN_AFTER`, 4 hours without a
 click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; only a recorded time
@@ -204,7 +225,8 @@ remembered until something replaces it, and whatever would while it isn't open (
 an import, a saved build, a link pasted into the address bar) asks first: go ahead, "Open it", or
 Cancel, which Escape and Enter take (`askOverRemembered`, `askThreeWay`). A link someone else sent
 opens at once; one pasted into the address bar while the load's server list is open starts the load
-over with it. With no build, New Build opens on the server the address names; failing that, a link
+over with it, and one pasted while the load is still downloading is read when that load is done, as
+a link pasted into an open planner (`readPastedLink`). With no build, New Build opens on the server the address names; failing that, a link
 refused for what it holds (damaged, a build `checkBuild` refuses) opens New Build on its own server
 (the default for a damaged code, as every link at the site root did before servers) and says why;
 failing that, once `SERVERS` holds more than one, a visit asks in the server list dialog
@@ -226,6 +248,18 @@ from its address (`serverInLink`); a bare code opens on the server its game vers
 (Homecoming's for a code from before servers). A share code left in the address by a link that
 couldn't open is dropped once the address moves to another server, and the error screen leaves the
 address as it was, so Try again and a reload read the same link.
+
+When a download fails or stalls: a link whose server's version list won't load stops on the error
+screen (one fixed sentence, `LOAD_FAILED`; the details go to the console), and so does a build the
+player just asked to continue. Any other remembered build whose server's version list or data won't
+load is passed over, and so is one `checkBuild` can't read at all (said in a dialog): the next
+candidate, then New Build or the server list, so one server's files being down never keeps the
+player from the others, and a stored build can't hold every later load on the error screen. Nothing
+is removed from storage. The loading screen offers Try again after 20 seconds with no question on
+screen (`LoadingScreen` in `src/App.tsx`); nothing is cancelled, and `retryLoad` drops the version
+and data caches so the downloads are fetched anew. Only the newest `load()` shows what it loaded
+(`loadSeq`), and of two quick picks of a version or server on New Build the last one wins
+(`serverSeq`). `tests/loadfallbacks.test.ts` covers these.
 
 What a server offers is in its `SERVERS` entry: `midsDb` (MidsReborn's name for its database; none
 for Thunderspy) and `buildSave` (its client writes `/build_save` files; Thunderspy's doesn't). Without
@@ -281,11 +315,12 @@ calm generic message, with the details in the browser console. What an import co
 New import code throws `ImportProblem` for every failure the user can fix.
 
 **Import limits.** Everything imported comes from strangers, so no input may make the tab do
-unbounded work. Decompression stops at a ceiling (`MAX_INFLATED` in `src/io/binary.ts` for share
-links and `|MxDz;` codes, the 2 MB build-file size for `|MBD;` Brotli data), counts past any real
-build's are refused (picks, slots, granted powers, Mids power entries and sets), pasted text and
-files over 2 MB are refused, and a `.mbd` whose fields have the wrong types is reported as damaged
-(`isMbd`). Downloaded file names are cleaned (`src/io/fileName.ts`). `tests/importlimits.test.ts`
+unbounded work. Every limit is in one table, by format (`IMPORT_LIMITS` in `src/io/limits.ts`).
+Decompression stops at a ceiling (`inflated` for share links and `|MxDz;` codes, the 2 MB
+build-file size, `text`, for `|MBD;` Brotli data), counts past any real
+build's are refused (picks, slots, granted powers, Mids power entries and sets; a `/build_save`
+file's powers, slots and the lines its reader can't place), pasted text and files over 2 MB are
+refused, and a `.mbd` whose fields have the wrong types is reported as damaged (`isMbd`). Downloaded file names are cleaned (`src/io/fileName.ts`). `tests/importlimits.test.ts`
 covers these; new import code keeps to them. The published page also carries a
 Content-Security-Policy (`vite.config.ts`, built pages only): everything is loaded from the site
 itself, so a new outside resource needs the policy changed with it.

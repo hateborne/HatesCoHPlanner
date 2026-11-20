@@ -47,6 +47,11 @@ the project)
   What they open with is covered too: the ids files, the published version folders, `SERVERS`, the
   decoder (`src/io/share.ts`), version and server resolution (`src/data/versions.ts`,
   `src/data/servers.ts`, `shareServer`) and the load flow in `src/state/store.ts`.
+- The site's copy on its own domain (`docs/hosting.md`) is covered the same: its addresses (the
+  root and every server's `/<Server>/`), the links made there, and a GitHub Pages link opened there
+  with only its host changed. So are the two site bases (`PAGES_BASE`, `siteBase` in
+  `vite.config.ts`) and what reads a link across them (`serverInLink` with `onThisSite`, the 404
+  page's redirect).
 - A link must not fail where it opened before, in any condition: a slow or failed download of
   another server's files included.
 - A change that touches any of the above shows that links made before it still open the same
@@ -170,8 +175,8 @@ src/engine/     pure build rules: rules.ts (BuildRules), totals.ts, enhance.ts, 
                 petcards.ts and petstats.ts (the totals' Pets and Minions rows and pet pane);
                 finder/ (the set finder's engine: ranked swaps of sets into existing slots)
 src/io/         share.ts (#b= links), mids.ts, midsPatches.ts, buildtxt.ts, importProblem.ts,
-                library.ts (IndexedDB), binary.ts, fileName.ts, shopping.ts (the set finder's
-                shopping list in localStorage)
+                library.ts (IndexedDB), binary.ts, limits.ts (IMPORT_LIMITS), fileName.ts,
+                shopping.ts (the set finder's shopping list in localStorage)
 src/state/      store.ts (zustand: data, build, level-up flow, dialogs); finder.ts and
                 finderOpen.ts (the set finder's own state)
 src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, escape.ts
@@ -186,7 +191,8 @@ public/data/    generated game data per version, versions.json; <server>/ for ot
 public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its icons
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
 tools/          standard-library Python decoders for client file formats
-docs/           architecture.md, pipeline.md, releases.md, game-rules.md, exemplar-rules.md
+hosting/        the site's own domain: web server settings and the script that fetches each release
+docs/           architecture.md, pipeline.md, releases.md, hosting.md, game-rules.md, exemplar-rules.md
 ```
 
 ## How it works
@@ -201,6 +207,8 @@ Read the doc for the area you are changing:
   export, `pipeline.watch`, `pipeline.compare`, approximate versions, borrowed frames, the build
   research.
 - `docs/releases.md`: how a deploy picks, tags and stamps a version, and the players' changelog.
+- `docs/hosting.md`: the site's copy on its own domain: its short addresses, how a release reaches
+  it, and how its host is set up.
 - `docs/game-rules.md`: the engine rules already ported, with the source each comes from.
 
 Rules from those areas that hold for every change:
@@ -214,7 +222,8 @@ Rules from those areas that hold for every change:
 - Import failures the user can fix throw an `ImportProblem` in plain words, never raw error text;
   anything else gets one calm generic message, details in the console.
 - No input may make the tab do unbounded work: new import code keeps to the import limits
-  (`MAX_INFLATED`, 2 MB files and pasted text, count caps; `tests/importlimits.test.ts`). A new
+  (`IMPORT_LIMITS` in `src/io/limits.ts`: 2 MB files and pasted text, what a code may inflate to,
+  count caps; `tests/importlimits.test.ts`). A new
   outside resource needs the page's Content-Security-Policy (`vite.config.ts`) changed with it.
 - Every pop-up closes with Escape (`useEscape`), except a `tell` with `wait`. Questions use
   `askConfirm` / `askChoices` / `askThreeWay`; one-button messages use `tell`; refusals use
@@ -264,7 +273,9 @@ touches configuration or dependencies.
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
-bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+bump=<patch|minor|major>`); it publishes `main` only and runs one at a time. It goes to both
+GitHub Pages and the site's own domain unless a target is picked (`-f target=pages` or
+`-f target=domain`), which is for deploying one of them again after it failed.
 
 ## Versions and releases
 

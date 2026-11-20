@@ -10,7 +10,7 @@ import { addSlot, laterPick, moveLater, raiseToCap, rebookRespecSlots, setPick, 
 import { pieceName } from '../engine/enhance.ts';
 import { cleanName, cloneBuild, hasWork, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules, buildPairProblem, levelUpRespec, MAX_LEVEL } from '../engine/rules.ts';
-import { checkBuild } from '../engine/validate.ts';
+import { checkBuild, type Checked } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { describeImportFailure, ImportProblem, refusedBuild, unknownServer, wrongServer } from '../io/importProblem.ts';
 import { saveFirstText } from '../io/library.ts';
@@ -165,6 +165,11 @@ interface Store {
   /** Close the dialog: true for its OK button, 'alt' for askThreeWay's second, false to cancel. */
   closeConfirm(answer: boolean | 'alt'): void;
   load(): Promise<void>;
+  /**
+   * Load again from scratch: every download is fetched anew, so one that never answered no longer
+   * holds the page on its loading screen. The load before it, if still waiting, shows nothing.
+   */
+  retryLoad(): void;
   /** Start a new build's wizard; `respecTo` (0-based) makes it a Respec: every power first, then the slots. */
   startBuild(args: { name: string; at: number; origin: number; alignment: Alignment; primary: number; secondary: number; respecTo?: number }): void;
   setBuild(b: Build): void;
@@ -230,6 +235,14 @@ export const CONTINUE_BUILD = ':continue';
 const AWAY_AT_LOAD = returning(Date.now());
 // the answer to the return question, once given: Try again on the error screen keeps it
 let returnAnswer: string | null = null;
+// load() calls so far: only the newest may show what it loaded (retryLoad starts another while the
+// one before may still be waiting on its downloads)
+let loadSeq = 0;
+// a share link came into the address while the page was still loading: read once the load is done
+let linkWhileLoading = false;
+
+/** What the error screen says when the game data won't load (the details go to the console). */
+export const LOAD_FAILED = "Couldn't load the game data. Check your connection, then try again.";
 
 /** @return What ties patch notes to one build (they are dropped when another build opens; a rename keeps them). */
 function buildTag(b: Build): string {
@@ -262,8 +275,10 @@ const versionCache = new Map<string, Promise<GameVersions>>();
 function versionsFor(s: GameServer): Promise<GameVersions> {
   let p = versionCache.get(s.id);
   if (!p) {
-    p = loadVersions(dataRoot(s, import.meta.env.BASE_URL));
-    p.catch(() => versionCache.delete(s.id)); // a failed fetch may be retried
+    const made = loadVersions(dataRoot(s, import.meta.env.BASE_URL));
+    // a failed fetch may be retried (unless a retry already put a newer one in its place)
+    made.catch(() => versionCache.get(s.id) === made && versionCache.delete(s.id));
+    p = made;
     versionCache.set(s.id, p);
   }
   return p;
@@ -295,8 +310,10 @@ function dataFor(s: GameServer, v: GameVersion): Promise<GameData> {
   const key = `${s.id}/${v.id}`;
   let p = dataCache.get(key);
   if (!p) {
-    p = loadGameData(s, import.meta.env.BASE_URL, v);
-    p.catch(() => dataCache.delete(key)); // a failed fetch may be retried
+    const made = loadGameData(s, import.meta.env.BASE_URL, v);
+    // a failed fetch may be retried (unless a retry already put a newer one in its place)
+    made.catch(() => dataCache.get(key) === made && dataCache.delete(key));
+    p = made;
     dataCache.set(key, p);
   }
   return p;
@@ -492,7 +509,7 @@ function resumeLabel(b: Build, server: GameServer): ResumeLabel {
   return { build: name ? `Continue "${name}"` : 'Continue your last build', server: `on ${server.label}` };
 }
 
-// selectServer calls in flight: only the newest may show its server
+// New Build's data switches in flight (selectServer, selectVersion): only the newest may show its data
 let serverSeq = 0;
 
 /** @return The steps the level-up flow walks: a Respec's own order, else the leveling steps. */
@@ -1003,6 +1020,7 @@ export const useStore = create<Store>((set, get) => ({
       set({ server: s.id, versions, gd, steps: levelSteps(gd.core), build: undefined, patchNotes: null, menuOpen: false });
       return true;
     } catch (e) {
+      if (seq !== serverSeq) return false; // a switch already replaced: nothing to say
       // in plain words: the details go to the console
       console.error(`couldn't load ${s.id}'s game data`, e);
       get().notify(`Couldn't load ${s.label}'s game data. Check your connection, then try again.`);
@@ -1137,14 +1155,18 @@ export const useStore = create<Store>((set, get) => ({
     const { versions, gd } = get();
     const v = versions?.versions.find((x) => x.id === id);
     if (!v) return false;
+    // counted before anything else: picking the version already shown takes back a pick still loading
+    const seq = ++serverSeq;
     if (gd?.core.manifest.dataVersion === id) return true;
     const server = shownServer();
     try {
       const data = await dataFor(server, v);
-      if (get().server !== server.id) return false; // the server changed while it loaded
+      // left New Build while it loaded, the server changed, or a newer version or server was picked
+      if (get().view !== 'setup' || get().server !== server.id || seq !== serverSeq) return false;
       set({ gd: data, steps: levelSteps(data.core) });
       return true;
     } catch (e) {
+      if (seq !== serverSeq) return false; // a pick already replaced: nothing to say
       console.error(`couldn't load ${server.id}/${v.id}`, e);
       get().notify(`Couldn't load ${v.label}'s game data. Check your connection, then try again.`);
       return false;
@@ -1179,7 +1201,18 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  retryLoad() {
+    // a download that never answers stays in these as a pending promise
+    versionCache.clear();
+    dataCache.clear();
+    set({ view: 'loading' });
+    void get().load();
+  },
+
   async load() {
+    const run = ++loadSeq;
+    const stale = () => run !== loadSeq;
+    const read = location.hash; // the address's link as this load reads it
     try {
       // the server the address names (/HatesCoHPlanner/Homecoming/), if any
       const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
@@ -1201,6 +1234,7 @@ export const useStore = create<Store>((set, get) => ({
       ];
       let linkFailed: unknown; // why the address's share link couldn't be opened, if it couldn't
       let lastFailed: unknown; // why the remembered build couldn't be opened, if it couldn't
+      let lastUnreadable = false; // the remembered build made the check itself fail
       // a bad link falls back to the remembered build, then says so
       const tellLink = (opened: boolean) => {
         if (linkFailed === undefined) return;
@@ -1219,6 +1253,7 @@ export const useStore = create<Store>((set, get) => ({
           if (k === 0) linkFailed = e;
           continue;
         }
+        if (stale()) return;
         if (!raw) continue;
         if (k === 0) linkFor = serverOf(raw);
         const server = serverById(serverOf(raw));
@@ -1230,6 +1265,7 @@ export const useStore = create<Store>((set, get) => ({
         // reloaded tab keeps in its address) doesn't reopen unannounced: the server list asks first,
         // with a button that continues it. A link someone sent opens as always.
         if (AWAY_AT_LOAD && !asked && SERVERS.length > 1 && hasPicks(raw) && (k === 1 || (await isRemembered(link?.[1] ?? '', server.id)))) {
+          if (stale()) return; // a newer load asks for itself
           asked = true;
           prefetch(server, raw.dataVersion); // what Continue opens
           const id = returnAnswer ?? (await get().askServer(/*cancellable=*/ false, (named.server ?? lastServer() ?? server).id, resumeLabel(raw, server)));
@@ -1243,20 +1279,51 @@ export const useStore = create<Store>((set, get) => ({
           }
           continued = server;
         }
-        const versions = await versionsFor(server);
+        let versions: GameVersions;
+        try {
+          versions = await versionsFor(server);
+        } catch (e) {
+          // A link whose server's version list won't load stops on the error screen with its
+          // address as it was, so Try again reads the link again; so does a build the player just
+          // asked to continue (Try again keeps that answer). Any other remembered build's is left
+          // like one whose data won't load (below): its server being down must not keep the
+          // player from the others.
+          if (k === 0 || continued) throw e;
+          if (stale()) return;
+          console.error(`couldn't load ${server.id}'s version list for a remembered build`, e);
+          lastFailed = e;
+          continue;
+        }
+        if (stale()) return;
         const { version, missing } = resolveVersion(versions, typeof raw.dataVersion === 'string' ? raw.dataVersion : undefined);
         let gd: GameData;
         try {
           gd = await dataFor(server, version);
         } catch (e) {
+          if (stale()) return;
           // that version's data won't load (a network hiccup): try the next build, then New Build,
           // rather than stopping on the error screen
-          console.error(`couldn't load ${server.id}/${version.id} for a remembered build`, e);
+          console.error(`couldn't load ${server.id}/${version.id} for a ${k === 0 ? 'linked' : 'remembered'} build`, e);
           if (k === 0) linkFailed = e;
           else lastFailed = e;
           continue;
         }
-        const c = checkBuild(gd, raw);
+        if (stale()) return;
+        let c: Checked;
+        try {
+          c = checkBuild(gd, raw);
+        } catch (e) {
+          // a build the check itself can't read (it should refuse it, not throw): left like one it
+          // refuses, and said so, since a stored one would otherwise fail every load until the
+          // browser's site data is cleared
+          console.error(`couldn't check a ${k === 0 ? 'linked' : 'remembered'} build`, e);
+          if (k === 0) linkFailed = e;
+          else {
+            lastFailed = e;
+            lastUnreadable = true;
+          }
+          continue;
+        }
         if (!c.build) {
           // a build started but with no power picked yet (the address keeps it from New Build's
           // first screen) is nothing to open, not a broken link
@@ -1273,9 +1340,10 @@ export const useStore = create<Store>((set, get) => ({
         tellLink(true);
         return;
       }
-      // asked to continue a build that then couldn't open: say so (a link already says why), and show
-      // New Build on its server rather than asking again
-      if (continued && linkFailed === undefined && lastFailed !== undefined) {
+      // asked to continue a build that then couldn't open, or a remembered build the check couldn't
+      // read at all: say so (a link already says why), and show New Build on its server rather than
+      // asking again
+      if ((continued || lastUnreadable) && linkFailed === undefined && lastFailed !== undefined) {
         const f = describeImportFailure(lastFailed, "Your last build couldn't be opened", "Couldn't open your last build");
         void get().tell({ title: f.title, text: f.text });
       }
@@ -1299,6 +1367,7 @@ export const useStore = create<Store>((set, get) => ({
       picked ??= defaultServer();
       const versions = await versionsFor(picked);
       const gd = await dataFor(picked, resolveVersion(versions, undefined).version);
+      if (stale()) return;
       // a link that couldn't open stays in the address for a reload to retry, but only on its own
       // server: shown on another (a bare Thunderspy code whose data didn't load, Homecoming picked)
       // the address would name the wrong server for it. At the site root it moves to its own
@@ -1313,7 +1382,18 @@ export const useStore = create<Store>((set, get) => ({
       set({ server: picked.id, versions, gd, steps: levelSteps(gd.core), build: undefined, view: 'setup' });
       tellLink(false);
     } catch (e) {
-      set({ view: 'error', error: e instanceof Error ? e.message : String(e) });
+      if (stale()) return;
+      // in plain words: the details go to the console
+      console.error("couldn't load the planner", e);
+      set({ view: 'error', error: LOAD_FAILED });
+    } finally {
+      // a link pasted into the address while this load ran changed only the hash, and the load had
+      // read the address already: read it now, as a link pasted into an open planner (it asks
+      // before it replaces a build with work)
+      if (!stale() && linkWhileLoading && get().versions) {
+        linkWhileLoading = false;
+        if (location.hash !== read) readPastedLink();
+      }
     }
   },
 
@@ -1694,69 +1774,75 @@ if (typeof document !== 'undefined') {
   });
 }
 
-// A share link pasted into a tab that already has the planner open only changes the hash (the
-// page does not reload), so load the linked build when the hash changes too
-if (typeof window !== 'undefined') {
-  window.addEventListener('hashchange', () => {
-    const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
-    const { versions, loadBuild, view, serverAsk, closeServerAsk, load } = useStore.getState();
-    if (!m) return;
-    if (!versions) {
-      // still loading: a question the load asked (the first visit's server list, the return
-      // question) would hold the link back until a reload, so the load starts over with it
-      if (view === 'loading' && serverAsk && !serverAsk.cancellable) {
-        closeServerAsk(null); // the waiting load stops there
-        void load();
-      }
-      return;
-    }
-    const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
-    // for the server the address names (or, naming none, the one the code's game version belongs to)
-    const decoding = named.unknown
-      ? Promise.reject(unknownServer(named.unknown))
-      : decodeShare(m[1]!).then((d) => withServer(d, shareServer(named, d.dataVersion)));
-    void decoding.then(
-      async (b) => {
-        // the build open now, after the waits above (it may have changed meanwhile)
-        const current = useStore.getState().build;
-        // the link's name isn't checked yet: shown as the planner would keep it
-        const incoming = cleanName(b.name) ? `"${cleanName(b.name)}"` : 'another build';
-        // as the Build menu does: a build with work is only replaced once the user agrees (and the
-        // link to the build already open replaces nothing)
-        if (current && hasWork(current)) {
-          if ((await encodeShare(current)) === m[1] && serverOf(current) === serverOf(b)) return;
-          const keep = await saveFirstText(current);
-          const ok = await useStore.getState().askConfirm({
-            title: 'Replace the current build?',
-            text: `The link opens ${incoming}, replacing ${current.name ? `"${current.name}"` : 'your current build'}.${keep}`,
-            okLabel: 'Replace',
-          });
-          if (!ok) {
-            // keep the address on the build that stays open (on its own server's address)
-            void encodeShare(current).then((code) => history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}#b=${code}`));
-            return;
-          }
-        } else if (!current) {
-          const answer = await askOverRemembered('Replace your last build?', `Opening the link's build ${incoming}`, 'Replace');
-          if (answer !== 'go') {
-            // Cancel stays on New Build, and the declined link leaves the address so a reload
-            // doesn't open it, unless the address has moved on to another link since. A question a
-            // newer dialog replaced decided nothing: the link stays. Opening the remembered build
-            // instead writes that build's code.
-            if (answer === 'cancel' && location.hash === `#b=${m[1]}`) history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}`);
-            return;
-          }
+/**
+ * Read the share link in the address into the open planner: a link pasted into a tab that already
+ * has the planner open only changes the hash (the page does not reload), so the linked build loads
+ * when the hash changes too.
+ *
+ * While the page is still loading there is nothing to open it on yet. A question the load asked
+ * (the first visit's server list, the return question) would hold the link back until a reload, so
+ * the load starts over with it; a load still downloading reads it once it is done (load()).
+ */
+export function readPastedLink(): void {
+  const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
+  const { versions, loadBuild, view, serverAsk, closeServerAsk, load } = useStore.getState();
+  if (!m) return;
+  if (!versions) {
+    if (view !== 'loading') return; // the error screen: Try again reads the address
+    if (serverAsk && !serverAsk.cancellable) {
+      closeServerAsk(null); // the waiting load stops there
+      void load();
+    } else linkWhileLoading = true;
+    return;
+  }
+  const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
+  // for the server the address names (or, naming none, the one the code's game version belongs to)
+  const decoding = named.unknown
+    ? Promise.reject(unknownServer(named.unknown))
+    : decodeShare(m[1]!).then((d) => withServer(d, shareServer(named, d.dataVersion)));
+  void decoding.then(
+    async (b) => {
+      // the build open now, after the waits above (it may have changed meanwhile)
+      const current = useStore.getState().build;
+      // the link's name isn't checked yet: shown as the planner would keep it
+      const incoming = cleanName(b.name) ? `"${cleanName(b.name)}"` : 'another build';
+      // as the Build menu does: a build with work is only replaced once the user agrees (and the
+      // link to the build already open replaces nothing)
+      if (current && hasWork(current)) {
+        if ((await encodeShare(current)) === m[1] && serverOf(current) === serverOf(b)) return;
+        const keep = await saveFirstText(current);
+        const ok = await useStore.getState().askConfirm({
+          title: 'Replace the current build?',
+          text: `The link opens ${incoming}, replacing ${current.name ? `"${current.name}"` : 'your current build'}.${keep}`,
+          okLabel: 'Replace',
+        });
+        if (!ok) {
+          // keep the address on the build that stays open (on its own server's address)
+          void encodeShare(current).then((code) => history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}#b=${code}`));
+          return;
         }
-        await loadBuild(b); // loads its game version, checks it first, and says when it can't
-      },
-      (e: unknown) => {
-        // a bad link leaves the current build alone, and says why
-        const f = describeImportFailure(e, "The share link couldn't be opened", "Couldn't open the share link");
-        void useStore.getState().tell({ title: f.title, text: f.text });
-      },
-    );
-  });
+      } else if (!current) {
+        const answer = await askOverRemembered('Replace your last build?', `Opening the link's build ${incoming}`, 'Replace');
+        if (answer !== 'go') {
+          // Cancel stays on New Build, and the declined link leaves the address so a reload
+          // doesn't open it, unless the address has moved on to another link since. A question a
+          // newer dialog replaced decided nothing: the link stays. Opening the remembered build
+          // instead writes that build's code.
+          if (answer === 'cancel' && location.hash === `#b=${m[1]}`) history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}`);
+          return;
+        }
+      }
+      await loadBuild(b); // loads its game version, checks it first, and says when it can't
+    },
+    (e: unknown) => {
+      // a bad link leaves the current build alone, and says why
+      const f = describeImportFailure(e, "The share link couldn't be opened", "Couldn't open the share link");
+      void useStore.getState().tell({ title: f.title, text: f.text });
+    },
+  );
 }
+
+if (typeof window !== 'undefined') window.addEventListener('hashchange', readPastedLink);
 
 /**
  * What a switch changed in another tab of the site means for this one (the storage event).

@@ -27,9 +27,14 @@ in plain words. The full notes of every release are on the repository's GitHub R
 ### Improved
 
 - Sound and music now start switched off, and are only downloaded once you switch them on (the Sound and Music buttons in the bottom bar, or the phone menu); the planner remembers your choice.
+- The planner's game data is about two thirds smaller to download in recent versions of Firefox and Safari, so it opens faster there.
 
 ### Fixed
 
+- A page still loading after 20 seconds offers Try again instead of waiting forever, and a download problem is explained in plain words.
+- When one server's game data can't be downloaded, your last build on it no longer keeps you from the other servers.
+- A share link pasted into the address bar while the planner is still loading opens once it has loaded, and one opened over the enhancement picker closes the picker.
+- A /build_save file with far too many lines is refused at once instead of freezing the page.
 - Mask Presence and Shinobi no longer add their strike-from-stealth damage bonus to the totals as if it were always on.
 - A Stalker's Genetic Corruption no longer lowers your own damage in the totals: its damage debuff is for enemies.
 - Clicking the level 1 orb on the build screen now lets you change both level 1 powers, primary then secondary, and a power marked in red can be clicked to change it.

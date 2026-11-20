@@ -488,8 +488,9 @@ export function MenuBar({ skin, x, y, wd: wdIn, sc: scIn = S, text, onClick, onH
   const ov = phone ? Math.max(2 * getDevPx(), snap(2 * sc)) : 0;
   const band = snap(2 * sc);
   const frameBridge = (key: string, l: number, r: number) =>
-    [0, fH - band].map((t) => (
-      <div key={`${key}${t}`} className="abs" style={{ left: l, top: t, width: r - l, height: band, overflow: 'hidden', zIndex: 5 }}>
+    // keyed by place, not by offset: at a height no taller than the band both rows sit at 0
+    [0, fH - band].map((t, row) => (
+      <div key={`${key}${row}`} className="abs" style={{ left: l, top: t, width: r - l, height: band, overflow: 'hidden', zIndex: 5 }}>
         <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_mid${tt}`, skin)} x={0} y={-t} w={r - l} h={fH} tint="#ffffff" />
       </div>
     ));
