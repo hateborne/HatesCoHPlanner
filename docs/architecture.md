@@ -141,6 +141,8 @@ tools/                       standard-library Python decoders for client file fo
 scripts/release-version.mjs  the version a deploy publishes (plain Node; run by pages.yml)
 scripts/precompress.mjs      pre-compressed copies of a built site's text files (run by pages.yml
                              on the build for the site's own domain)
+scripts/deploy-report.mjs    what a deploy did for each target, GitHub Pages and the domain (run by
+                             pages.yml's last job)
 hosting/                     the site's own domain (docs/hosting.md): Caddyfile, planner-update.sh
                              and its systemd service and timer
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source

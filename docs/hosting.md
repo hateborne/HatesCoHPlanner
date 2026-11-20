@@ -37,10 +37,14 @@ settings are in `hosting/`.
 - The deploy (`.github/workflows/pages.yml`) builds the site a second time for `/`, writes
   pre-compressed copies of its text files beside them (`scripts/precompress.mjs`: `name.br` and
   `name.gz`), packs it as `planner-site.tar.gz` with a `.sha256`, and attaches both to the GitHub
-  release. Only a deploy that makes a new version does this: one that keeps the version changes
-  nothing the site is built from.
-- The second build is part of the deploy, not beside it: if it fails, nothing is released or
-  deployed, on either site. The two never drift apart unnoticed.
+  release. It does so for every new version, and again for the newest release while that still has
+  no site file (its first try failed).
+- The domain is a target of its own in the deploy (`docs/releases.md`, "The deploy's stages"). If
+  its build or its file fails, GitHub Pages still goes live, and the other way round; the run is
+  marked failed and its summary says which site was left behind. So the two can differ for a
+  while, but never unnoticed.
+- The deploy's last stage waits until the domain serves the new build (up to 20 minutes), and
+  fails if it never does: the only sign of a host that is stuck.
 - On the host a timer runs `planner-update` every 10 minutes (`hosting/planner-update.sh`). It asks
   GitHub for the newest release's name. When that is newer than the release the site is on, it
   downloads the file, checks it against its checksum, unpacks it beside the site and switches over

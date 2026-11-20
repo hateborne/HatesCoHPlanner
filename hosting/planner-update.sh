@@ -120,7 +120,9 @@ fetch() {
   [ "$free" -ge "$MIN_FREE_KB" ] || fail "the disk has too little room for $name; the site stays as it was"
   code="$(curl -sSL "${HTTPS[@]}" --max-time 900 --max-filesize "$MAX_BYTES" -o "$tmp/$ASSET" -w '%{http_code}' "$REPO/releases/download/$name/$ASSET")" \
     || fail "the download of release $name failed; the site stays as it was"
-  # a release from before the site was attached to releases has no file: nothing to do
+  # No file: the deploy attaches it some minutes after the release is published, and not at all
+  # when its stage for this site failed (or for a release from before there was one). Nothing to
+  # do but look again next time.
   if [ "$code" = 404 ]; then
     say "release $name carries no site file; the site stays on ${now:-nothing}"
     return 0
