@@ -244,6 +244,23 @@ describe('powerInfo: "all damage" and "all defense" groups (markAllTypes, both c
   });
 });
 
+describe('powerInfo: a Constant or Expression effect without a stored magnitude reads 1', () => {
+  // the pipeline leaves a magnitude of 1 out (export.py); the client shows the template's own
+  // (modGetMagnitudeAndDuration), as the Singularity's Gravitational Pull shows "1.00 magnitude repel"
+  const lines = (name: string, cls: string) =>
+    powerInfo(gd, gd.archetypeByName.get(cls)!, gd.powerByName.get(name.toLowerCase())!, 49, null).effects.map((e) => segText(e.line));
+
+  it("Inner Will's mez lines (Expressions)", () => {
+    const l = lines('Blaster_Support.Martial_Manipulation.Inner_Will', 'class_blaster');
+    expect(l).toContain('1.00 magnitude stun for 30.00s on self');
+    expect(l.some((t) => t.startsWith('0.00 magnitude'))).toBe(false);
+  });
+
+  it("Domination's meter (a Constant)", () => {
+    expect(lines('Inherent.Inherent.Domination_Meter', 'class_dominator')).toContain('+100.00% meter on self');
+  });
+});
+
 describe('tickCount', () => {
   it("counts the client's floor(duration / period) + 1", () => {
     expect(tickCount(15, 0.2)).toBe(76); // Rain of Fire's pet

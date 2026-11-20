@@ -416,9 +416,11 @@ function magAndDur(table: number, m: Mod): { mag: number; dur: number } {
       return { mag: m.mag ?? 1, dur: val };
     case 'Magnitude':
       return { mag: val, dur: m.dur ?? 0 };
+    // the mod's own magnitude, as for Duration: the pipeline leaves it out when it is 1 (the
+    // Singularity's Gravitational Pull reads "1.00 magnitude repel" in game)
     case 'Constant':
     case 'Expression':
-      return { mag: m.mag ?? 0, dur: m.dur ?? 0 };
+      return { mag: m.mag ?? 1, dur: m.dur ?? 0 };
     default:
       return { mag: 0, dur: 0 };
   }

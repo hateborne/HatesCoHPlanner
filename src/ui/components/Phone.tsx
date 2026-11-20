@@ -27,6 +27,9 @@ export interface PhoneGeom {
 
 // side margin of the phone panels
 export const PHONE_PAD = 10;
+// the build and slot screens' power lists: how far below the row after a set's last power the next
+// set's first power sits, room for its heading and frame top clear of the rings hanging above
+export const PHONE_SET_GAP = 36;
 // tab rows: centers this far apart, each tab's touch box this tall
 export const PHONE_TAB_ROW = 58;
 // the description box's height
