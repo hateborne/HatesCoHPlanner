@@ -6,7 +6,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { delimiter, extname, join } from 'node:path';
-import { MAX_BUILD_FILE } from '../src/io/importProblem.ts';
+import { IMPORT_LIMITS } from '../src/io/limits.ts';
 
 // the largest saved page read for share codes (a forum page with its markup)
 const MAX_PAGE = 8_000_000;
@@ -113,7 +113,7 @@ export function readCorpus(paths: string[]): { items: CorpusItem[]; skips: Corpu
       skips.otherFiles++;
       continue;
     }
-    if (statSync(file).size > (page ? MAX_PAGE : MAX_BUILD_FILE)) {
+    if (statSync(file).size > (page ? MAX_PAGE : IMPORT_LIMITS.text)) {
       skips.tooBig++;
       continue;
     }

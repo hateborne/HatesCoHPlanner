@@ -260,7 +260,8 @@ export function petEntries(gd: GameData, rules: BuildRules, b: Build, level: num
   const ordered = [...st.entries].sort((x, y) => x.level - y.level);
   // an upgrade switched off in the overview applies to no pet
   const upgrades = ordered.filter((e) => st.isOn(e));
-  const upgradeCtx: EvalContext = { ...st.ctx, targetEntType: 'critter' };
+  // an upgrade is aimed at a pet: its target is a critter, and not its caster (the totals' context says it is)
+  const upgradeCtx: EvalContext = { ...st.ctx, targetEntType: 'critter', targetIsSource: false };
   const nameOfVillain = (vd: string) => Object.values(file.pets).find((k) => k.vd?.toLowerCase() === vd.toLowerCase())?.dn ?? vd;
 
   const rows = new Map<string, { entry: PetEntry; variants: Variant[] }>();

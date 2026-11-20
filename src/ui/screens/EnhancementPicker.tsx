@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { BoostSet, Power } from '../../data/types.ts';
@@ -121,6 +122,21 @@ const FULL_SCALE = 1;
 // a chosen piece's colour: its row's ring, and the count of chosen pieces beside a set's name
 const CHOSEN_COLOR = '#00d919';
 
+// Hovers on the picker's greyed level box so far (0: none yet). Kept out of the picker's own state,
+// so a hover redraws only the label that glows, not the whole picker and its list.
+const useCapGlow = create<{ n: number }>(() => ({ n: 0 }));
+
+/** The Max Slot/Build Level label: each hover on the greyed level box makes it glow twice. */
+function CapLabel() {
+  const n = useCapGlow((g) => g.n);
+  // keyed by the count: each hover restarts the glow
+  return (
+    <span key={n} className={n ? 'cap-glow' : undefined}>
+      Max Slot/Build Level
+    </span>
+  );
+}
+
 /**
  * Enhancement picker for one slot: only enhancements the game would accept in this power for
  * this origin (power_IsValidBoost) and this build (one of each set piece per power, unique,
@@ -190,8 +206,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   const selBoost = sel ? gd.powerById.get(sel.boost) : undefined;
   // the level box's text while it is being typed (null: show the chosen pieces' level)
   const [lvlDraft, setLvlDraft] = useState<string | null>(null);
-  // hovers on the greyed level box so far: each one makes the Max Slot/Build Level label glow twice (0: none yet)
-  const [capGlow, setCapGlow] = useState(0);
+  useEffect(() => useCapGlow.setState({ n: 0 }), []); // a picker just opened has had no hover yet
   // phones: taps add and remove pieces, as Ctrl+Click does
   const [several, setSeveral] = useState(false);
   // "FULL!" over the pieces clicked past the slots there are
@@ -492,10 +507,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
         <SetTitle x={G.title[0]!} y={G.title[1]!} size={titleSize} width={titleW} text={titleText} skin={skin} />
         <div className="abs body-text" style={{ left: fx + fw - SWITCH_W - (phone ? 12 : 30), top: fy + (phone ? 10 : 26), width: SWITCH_W, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: phone ? 6 : 0, fontSize: phone ? 15 : 18, color: '#cfe8ff' }}>
           <label title={AT_CAP_HELP} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: phone ? 32 : undefined }}>
-            {/* keyed by the glow: each hover on the greyed level box restarts it */}
-            <span key={capGlow} className={capGlow ? 'cap-glow' : undefined}>
-              Max Slot/Build Level
-            </span>{' '}
+            <CapLabel />{' '}
             {/* the overview's totals switch, a little smaller */}
             <SwitchBox skin={skin} on={atCap} size={capSw} onChange={toggleCap} testId="picker:atcap" />
           </label>
@@ -572,7 +584,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                     style={atCap ? { opacity: 0.55 } : undefined}
                     title={atCap ? 'Max Slot/Build Level is on' : undefined}
                     // greyed by Max Slot/Build Level: pointing at it makes that switch's label glow twice
-                    onMouseEnter={atCap ? () => setCapGlow((n) => n + 1) : undefined}
+                    onMouseEnter={atCap ? () => useCapGlow.setState((g) => ({ n: g.n + 1 })) : undefined}
                   >
                     Level{' '}
                     <input

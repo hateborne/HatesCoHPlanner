@@ -175,8 +175,8 @@ src/engine/     pure build rules: rules.ts (BuildRules), totals.ts, enhance.ts, 
                 petcards.ts and petstats.ts (the totals' Pets and Minions rows and pet pane);
                 finder/ (the set finder's engine: ranked swaps of sets into existing slots)
 src/io/         share.ts (#b= links), mids.ts, midsPatches.ts, buildtxt.ts, importProblem.ts,
-                library.ts (IndexedDB), binary.ts, fileName.ts, shopping.ts (the set finder's
-                shopping list in localStorage)
+                library.ts (IndexedDB), binary.ts, limits.ts (IMPORT_LIMITS), fileName.ts,
+                shopping.ts (the set finder's shopping list in localStorage)
 src/state/      store.ts (zustand: data, build, level-up flow, dialogs); finder.ts and
                 finderOpen.ts (the set finder's own state)
 src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, escape.ts
@@ -222,7 +222,8 @@ Rules from those areas that hold for every change:
 - Import failures the user can fix throw an `ImportProblem` in plain words, never raw error text;
   anything else gets one calm generic message, details in the console.
 - No input may make the tab do unbounded work: new import code keeps to the import limits
-  (`MAX_INFLATED`, 2 MB files and pasted text, count caps; `tests/importlimits.test.ts`). A new
+  (`IMPORT_LIMITS` in `src/io/limits.ts`: 2 MB files and pasted text, what a code may inflate to,
+  count caps; `tests/importlimits.test.ts`). A new
   outside resource needs the page's Content-Security-Policy (`vite.config.ts`) changed with it.
 - Every pop-up closes with Escape (`useEscape`), except a `tell` with `wait`. Questions use
   `askConfirm` / `askChoices` / `askThreeWay`; one-button messages use `tell`; refusals use
@@ -274,7 +275,9 @@ touches configuration or dependencies.
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
-bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+bump=<patch|minor|major>`); it publishes `main` only and runs one at a time. It goes to both
+GitHub Pages and the site's own domain unless a target is picked (`-f target=pages` or
+`-f target=domain`), which is for deploying one of them again after it failed.
 
 ## Versions and releases
 

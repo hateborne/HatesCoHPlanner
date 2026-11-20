@@ -287,7 +287,13 @@ export function Overview({ skin }: { skin: Skin }) {
   // for the room it takes: the list itself is drawn by PatchNotesBox / PatchNotesBar
   const notes = useStore((s) => s.patchNotes);
   const notesH = notes ? patchNotesHeight(notes.lines) : 0;
-  const [picker, setPicker] = useState<{ entry: BuildEntry; slot: number } | null>(null);
+  // the enhancement picker, with the build it was opened on: a build opened over it (a share link
+  // pasted into the address) closes it, since its power and slot belong to the build before
+  const [opened, setPicker] = useState<{ entry: BuildEntry; slot: number; on: Build } | null>(null);
+  const picker = opened && opened.on === build ? opened : null;
+  useEffect(() => {
+    if (opened && opened.on !== build) setPicker(null);
+  }, [opened, build]);
   const [tab, setTab] = useState(0);
   const [oaOpen, setOaOpen] = useState(false);
   useEscape(() => setOaOpen(false), oaOpen);
@@ -488,7 +494,7 @@ export function Overview({ skin }: { skin: Skin }) {
                         blink: h ? orbLevel : st.blink === orbLevel ? null : st.blink,
                       }))
               }
-              onClick={() => setPicker({ entry: e, slot: i })}
+              onClick={() => setPicker({ entry: e, slot: i, on: build })}
               onLongPress={
                 g.phone
                   ? (pt) => useHover.setState({ press: boost ? { kind: 'enh', entry: e, slot: i, ...pt } : { kind: 'text', text: `Empty slot (level ${s.level + 1}).\nTap it to choose an enhancement.`, ...pt } })

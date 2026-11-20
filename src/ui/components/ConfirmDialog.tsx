@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore, type DialogLink } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { SKINS } from '../skin/skin.ts';
@@ -72,7 +73,7 @@ function y0(stageH: number, h: number): number {
 }
 
 export function ConfirmDialog() {
-  const { confirm, closeConfirm, setConfirmChoice, build } = useStore();
+  const { confirm, closeConfirm, setConfirmChoice, build } = useStore(useShallow((s) => ({ confirm: s.confirm, closeConfirm: s.closeConfirm, setConfirmChoice: s.setConfirmChoice, build: s.build })));
   const stage = useStage();
   useEscape(() => closeConfirm(false), !!confirm); // closeConfirm waits out a countdown
   // a countdown message: redrawn while OK is locked, its seconds left on the button

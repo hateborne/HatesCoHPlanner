@@ -3,28 +3,15 @@
  * server to use before reopening the player's own build, with a button that continues it. Within
  * the window, and for a link someone else sent, nothing changes: the build opens straight away.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NAME_MAX, newBuild, type Build } from '../src/engine/build.ts';
 import { encodeShare } from '../src/io/share.ts';
-import { LAST_SERVER_KEY } from '../src/state/lastServer.ts';
 import { LAST_USED_KEY, markUsed, RETURN_AFTER, returning, trackUse } from '../src/state/lastUsed.ts';
 import { loadData, pid, sid } from './helpers/data.ts';
+import { memory, visit } from './helpers/visit.ts';
 
 const BASE = import.meta.env.BASE_URL; // the site base the store builds its addresses on ("/" under vitest)
 const gd = loadData();
-
-/** @return A Storage stand-in backed by a map. */
-function memory(init: Record<string, string> = {}) {
-  const m = new Map(Object.entries(init));
-  return {
-    getItem: (k: string) => m.get(k) ?? null,
-    setItem: vi.fn((k: string, v: string) => void m.set(k, v)),
-    removeItem: (k: string) => void m.delete(k),
-    m,
-  };
-}
 
 /** @return A Homecoming build with one power picked (one with none is nothing to open). */
 function sample(name: string, power = 'Blaster_Ranged.Fire_Blast.Flares'): Build {
@@ -101,42 +88,6 @@ describe('a page load after a long break', () => {
     vi.unstubAllGlobals();
     vi.resetModules();
   });
-
-  /**
-   * Load the planner the way a browser would: the site's files served from public/, the given
-   * storage, and the address given.
-   *
-   * @param opts What the browser holds: the remembered build, the last use, the address.
-   * @return The store, the local storage and the history stand-in.
-   */
-  async function visit(opts: { build?: Build; lastUsed?: number; path?: string; hash?: string; lastServer?: string; failing?: RegExp }) {
-    const local = memory({
-      ...(opts.build ? { 'hcp.current': JSON.stringify(opts.build) } : {}),
-      ...(opts.lastUsed !== undefined ? { [LAST_USED_KEY]: String(opts.lastUsed) } : {}),
-      ...(opts.lastServer ? { [LAST_SERVER_KEY]: opts.lastServer } : {}),
-    });
-    const history = { state: null, replaceState: vi.fn() };
-    vi.stubGlobal('location', { pathname: opts.path ?? BASE, hash: opts.hash ?? '', search: '' });
-    vi.stubGlobal('localStorage', local);
-    vi.stubGlobal('sessionStorage', memory());
-    vi.stubGlobal('history', history);
-    vi.stubGlobal('fetch', (url: string) => {
-      const rel = String(url).split('?')[0]!.slice(BASE.length);
-      if (opts.failing?.test(rel)) return Promise.reject(new TypeError('Failed to fetch'));
-      try {
-        const body = readFileSync(join(process.cwd(), 'public', rel), 'utf-8');
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(body) as unknown) });
-      } catch {
-        return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error('404')) });
-      }
-    });
-    vi.resetModules();
-    const { useStore, CONTINUE_BUILD } = await import('../src/state/store.ts');
-    const done = useStore.getState().load();
-    // wait for the load to settle or to ask
-    await vi.waitFor(() => expect(useStore.getState().serverAsk !== null || useStore.getState().view !== 'loading').toBe(true));
-    return { useStore, CONTINUE_BUILD, local, history, done };
-  }
 
   const away = Date.now() - RETURN_AFTER - 60_000;
 
