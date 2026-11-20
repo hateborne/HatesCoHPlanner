@@ -47,6 +47,11 @@ the project)
   What they open with is covered too: the ids files, the published version folders, `SERVERS`, the
   decoder (`src/io/share.ts`), version and server resolution (`src/data/versions.ts`,
   `src/data/servers.ts`, `shareServer`) and the load flow in `src/state/store.ts`.
+- The site's copy on its own domain (`docs/hosting.md`) is covered the same: its addresses (the
+  root and every server's `/<Server>/`), the links made there, and a GitHub Pages link opened there
+  with only its host changed. So are the two site bases (`PAGES_BASE`, `siteBase` in
+  `vite.config.ts`) and what reads a link across them (`serverInLink` with `onThisSite`, the 404
+  page's redirect).
 - A link must not fail where it opened before, in any condition: a slow or failed download of
   another server's files included.
 - A change that touches any of the above shows that links made before it still open the same
@@ -186,7 +191,8 @@ public/data/    generated game data per version, versions.json; <server>/ for ot
 public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its icons
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
 tools/          standard-library Python decoders for client file formats
-docs/           architecture.md, pipeline.md, releases.md, game-rules.md, exemplar-rules.md
+hosting/        the site's own domain: web server settings and the script that fetches each release
+docs/           architecture.md, pipeline.md, releases.md, hosting.md, game-rules.md, exemplar-rules.md
 ```
 
 ## How it works
@@ -201,6 +207,8 @@ Read the doc for the area you are changing:
   export, `pipeline.watch`, `pipeline.compare`, approximate versions, borrowed frames, the build
   research.
 - `docs/releases.md`: how a deploy picks, tags and stamps a version, and the players' changelog.
+- `docs/hosting.md`: the site's copy on its own domain: its short addresses, how a release reaches
+  it, and how its host is set up.
 - `docs/game-rules.md`: the engine rules already ported, with the source each comes from.
 
 Rules from those areas that hold for every change:

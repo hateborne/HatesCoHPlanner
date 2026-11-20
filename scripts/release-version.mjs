@@ -29,6 +29,7 @@ const NOT_THE_SITE = [
   // public/, which counts
   /^(pipeline|tools|research)\//,
   /^scripts\//, // CI and deploy helpers
+  /^hosting\//, // the web server settings and update script of the site's own domain
   /\.md$/i, // README, AGENTS, CLAUDE, CHANGELOG and other notes
   /^(\.gitignore|\.gitattributes|LICENSE|eslint\.config\.[cm]?[jt]s|playwright(\.built)?\.config\.[cm]?[jt]s|tsconfig\.e2e\.json)$/,
 ];

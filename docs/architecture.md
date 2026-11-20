@@ -11,6 +11,8 @@ src/
   version.ts                 the planner's release version (stamped by the deploy)
   data/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
+    packed.ts                the data files' brotli copies on GitHub Pages: fetchJson asks for a copy
+                             where the browser unpacks brotli itself, else for the file
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
@@ -139,6 +141,12 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
                              up, and the statistics in tables (npm run research)
 tools/                       standard-library Python decoders for client file formats
 scripts/release-version.mjs  the version a deploy publishes (plain Node; run by pages.yml)
+scripts/precompress.mjs      pre-compressed copies of a built site's text files (run by pages.yml
+                             on the build for the site's own domain)
+scripts/deploy-report.mjs    what a deploy did for each target, GitHub Pages and the domain (run by
+                             pages.yml's last job)
+hosting/                     the site's own domain (docs/hosting.md): Caddyfile, planner-update.sh
+                             and its systemd service and timer
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 .github/workflows/           ci.yml (pull request checks), pages.yml (tag a release and deploy main,
@@ -169,7 +177,14 @@ docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 **Loading.** The app fetches its game server's `versions.json` (Homecoming's is
 `public/data/versions.json`), then loads the game version the current build asks for (the default
 for a new build), with `?v=<hash>` against stale caches. The New Build screen's version picker
-switches versions; each version is fetched once per page. The version's pseudo-pet file is fetched
+switches versions; each version is fetched once per page. GitHub Pages sends a file gzip-compressed
+and nothing smaller, so its deploy puts a brotli copy beside each data file (`name.json.br`, about a
+third of what gzip makes of it; `scripts/precompress.mjs`) and marks its build (`HCP_BROTLI=1`).
+There the four files of a version are asked for by their copies in a browser that unpacks brotli
+itself (`fetchJson` in `src/data/packed.ts`); a browser that doesn't, and any copy that is missing,
+stalls (`COPY_STALL_MS`) or won't unpack or parse, gets the file exactly as before, so a copy
+never makes a load fail or read anything else. The copies exist in the published site only, never in `public/data`; the site's own
+domain needs none (its web server sends brotli to every browser, `docs/hosting.md`). The version's pseudo-pet file is fetched
 once those files have arrived and is never waited for (`loadGameData`): it is attached when it
 arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
@@ -191,7 +206,12 @@ Pages serves those addresses. It also writes `404.html` (`notFoundPage`): a serv
 another case or with more after it (`/HatesCoHPlanner/homecoming/x`) goes on to that server's page
 with its `#b=` code (`notFoundRedirect`, written into the page and allowed by its hash in the page's
 CSP); anything else gets a "not found" page linking to the planner, so an unknown server's link is
-never opened as Homecoming. On load, a share link opens on the server its address names (none:
+never opened as Homecoming. The site base is GitHub Pages' `/HatesCoHPlanner/` (`PAGES_BASE`)
+unless the build is told another (`HCP_BASE`, `siteBase` in `vite.config.ts`): the deploy's second
+build, for the site's own domain, has `/`, so its addresses are `/<path>/#b=<share code>`. There a
+link made on GitHub Pages still opens: its 404 page sends `/HatesCoHPlanner/<path>/` on to
+`/<path>/`, and a pasted one is read the same (`onThisSite`); on GitHub Pages both do exactly
+what they did (`docs/hosting.md`). On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
 unless the address names another server. After a long break (`RETURN_AFTER`, 4 hours without a
 click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; only a recorded time
