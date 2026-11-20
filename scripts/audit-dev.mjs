@@ -6,19 +6,12 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Advisories the check lets through, by GHSA id. Remove an entry once a fixed release is in the
-// lockfile: the check warns when an allowed advisory no longer shows up.
-export const ALLOWED = [
-  {
-    id: 'GHSA-fc5q-39xc-vjpf',
-    package: 'picomatch',
-    added: '2026-11-17',
-    why:
-      'ReDoS through attacker-written glob patterns; no fixed release yet (every picomatch up to ' +
-      '4.0.7). Only the build and test tools use it (Vite via fdir and tinyglobby, Vitest), with ' +
-      'the fixed patterns of our own config; nothing of it ships.',
-  },
-];
+// Advisories the check lets through, by GHSA id: { id, package, added (YYYY-MM-DD), why }, the why
+// saying what uses the package and why the advisory doesn't reach the site (audit-dev.d.mts).
+// Remove an entry once a fixed release is in the lockfile, or the advisory no longer lists the
+// version in use: the check warns when an allowed advisory no longer shows up. None is allowed
+// now (picomatch's GHSA-fc5q-39xc-vjpf, allowed 2026-11-17, stopped showing up for 4.0.7).
+export const ALLOWED = [];
 
 // the severities that fail the check
 const FAILING = new Set(['high', 'critical']);

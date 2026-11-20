@@ -25,8 +25,9 @@ Conventions that sessions here have tended to miss. They apply on top of AGENTS.
   where work is, and always name the branch and PR a change went to.
 - A new server's work (pipeline, data, its restrictions, its difference report, its tests)
   belongs in that server's feature PR. Homecoming fixes found along the way get their own PR.
-- Deploy only when asked, after the merge's CI on main has finished:
-  `gh workflow run pages.yml --ref main -f bump=<the bump named in the PR>`.
+- Deploy only when asked: `gh workflow run pages.yml --ref main -f bump=<the bump named in the PR>`.
+  Nothing runs on main after a merge to wait for: the pull request's checks ran on a branch up to
+  date with main, and the deploy runs the tests and the build again before it publishes.
 - Cleaning up after merges: pull main, then delete the local branches and worktrees whose PRs
   have merged.
 
