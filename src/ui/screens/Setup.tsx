@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { PHONE_PAD, PHONE_TAB_ROW, phoneDesc, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
 import { useStage } from '../components/Stage.tsx';
 import type { GameData } from '../../data/gamedata.ts';
@@ -64,7 +65,7 @@ function lowestRespec(gd: GameData | undefined, at: Archetype | undefined): numb
  * name. Finish starts the level 1 power picks.
  */
 export function Setup() {
-  const { gd, build, startBuild, toOverview, versions, selectVersion, advancedRespec, setAdvancedRespec } = useStore();
+  const { gd, build, startBuild, toOverview, versions, selectVersion, advancedRespec, setAdvancedRespec } = useStore(useShallow((s) => ({ gd: s.gd, build: s.build, startBuild: s.startBuild, toOverview: s.toOverview, versions: s.versions, selectVersion: s.selectVersion, advancedRespec: s.advancedRespec, setAdvancedRespec: s.setAdvancedRespec })));
   // Back returns to a build only when there is one to see: a build left on its first power screen
   // has no picks, and its overview would be empty with nothing to continue
   const hasPicks = !!build?.picks.some((p) => p);

@@ -258,8 +258,9 @@ export const TotalsPanel = memo(function TotalsPanel({
     return <Row key={key ?? props.label} {...rest} />;
   };
   const section = (id: string, title: string, rows: () => ReactNode) => {
-    const body = rows();
-    // a pet's stats show no section with nothing in it
+    // a closed section's rows are not built; a pet's stats build them all the same, as they show
+    // no section with nothing in it
+    const body = openSec[id] || nonZero ? rows() : null;
     if (nonZero && Array.isArray(body) && !body.some(Boolean)) return null;
     return (
       <div key={id}>

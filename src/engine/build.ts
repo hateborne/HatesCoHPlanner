@@ -19,11 +19,12 @@ export const ALIGNMENTS: Alignment[] = ['Hero', 'Villain', 'Praetorian'];
  * Fold any alignment name (ours, a Mids one, or one saved before the alignments were condensed)
  * into the three the planner uses.
  *
- * @param a Alignment name, any case; unknown or missing names count as Hero.
+ * @param a Alignment name, any case; unknown or missing names, and anything that isn't text (a
+ *   stored build's field may hold anything), count as Hero.
  * @return Hero, Villain or Praetorian.
  */
-export function toAlignment(a: string | undefined): Alignment {
-  switch ((a ?? '').toLowerCase()) {
+export function toAlignment(a: unknown): Alignment {
+  switch (typeof a === 'string' ? a.toLowerCase() : '') {
     case 'villain':
     case 'rogue':
       return 'Villain';

@@ -148,6 +148,11 @@ export function noBuildSave(s: ServerName, writers: readonly ServerName[]): Impo
 /** Largest file the import reads: build files are a few KB to a few hundred KB of text. */
 export const MAX_BUILD_FILE = 2_000_000;
 
+/** @return The problem to report for text too long to be a build (pasted text, a file's text). */
+export function tooLong(): ImportProblem {
+  return new ImportProblem("it's too long to be a build (over 2 MB of text)", 'Check that it is the right text: a share code or build file is small.');
+}
+
 /**
  * Read a file the user opened or dropped for importing.
  *
