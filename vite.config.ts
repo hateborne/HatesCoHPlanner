@@ -143,7 +143,13 @@ const RELEASE = release();
  * @return Their file names without the extension, sorted.
  */
 function uiSounds(): string[] {
-  return readdirSync(new URL('./public/assets/sounds', import.meta.url))
+  let files: string[];
+  try {
+    files = readdirSync(new URL('./public/assets/sounds', import.meta.url));
+  } catch {
+    throw new Error('public/assets/sounds is missing: the interface sounds are part of the site (the data pipeline writes them)');
+  }
+  return files
     .filter((f) => f.endsWith('.ogg') && !f.includes('menumusic'))
     .map((f) => f.slice(0, -'.ogg'.length))
     .sort();

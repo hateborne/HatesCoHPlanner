@@ -26,7 +26,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ### Improved
 
-- Sound and music now start switched off, and are only downloaded once you switch them on (the Sound and Music buttons in the bottom bar, or the phone menu); the planner remembers your choice.
+- Sound and music now start switched off, and are only downloaded once you switch them on (the Sound and Music buttons in the bottom bar, or the phone menu).
 - The planner's game data is about two thirds smaller to download in recent versions of Firefox and Safari, so it opens faster there.
 
 ### Fixed

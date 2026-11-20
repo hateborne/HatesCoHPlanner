@@ -330,11 +330,14 @@ store; Music reads as any switch does), so a first visit downloads no sound at a
 is the largest file the site has (2 to 5 MB a track) and used to start on the first click. While
 Sound is on, the 59 interface sounds (1.5 MB together) are fetched ahead of their first play, a few
 at a time, so none lags (`loadSounds` in `src/ui/sound.ts`): at once when Sound is switched on, and
-once the page is up for a visitor who left it on. They are kept as object URLs and played from
+once the page is up for a visitor who left it on. Switched off part way, no further download
+starts (the few under way finish), and the rest are taken up when it is on again; a sound heard
+before its turn is not fetched a second time. They are kept as object URLs and played from
 memory (hence `blob:` in the policy's `media-src`). The list of their names is read from
 `public/assets/sounds/` at build time (`__HCP_UI_SOUNDS__` in `vite.config.ts`), so it can't fall
-out of step with the files; a browser that can't play Ogg Vorbis fetches none. The music's one
-track (the alignment's on screen) is fetched when it first plays. `tests/sound.test.ts` covers
+out of step with the files; a browser that can't play Ogg Vorbis fetches none. The music has
+a track for each alignment's skin, and each is fetched when it first plays (so up to three, as the
+alignment on screen changes). `tests/sound.test.ts` covers
 these.
 
 **Engine.** `BuildRules` (`src/engine/rules.ts`) answers every question the screens ask: what can

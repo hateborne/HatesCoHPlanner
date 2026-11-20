@@ -3,10 +3,10 @@
  * under assets/sounds/) and the login-screen music, each with its own remembered on/off switch
  * in the store.
  *
- * Both start off, and nothing is downloaded for a switch that is off. While Sound is on, every
+ * Both start off, and no download starts for a switch that is off. While Sound is on, every
  * interface sound is fetched ahead of its first play (loadSounds): at once when it is switched on,
- * and once the page is up for a visitor who left it on. The music's one track is fetched when it
- * first plays.
+ * and once the page is up for a visitor who left it on. The music has a track for each skin, and
+ * each is fetched when it first plays.
  */
 import { useStore } from '../state/store.ts';
 import type { SkinName } from './skin/skin.ts';
@@ -23,6 +23,9 @@ const missing = new Set<string>(); // names with no file (e.g. N_Archetype_Class
 // sounds fetched ahead of their first play, each as an object URL of its bytes: played from memory,
 // with no download and no cache check when first heard
 const loaded = new Map<string, string>();
+// sounds first heard straight from the site, before their turn to be fetched ahead: the browser
+// has them by then, so they are not fetched a second time
+const direct = new Set<string>();
 // how many are fetched at a time, so they never crowd out the page's own downloads
 const LOAD_AT_ONCE = 4;
 let loading = false; // a loadSounds run is under way
@@ -44,18 +47,20 @@ function playsOgg(): boolean {
  * Fetch every interface sound not fetched yet, a few at a time, so none lags when it first plays.
  *
  * Only while Sound is on: called with it off it fetches nothing, and switched off part way it
- * stops, leaving the rest for the next time it is on. A sound that fails to download is left for
- * its first play, which fetches it as before.
+ * starts no further download (the few under way finish), leaving the rest for the next time it is
+ * on. A sound that fails to download is left for its first play, which fetches it as before.
  *
  * @return A promise settled when the run is over (for tests; callers don't wait).
  */
 export function loadSounds(): Promise<void> {
   if (loading || useStore.getState().muted || !playsOgg()) return Promise.resolve();
   loading = true;
-  const queue = UI_SOUNDS.filter((n) => !loaded.has(n));
+  const queue = UI_SOUNDS.filter((n) => !loaded.has(n) && !direct.has(n));
   const fetchNext = async (): Promise<void> => {
-    for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
-      if (useStore.getState().muted) return;
+    // a name is taken only while Sound is on, so switching it off part way loses none
+    while (queue.length && !useStore.getState().muted) {
+      const name = queue.shift()!;
+      if (direct.has(name)) continue;
       try {
         const r = await fetch(url(name));
         if (r.ok) loaded.set(name, URL.createObjectURL(await r.blob()));
@@ -66,6 +71,9 @@ export function loadSounds(): Promise<void> {
   };
   return Promise.all(Array.from({ length: LOAD_AT_ONCE }, fetchNext)).then(() => {
     loading = false;
+    // Sound was switched off and on again while this run was winding down (the switch found a run
+    // under way and started none): what it left is taken up now
+    if (queue.length && !useStore.getState().muted) return loadSounds();
   });
 }
 
@@ -82,7 +90,9 @@ export function play(name: string, opts?: { noInterrupt?: boolean }): void {
     let a = cache.get(name);
     if (!a) {
       // from memory when it was fetched ahead, else straight from the site
-      a = new Audio(loaded.get(name.toLowerCase()) ?? url(name));
+      const ahead = loaded.get(name.toLowerCase());
+      if (!ahead) direct.add(name.toLowerCase());
+      a = new Audio(ahead ?? url(name));
       a.volume = 0.6;
       a.addEventListener('error', () => missing.add(name), { once: true });
       cache.set(name, a);
