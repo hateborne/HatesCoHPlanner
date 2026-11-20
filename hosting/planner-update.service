@@ -1,0 +1,41 @@
+# Fetches the planner's newest release (hosting/planner-update.sh, installed as
+# /usr/local/bin/planner-update). Started by planner-update.timer. See docs/hosting.md.
+[Unit]
+Description=Fetch the planner's newest release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=planner
+Group=planner
+ExecStart=/usr/local/bin/planner-update
+
+# It reaches GitHub and writes its own folder; it can do nothing else on this host.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/planner
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0022
+
+# An update never takes the processor or the memory from the web server.
+Nice=10
+CPUQuota=50%
+MemoryMax=256M
+TimeoutStartSec=20min

@@ -1,0 +1,11 @@
+# Looks for a new planner release every 10 minutes (planner-update.service). See docs/hosting.md.
+[Unit]
+Description=Look for a new planner release
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+RandomizedDelaySec=1min
+
+[Install]
+WantedBy=timers.target

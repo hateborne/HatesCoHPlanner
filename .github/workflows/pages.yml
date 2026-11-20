@@ -78,10 +78,36 @@ jobs:
         env:
           HCP_VERSION: ${{ steps.version.outputs.version }}
           HCP_COMMIT: ${{ github.sha }}
-      # (no configure-pages step: the site's base path is fixed in vite.config.ts)
+      # (no configure-pages step: this build's base path is GitHub Pages' own, the default in vite.config.ts)
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
+      # The same site for its own domain (docs/hosting.md): built for the root path, given
+      # pre-compressed copies of its text files, and packed into one file with its checksum. The
+      # release carries both, and the host there fetches them. Only a new version gets them: a
+      # deploy under a version that exists already changes nothing the site is built from.
+      - name: Build and pack the site for its own domain
+        if: steps.version.outputs.fresh == 'true'
+        env:
+          HCP_BASE: /
+          HCP_VERSION: ${{ steps.version.outputs.version }}
+          HCP_COMMIT: ${{ github.sha }}
+        run: |
+          npx vite build --outDir dist-own
+          node scripts/precompress.mjs dist-own
+          tar -czf planner-site.tar.gz -C dist-own .
+          sha256sum planner-site.tar.gz > planner-site.tar.gz.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.version.outputs.fresh == 'true'
+        with:
+          name: own-domain-site
+          path: |
+            planner-site.tar.gz
+            planner-site.tar.gz.sha256
+          if-no-files-found: error
+          # a re-run of this job replaces the earlier upload instead of failing on its name
+          overwrite: true
+          retention-days: 7
 
   # tag the new version and publish its notes (the changelog's new lines for players, then the pull
   # requests merged since the last release); skipped when the commit already carries a version
@@ -93,15 +119,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      # the site packed for its own domain, and its checksum (the build job's last steps)
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: own-domain-site
       - name: Tag the release and publish its notes
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
           PREVIOUS: ${{ needs.build.outputs.previous }}
           NOTES: ${{ needs.build.outputs.notes }}
-        # gh puts --notes above the generated list; with no new changelog lines the list stands alone
+        # gh puts --notes above the generated list; with no new changelog lines the list stands alone.
+        # The two files after the tag are attached to the release, which is published only once
+        # both are up: the newest release always has its site file.
         run: |
-          set -- "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
+          set -- "v${VERSION}" planner-site.tar.gz planner-site.tar.gz.sha256 --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
           if [ -n "${NOTES}" ]; then set -- "$@" --notes "${NOTES}"; fi
           gh release create "$@"
 

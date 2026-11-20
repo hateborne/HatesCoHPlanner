@@ -17,7 +17,8 @@ When you hand back a pull request, say which bump it calls for, so the owner can
 - The deploy picks the version (`scripts/release-version.mjs`): the newest `vX.Y.Z` tag, bumped as
   picked. It refuses to run without a bump, and refuses before any version tag exists. A commit that
   already carries a version deploys again under it, with no new tag (re-running an older release's
-  deploy puts that release back live). A new version goes only to main's newest commit, so re-running
+  deploy puts that release back live on GitHub Pages; the site's own domain goes back by hand only,
+  `docs/hosting.md`). A new version goes only to main's newest commit, so re-running
   an old deploy that failed before it was tagged is refused once main has moved on: start a new one.
 - A deploy of changes the site is not built from keeps the newest version, whatever bump was picked:
   no new tag, no release, the same number in the footer (next section).
@@ -29,6 +30,9 @@ When you hand back a pull request, say which bump it calls for, so the owner can
   last one. So a failed deploy can't let another build take the same number. If that job fails,
   nothing was deployed: re-run all jobs (a fresh build sees whether the tag was made, and reuses it
   if so; if main has moved on and no tag was made, start a new deploy).
+- The release also carries the site built for its own domain (`planner-site.tar.gz` and its
+  `.sha256`): the host there fetches it within 10 minutes of the release (`docs/hosting.md`). The
+  release is published only once both files are attached.
 - The footer names the version after the planner's name, as plain text. The crash page and the
   browser console name it with its commit, and Mids exports carry it in `BuiltWith.Version`
   (`0.0.0` from a dev build; imports ignore it). Each version's notes are on the repository's
@@ -50,7 +54,8 @@ main's tip with the newest version's commit, file by file (`affectsSite` in
   A file nobody thought of errs toward a new version, never toward a changed site under an old
   number.
 - **Doesn't count:** `docs/` and every `.md` file outside `src/` and `public/`; `tests/` and `e2e/`
-  with their configuration; `.github/` (CI and the deploy workflow); `scripts/`; the pipeline's and
+  with their configuration; `.github/` (CI and the deploy workflow); `scripts/`; `hosting/` (the web
+  server settings of the site's own domain); the pipeline's and
   the build research's own code, ids files and reports (`pipeline/`, `tools/`, `research/`: what
   they make lands in `public/`, which counts); `.claude/`; the lint configuration, `.gitignore`, `.gitattributes`, `LICENSE`.
 - With only such changes since the newest version, the deploy publishes main under that version
