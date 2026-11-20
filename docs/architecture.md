@@ -27,6 +27,7 @@ src/
     build.ts                 Build / Pick / Slot model, newBuild()
     rules.ts                 BuildRules: availability, picks, auto-granted powers, slots, issues
     requires.ts              the game's RPN requirement evaluator
+    context.ts               the contexts it evaluates with, built from parts (aimedAt: the target, whole)
     schedule.ts              pick / slot / pool / epic level schedules
     enhance.ts               enhancement values, ED, origin and set validity, set rarity, help text
     setbonus.ts, totals.ts   set bonuses (rule of 5) and the totals panel

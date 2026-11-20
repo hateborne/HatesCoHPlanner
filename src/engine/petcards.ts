@@ -28,6 +28,7 @@ import type { Build } from './build.ts';
 import { powerStrength } from './enhance.ts';
 import { petStats, type FieldPet, type OwnerPower, type PetStatsInput } from './petstats.ts';
 import { powerInfo, prettyDuration, type BaseAndEnhanced, type InfoEffect, type RunAs } from './powerinfo.ts';
+import { aimedAt, nobody, withModes, withOwner, withProps } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
 import { earnedBonuses } from './setbonus.ts';
@@ -193,17 +194,13 @@ const classOf = (at: Archetype, v: Variant): string => (v.pseudo ? at.n : (v.kin
  */
 function petCtxOf(cls: string, at: Archetype, level: number, modes: ReadonlySet<string>): EvalContext {
   const isClass = (name: string) => name.startsWith('arch') || name.startsWith('rank') || name === 'class';
-  return {
-    ownsPower: () => false,
-    ownsSet: () => false,
-    prop: (name) => (isClass(name) ? cls : name === 'level' ? level + 1 : 0),
-    ownerProp: (name) => (isClass(name) ? at.n : 0),
-    inMode: (name) => {
-      const n = name.toLowerCase();
-      return modes.has(n) || (n.startsWith('k') && modes.has(n.slice(1)));
-    },
-    targetEntType: 'critter',
-  };
+  const pet = nobody((name) => (isClass(name) ? cls : name === 'level' ? level + 1 : 0));
+  // until a card aims it (petStats: at the pet itself, or at another), its powers land on a foe
+  const run = withModes(aimedAt(pet, { type: 'critter', isSource: false }), (name) => {
+    const n = name.toLowerCase();
+    return modes.has(n) || (n.startsWith('k') && modes.has(n.slice(1)));
+  });
+  return withOwner(run, (name) => (isClass(name) ? at.n : 0));
 }
 
 /**
@@ -251,17 +248,16 @@ export function petEntries(gd: GameData, rules: BuildRules, b: Build, level: num
   // the creator's combat level decides which of a summon's pets spawn (`combatlevel source>`); a
   // pet's target is a critter, and a test of which one (Soul Extraction's fallen henchman) is taken
   // as met: the row says which it must be
-  const spawnCtx: EvalContext = {
-    ...st.ctx,
-    prop: (n) => (n === 'combatlevel' ? level + 1 : st.ctx.prop(n)),
-    targetVillain: () => true,
-    targetEntType: 'critter',
-  };
+  // (whether that target is the caster is left as the totals have it: the creator casts the summon)
+  const spawnCtx = aimedAt(
+    withProps(st.ctx, (n) => (n === 'combatlevel' ? level + 1 : undefined)),
+    { type: 'critter', isSource: true, villain: () => true },
+  );
   const ordered = [...st.entries].sort((x, y) => x.level - y.level);
   // an upgrade switched off in the overview applies to no pet
   const upgrades = ordered.filter((e) => st.isOn(e));
   // an upgrade is aimed at a pet: its target is a critter, and not its caster (the totals' context says it is)
-  const upgradeCtx: EvalContext = { ...st.ctx, targetEntType: 'critter', targetIsSource: false };
+  const upgradeCtx = aimedAt(st.ctx, { type: 'critter', isSource: false });
   const nameOfVillain = (vd: string) => Object.values(file.pets).find((k) => k.vd?.toLowerCase() === vd.toLowerCase())?.dn ?? vd;
 
   const rows = new Map<string, { entry: PetEntry; variants: Variant[] }>();
@@ -481,14 +477,13 @@ function upgradedPowers(gd: GameData, file: HenchmenFile, kind: PetKind, entries
   let last = '';
   for (let pass = 0; pass < MAX_UPGRADE_PASSES; pass++) {
     const on = modesOf(powers);
-    const petCtx: EvalContext = {
-      ...ctx,
-      targetVillain: (name) => name.toLowerCase() === vd,
-      inMode: (name) => {
+    // the upgrade's caster aimed at this kind of pet (not its caster), in the modes its powers so far set
+    const thisPet = (prop?: (name: string) => number | undefined): EvalContext =>
+      withModes(aimedAt(ctx, { type: 'critter', isSource: false, villain: (name) => name.toLowerCase() === vd, prop }), (name) => {
         const n = name.toLowerCase();
         return on.has(n) || (n.startsWith('k') && on.has(n.slice(1)));
-      },
-    };
+      });
+    const petCtx = thisPet();
     const next = new Map(own);
     const nextCond = new Map<string, { power: Power; when: string }>();
     for (const e of entries) {
@@ -509,7 +504,9 @@ function upgradedPowers(gd: GameData, file: HenchmenFile, kind: PetKind, entries
           const tests = meterTests(chain);
           if (!gives || !tests.length) return;
           const meters = new Map(tests.map((t) => [t.name, t.op.startsWith('>') ? t.value + 1e-3 : t.value - 1e-3]));
-          if (!chain.every((r) => evalRequires(r as string[], { ...petCtx, targetProp: (n) => meters.get(n) }))) return;
+          // the same pet with its meters just past their marks
+          const marked = thisPet((n) => meters.get(n));
+          if (!chain.every((r) => evalRequires(r as string[], marked))) return;
           const when = `while its ${tests.map((t) => `${t.shown} is ${t.op.startsWith('>') ? 'above' : 'below'} ${t.value}`).join(' and ')}`;
           for (const p of ids) {
             const had = nextCond.get(p.n);
