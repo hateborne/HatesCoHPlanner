@@ -11,6 +11,8 @@ src/
   version.ts                 the planner's release version (stamped by the deploy)
   data/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
+    packed.ts                the data files' brotli copies on GitHub Pages: fetchJson asks for a copy
+                             where the browser unpacks brotli itself, else for the file
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
@@ -175,7 +177,14 @@ docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 **Loading.** The app fetches its game server's `versions.json` (Homecoming's is
 `public/data/versions.json`), then loads the game version the current build asks for (the default
 for a new build), with `?v=<hash>` against stale caches. The New Build screen's version picker
-switches versions; each version is fetched once per page. The version's pseudo-pet file is fetched
+switches versions; each version is fetched once per page. GitHub Pages sends a file gzip-compressed
+and nothing smaller, so its deploy puts a brotli copy beside each data file (`name.json.br`, about a
+third of what gzip makes of it; `scripts/precompress.mjs`) and marks its build (`HCP_BROTLI=1`).
+There the four files of a version are asked for by their copies in a browser that unpacks brotli
+itself (`fetchJson` in `src/data/packed.ts`); a browser that doesn't, and any copy that is missing,
+stalls (`COPY_STALL_MS`) or won't unpack or parse, gets the file exactly as before, so a copy
+never makes a load fail or read anything else. The copies exist in the published site only, never in `public/data`; the site's own
+domain needs none (its web server sends brotli to every browser, `docs/hosting.md`). The version's pseudo-pet file is fetched
 once those files have arrived and is never waited for (`loadGameData`): it is attached when it
 arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,

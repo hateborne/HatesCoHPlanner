@@ -90,6 +90,27 @@ describe('precompress', () => {
     expect(readdirSync(dir).sort()).toEqual(['archive.gz', 'data.json']);
   });
 
+  it('writes only the kind of copy asked for (GitHub Pages gets brotli alone: it makes gzip itself)', async () => {
+    const dir = folder();
+    const p = join(dir, 'data.json');
+    const text = JSON.stringify(Array.from({ length: 500 }, (_, i) => ({ i, text: 'the same words again' })));
+    writeFileSync(p, text);
+    const both = await precompress(dir);
+    expect(readdirSync(dir).sort()).toEqual(['data.json', 'data.json.br', 'data.json.gz']);
+    // brotli alone: the gzip copy an earlier run left goes too
+    const br = await precompress(dir, ['br']);
+    expect(readdirSync(dir).sort()).toEqual(['data.json', 'data.json.br']);
+    expect(brotliDecompressSync(readFileSync(`${p}.br`)).toString('utf8')).toBe(text);
+    expect([br.files, br.br, br.gz]).toEqual([1, both.br, 0]);
+    const gz = await precompress(dir, ['gz']);
+    expect(readdirSync(dir).sort()).toEqual(['data.json', 'data.json.gz']);
+    expect([gz.br, gz.gz]).toEqual([0, both.gz]);
+    // a kind that isn't one, or none, is refused before anything is touched
+    await expect(precompress(dir, ['zip'])).rejects.toThrow(/"br", "gz" or both/);
+    await expect(precompress(dir, [])).rejects.toThrow(/"br", "gz" or both/);
+    expect(readdirSync(dir).sort()).toEqual(['data.json', 'data.json.gz']);
+  });
+
   it('writes no copy that would be larger than its file', async () => {
     const dir = folder();
     // bytes with no pattern to them, under a name that would otherwise get copies
