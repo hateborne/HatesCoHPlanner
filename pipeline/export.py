@@ -639,7 +639,7 @@ class Exporter:
         @param a The decoded mod.
         @param hidden A group around it is HideFromInfo.
         @param skipped Why mods are left out, counted.
-        @return {"p", "def"?, "hid"?, "dur"?, "boosts"?, "pseudo"? | "cls"}, or None for a mod left
+        @return {"p", "def"?, "hid"?, "dur"?, "boosts"?, "mods"?, "pseudo"? | "cls"}, or None for a mod left
             out: no params, no powers, a real pet (a power that isn't Auto) or no class.
         """
         par = ent_create_param(a.get("Params"), self.L.ent_create_layout)
@@ -666,6 +666,10 @@ class Exporter:
             o["dur"] = num(a["Duration"])
         if "CopyBoosts" in flags:
             o["boosts"] = 1
+        # the pet gets a copy of its creator's strength mods when it is made: the villain def's flag
+        # (character_CreatePet), or the mod's own on a client that has one (Homecoming's)
+        if "CopyCreatorMods" in flags or (vdef is not None and vdef.get("CopyCreatorMods")):
+            o["mods"] = 1
         if "PseudoPet" in flags:
             o["pseudo"] = 1
             return o

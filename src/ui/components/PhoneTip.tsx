@@ -1,5 +1,6 @@
 import type { GameData } from '../../data/gamedata.ts';
 import type { Archetype } from '../../data/types.ts';
+import type { BuildRules } from '../../engine/rules.ts';
 import { useEscape } from '../escape.ts';
 import { useHover, type PressTip } from '../hover.ts';
 import type { Skin } from '../skin/skin.ts';
@@ -23,14 +24,15 @@ const close = () => useHover.setState({ press: null });
  *
  * @param props.at The build's archetype (the detailed numbers and enhancement values).
  * @param props.level 0-based level the numbers are shown at (the build's last level).
+ * @param props.rules Rules view of the build on screen (its damage boosts, for a power's info).
  */
-export function PhoneTipLayer({ gd, skin, at, level }: { gd: GameData; skin: Skin; at: Archetype; level: number }) {
+export function PhoneTipLayer({ gd, skin, at, level, rules }: { gd: GameData; skin: Skin; at: Archetype; level: number; rules: BuildRules }) {
   const press = useHover((h) => h.press);
   if (!press) return null;
-  return <PhoneTip gd={gd} skin={skin} at={at} level={level} press={press} />;
+  return <PhoneTip gd={gd} skin={skin} at={at} level={level} rules={rules} press={press} />;
 }
 
-function PhoneTip({ gd, skin, at, level, press }: { gd: GameData; skin: Skin; at: Archetype; level: number; press: PressTip }) {
+function PhoneTip({ gd, skin, at, level, rules, press }: { gd: GameData; skin: Skin; at: Archetype; level: number; rules: BuildRules; press: PressTip }) {
   const stage = useStage();
   useEscape(close);
   // the press point in stage px
@@ -50,7 +52,7 @@ function PhoneTip({ gd, skin, at, level, press }: { gd: GameData; skin: Skin; at
         ))}
         <SlotDetails gd={gd} power={press.entry.power} longColor={skin.desc} />
         <div style={{ borderTop: '1px solid #6d7fd8', margin: '0.8em 0' }} />
-        <AdvancedInfo gd={gd} at={at} entry={press.entry} level={level} />
+        <AdvancedInfo gd={gd} at={at} entry={press.entry} level={level} rules={rules} />
       </>
     );
   } else if (press.kind === 'enh') {

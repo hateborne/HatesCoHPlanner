@@ -210,7 +210,7 @@ function HoveredInfo({ gd, phone }: { gd: GameData; phone?: PhoneGeom }) {
 }
 
 /** The slot-details / Advanced tooltip for the power bar under the pointer. */
-function SlotTipLayer({ gd, skin, atId, level }: { gd: GameData; skin: Skin; atId: number; level: number }) {
+function SlotTipLayer({ gd, skin, atId, level, rules }: { gd: GameData; skin: Skin; atId: number; level: number; rules: BuildRules }) {
   const tip = useHover((h) => h.tip);
   const tipLevel = useTipLevel();
   const hint = useShiftHint();
@@ -224,7 +224,7 @@ function SlotTipLayer({ gd, skin, atId, level }: { gd: GameData; skin: Skin; atI
       y={tip.y}
       avoid={tip.at}
       hint={tipLevel === 'basic' && hint}
-      advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(atId)} entry={tip.entry} level={level} /> : undefined}
+      advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(atId)} entry={tip.entry} level={level} rules={rules} /> : undefined}
     />
   );
 }
@@ -487,7 +487,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         {counter(phoneCounter(pg))}
         {noSlotFades}
         <HoveredInfo gd={gd} phone={pg} />
-        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(preview!.at)} level={L} />
+        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(preview!.at)} level={L} rules={rules} />
         <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />
         <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finish} />
       </>
@@ -516,7 +516,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       )}
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), panelGroups(i), i))}
       <HoveredInfo gd={gd} />
-      <SlotTipLayer gd={gd} skin={skin} atId={preview!.at} level={L} />
+      <SlotTipLayer gd={gd} skin={skin} atId={preview!.at} level={L} rules={rules} />
       {counter()}
       {noSlotFades}
       <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />

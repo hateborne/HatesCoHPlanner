@@ -298,7 +298,10 @@ and archetype caps. The power info (`powerinfo.ts`) adds the damage of the pseud
 makes and of the powers it executes, and lists the pets' effects, as the live clients do
 (`docs/game-rules.md`, "Pseudo-pet damage"). It lists Fiery Embrace's and Dual Pistols' ammo
 groups and Homecoming's Stalker team crits with the client's notes and chances
-(`docs/game-rules.md`, "Tag modes").
+(`docs/game-rules.md`, "Tag modes"). Given a build's damage boosts (`damageBoost`, `boost.ts`: what
+the totals count, clicks switched on included), its damage rows and damage lines read the boosted damage, and it counts
+Fiery Embrace's groups while it is switched on (`docs/game-rules.md`, "Boosted damage"); every
+Advanced tooltip passes them (`AdvancedInfo`'s `rules`).
 `petcards.ts` makes the totals' Pets and Minions rows (`petEntries`): each kind of real pet the
 build's powers make at the totals' level and how many, with its card worked out only when first
 shown (`PetEntry.card`): its stats and its attacks and other powers through the power info, run as
