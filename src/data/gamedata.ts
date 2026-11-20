@@ -1,5 +1,6 @@
 import { readHenchmenFile } from './henchmen.ts';
 import { readInfoFile } from './info.ts';
+import { fetchJson } from './packed.ts';
 import { readPetsFile } from './pets.ts';
 import { dataRoot, DEFAULT_SERVER, type GameServer } from './servers.ts';
 import type { GameVersion } from './versions.ts';
@@ -347,8 +348,9 @@ export async function loadGameData(server: GameServer, base: string, version: Ga
   const data = dataRoot(server, base);
   const root = `${data}${version.id}/`;
   const q = version.hash ? `?v=${version.hash}` : '';
+  // the four files every build opens on: by their brotli copies where the site has them (packed.ts)
   const get = async <T,>(f: string): Promise<T> => {
-    const r = await fetch(root + f + q);
+    const r = await fetchJson(root + f, q);
     if (!r.ok) throw new Error(`game data ${version.id}/${f} is missing (HTTP ${r.status})`);
     return (await r.json()) as T;
   };
@@ -372,12 +374,16 @@ export async function loadGameData(server: GameServer, base: string, version: Ga
   extra(PETS_FOLDER, (raw) => gd.setPets(raw), () => gd.settlePets());
   extra(INFO_FOLDER, (raw) => gd.setInfo(raw, version.id));
   // the real pets file only once a build asks for it (requestHenchmen); a fetch the network fails
-  // is armed again for the next ask (a missing or refused file is not)
+  // is armed again for the next ask (a missing, refused or unreadable file is not)
   const loadHenchmen = (): void => {
     void (async (): Promise<void> => {
       const r = await fetch(`${data}${HENCHMEN_FOLDER}/${version.id}.json${q}`);
       if (r.ok) gd.setHenchmen(await r.json());
-    })().catch(() => gd.setHenchmenLoader(loadHenchmen));
+    })().catch((e: unknown) => {
+      // a file that answers but is not JSON (damaged, or another page served in its place) is like a
+      // refused one: asked for again, it would be fetched anew on every change to the build
+      if (!(e instanceof SyntaxError)) gd.setHenchmenLoader(loadHenchmen);
+    });
   };
   gd.setHenchmenLoader(loadHenchmen);
   return gd;

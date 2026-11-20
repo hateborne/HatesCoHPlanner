@@ -21,19 +21,12 @@ import { LEGACY_GAME_VERSION } from '../data/versions.ts';
 import { MIN_REL_LEVEL, toAlignment, type Build, type Slot } from '../engine/build.ts';
 import { ByteReader, ByteWriter, fromBase64Url, streamBytes, toBase64Url } from './binary.ts';
 import { ImportProblem } from './importProblem.ts';
+import { IMPORT_LIMITS } from './limits.ts';
 
 const VERSION = 1;
 
-// Counts no real build comes near (24 picks, 6 slots a power, a few dozen granted powers): a link
-// past them is damaged, refused before it can grow huge arrays
-const MAX_PICKS = 64;
-const MAX_SLOTS = 32;
-const MAX_GRANTED = 512;
-// a build switches a few pet powers; a pet power's full name is under 80 bytes
-const MAX_PET_SWITCHES = 64;
-const MAX_PET_NAME = 160;
-// a full level-50 build's code is under 1,000 characters
-const MAX_PAYLOAD = 64 * 1024;
+// counts no real build comes near: a link past them is damaged, refused before it can grow huge arrays
+const LIMITS = IMPORT_LIMITS.link;
 
 /**
  * Read a count from the link, refusing one past `max`.
@@ -66,7 +59,7 @@ function writeSlots(w: ByteWriter, slots: Slot[]): void {
 }
 
 function readSlots(r: ByteReader): Slot[] {
-  const n = count(r, MAX_SLOTS);
+  const n = count(r, LIMITS.slots);
   const out: Slot[] = [];
   for (let i = 0; i < n; i++) {
     const level = r.u8();
@@ -144,14 +137,14 @@ export async function decodeShare(payload: string): Promise<Build> {
     return await readShare(payload);
   } catch (e) {
     if (e instanceof ImportProblem) throw e;
-    // bad Base64, a stream that won't inflate (or inflates past MAX_INFLATED), bytes that run out
+    // bad Base64, a stream that won't inflate (or inflates past IMPORT_LIMITS.inflated), bytes that run out
     // or counts no build has: all a damaged link
     throw new ImportProblem('the share link is damaged or cut short', 'Copy the whole link again (it ends with the long code after #b=) and paste it.');
   }
 }
 
 async function readShare(payload: string): Promise<Build> {
-  if (payload.length > MAX_PAYLOAD) throw new RangeError(`link ${payload.length} characters long`);
+  if (payload.length > LIMITS.payload) throw new RangeError(`link ${payload.length} characters long`);
   const r = new ByteReader(await streamBytes(fromBase64Url(payload), 'deflate', false));
   const v = r.u8();
   if (v !== VERSION) throw new ImportProblem('the share link was made by a newer version of the planner', 'Reload the page to get the newest version, then try again.');
@@ -162,7 +155,7 @@ async function readShare(payload: string): Promise<Build> {
   const secondary = r.varint();
   const name = r.netString();
   const ex = r.varint();
-  const n = count(r, MAX_PICKS);
+  const n = count(r, LIMITS.picks);
   const picks: Build['picks'] = [];
   for (let i = 0; i < n; i++) {
     const power = r.varint();
@@ -175,7 +168,7 @@ async function readShare(payload: string): Promise<Build> {
     picks.push({ power, level, on, slots: readSlots(r) });
   }
   const granted: Build['granted'] = {};
-  const g = count(r, MAX_GRANTED);
+  const g = count(r, LIMITS.granted);
   for (let i = 0; i < g; i++) {
     const pid = r.varint();
     const on = onValue(r.u8());
@@ -186,10 +179,10 @@ async function readShare(payload: string): Promise<Build> {
   const rs = r.left > 0 ? r.varint() : 0;
   // no prototype: a name from the link is only ever a key (checkBuild keeps the well-formed ones)
   const petOn = Object.create(null) as Record<string, boolean>;
-  const pc = r.left > 0 ? count(r, MAX_PET_SWITCHES) : 0;
+  const pc = r.left > 0 ? count(r, LIMITS.petSwitches) : 0;
   for (let i = 0; i < pc; i++) {
     const len = r.varint();
-    if (len > MAX_PET_NAME) throw new RangeError(`pet power name ${len} bytes long`);
+    if (len > LIMITS.petName) throw new RangeError(`pet power name ${len} bytes long`);
     const pet = new TextDecoder().decode(r.bytes(len));
     const on = onValue(r.u8());
     if (on !== undefined) petOn[pet] = on;

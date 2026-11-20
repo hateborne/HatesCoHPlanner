@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer, type GameServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
@@ -71,7 +72,7 @@ export function saveFailedText(server: GameServer): string {
 
 /** Save / load / share / Mids import-export, in the in-game skin. */
 export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }) {
-  const { gd, build, loadBuild, versions } = useStore();
+  const { gd, build, loadBuild, versions } = useStore(useShallow((s) => ({ gd: s.gd, build: s.build, loadBuild: s.loadBuild, versions: s.versions })));
   useEscape(onClose);
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');
@@ -236,7 +237,7 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
       if (m) {
         // a link's address names its server (/HatesCoHPlanner/Homecoming/#b=...); a bare code is the
         // server's its game version belongs to (Homecoming's for a code from before servers)
-        const named = serverInLink(t, import.meta.env.BASE_URL);
+        const named = serverInLink(t, import.meta.env.BASE_URL, location.host);
         if (named.unknown) throw unknownServer(named.unknown);
         const code = await decodeShare(m[1]!);
         const b = withServer(code, shareServer(named, code.dataVersion));

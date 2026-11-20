@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { GameData } from '../src/data/gamedata.ts';
-import { dataRoot, DEFAULT_SERVER, defaultServer, notFoundRedirect, serverById, serverByMidsDb, serverFromPath, serverHref, serverInLink, serverOf, SERVERS, withServer } from '../src/data/servers.ts';
+import { dataRoot, DEFAULT_SERVER, defaultServer, notFoundRedirect, onThisSite, PAGES_BASE, serverById, serverByMidsDb, serverFromPath, serverHref, serverInLink, serverOf, SERVERS, withServer } from '../src/data/servers.ts';
 import { newBuild } from '../src/engine/build.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { finishBuildTxt, readBuildTxt } from '../src/io/buildtxt.ts';
@@ -11,6 +11,8 @@ import { decodeShare, encodeShare } from '../src/io/share.ts';
 import { loadData, loadMidsMapFile, pid, sid } from './helpers/data.ts';
 
 const BASE = '/HatesCoHPlanner/';
+const OWN = '/'; // the base of the site's copy on its own domain (HCP_BASE)
+const OWN_HOST = 'cohplanner.hateborne.com'; // that copy's host, as the page gives it (location.host)
 const gd = loadData();
 const homecoming = serverById('homecoming')!;
 const thunderspy = serverById('thunderspy')!;
@@ -126,6 +128,102 @@ describe('server from the address', () => {
   });
 });
 
+describe("the site's copy on its own domain (built for the root path)", () => {
+  it('keeps GitHub Pages at the path every link made there carries', () => {
+    expect(PAGES_BASE).toBe(BASE);
+  });
+
+  it('builds short addresses and data URLs', () => {
+    expect(serverHref(homecoming, OWN)).toBe('/Homecoming/');
+    expect(serverHref(thunderspy, OWN)).toBe('/Thunderspy/');
+    expect(dataRoot(homecoming, OWN)).toBe('/data/');
+    expect(dataRoot(thunderspy, OWN)).toBe('/data/thunderspy/');
+  });
+
+  it("reads the page's own address as GitHub Pages reads its own", () => {
+    expect(serverFromPath('/Homecoming/', OWN)).toEqual({ server: homecoming });
+    expect(serverFromPath('/thunderspy', OWN)).toEqual({ server: thunderspy });
+    expect(serverFromPath('/', OWN)).toEqual({});
+    expect(serverFromPath('/index.html', OWN)).toEqual({});
+    expect(serverFromPath('/Rebirth/', OWN)).toEqual({ unknown: 'Rebirth' });
+  });
+
+  it('reads a pasted link made at either address', () => {
+    expect(serverInLink('https://cohplanner.hateborne.com/Homecoming/#b=eJx', OWN)).toEqual({ server: homecoming });
+    expect(serverInLink('https://cohplanner.hateborne.com/Thunderspy/#b=eJx', OWN)).toEqual({ server: thunderspy });
+    expect(serverInLink('https://cohplanner.hateborne.com/#b=eJx', OWN)).toEqual({});
+    expect(serverInLink('#b=eJx', OWN)).toEqual({});
+    // made on GitHub Pages: the same server as there
+    expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/Homecoming/#b=eJx', OWN)).toEqual({ server: homecoming });
+    expect(serverInLink('see https://hateborne.github.io/HatesCoHPlanner/thunderspy#b=eJx please', OWN)).toEqual({ server: thunderspy });
+    expect(serverInLink('/HatesCoHPlanner/Homecoming/?x=1#b=eJx', OWN)).toEqual({ server: homecoming });
+    expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/#b=eJx', OWN)).toEqual({});
+    expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner#b=eJx', OWN)).toEqual({});
+    expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/index.html#b=eJx', OWN)).toEqual({});
+    // a server the site doesn't carry is still refused, never opened as Homecoming
+    expect(serverInLink('https://hateborne.github.io/HatesCoHPlanner/Rebirth/#b=eJx', OWN)).toEqual({ unknown: 'Rebirth' });
+    expect(serverInLink('https://cohplanner.hateborne.com/Rebirth/#b=eJx', OWN)).toEqual({ unknown: 'Rebirth' });
+  });
+
+  it("reads another site's link by its code alone, as GitHub Pages does", () => {
+    const here = (text: string) => serverInLink(text, OWN, OWN_HOST);
+    // every path is under "/", so the host tells this copy's own links from another site's
+    for (const link of [
+      'https://forums.example.org/topic/123-build/#b=eJx',
+      'https://www.example.com/r/x/comments/abc/#b=eJx',
+      'https://example.org/Homecoming/#b=eJx',
+      'https://example.org/Rebirth/#b=eJx',
+      'http://localhost:5173/Thunderspy/#b=eJx',
+      // not GitHub Pages' spelling of its path (it serves no other): another site's link, as there
+      'https://hateborne.github.io/hatescohplanner/Homecoming/#b=eJx',
+    ]) {
+      expect(here(link), link).toEqual({});
+      expect(serverInLink(link, BASE), link).toEqual({}); // the same answer as on GitHub Pages
+    }
+    // its own host, a path alone and a GitHub Pages link (from any host) still name their server
+    expect(here('https://cohplanner.hateborne.com/Thunderspy/#b=eJx')).toEqual({ server: thunderspy });
+    expect(here('https://COHPLANNER.hateborne.com/homecoming#b=eJx')).toEqual({ server: homecoming });
+    expect(here('https://cohplanner.hateborne.com/Rebirth/#b=eJx')).toEqual({ unknown: 'Rebirth' });
+    expect(here('/Thunderspy/#b=eJx')).toEqual({ server: thunderspy });
+    expect(here('https://hateborne.github.io/HatesCoHPlanner/Thunderspy/#b=eJx')).toEqual({ server: thunderspy });
+    expect(here('http://localhost:5173/HatesCoHPlanner/Homecoming/?x=1#b=eJx')).toEqual({ server: homecoming });
+    expect(here('https://hateborne.github.io/HatesCoHPlanner/Rebirth/#b=eJx')).toEqual({ unknown: 'Rebirth' });
+    expect(here('https://hateborne.github.io/HatesCoHPlanner/#b=eJx')).toEqual({});
+    expect(here('#b=eJx')).toEqual({});
+  });
+
+  it('takes no notice of the host on GitHub Pages, where the path alone always decided', () => {
+    const pages = 'hateborne.github.io';
+    for (const link of [
+      'https://hateborne.github.io/HatesCoHPlanner/Homecoming/#b=eJx',
+      'http://localhost:5173/HatesCoHPlanner/Thunderspy/#b=eJx',
+      'https://example.org/HatesCoHPlanner/Rebirth/#b=eJx',
+      'https://cohplanner.hateborne.com/Homecoming/#b=eJx',
+      'https://example.org/OtherPlanner/Stuff/#b=eJx',
+      '/HatesCoHPlanner/Homecoming/#b=eJx',
+      '#b=eJx',
+    ]) {
+      expect(serverInLink(link, BASE, pages), link).toEqual(serverInLink(link, BASE));
+      expect(serverInLink(link, BASE, 'elsewhere.example'), link).toEqual(serverInLink(link, BASE));
+    }
+  });
+
+  it('changes no path on GitHub Pages itself, so nothing a link opens there moves', () => {
+    for (const p of ['/HatesCoHPlanner/', '/HatesCoHPlanner', '/HatesCoHPlanner/Homecoming/', '/HatesCoHPlanner/Rebirth/x', '/Homecoming/', '/', '']) expect(onThisSite(p, BASE), p).toBe(p);
+    // a link made at the short address is read there by its code alone, like any other site's
+    expect(serverInLink('https://cohplanner.hateborne.com/Homecoming/#b=eJx', BASE)).toEqual({});
+    expect(serverInLink('https://cohplanner.hateborne.com/Thunderspy/#b=eJx', BASE)).toEqual({});
+  });
+
+  it('turns a GitHub Pages path into its own, and leaves every other path alone', () => {
+    expect(onThisSite('/HatesCoHPlanner/Homecoming/', OWN)).toBe('/Homecoming/');
+    expect(onThisSite('/HatesCoHPlanner/', OWN)).toBe('/');
+    expect(onThisSite('/HatesCoHPlanner', OWN)).toBe('/');
+    expect(onThisSite('/HatesCoHPlanner/a/b', '/Planner/')).toBe('/Planner/a/b');
+    for (const p of ['/Homecoming/', '/', '/HatesCoHPlannerX/', '/x/HatesCoHPlanner/', '/hatescohplanner/']) expect(onThisSite(p, OWN), p).toBe(p);
+  });
+});
+
 describe('the 404 page redirect', () => {
   const paths = SERVERS.map((s) => s.path);
   it('sends a server address in another case, or with more after it, to that server page', () => {
@@ -146,10 +244,51 @@ describe('the 404 page redirect', () => {
     expect(notFoundRedirect('/HatesCoHPlanner/%E0%A4%A/', BASE, paths)).toBeNull();
   });
 
+  it("on the site's own domain, sends a link made at the GitHub Pages address to the same page there", () => {
+    const own = (p: string) => notFoundRedirect(p, OWN, paths, PAGES_BASE);
+    expect(own('/HatesCoHPlanner/Homecoming/')).toBe('/Homecoming/');
+    expect(own('/HatesCoHPlanner/Homecoming')).toBe('/Homecoming/');
+    expect(own('/HatesCoHPlanner/Thunderspy/')).toBe('/Thunderspy/');
+    expect(own('/HatesCoHPlanner/homecoming/x')).toBe('/Homecoming/');
+    expect(own('/HatesCoHPlanner/')).toBe('/');
+    expect(own('/HatesCoHPlanner')).toBe('/');
+    expect(own('/HatesCoHPlanner/index.html')).toBe('/');
+    // its own addresses, as on GitHub Pages
+    expect(own('/homecoming/')).toBe('/Homecoming/');
+    expect(own('/Homecoming/nope')).toBe('/Homecoming/');
+    expect(own('/Homecoming/')).toBeNull();
+    expect(own('/Thunderspy/')).toBeNull();
+  });
+
+  it("on the site's own domain, still leaves an unknown server and a missing file on the 404 page", () => {
+    const own = (p: string) => notFoundRedirect(p, OWN, paths, PAGES_BASE);
+    expect(own('/HatesCoHPlanner/Rebirth/')).toBeNull();
+    expect(own('/Rebirth/')).toBeNull();
+    expect(own('/HatesCoHPlanner/data/versions.json')).toBeNull();
+    expect(own('/HatesCoHPlanner/%E0%A4%A/')).toBeNull();
+    expect(own('/hatescohplanner/Homecoming/')).toBeNull(); // not GitHub Pages' spelling of the path
+    expect(own('/HatesCoHPlannerX/')).toBeNull();
+    expect(own('/assets/missing.png')).toBeNull();
+    // only the GitHub Pages root itself is this site's root: nothing odd after it gets sent there
+    expect(own('/HatesCoHPlanner//Thunderspy/')).toBeNull();
+    expect(own('/HatesCoHPlanner//')).toBeNull();
+    expect(own('/HatesCoHPlanner/index.html/x')).toBeNull();
+    expect(own('/HatesCoHPlanner/INDEX.HTML')).toBeNull();
+    expect(own('/HatesCoHPlanner//evil.example/')).toBeNull();
+  });
+
+  it('is the same on GitHub Pages with or without its own base named', () => {
+    for (const p of ['/HatesCoHPlanner/', '/HatesCoHPlanner', '/HatesCoHPlanner/index.html', '/HatesCoHPlanner/homecoming/x', '/HatesCoHPlanner/Homecoming/', '/HatesCoHPlanner/Rebirth/', '/Homecoming/', '/']) {
+      expect(notFoundRedirect(p, BASE, paths, PAGES_BASE), p).toBe(notFoundRedirect(p, BASE, paths));
+    }
+  });
+
   it('runs on its own, as the 404 page runs it', () => {
     const run = new Function(`return (${notFoundRedirect.toString()})`)() as typeof notFoundRedirect;
     expect(run('/HatesCoHPlanner/homecoming/x', BASE, paths)).toBe('/HatesCoHPlanner/Homecoming/');
     expect(run('/HatesCoHPlanner/Homecoming/', BASE, paths)).toBeNull();
+    expect(run('/HatesCoHPlanner/Homecoming/', OWN, paths, PAGES_BASE)).toBe('/Homecoming/');
+    expect(run('/HatesCoHPlanner/', OWN, paths, PAGES_BASE)).toBe('/');
   });
 });
 

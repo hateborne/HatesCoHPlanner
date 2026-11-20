@@ -570,7 +570,8 @@ export class BuildRules {
         level,
         slots: this.normSlots(power, level, st?.slots),
         source: 'grant',
-        // the inherent always runs; a stored switch is kept in the build (and its link) but not read
+        // the inherent always runs; a switch an older build stored for it is not read here, and is
+        // dropped when the build is checked (checkBuild), so a link made from it carries none
         on: inherent ? true : st?.on,
         ...(inherent ? { inherent: true } : {}),
       });

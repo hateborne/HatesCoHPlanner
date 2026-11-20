@@ -212,11 +212,15 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   const book = lineBook();
   const vd = pet.vd?.toLowerCase();
   // a caster's context with the pet as its target: its villain def, group, class and combat level
-  // (taken as in range: a distance test reads 0)
+  // (taken as in range: a distance test reads 0). Only a pet's own power has its caster for its
+  // target: for another pet's or the creator's, a group "not for the caster" (the defense Grant
+  // Cover gives the others) reaches the pet and one "for the caster only" doesn't. Said here for
+  // every caster, as the creator's context comes from the totals, where the target is the source.
   const isClass = (n: string) => n.startsWith('arch') || n === 'class';
-  const aimedAt = (ctx: EvalContext): EvalContext => ({
+  const aimedAt = (ctx: EvalContext, own: boolean): EvalContext => ({
     ...ctx,
     targetEntType: 'critter',
+    targetIsSource: own,
     targetVillain: (n) => n.toLowerCase() === vd,
     targetProp: (n) => (n === 'group' ? (pet.grp ?? '') : n === 'combatlevel' ? level + 1 : isClass(n) ? pet.cls : undefined),
   });
@@ -239,7 +243,7 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   const toggles: { name: string; perSec: number; slotted: number }[] = [];
   for (const p of pet.powers) {
     if (p.life || !petPowerOn(gd, build, p)) continue;
-    const self = aimedAt(pet.ctx);
+    const self = aimedAt(pet.ctx, /*own=*/ true);
     const own = (m: Mod) => {
       if (!affectsSelf(p, m) && !OWNER_AND_PETS.has(m.tg)) return;
       if (collective(p, m)) firstCopy(p, m);
@@ -254,7 +258,7 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   for (const f of field) {
     const casters = f.count - (f.key === pet.key ? 1 : 0);
     if (casters <= 0) continue;
-    const ctx = aimedAt(f.ctx);
+    const ctx = aimedAt(f.ctx, /*own=*/ false);
     for (const p of f.powers) {
       if (p.life || !petPowerOn(gd, build, p)) continue;
       const main = !AIMED_ELSEWHERE.has(p.tgt);
@@ -269,7 +273,7 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   }
 
   // the creator's running powers that reach friends or its pets
-  const fromOwner = aimedAt(ownerCtx);
+  const fromOwner = aimedAt(ownerCtx, /*own=*/ false);
   for (const { power: p, strength } of owner) {
     const main = !AIMED_ELSEWHERE.has(p.tgt);
     const mine = (m: Mod) => {

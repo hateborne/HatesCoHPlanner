@@ -10,6 +10,23 @@
 # the same number. A commit that already carries a version deploys again under it, with no new tag,
 # and so does one that changes nothing the site is built from since the newest version (docs, tests,
 # CI, tooling: docs/releases.md, "What counts as a new version").
+#
+# The site goes to two targets, GitHub Pages and its own domain (docs/hosting.md), in stages
+# (docs/releases.md, "The deploy's stages"):
+#   1. prepare                       the checks both share, and the version
+#   2. release                       the tag and the notes
+#   3. build-pages, build-domain     one build per target, side by side
+#   4. deploy-pages, publish-domain  each target's own way live
+#   5. check-domain                  the domain is seen to serve the new build
+#   6. report                        what each target got, on the run's summary page
+# Stages 1 and 2 are shared: a failure there stops both targets. From stage 3 on each target has
+# jobs of its own, and none of them needs any of the other's. So a failure for one target leaves
+# its site on the version it had while the other goes live, the run is marked failed (GitHub
+# notifies whoever started it), and "Re-run failed jobs" tries that target alone again.
+#
+# A run goes to both targets unless it is started for one (the `target` input: `-f target=pages`
+# or `-f target=domain`), which is how one site is deployed again after it failed. The other
+# target's jobs are then skipped, and its site stays as it is.
 name: Deploy to GitHub Pages
 
 on:
@@ -25,15 +42,37 @@ on:
           - patch
           - minor
           - major
+      target:
+        description: 'Where to deploy: both (the usual), or one site alone, to deploy it again after it failed (pages = GitHub Pages, domain = the site''s own domain)'
+        type: choice
+        required: true
+        default: both
+        options:
+          - both
+          - pages
+          - domain
 
 permissions: {}
+
+# Every step's script stops at its first failing command, a failing part of a pipeline included
+# (naming the shell is what turns that on: the default leaves pipelines unchecked).
+defaults:
+  run:
+    shell: bash
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # the site's own domain, which check-domain reads (docs/hosting.md)
+  DOMAIN_URL: https://cohplanner.hateborne.com
+
 jobs:
-  build:
+  # Stage 1. What every target shares: the tests, the type check and the version. A failure here
+  # stops the deploy before anything is tagged, built or published.
+  prepare:
+    name: 1. Check and pick the version
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -43,6 +82,12 @@ jobs:
       fresh: ${{ steps.version.outputs.fresh }}
       previous: ${{ steps.version.outputs.previous }}
       notes: ${{ steps.notes.outputs.notes }}
+      # whether this run deploys to GitHub Pages ("true", or "false" when started for the domain alone)
+      pages: ${{ inputs.target != 'domain' }}
+      domain: ${{ steps.domain.outputs.state }}
+      # the try of this run these checks were made in: a later job run again without them
+      # ("Re-run failed jobs") sees another number
+      attempt: ${{ github.run_attempt }}
     steps:
       # the Run workflow button lets any branch be picked; only main is ever published
       - name: Refuse branches other than main
@@ -74,20 +119,55 @@ jobs:
         run: node scripts/release-notes.mjs "$PREVIOUS"
       - run: npm ci --ignore-scripts
       - run: npm test
-      - run: npm run build
+      # the domain's build runs no type check of its own (GitHub Pages' `npm run build` does), so
+      # one is made here, before anything is tagged, for both
+      - run: npm run typecheck
+      # What the domain's stages do (the output `domain`):
+      #   off       the run was started for GitHub Pages alone: none of them runs
+      #   needed    a new version, or the newest release still has no site file (the domain's
+      #             stages failed, or were left out, in an earlier deploy of it): build, attach, check
+      #   has-file  the newest release has its site file: only the check runs, so a host that
+      #             failed to fetch it shows up again
+      #   older     this deploy puts an older release back on GitHub Pages; the domain only moves
+      #             forward on its own, so it is left alone (docs/hosting.md, "By hand")
+      #   unknown   GitHub could not be asked: the domain is left alone and the report says so
+      # Whatever happens here, GitHub Pages goes on.
+      - name: See what the domain needs of this deploy
+        id: domain
         env:
-          HCP_VERSION: ${{ steps.version.outputs.version }}
-          HCP_COMMIT: ${{ github.sha }}
-      # (no configure-pages step: the site's base path is fixed in vite.config.ts)
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: dist
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          FRESH: ${{ steps.version.outputs.fresh }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          state=needed
+          if [ "${TARGET}" = "pages" ]; then
+            state=off
+          elif [ "${FRESH}" != "true" ]; then
+            state=unknown
+            for try in 1 2 3; do
+              if newest="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)" \
+                && names="$(gh release view "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name')"; then
+                if [ "${newest}" != "v${VERSION}" ]; then state=older
+                elif grep -qx 'planner-site.tar.gz' <<< "${names}"; then state=has-file
+                else state=needed
+                fi
+                break
+              fi
+              sleep 5
+            done
+            if [ "${state}" = unknown ]; then echo "::warning::Release v${VERSION} could not be read, so the domain is left as it is."; fi
+          fi
+          echo "state=${state}" >> "${GITHUB_OUTPUT}"
 
-  # tag the new version and publish its notes (the changelog's new lines for players, then the pull
-  # requests merged since the last release); skipped when the commit already carries a version
+  # Stage 2. Tag the new version and publish its notes (the changelog's new lines for players, then
+  # the pull requests merged since the last release), as soon as the shared checks have passed and
+  # before any site goes live. Skipped when the commit already carries a version. It needs neither
+  # build, so trying one target again never comes back through here.
   release:
-    needs: build
-    if: needs.build.outputs.fresh == 'true'
+    name: 2. Tag the release
+    needs: prepare
+    if: needs.prepare.outputs.fresh == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -96,27 +176,262 @@ jobs:
       - name: Tag the release and publish its notes
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.build.outputs.version }}
-          PREVIOUS: ${{ needs.build.outputs.previous }}
-          NOTES: ${{ needs.build.outputs.notes }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PREVIOUS: ${{ needs.prepare.outputs.previous }}
+          NOTES: ${{ needs.prepare.outputs.notes }}
+          CHECKED_IN: ${{ needs.prepare.outputs.attempt }}
+        # A new version goes to main's newest commit only, which the first job sees to. When this
+        # job is run again without it ("Re-run failed jobs"), that is looked at again here.
         # gh puts --notes above the generated list; with no new changelog lines the list stands alone
         run: |
+          if [ "${CHECKED_IN}" != "${GITHUB_RUN_ATTEMPT}" ]; then
+            tip="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+            if [ "${tip}" != "${GITHUB_SHA}" ]; then
+              echo "::error::main has moved on since this run's checks were made, so this commit can't take a new version. Start a new deploy."
+              exit 1
+            fi
+          fi
           set -- "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
           if [ -n "${NOTES}" ]; then set -- "$@" --notes "${NOTES}"; fi
           gh release create "$@"
 
-  deploy:
-    needs: [build, release]
-    # after a new version is tagged, or straight away for a commit that already had one
-    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+  # Stage 3a. The site for GitHub Pages, under its /HatesCoHPlanner/ path. Skipped in a run started
+  # for the domain alone.
+  build-pages:
+    name: 3a. Build for GitHub Pages
+    needs: prepare
+    if: needs.prepare.outputs.pages == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      # GitHub Pages sends a file gzip-compressed and nothing smaller. So this build is told that
+      # its data files have brotli copies (HCP_BROTLI), and the step after it makes them: a browser
+      # that unpacks brotli itself asks for a copy, any other for the file (src/data/packed.ts).
+      - run: npm run build
+        env:
+          HCP_VERSION: ${{ needs.prepare.outputs.version }}
+          HCP_COMMIT: ${{ github.sha }}
+          HCP_BROTLI: '1'
+      - run: node scripts/precompress.mjs dist/data br
+      # (no configure-pages step: this build's base path is GitHub Pages' own, the default in vite.config.ts)
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist
+
+  # Stage 3b. The same site for its own domain (docs/hosting.md): built for the root path, given
+  # pre-compressed copies of its text files, and packed into one file with its checksum.
+  build-domain:
+    name: 3b. Build for the domain
+    needs: prepare
+    if: needs.prepare.outputs.domain == 'needed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Build and pack the site
+        env:
+          HCP_BASE: /
+          HCP_VERSION: ${{ needs.prepare.outputs.version }}
+          HCP_COMMIT: ${{ github.sha }}
+        run: |
+          npx vite build --outDir dist-own
+          node scripts/precompress.mjs dist-own
+          tar -czf planner-site.tar.gz -C dist-own .
+          sha256sum planner-site.tar.gz > planner-site.tar.gz.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: own-domain-site
+          path: |
+            planner-site.tar.gz
+            planner-site.tar.gz.sha256
+          if-no-files-found: error
+          # a re-run of this job replaces the earlier upload instead of failing on its name
+          overwrite: true
+          retention-days: 7
+
+  # Stage 4a. GitHub Pages goes live: after a new version is tagged, or straight away for a commit
+  # that already had one. It needs nothing of the domain's.
+  deploy-pages:
+    name: 4a. Deploy to GitHub Pages
+    needs: [prepare, build-pages, release]
+    if: ${{ !cancelled() && needs.build-pages.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read # the step below reads the newest release's name
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # "Re-run failed jobs" brings this job back without the first job, whose version pick is what
+      # keeps old code from taking a new deploy's place. So a try that comes without it goes on
+      # only while its version is still the newest release. ("Re-run all jobs" makes the first
+      # job's checks again, and is how an older release is put back on purpose.)
+      - name: Refuse to put an older version back by a partial re-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHECKED_IN: ${{ needs.prepare.outputs.attempt }}
+        run: |
+          if [ "${CHECKED_IN}" = "${GITHUB_RUN_ATTEMPT}" ]; then exit 0; fi
+          newest="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          if [ "${newest}" != "v${VERSION}" ]; then
+            echo "::error::${newest} has been released since this run started, so v${VERSION} is not put over it. Start a new deploy. (To put v${VERSION} back on purpose, choose Re-run all jobs.)"
+            exit 1
+          fi
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # Stage 4b. The domain's site file goes onto the release, where its host looks for it every 10
+  # minutes (hosting/planner-update.sh). It needs nothing of GitHub Pages'.
+  publish-domain:
+    name: 4b. Attach the domain's site file
+    needs: [prepare, build-domain, release]
+    if: ${{ !cancelled() && needs.build-domain.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # as in deploy-pages: the host only moves forward, so a file for a release that is no longer
+      # the newest would never be fetched, and the stage after this one would wait for nothing
+      - name: Refuse an older version on a partial re-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHECKED_IN: ${{ needs.prepare.outputs.attempt }}
+        run: |
+          if [ "${CHECKED_IN}" = "${GITHUB_RUN_ATTEMPT}" ]; then exit 0; fi
+          newest="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          if [ "${newest}" != "v${VERSION}" ]; then
+            echo "::error::${newest} has been released since this run started, and the domain only moves forward: v${VERSION} has nothing left to do there. Start a new deploy."
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: own-domain-site
+      # The host takes the site file first and its checksum second, so the checksum goes up first:
+      # a host that looks in between finds no site file yet and waits, instead of a file it can't
+      # check. A file left by an earlier try comes off first, for the same reason.
+      - name: Attach the site file and its checksum to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          gh release delete-asset "v${VERSION}" planner-site.tar.gz --repo "${GITHUB_REPOSITORY}" --yes 2>/dev/null || true
+          gh release upload "v${VERSION}" planner-site.tar.gz.sha256 --repo "${GITHUB_REPOSITORY}" --clobber
+          gh release upload "v${VERSION}" planner-site.tar.gz --repo "${GITHUB_REPOSITORY}"
+
+  # Stage 5. The domain is seen to serve this release. Its host fetches a release by itself, so
+  # this is the only place a stuck host shows up (a full disk, a stopped timer, a failed download).
+  # It runs once the site file is attached, and also when the release had its file already, which
+  # is how the domain is looked at again after its host has been put right.
+  check-domain:
+    name: 5. Check the domain switched
+    needs: [prepare, publish-domain]
+    if: ${{ !cancelled() && (needs.publish-domain.result == 'success' || (needs.prepare.result == 'success' && needs.prepare.outputs.domain == 'has-file')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    outputs:
+      # why the check stopped without seeing the release live, for the report to word: "host" (the
+      # domain never served it), "newer", "github", "no-file" or "bad-file" (the step below)
+      why: ${{ steps.wait.outputs.why }}
+    steps:
+      # The page to look for comes from the release's own site file, the very one the host
+      # fetches (a public download: no permission is needed for it). Every build's page names its
+      # own script file, so the page tells the builds apart. The host looks for a release every 10
+      # minutes: 20 minutes of asking leaves it two chances.
+      - name: Wait for the domain to serve this release
+        id: wait
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHECKED_IN: ${{ needs.prepare.outputs.attempt }}
+        run: |
+          # stop with the reason (for the report) and what to tell whoever reads the run
+          stop() { echo "why=$1" >> "${GITHUB_OUTPUT}"; echo "::error::$2"; exit 1; }
+          releases="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases"
+          # as in the publishing jobs: run again without the first job ("Re-run failed jobs"), this
+          # goes on only while its version is still the newest release, since the host never goes
+          # back to an older one and the wait would be for nothing
+          if [ "${CHECKED_IN}" != "${GITHUB_RUN_ATTEMPT}" ]; then
+            answer="$(curl -fsSI --max-time 30 "${releases}/latest")" || stop github "GitHub could not be asked which release is the newest. Run this job again."
+            newest="$(printf '%s\n' "${answer}" | tr -d '\r' | sed -n 's|^[Ll]ocation: .*/releases/tag/||p' | tail -n 1)"
+            if [ -z "${newest}" ]; then stop github "GitHub did not name its newest release. Run this job again."; fi
+            if [ "${newest}" != "v${VERSION}" ]; then
+              stop newer "${newest} has been released since this run started, and the domain only moves forward: there is nothing to wait for. Start a new deploy."
+            fi
+          fi
+          # the site file and its checksum (a download just attached can take a moment to appear)
+          get() { curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors --max-time 300 -o "$1" "${releases}/download/v${VERSION}/$1"; }
+          if ! get planner-site.tar.gz || ! get planner-site.tar.gz.sha256; then
+            stop no-file "Release v${VERSION}'s site file could not be fetched from GitHub, so there is nothing to compare the domain with. Run this job again."
+          fi
+          # the host takes the file only when it matches its checksum, so that is looked at first
+          want="$(awk 'NR==1 {print $1}' planner-site.tar.gz.sha256)"
+          got="$(sha256sum planner-site.tar.gz | awk '{print $1}')"
+          if [ "${want}" != "${got}" ]; then
+            stop bad-file "Release v${VERSION}'s site file does not match its checksum, so the host refuses it. Delete planner-site.tar.gz from the release, then run the deploy for the domain: it builds and attaches the file again."
+          fi
+          tar -xzf planner-site.tar.gz -O ./index.html > want.html
+          test -s want.html
+          deadline=$((SECONDS + 1200))
+          code=nothing
+          while [ "${SECONDS}" -lt "${deadline}" ]; do
+            rm -f got.html
+            code="$(curl -sS --max-time 10 -o got.html -w '%{http_code}' "${DOMAIN_URL}/" 2>/dev/null || true)"
+            if [ "${code}" = 200 ] && cmp -s want.html got.html; then
+              echo "The domain serves v${VERSION}."
+              exit 0
+            fi
+            sleep 20
+          done
+          # what it was serving instead, for whoever looks into it
+          script() { grep -o 'assets/index-[^"]*\.js' "$1" 2>/dev/null | head -n 1 || true; }
+          seen="$(script got.html)"
+          echo "This release's page names $(script want.html). The domain last answered ${code:-nothing}${seen:+, with a page naming ${seen}}."
+          stop host "The domain was not serving v${VERSION} after 20 minutes. Its release carries the site file, so see what the update runs on the host say (docs/hosting.md, By hand)."
+
+  # Stage 6. What each target got, on the run's summary page (scripts/deploy-report.mjs). It fails
+  # when a target is not where it should be, so a deploy that left one behind never ends green.
+  report:
+    name: 6. Report
+    needs: [prepare, release, build-pages, build-domain, deploy-pages, publish-domain, check-domain]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # the jobs' results and the run's target go in through the environment, never the script
+      # text (the target from the run's own input, so it is known even when the first job failed)
+      - name: Say what each target got
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          TARGET: ${{ inputs.target }}
+        run: node scripts/deploy-report.mjs

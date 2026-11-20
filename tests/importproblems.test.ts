@@ -11,10 +11,10 @@ vi.mock('brotli-wasm', async () => {
 import { newBuild, type Build } from '../src/engine/build.ts';
 import { BuildRules, startingSets } from '../src/engine/rules.ts';
 import { streamBytes, toBase64Url } from '../src/io/binary.ts';
+import { IMPORT_LIMITS } from '../src/io/limits.ts';
 import {
   describeImportFailure,
   ImportProblem,
-  MAX_BUILD_FILE,
   OUR_FAULT,
   readablePower,
   readBuildFile,
@@ -112,7 +112,7 @@ describe('import problems: what the user gave the planner', () => {
   it('checks opened and dropped files', async () => {
     expect(await readBuildFile(new Blob(['{"Class":"Class_Blaster"}']))).toBe('{"Class":"Class_Blaster"}');
     expect(await reason(readBuildFile(new Blob([' \n '])))).toBe('the file is empty');
-    expect(await reason(readBuildFile(new Blob([new Uint8Array(MAX_BUILD_FILE + 1)])))).toBe("it's too big to be a build file (over 2 MB)");
+    expect(await reason(readBuildFile(new Blob([new Uint8Array(IMPORT_LIMITS.text + 1)])))).toBe("it's too big to be a build file (over 2 MB)");
   });
 
   it('words a build the checks refuse', () => {

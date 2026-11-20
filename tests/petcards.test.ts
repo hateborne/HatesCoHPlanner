@@ -17,6 +17,7 @@ import { evalRequires } from '../src/engine/requires.ts';
 import { powerInfo, segText } from '../src/engine/powerinfo.ts';
 import type { Power } from '../src/data/types.ts';
 import { BuildRules } from '../src/engine/rules.ts';
+import { computeTotals } from '../src/engine/totals.ts';
 import { petCount } from '../src/ui/components/PetCard.tsx';
 import { dataDir, loadData, loadVersionIndex, pid, sid, withHenchmen } from './helpers/data.ts';
 
@@ -375,10 +376,12 @@ describe('fetching the real pets file', () => {
   const version = loadVersionIndex().versions.find((v) => v.id === 'i28p4')!;
   afterEach(() => vi.unstubAllGlobals());
 
-  it('asks again after a network failure, and not after a missing file', async () => {
+  it('asks again after a network failure, and not after a missing or unreadable file', async () => {
     const cases: [() => Promise<Response>, boolean][] = [
       [() => Promise.reject(new Error('offline')), true],
       [async () => new Response('nope', { status: 404 }), false],
+      // a file that answers with something that isn't JSON: not asked for on every build edit
+      [async () => new Response('<!doctype html><title>Sign in</title>', { status: 200 }), false],
     ];
     for (const [first, retried] of cases) {
       let asked = 0;
@@ -499,6 +502,39 @@ describe("what lands on a pet (the pet pane's stats)", () => {
     expect(buffsPets(gd, gd.henchmen!.powers['Mastermind_Pets.Thug_Lt.Maneuvers']!)).toBe(true);
     expect(buffsPets(gd, gd.henchmen!.powers['Mastermind_Pets.Protector.Force_Shield']!)).toBe(true);
   });
+});
+
+describe("a buff its data gives to the others, not its caster (Grant Cover's defense)", () => {
+  // The group requires `entref target> entref source> eq !`. A pet is not the caster, so it gets the
+  // defense, as it gets Maneuvers'; the totals' context (where the target is the caster) must not
+  // carry over to a power aimed at a pet. Same data on both servers.
+  for (const server of ['homecoming', 'thunderspy'] as const) {
+    it(`reaches a ${server === 'homecoming' ? 'Homecoming' : 'Thunderspy'} Brute's Mu Striker`, () => {
+      const data = withHenchmen(loadData(undefined, server), server);
+      const S = data.core.schedule.power;
+      const b = newBuild({
+        ...(server === 'thunderspy' ? { server } : {}),
+        dataVersion: data.core.manifest.dataVersion,
+        at: data.archetypeByName.get('class_brute')!.id,
+        origin: data.core.origins[0]!.id,
+        alignment: 'Villain',
+        primary: sid(data, 'Brute_Melee.Super_Strength'),
+        secondary: sid(data, 'Brute_Defense.Shield_Defense'),
+        pickCount: S.length,
+      });
+      const names = ['Brute_Melee.Super_Strength.Jab', 'Brute_Defense.Shield_Defense.Deflection', 'Brute_Defense.Shield_Defense.Grant_Cover', 'Pool.Leadership.Defense', 'Epic.Brute_Mu_Mastery.Summon_Striker'];
+      names.forEach((n, i) => (b.picks[i] = { power: pid(data, n), level: S[i]!, slots: [{ level: S[i]! }], on: true }));
+      const striker = petCards(data, new BuildRules(data, b), b, 49).find((c) => c.name === 'Mu Striker')!;
+      const melee = [...striker.stats.lines.values()].find((l) => l.key.startsWith('def.') && l.label === 'Melee');
+      const from = (name: string) => melee?.sources.find((s) => s.name === name)?.value ?? 0;
+      expect(from('Maneuvers (yours)')).toBeGreaterThan(0);
+      expect(from('Grant Cover (yours)')).toBeGreaterThan(0);
+      // and nothing of it lands on the Brute: the same group fails where the target is its caster
+      const mine = computeTotals(data, new BuildRules(data, b), b, 49);
+      const own = [...mine.lines.values()].find((l) => l.key.startsWith('def.') && l.label === 'Melee');
+      expect(own?.sources.some((s) => s.name === 'Grant Cover')).toBe(false);
+    });
+  }
 });
 
 describe('Thunderspy', () => {
