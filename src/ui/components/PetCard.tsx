@@ -193,7 +193,7 @@ function PetPane({ gd, skin, entry, build, onSwitch }: { gd: GameData; skin: Ski
         data-testid="pet-pane"
         style={{ left: box.x, top: box.y, width: box.w, height: box.h, zIndex: 62, outline: 'none' }}
       >
-        <MenuFrame x={0} y={0} w={box.w} h={box.h} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+        <MenuFrame x={0} y={0} w={box.w} h={box.h} skin={skin} style={{ background: skin.panel }} />
         <div className="abs body-text" style={{ left: 24, top: 18, width: box.w - 48 }}>
           <TitleText style={{ fontSize: head }}>{card.name}</TitleText>
           <div style={{ color: TIP.list, fontSize: 16, marginTop: 8, lineHeight: '20px' }}>
@@ -216,7 +216,7 @@ function PetPane({ gd, skin, entry, build, onSwitch }: { gd: GameData; skin: Ski
           </div>
         </GameScroll>
       </div>
-      <PetPowerTipLayer gd={gd} at={at} />
+      <PetPowerTipLayer gd={gd} at={at} skin={skin} />
     </>
   );
 }
@@ -405,7 +405,7 @@ export function PetPowerDetails({ gd, at, card, power }: { gd: GameData; at: Arc
  * like the Advanced tooltip. It takes every wheel turn while it shows (Floating's lock), so the
  * pane under it never scrolls away from the pointer. Phones show it on a long press instead.
  */
-function PetPowerTipLayer({ gd, at }: { gd: GameData; at: Archetype }) {
+function PetPowerTipLayer({ gd, at, skin }: { gd: GameData; at: Archetype; skin: Skin }) {
   const tip = useHover((h) => h.petPower);
   const tipLevel = useTipLevel();
   const stage = useStage();
@@ -425,7 +425,7 @@ function PetPowerTipLayer({ gd, at }: { gd: GameData; at: Archetype }) {
           ref={ref}
           className="abs scroll-y"
           role="tooltip"
-          style={{ left: b.x, top: b.y, width: W + b.bar, maxHeight: b.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + b.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: 'rgba(0,2,24,0.97)', border: '2px solid #3a55d6', borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: TIP.text }}
+          style={{ left: b.x, top: b.y, width: W + b.bar, maxHeight: b.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + b.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: skin.panel, border: `2px solid ${skin.panelBorder}`, borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: TIP.text }}
         >
           <PetPowerDetails gd={gd} at={at} card={tip.card} power={tip.power} />
         </div>

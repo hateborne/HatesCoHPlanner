@@ -11,7 +11,7 @@ import { enhKind, shortName } from '../engine/enhance.ts';
 import { BuildRules, isArchetypeInherent } from '../engine/rules.ts';
 import { defaultOn, defaultsOf, exclusiveGroups, isPetUpgrade } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
-import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readableOn, readablePower } from './importProblem.ts';
+import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readableOn, readablePower, tooLong } from './importProblem.ts';
 import { PLANNER_APP } from './midsPatches.ts';
 import { numericVersion } from '../version.ts';
 
@@ -41,8 +41,8 @@ export function midsUnavailable(s: GameServer): ImportProblem {
   return noMids(s, SERVERS.filter((x) => x.midsDb));
 }
 
-/** @return The problem to report for pasted text too long to be a build. */
-const TOO_LONG = () => new ImportProblem("it's too long to be a build (over 2 MB of text)", 'Check that it is the right text: a share code or build file is small.');
+// the problem to report for pasted text too long to be a build
+const TOO_LONG = tooLong;
 
 /**
  * The problem to report for pasted text on a server MidsReborn has no database for, which reads

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { BuildRules } from '../../engine/rules.ts';
 import { computeTotals } from '../../engine/totals.ts';
 import { previewBuild, stepsOf, useStore } from '../../state/store.ts';
@@ -29,7 +30,7 @@ const TAB_BORDER = 3;
  * @param props.skin The current skin (the tab and pane colours).
  */
 export function SideTotals({ skin }: { skin: Skin }) {
-  const { gd, steps, level } = useStore();
+  const { gd, steps, level } = useStore(useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level })));
   const [open, setOpen] = useState(false);
   const stage = useStage();
   const preview = useMemo(() => {

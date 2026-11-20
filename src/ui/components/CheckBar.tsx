@@ -102,8 +102,9 @@ export function CheckBar(props: CheckBarProps) {
   const band = snap(2 * s);
   /** The middle frame's top and bottom border rows over [l, r) (a bridge under an end frame). */
   const frameBridge = (key: string, l: number, r: number) =>
-    [0, fH - band].map((top) => (
-      <div key={`${key}${top}`} className="layer" style={{ left: l, top: fTop + top, width: r - l, height: band, overflow: 'hidden', zIndex: 3 }}>
+    // keyed by place, not by offset: at a height no taller than the band both rows sit at 0
+    [0, fH - band].map((top, row) => (
+      <div key={`${key}${row}`} className="layer" style={{ left: l, top: fTop + top, width: r - l, height: band, overflow: 'hidden', zIndex: 3 }}>
         <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}mid${tt}`, skin)} x={0} y={-top} w={r - l} h={fH} tint={colors.frame} />
       </div>
     ));

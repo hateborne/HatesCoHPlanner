@@ -224,7 +224,8 @@ remembered until something replaces it, and whatever would while it isn't open (
 an import, a saved build, a link pasted into the address bar) asks first: go ahead, "Open it", or
 Cancel, which Escape and Enter take (`askOverRemembered`, `askThreeWay`). A link someone else sent
 opens at once; one pasted into the address bar while the load's server list is open starts the load
-over with it. With no build, New Build opens on the server the address names; failing that, a link
+over with it, and one pasted while the load is still downloading is read when that load is done, as
+a link pasted into an open planner (`readPastedLink`). With no build, New Build opens on the server the address names; failing that, a link
 refused for what it holds (damaged, a build `checkBuild` refuses) opens New Build on its own server
 (the default for a damaged code, as every link at the site root did before servers) and says why;
 failing that, once `SERVERS` holds more than one, a visit asks in the server list dialog
@@ -246,6 +247,18 @@ from its address (`serverInLink`); a bare code opens on the server its game vers
 (Homecoming's for a code from before servers). A share code left in the address by a link that
 couldn't open is dropped once the address moves to another server, and the error screen leaves the
 address as it was, so Try again and a reload read the same link.
+
+When a download fails or stalls: a link whose server's version list won't load stops on the error
+screen (one fixed sentence, `LOAD_FAILED`; the details go to the console), and so does a build the
+player just asked to continue. Any other remembered build whose server's version list or data won't
+load is passed over, and so is one `checkBuild` can't read at all (said in a dialog): the next
+candidate, then New Build or the server list, so one server's files being down never keeps the
+player from the others, and a stored build can't hold every later load on the error screen. Nothing
+is removed from storage. The loading screen offers Try again after 20 seconds with no question on
+screen (`LoadingScreen` in `src/App.tsx`); nothing is cancelled, and `retryLoad` drops the version
+and data caches so the downloads are fetched anew. Only the newest `load()` shows what it loaded
+(`loadSeq`), and of two quick picks of a version or server on New Build the last one wins
+(`serverSeq`). `tests/loadfallbacks.test.ts` covers these.
 
 What a server offers is in its `SERVERS` entry: `midsDb` (MidsReborn's name for its database; none
 for Thunderspy) and `buildSave` (its client writes `/build_save` files; Thunderspy's doesn't). Without
@@ -303,9 +316,9 @@ New import code throws `ImportProblem` for every failure the user can fix.
 **Import limits.** Everything imported comes from strangers, so no input may make the tab do
 unbounded work. Decompression stops at a ceiling (`MAX_INFLATED` in `src/io/binary.ts` for share
 links and `|MxDz;` codes, the 2 MB build-file size for `|MBD;` Brotli data), counts past any real
-build's are refused (picks, slots, granted powers, Mids power entries and sets), pasted text and
-files over 2 MB are refused, and a `.mbd` whose fields have the wrong types is reported as damaged
-(`isMbd`). Downloaded file names are cleaned (`src/io/fileName.ts`). `tests/importlimits.test.ts`
+build's are refused (picks, slots, granted powers, Mids power entries and sets; a `/build_save`
+file's powers, slots and the lines its reader can't place), pasted text and files over 2 MB are
+refused, and a `.mbd` whose fields have the wrong types is reported as damaged (`isMbd`). Downloaded file names are cleaned (`src/io/fileName.ts`). `tests/importlimits.test.ts`
 covers these; new import code keeps to them. The published page also carries a
 Content-Security-Policy (`vite.config.ts`, built pages only): everything is loaded from the site
 itself, so a new outside resource needs the policy changed with it.

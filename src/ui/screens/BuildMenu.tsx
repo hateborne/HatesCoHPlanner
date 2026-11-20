@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer, type GameServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
@@ -71,7 +72,7 @@ export function saveFailedText(server: GameServer): string {
 
 /** Save / load / share / Mids import-export, in the in-game skin. */
 export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }) {
-  const { gd, build, loadBuild, versions } = useStore();
+  const { gd, build, loadBuild, versions } = useStore(useShallow((s) => ({ gd: s.gd, build: s.build, loadBuild: s.loadBuild, versions: s.versions })));
   useEscape(onClose);
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');

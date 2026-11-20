@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../state/store.ts';
 import { vx, vy } from '../skin/metrics.ts';
 import type { Skin } from '../skin/skin.ts';
@@ -11,7 +12,7 @@ import { useStage } from './Stage.tsx';
  * when a level was reopened from the overview. Phones have it in the menu pane (Settings.tsx).
  */
 export function StopButtons({ skin }: { skin: Skin }) {
-  const { level, stopHere } = useStore();
+  const { level, stopHere } = useStore(useShallow((s) => ({ level: s.level, stopHere: s.stopHere })));
   const stage = useStage();
   if (stage.phone || level?.mode !== 'wizard') return null;
   // a respec draws "Current Respec Level" at the top center and a long slot-screen title: sit right of both
