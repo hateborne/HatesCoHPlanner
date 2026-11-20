@@ -8,6 +8,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 ### New
 
 - The totals have a Pets and Minions section: click a pet to open its own stats and powers, counting your upgrades, summon slotting, pet aura enhancements, Supremacy, your powers that buff pets and the other pets' buffs, with switches for the pets' own powers.
+- The detailed power tooltip shows an attack's damage with your damage bonuses and with Build Up, Aim and similar powers you switch on in the build screen's totals; with Fiery Embrace switched on, its extra fire damage counts too.
 - Advanced Respec: set the new Respec button to Advanced (or click the ticked Respec bubble on New Build) and each power you click moves you straight to the next pick.
 - Powers can be swapped from the build screen even when they hold enhancements: the planner lists which enhancements will be dropped and kept, and asks first unless Advanced Respec is on.
 - When a new power can't hold the old one's slots, you place the freed slots right away.

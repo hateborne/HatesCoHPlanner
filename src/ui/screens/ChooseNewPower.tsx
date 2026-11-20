@@ -246,7 +246,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
         <PowerColumn skin={skin} g={g} sets={lists[shownTab] ?? []} pending={level.pendingPower} onPick={onPick} onHover={hoverPower} onLong={onLong} flash={lockFlash} />
         {desc}
         {buttons}
-        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} />
+        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} rules={rules} />
       </>
     );
   }

@@ -133,7 +133,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         {desc}
         <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
         <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
-        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} />
+        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} rules={rules} />
       </>
     );
   }

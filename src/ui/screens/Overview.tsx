@@ -255,7 +255,7 @@ function LevelOrb({ level, className, style, title, onClick, face, bare, childre
 }
 
 /** The power / enhancement hover boxes; the only part of the overview that follows the pointer. */
-function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; build: Build; end: number }) {
+function OverviewTips({ gd, skin, build, rules, end }: { gd: GameData; skin: Skin; build: Build; rules: BuildRules; end: number }) {
   const { tip, ringTip } = useHover(useShallow((h) => ({ tip: h.tip, ringTip: h.ringTip })));
   const tipLevel = useTipLevel();
   const hint = useShiftHint();
@@ -264,7 +264,7 @@ function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; buil
       {ringTip && tipLevel !== 'off' ? <EnhTip key={`${ringTip.entry.key}:${ringTip.slot}`} gd={gd} skin={skin} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
       {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} hint={hint} /> : null}
       {tip && tipLevel === 'advanced' ? (
-        <SlotTip gd={gd} skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
+        <SlotTip gd={gd} skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} rules={rules} />} />
       ) : null}
     </>
   );
@@ -695,7 +695,7 @@ export function Overview({ skin }: { skin: Skin }) {
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
         <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
-        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />
+        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} rules={rules} />
       </>
     );
   }
@@ -732,7 +732,7 @@ export function Overview({ skin }: { skin: Skin }) {
       <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
         <TotalsPanel gd={gd} t={totals} width={420} pets={pets} />
       </GameScroll>
-      <OverviewTips gd={gd} skin={skin} build={build} end={end} />
+      <OverviewTips gd={gd} skin={skin} build={build} rules={rules} end={end} />
       <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />

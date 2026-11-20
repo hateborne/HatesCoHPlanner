@@ -513,7 +513,9 @@ Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d
 - Its line reads that chance by the live client's rule, as every line does: the group's chance
   when the template's own Duration field is 0, else its tick chance unless it `CancelOnMiss` (Hail
   of Bullets' knockdown: 10%, its tick chance). Its parents' chances don't count.
-- Damage totals keep each group's own chance: getTotalDamage reads no modes.
+- Damage totals keep each group's own chance: getTotalDamage reads no modes. A tooltip's damage
+  rows depart from this for Fiery Embrace's groups and Rage's mode, which follow their power's
+  totals switch (the owner's decision, November 19, 2026; "Boosted damage", below).
 - The client walks its template list, where each group's sub-groups come before its own mods, so
   the lines do too (`templates`): Crushing Uppercut's knockup comes last, Executioner's Shot's
   defense debuff after its Standard Ammo hits.
@@ -531,6 +533,48 @@ Homecoming i28p4 0x1404de5c0 and 0x1404de9f0, i28p3 the same; Thunderspy 0x1404d
   at any chance (power_AddEffects, decompiled). A mod with a Duration field of its own reads its
   tick chance, not its group's: Homecoming's Blaster Charged Brawl (Electricity Manipulation) reads
   "-100.00% recovery rate for 2.00s on target", its group's 20% unshown.
+
+## Boosted damage (power info; the planner's own rows)
+
+The client's power info shows a power's damage with its own enhancements only. The planner adds
+rows the client doesn't have (`damageBoost` in `src/engine/boost.ts`, `powerInfo`'s `boost`; the
+owner's decisions, November 19, 2026):
+
+- The boosts are the powers the totals count: set bonuses, running autos and toggles, and clicks
+  switched on with their totals switch (Build Up, Aim, Rage, Follow Up). A click switched on
+  counts as always running, as in the totals.
+- When they add damage strength, a heading and the three damage rows again follow the damage
+  rows. The heading names the clicks switched on ("With Build Up:"), adds "and damage bonuses"
+  when something else adds strength too (set bonuses, toggles, autos), and reads "With damage
+  bonuses:" when no click is among them. Each damage
+  template at magnitude x min(1 + its enhancement strength + the character's strength for its
+  damage type, the archetype's strength cap). The cap holds enhancements and buffs together
+  (`strMax`: 5 at level 50, a Brute's 7). A template that ignores strength takes none.
+- An executed power (ExecutePower) is the character's own, so it takes the character's strength
+  with or without CopyBoosts.
+- A pet gets a copy of its creator's strength mods when it is made if it has CopyCreatorMods
+  (character_CreatePet, character_pet.c: the creator's Strength-aspect mods are copied to the
+  pet). Homecoming's data has the flag on the EntCreate mod (Burn's patch), so such a pet takes
+  the build's damage strength, under its creator's cap (a pet class's own cap isn't exported). A
+  pet without the flag stays at its enhanced value. The source and Thunderspy keep the flag on
+  the villain def, which the export doesn't read: those pets (Homecoming's Rain of Fire, all of
+  Thunderspy's) take none (@TODO export the villain def's flag).
+- Fiery Embrace (Brute, Scrapper, Tanker and others' versions) gives no strength: its
+  GlobalChanceMod raises the FieryEmbrace tag, which the export doesn't name, so the link is a
+  table in `boost.ts` (a power named `*.Fiery_Embrace` that carries a GlobalChanceMod). While it
+  is switched on, every group with that tag mode counts in the damage rows, base and enhanced,
+  at the mode's chance (1) in place of its own 0 (a DoT at its tick chance). While it is off,
+  none of them counts in a tooltip, a DoT included: the client's own total counts such a DoT at
+  its tick chance whatever the mode (Incinerate, Breath of Fire), which reads as damage the
+  character isn't dealing. `powerInfo` without a build's boosts keeps the client's rule. The
+  Dominator's Embrace of Fire is a plain strength buff.
+- A group that needs a power mode (`kUnleashMight Source.Mode?`: Super Strength's Might damage)
+  counts in a tooltip only while a running power sets the mode (Rage switched on), when a power of
+  the build sets that mode at all; a mode no power of the build sets keeps the client's rule (the
+  group counts). Only requirements that are plain mode tests are read this way.
+- Left out: buffs whose magnitude is a formula (Fury, Defiance), which the totals don't read;
+  chance procs (Gaussian's Chance for Build Up); foe debuffs (Melt Armor's resistance debuff
+  depends on the target); a buff's uptime.
 
 ## Requirements in the power info
 
