@@ -139,6 +139,12 @@ pipeline/                    Python data pipeline (runs on the owner's machine o
                              up, and the statistics in tables (npm run research)
 tools/                       standard-library Python decoders for client file formats
 scripts/release-version.mjs  the version a deploy publishes (plain Node; run by pages.yml)
+scripts/precompress.mjs      pre-compressed copies of a built site's text files (run by pages.yml
+                             on the build for the site's own domain)
+scripts/deploy-report.mjs    what a deploy did for each target, GitHub Pages and the domain (run by
+                             pages.yml's last job)
+hosting/                     the site's own domain (docs/hosting.md): Caddyfile, planner-update.sh
+                             and its systemd service and timer
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 .github/workflows/           ci.yml (pull request checks), pages.yml (tag a release and deploy main,
@@ -191,7 +197,12 @@ Pages serves those addresses. It also writes `404.html` (`notFoundPage`): a serv
 another case or with more after it (`/HatesCoHPlanner/homecoming/x`) goes on to that server's page
 with its `#b=` code (`notFoundRedirect`, written into the page and allowed by its hash in the page's
 CSP); anything else gets a "not found" page linking to the planner, so an unknown server's link is
-never opened as Homecoming. On load, a share link opens on the server its address names (none:
+never opened as Homecoming. The site base is GitHub Pages' `/HatesCoHPlanner/` (`PAGES_BASE`)
+unless the build is told another (`HCP_BASE`, `siteBase` in `vite.config.ts`): the deploy's second
+build, for the site's own domain, has `/`, so its addresses are `/<path>/#b=<share code>`. There a
+link made on GitHub Pages still opens: its 404 page sends `/HatesCoHPlanner/<path>/` on to
+`/<path>/`, and a pasted one is read the same (`onThisSite`); on GitHub Pages both do exactly
+what they did (`docs/hosting.md`). On load, a share link opens on the server its address names (none:
 Homecoming; one the site doesn't carry: refused, `NamedServer.unknown`); a remembered build opens
 unless the address names another server. After a long break (`RETURN_AFTER`, 4 hours without a
 click, tap, key or wheel in any tab: `hcp.lastUsed`, `src/state/lastUsed.ts`; only a recorded time
