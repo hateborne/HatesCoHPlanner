@@ -185,10 +185,15 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
+      # GitHub Pages sends a file gzip-compressed and nothing smaller. So this build is told that
+      # its data files have brotli copies (HCP_BROTLI), and the step after it makes them: a browser
+      # that unpacks brotli itself asks for a copy, any other for the file (src/data/packed.ts).
       - run: npm run build
         env:
           HCP_VERSION: ${{ needs.prepare.outputs.version }}
           HCP_COMMIT: ${{ github.sha }}
+          HCP_BROTLI: '1'
+      - run: node scripts/precompress.mjs dist/data br
       # (no configure-pages step: this build's base path is GitHub Pages' own, the default in vite.config.ts)
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

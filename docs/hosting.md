@@ -29,6 +29,9 @@ settings are in `hosting/`.
   code decides (as on GitHub Pages).
 - Builds saved in the browser belong to the address they were saved at. The two sites don't share
   them.
+- The domain's web server sends its data as brotli to every browser. GitHub Pages can't, so there
+  the planner asks for brotli copies itself where the browser can unpack them
+  (`src/data/packed.ts`); the domain's build is not marked for that and never does.
 - None of this changes what the GitHub Pages build does: with the default base, `serverInLink` and
   the 404 page's redirect behave exactly as they did (`tests/servers.test.ts`).
 
