@@ -1268,7 +1268,9 @@ export function powerInfo(
   if (timed && dmgBase && cast) {
     stats.push(row(TXT.damagePerAct, `<color #ff4b4b>${pair(dmgShown / cast, dmgBase / cast, f2)}`));
   }
-  if (timed && dmgBase) {
+  // a power with neither a cast time nor a recharge has no cycle to divide by (a pet's Self
+  // Destruct): the row is left out, as the one above is for a power with no cast time
+  if (timed && dmgBase && cast + baseRech > 0 && cast + enhRech > 0) {
     const dpc = dmgBase / (cast + baseRech);
     const dpcEnh = dmgShown / (cast + enhRech);
     stats.push(row(TXT.damagePerCast, `<color #ff4b4b>${pair(dpcEnh, dpc, f2)}`));
