@@ -6,7 +6,7 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
-import { cleanName, toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
+import { cleanName, MAX_PET_SWITCHES, toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { BuildRules, isArchetypeInherent } from './rules.ts';
 
 export interface Checked {
@@ -18,8 +18,6 @@ const isInt = (v: unknown, lo: number, hi: number): v is number => typeof v === 
 
 // a pet power's full name ("Mastermind_Pets.Protector.Force_Shield"): dotted words
 const PET_POWER_NAME = /^[A-Za-z0-9_']{1,64}(\.[A-Za-z0-9_']{1,64}){1,3}$/;
-// the most pet switches a build keeps (share.ts reads no more)
-const MAX_PET_SWITCHES = 64;
 
 /**
  * The pet pane's switches of a build from outside: the well-formed ones (a pet power's full name
