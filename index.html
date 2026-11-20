@@ -6,9 +6,53 @@
     <meta name="description" content="A City of Heroes build planner for Homecoming and Thunderspy that plays like the in-game level-up screens." />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>Hate's CoH Planner</title>
+    <!-- #not-started: for a page whose script never arrives (docs/architecture.md, "Loading") -->
+    <style>
+      #not-started {
+        display: none;
+      }
+      #root:empty + #not-started {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        background: #000314;
+        color: #cfe8ff;
+        font: 16px/1.5 Verdana, sans-serif;
+        text-align: center;
+        opacity: 0;
+        animation: not-started 0.3s linear 10s forwards;
+      }
+      #not-started h1 {
+        margin: 0 0 8px;
+        color: #ffd200;
+        font-size: 24px;
+      }
+      #not-started p {
+        margin: 0;
+      }
+      @keyframes not-started {
+        to {
+          opacity: 1;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="not-started">
+      <div>
+        <h1>The planner hasn't started yet</h1>
+        <p>If it stays like this, reload the page.</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -11,9 +11,11 @@ src/
   version.ts                 the planner's release version (stamped by the deploy)
   data/
     gamedata.ts              GameData: indexed game data + loadGameData(base, version)
-    packed.ts                the data files' brotli copies on GitHub Pages: fetchJson asks for a copy
-                             where the browser unpacks brotli itself, else for the file
+    packed.ts                fetchJson: a data file's download, watched (watch.ts); and brotli
+                             copies of the data files for GitHub Pages, switched off
     versions.ts              versions.json, LEGACY_GAME_VERSION, resolveVersion()
+    watch.ts                 Watch: when a download last received anything, and a way to give it
+                             up (Try again); ask: a file with no answer is asked for again alongside
     servers.ts               game servers: ids, address paths, data folders, logos (SERVERS)
     pets.ts                  the shape check of a version's pseudo-pet file (readPetsFile)
     henchmen.ts              the shape check of a version's real pets file (readHenchmenFile)
@@ -179,14 +181,7 @@ docs/exemplar-rules.md       exemplar rules (pending the owner's review)
 **Loading.** The app fetches its game server's `versions.json` (Homecoming's is
 `public/data/versions.json`), then loads the game version the current build asks for (the default
 for a new build), with `?v=<hash>` against stale caches. The New Build screen's version picker
-switches versions; each version is fetched once per page. GitHub Pages sends a file gzip-compressed
-and nothing smaller, so its deploy puts a brotli copy beside each data file (`name.json.br`, about a
-third of what gzip makes of it; `scripts/precompress.mjs`) and marks its build (`HCP_BROTLI=1`).
-There the four files of a version are asked for by their copies in a browser that unpacks brotli
-itself (`fetchJson` in `src/data/packed.ts`); a browser that doesn't, and any copy that is missing,
-stalls (`COPY_STALL_MS`) or won't unpack or parse, gets the file exactly as before, so a copy
-never makes a load fail or read anything else. The copies exist in the published site only, never in `public/data`; the site's own
-domain needs none (its web server sends brotli to every browser, `docs/hosting.md`). The version's pseudo-pet file is fetched
+switches versions; each version is fetched once per page. The version's pseudo-pet file is fetched
 once those files have arrived and is never waited for (`loadGameData`): it is attached when it
 arrives (`GameData.setPets`, which takes it only when every part is well formed,
 `src/data/pets.ts`), an open power info panel then shows its pets (`subscribePets`), and a missing,
@@ -200,6 +195,28 @@ hosts through `usePetCards`; once per version),
 taken through `GameData.setHenchmen` (`src/data/henchmen.ts`) and heard through
 `subscribeHenchmen`; a fetch the network fails is asked for again on the build's next change (a
 missing file is not), and without the file the totals show no Pets and Minions section.
+
+**Brotli copies on GitHub Pages (switched off).** GitHub Pages sends a file gzip-compressed and
+nothing smaller. The planner can get around that: a build marked `HCP_BROTLI=1` asks for a brotli
+copy of each of a version's four files (`name.json.br`, about a third of what gzip makes of it,
+made by `node scripts/precompress.mjs dist/data br`) and unpacks it in the page, in a browser whose
+`DecompressionStream` takes brotli (`fetchJson` and `viaCopy` in `src/data/packed.ts`); any other
+browser, and any copy that is missing, stalls (`COPY_STALL_MS`) or won't unpack or parse, gets the
+file itself. The deploy does not use it (the owner's decision, November 20, 2026), because it trades
+certainty for size:
+
+- It reaches few visitors. Every browser unpacks brotli that a web server sends (as the site's own
+  domain does, `docs/hosting.md`), but only Firefox 147+ and Safari 18.4+ unpack it in a page;
+  Chrome does not.
+- The visitor's browser decides, not a release: the day Chrome's `DecompressionStream` takes
+  brotli, most visitors would move to the copies with no deploy and no test.
+- It was never seen on GitHub Pages itself (how the host serves a `.br` file can't be tried before
+  a deploy), nor in Safari.
+- A copy that stalls is only given up for the file after `COPY_STALL_MS` (30 seconds), longer than
+  a visitor waits.
+
+Before switching it on again, settle those: a short stall limit, a browser list the site chooses,
+and a trial on the real host. The code and its tests (`tests/packed.test.ts`) are kept for that.
 
 **Servers and the address.** The page address names the game server:
 `/HatesCoHPlanner/<path>/#b=<share code>` (`serverFromPath`, any case). The build step copies
@@ -256,9 +273,45 @@ player just asked to continue. Any other remembered build whose server's version
 load is passed over, and so is one `checkBuild` can't read at all (said in a dialog): the next
 candidate, then New Build or the server list, so one server's files being down never keeps the
 player from the others, and a stored build can't hold every later load on the error screen. Nothing
-is removed from storage. The loading screen offers Try again after 20 seconds with no question on
-screen (`LoadingScreen` in `src/App.tsx`); nothing is cancelled, and `retryLoad` drops the version
-and data caches so the downloads are fetched anew. Only the newest `load()` shows what it loaded
+is removed from storage.
+
+A download that stalls is told from one that is slow by what it receives. The downloads behind
+each thing the load waits for are watched together (`Watch` in `src/data/watch.ts`): a version
+list, or a version's four files as one, since a slow connection may deliver them one after another
+and a file waiting its turn looks just like one that stalled. Nothing begun or received for 5
+seconds (`STALLED_MS`) counts as stalled; a download still receiving, however little, never does.
+Two rules keep a slow connection from being punished for being slow:
+
+- **Nothing is cancelled by itself.** While a file has no answer and its watch has stalled, the
+  file is asked for a second time alongside the first, past the browser's cache, at most twice
+  more and 5 seconds apart (`ask`, `EXTRA_ASKS`). An extra ask is no sign of life for the watch,
+  so every file with no answer is asked for again at the same pace, and Try again can still tell
+  that nothing is coming. Whichever ask answers first is used and the others are let go of,
+  so a request that is only slow to answer loses nothing, not even its place in line. Once the
+  answer has come the download is its body, which is never asked for again by itself: a body that
+  stalls part way is left as it is, so a connection that only paused picks it up where it was.
+- **A download that is receiving is never given up**, not even by the player. Try again is offered
+  on the loading screen after 10 seconds with no question on screen (`LoadingScreen` in
+  `src/App.tsx`); `retryLoad` gives up the downloads that have stalled, keeps those still coming
+  in (the new load waits for them too), fetches everything else afresh and starts the load again.
+  New Build has no Try again: there, picking the server or version again does the same for its
+  download (`kept` in the store, asked with `retry`). When one of a version's four files fails,
+  the load has failed, and the other three are given up with it (`loadGameData`).
+
+Giving a download up (`Watch.cancel`) cancels its requests and marks the files still under way, so
+that each is next asked for past the browser's cache (`asAgain`, `cache: 'reload'`). Both matter:
+when a download of an address is under way, a browser gives a new request for that address the
+same download (seen in Chrome), so a stalled file could otherwise only be fetched again by
+reloading the page. A browser
+that can't hand a body over in parts (no `TransformStream`) can't tell the watch what arrives;
+while such a body is being read its watch is never called stalled (`Watch.unheard`), since it may
+be arriving all along.
+
+A page whose script
+never arrives has no loading screen at all (right after a release a browser may still hold the page
+from before it, naming a script file that is gone): `index.html` itself then says to reload, in a
+note of plain HTML and CSS that shows once `#root` has stayed empty for 10 seconds
+(`#not-started`; `tests/notstarted.test.ts`). Only the newest `load()` shows what it loaded
 (`loadSeq`), and of two quick picks of a version or server on New Build the last one wins
 (`serverSeq`). `tests/loadfallbacks.test.ts` covers these.
 

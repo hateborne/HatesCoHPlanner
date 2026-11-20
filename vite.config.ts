@@ -177,8 +177,8 @@ export default defineConfig({
   plugins: [react(), cspMeta, serverPages(), notFoundPage()],
   // the release shown in the footer (src/version.ts)
   // whether the unfinished set finder shows in this build (src/ui/flags.ts): HCP_SET_FINDER=1
-  // and whether the site this build is for has brotli copies of its data files, which the GitHub
-  // Pages deploy makes (src/data/packed.ts): HCP_BROTLI=1
+  // and whether the site this build is for has brotli copies of its data files (src/data/packed.ts):
+  // HCP_BROTLI=1, which no deploy sets today (docs/architecture.md, "Brotli copies on GitHub Pages")
   define: {
     __HCP_VERSION__: JSON.stringify(RELEASE.version),
     __HCP_COMMIT__: JSON.stringify(RELEASE.commit),

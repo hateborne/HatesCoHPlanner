@@ -21,7 +21,7 @@ export declare function wantsCopies(name: string, size: number): boolean;
 /**
  * Write a brotli copy (name.br) and a gzip copy (name.gz) beside every file under a folder that
  * wants them, each at its format's best setting. The site's own domain gets both (its web server
- * hands out whichever a browser takes); GitHub Pages gets brotli only, as it makes gzip itself.
+ * hands out whichever a browser takes); a host that makes gzip itself needs brotli alone.
  *
  * A copy that would be no smaller than its file is not written. Copies left by an earlier run are
  * removed first, so running it again leaves exactly the copies the files as they are now call for

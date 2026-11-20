@@ -90,7 +90,7 @@ describe('precompress', () => {
     expect(readdirSync(dir).sort()).toEqual(['archive.gz', 'data.json']);
   });
 
-  it('writes only the kind of copy asked for (GitHub Pages gets brotli alone: it makes gzip itself)', async () => {
+  it('writes only the kind of copy asked for (a host that makes gzip itself needs brotli alone)', async () => {
     const dir = folder();
     const p = join(dir, 'data.json');
     const text = JSON.stringify(Array.from({ length: 500 }, (_, i) => ({ i, text: 'the same words again' })));

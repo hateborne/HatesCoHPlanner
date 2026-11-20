@@ -27,9 +27,19 @@ export interface Visit {
   hash?: string; // the address's hash ("#b=...")
   lastServer?: string; // the server last shown
   failing?: RegExp; // files (paths under public/) whose download fails
-  gate?: (rel: string) => Promise<void> | undefined; // a download waits for what this returns, if anything
+  gate?: (rel: string) => Promise<void> | undefined; // a download waits for what this returns, if anything (and fails if given up meanwhile)
+  answer?: (rel: string, text: string, signal: AbortSignal | undefined) => Response | undefined; // an answer of the test's own for a file (a body that stalls part way), else the file
   settle?: boolean; // wait for the load to settle or ask (default true; false when a gate holds it)
   before?: () => void; // run before the store is imported (vi.doMock)
+}
+
+/** @return A promise that fails, as a fetch does, once a download's signal says it was given up. */
+function givenUp(signal: AbortSignal | undefined): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    const fail = (): void => reject(new DOMException('The operation was aborted.', 'AbortError'));
+    if (signal?.aborted) fail();
+    else signal?.addEventListener('abort', fail);
+  });
 }
 
 /**
@@ -38,7 +48,8 @@ export interface Visit {
  *
  * @param opts What the browser holds: the remembered build, the last use, the address.
  * @return The store, the local storage, the history stand-in and the load's promise, once the load
- *   has settled or asked a question.
+ *   has settled or asked a question; and what was fetched, in order, with each request's signal
+ *   and cache setting.
  */
 export async function visit(opts: Visit) {
   const local = memory({
@@ -52,23 +63,32 @@ export async function visit(opts: Visit) {
   vi.stubGlobal('sessionStorage', memory());
   vi.stubGlobal('history', history);
   const fetched: string[] = [];
-  vi.stubGlobal('fetch', async (url: string) => {
+  const signals: (AbortSignal | undefined)[] = []; // what would cancel each download, in the order of `fetched`
+  const caches: (RequestCache | undefined)[] = []; // how each was asked of the browser's cache, in the same order
+  vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     const rel = String(url).split('?')[0]!.slice(BASE.length);
     fetched.push(rel);
-    await opts.gate?.(rel);
+    signals.push(init?.signal ?? undefined);
+    caches.push(init?.cache);
+    const signal = init?.signal ?? undefined;
+    const gate = opts.gate?.(rel);
+    // as a browser's fetch does, a download given up while it waits fails at once
+    if (gate) await Promise.race([gate, givenUp(signal)]);
     if (opts.failing?.test(rel)) return Promise.reject(new TypeError('Failed to fetch'));
     try {
       const body = readFileSync(join(process.cwd(), 'public', rel), 'utf-8');
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(body) as unknown) });
+      // a real answer, with a body the loader reads as a stream, as a browser's is
+      return opts.answer?.(rel, body, signal) ?? new Response(body);
     } catch {
-      return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error('404')) });
+      return new Response('not found', { status: 404 });
     }
   });
   vi.resetModules();
   opts.before?.();
   const { useStore, CONTINUE_BUILD } = await import('../../src/state/store.ts');
+  const { STALLED_MS, EXTRA_ASKS } = await import('../../src/data/watch.ts');
   const done = useStore.getState().load();
   // wait for the load to settle or to ask
   if (opts.settle !== false) await vi.waitFor(() => expect(useStore.getState().serverAsk !== null || useStore.getState().view !== 'loading').toBe(true));
-  return { useStore, CONTINUE_BUILD, local, history, done, fetched };
+  return { useStore, CONTINUE_BUILD, STALLED_MS, EXTRA_ASKS, local, history, done, fetched, signals, caches };
 }

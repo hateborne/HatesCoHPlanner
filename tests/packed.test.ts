@@ -1,8 +1,10 @@
 /**
- * The data files' brotli copies (src/data/packed.ts). GitHub Pages sends a file gzip-compressed and
- * nothing smaller, so its deploy puts a brotli copy beside each data file; a browser that unpacks
- * brotli itself asks for the copy. A copy can make a load smaller, but must never make it fail or
- * change what it reads: a link opens the same build with copies, without them, and with broken ones.
+ * The data files' downloads and their brotli copies (src/data/packed.ts). GitHub Pages sends a file
+ * gzip-compressed and nothing smaller; a build marked for it asks for a brotli copy of each data
+ * file in a browser that unpacks brotli itself. No deploy marks its build today (the copies are
+ * switched off: docs/architecture.md), but the path is kept, and kept honest here: a copy can make
+ * a load smaller, but must never make it fail or change what it reads. A link opens the same build
+ * with copies, without them, and with broken ones.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { serverById } from '../src/data/servers.ts';
 import type { GameVersion } from '../src/data/versions.ts';
 import { BROTLI_COPIES, COPY_STALL_MS, fetchJson, unpacksBrotli } from '../src/data/packed.ts';
+import { asAgain, Watch } from '../src/data/watch.ts'; // their own tests: tests/watch.test.ts
 import { checkBuild } from '../src/engine/validate.ts';
 import { decodeShare } from '../src/io/share.ts';
 import { dataDir, loadVersionIndex } from './helpers/data.ts';
@@ -222,7 +225,7 @@ describe('fetchJson', () => {
   it('never asks for a copy in a browser that unpacks no brotli, even on a site that has them', async () => {
     vi.stubGlobal('DecompressionStream', NoBrotliStream);
     const asked = site({ [`${FILE}.br${Q}`]: () => new Response(pack(TEXT)), [`${FILE}${Q}`]: () => new Response(TEXT) });
-    // what the default works out on GitHub Pages' build: the site has copies, so the browser's answer decides
+    // what the default works out in a build marked as having copies: the browser's answer decides
     const siteHasCopies = true;
     expect(await (await fetchJson(FILE, Q, /*copies=*/ siteHasCopies && unpacksBrotli())).json()).toEqual(DATA);
     expect(asked).toEqual([`${FILE}${Q}`]);
@@ -241,7 +244,7 @@ describe('loading a game version through its copies', () => {
    * Load the version with the site standing in: its files from public/, and their copies as given.
    *
    * @param copies What the site answers for a file's copy (none: the site has no copies).
-   * @param tryCopies Whether the loader tries copies (GitHub Pages' build, in a browser that unpacks brotli).
+   * @param tryCopies Whether the loader tries copies (a build marked for them, in a browser that unpacks brotli).
    * @return The loaded data and the addresses asked for.
    */
   async function load(copies: ((file: Buffer) => Response) | null, tryCopies: boolean) {
@@ -301,5 +304,207 @@ describe('loading a game version through its copies', () => {
     });
     const { loadGameData } = await import('../src/data/gamedata.ts');
     await expect(loadGameData(server, '/x/', version)).rejects.toThrow(/game data i28p4\/.*\.json is missing \(HTTP 404\)/);
+  });
+});
+
+describe('fetchJson under a watch', () => {
+  /** @return A body that arrives in `n` parts. */
+  const inParts = (text: string, n: number): ReadableStream<Uint8Array> =>
+    new ReadableStream<Uint8Array>({
+      start(to) {
+        const bytes = new TextEncoder().encode(text);
+        const size = Math.ceil(bytes.length / n);
+        for (let i = 0; i < bytes.length; i += size) to.enqueue(bytes.subarray(i, i + size));
+        to.close();
+      },
+    });
+
+  /**
+   * Stand in for a site whose downloads never answer, until they are given up.
+   *
+   * @return The addresses asked for, in order.
+   */
+  function silentSite(): string[] {
+    const asked: string[] = [];
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+      asked.push(String(url));
+      return new Promise<Response>((_, reject) => {
+        const fail = (): void => reject(new DOMException('The operation was aborted.', 'AbortError'));
+        if (init?.signal?.aborted) fail();
+        else init?.signal?.addEventListener('abort', fail);
+      });
+    });
+    return asked;
+  }
+
+  it('tells the watch of its answer and of each part of its body, and that it has ended', async () => {
+    const watch = new Watch();
+    const received = vi.spyOn(watch, 'received');
+    const end = vi.spyOn(watch, 'end');
+    let signal: AbortSignal | null | undefined;
+    vi.stubGlobal('fetch', (_url: string, init?: RequestInit) => {
+      signal = init?.signal;
+      return Promise.resolve(new Response(inParts(TEXT, 3)));
+    });
+    const r = await fetchJson(FILE, Q, /*copies=*/ false, watch);
+    expect(signal?.aborted).toBe(false); // started with a signal the watch can give it up through
+    expect(received).toHaveBeenCalledTimes(1); // its answer
+    expect(end).not.toHaveBeenCalled(); // its body is still to come
+    expect(await r.json()).toEqual(DATA);
+    expect(received.mock.calls.length).toBeGreaterThanOrEqual(4); // and each of the three parts
+    expect(end.mock.calls).toEqual([[`${FILE}${Q}`]]); // the last of it arrived
+    // so giving the watch up now marks nothing for a fresh fetch
+    watch.cancel();
+    expect(asAgain(`${FILE}${Q}`)).toEqual({});
+  });
+
+  it('tells the watch of each part of a copy, too', async () => {
+    vi.stubGlobal('DecompressionStream', BrotliStream);
+    const watch = new Watch();
+    const received = vi.spyOn(watch, 'received');
+    site({ [`${FILE}.br${Q}`]: () => new Response(pack(TEXT)) });
+    expect(await (await fetchJson(FILE, Q, /*copies=*/ true, watch)).json()).toEqual(DATA);
+    expect(received.mock.calls.length).toBeGreaterThanOrEqual(2); // its answer, and its body
+  });
+
+  it('returns a failed answer as it came, its download over', async () => {
+    const watch = new Watch();
+    const end = vi.spyOn(watch, 'end');
+    const missing = new Response('not found', { status: 404 });
+    vi.stubGlobal('fetch', () => Promise.resolve(missing));
+    expect(await fetchJson(FILE, Q, /*copies=*/ false, watch)).toBe(missing);
+    expect(end.mock.calls).toEqual([[`${FILE}${Q}`]]);
+  });
+
+  it("never calls a download quiet whose body it can't hear arriving (an older browser), until its JSON is read", async () => {
+    const watch = new Watch();
+    let finish = (): void => undefined;
+    const reading = new Promise<void>((r) => (finish = r));
+    // an answer with no body to read in parts (an older browser, the tests' own stand-ins)
+    vi.stubGlobal('fetch', () => Promise.resolve({ ok: true, status: 200, json: () => reading.then(() => DATA) }));
+    const r = await fetchJson(FILE, Q, /*copies=*/ false, watch);
+    const data = r.json();
+    expect(watch.quietIn(5_000)).toBe(Infinity); // it may be arriving all along
+    finish();
+    expect(await data).toEqual(DATA);
+    expect(watch.quietIn(5_000)).not.toBe(Infinity); // it has ended
+  });
+
+  it('fails at once when the watch gives the file up', async () => {
+    const asked = silentSite();
+    const watch = new Watch();
+    const got = fetchJson(FILE, Q, /*copies=*/ false, watch);
+    watch.cancel();
+    await expect(got).rejects.toThrow('aborted');
+    expect(asked).toEqual([`${FILE}${Q}`]);
+  });
+
+  it('fails at once when the watch gives a copy up: the file is not fetched in its place', async () => {
+    vi.stubGlobal('DecompressionStream', BrotliStream);
+    const asked = silentSite();
+    const watch = new Watch();
+    const got = fetchJson(FILE, Q, /*copies=*/ true, watch);
+    watch.cancel();
+    await expect(got).rejects.toThrow('aborted');
+    expect(asked).toEqual([`${FILE}.br${Q}`]);
+  });
+
+  it('gives up a body half read', async () => {
+    const watch = new Watch();
+    vi.stubGlobal('fetch', (_url: string, init?: RequestInit) => {
+      // half the file, then nothing more until the download is given up
+      const body = new ReadableStream<Uint8Array>({
+        start(to) {
+          to.enqueue(new TextEncoder().encode(TEXT.slice(0, TEXT.length >> 1)));
+          init?.signal?.addEventListener('abort', () => to.error(new DOMException('The operation was aborted.', 'AbortError')));
+        },
+      });
+      return Promise.resolve(new Response(body));
+    });
+    const r = await fetchJson(FILE, Q, /*copies=*/ false, watch);
+    const read = r.json();
+    watch.cancel();
+    await expect(read).rejects.toThrow('aborted');
+  });
+});
+
+describe('a download given up, asked for again', () => {
+  /**
+   * Stand in for a site whose first download of each address stalls (its answer never comes, until
+   * it is given up) and whose later ones answer.
+   *
+   * @param answer What a later download answers with.
+   * @return Each request's address and how it was asked of the browser's cache, in order.
+   */
+  function stallingSite(answer: (url: string) => Response): [string, RequestCache | undefined][] {
+    const asked: [string, RequestCache | undefined][] = [];
+    const seen = new Set<string>();
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+      asked.push([String(url), init?.cache]);
+      if (seen.has(String(url))) return Promise.resolve(answer(String(url)));
+      seen.add(String(url));
+      return new Promise<Response>((_, reject) => {
+        const fail = (): void => reject(new DOMException('The operation was aborted.', 'AbortError'));
+        if (init?.signal?.aborted) fail();
+        else init?.signal?.addEventListener('abort', fail);
+      });
+    });
+    return asked;
+  }
+
+  it('goes past the browser cache once: the browser may still hold the download given up', async () => {
+    const other = '/HatesCoHPlanner/data/i28p4/again.json'; // an address no other test gives up
+    const asked = stallingSite(() => new Response(TEXT));
+    const first = new Watch();
+    const got = fetchJson(other, Q, /*copies=*/ false, first);
+    first.cancel();
+    await expect(got).rejects.toThrow('aborted');
+    expect(await (await fetchJson(other, Q, /*copies=*/ false, new Watch())).json()).toEqual(DATA);
+    expect(await (await fetchJson(other, Q, /*copies=*/ false, new Watch())).json()).toEqual(DATA);
+    expect(asked).toEqual([
+      [`${other}${Q}`, undefined],
+      [`${other}${Q}`, 'reload'],
+      [`${other}${Q}`, undefined],
+    ]);
+  });
+
+  it('goes past it for a copy given up, too', async () => {
+    vi.stubGlobal('DecompressionStream', BrotliStream);
+    const other = '/HatesCoHPlanner/data/i28p4/again-copy.json';
+    const asked = stallingSite((url) => (url.includes('.br') ? new Response(pack(TEXT)) : new Response(TEXT)));
+    const first = new Watch();
+    const got = fetchJson(other, Q, /*copies=*/ true, first);
+    first.cancel();
+    await expect(got).rejects.toThrow('aborted');
+    expect(await (await fetchJson(other, Q, /*copies=*/ true, new Watch())).json()).toEqual(DATA);
+    expect(asked).toEqual([
+      [`${other}.br${Q}`, undefined],
+      [`${other}.br${Q}`, 'reload'],
+    ]);
+  });
+
+  it('is asked for as ever when it had arrived, or had failed by itself, before the watch was given up', async () => {
+    const other = '/HatesCoHPlanner/data/i28p4/arrived.json';
+    const asked: (RequestCache | undefined)[] = [];
+    vi.stubGlobal('fetch', (_url: string, init?: RequestInit) => {
+      asked.push(init?.cache);
+      return Promise.resolve(new Response(TEXT));
+    });
+    const watch = new Watch();
+    expect(await (await fetchJson(other, Q, /*copies=*/ false, watch)).json()).toEqual(DATA);
+    watch.cancel(); // nothing of its is still under way
+    expect(await (await fetchJson(other, Q, /*copies=*/ false, new Watch())).json()).toEqual(DATA);
+    expect(asked).toEqual([undefined, undefined]);
+    // and one that failed by itself
+    const failing = '/HatesCoHPlanner/data/i28p4/failed.json';
+    vi.stubGlobal('fetch', (_url: string, init?: RequestInit) => {
+      asked.push(init?.cache);
+      return asked.length === 3 ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(new Response(TEXT));
+    });
+    const second = new Watch();
+    await expect(fetchJson(failing, Q, /*copies=*/ false, second)).rejects.toThrow('Failed to fetch');
+    second.cancel();
+    expect(await (await fetchJson(failing, Q, /*copies=*/ false, new Watch())).json()).toEqual(DATA);
+    expect(asked.slice(2)).toEqual([undefined, undefined]);
   });
 });

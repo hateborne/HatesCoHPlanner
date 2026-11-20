@@ -3,6 +3,8 @@
  * Each version keeps its own folder (public/data/<id>/), so a build or link made for one patch
  * keeps opening with that patch's data after newer ones are added.
  */
+import { heard, type Fetched } from './packed.ts';
+import { ask, type Watch } from './watch.ts';
 
 /** One published data set. */
 export interface GameVersion {
@@ -29,10 +31,15 @@ const OLD_DATA_ID = /^\d{8}-[0-9a-f]{8}$/;
  * Fetch and check a server's version index. Revalidated on every visit so a new patch shows up at once.
  *
  * @param root URL of the server's data folder (dataRoot in servers.ts).
+ * @param watch A watch on the download (watch.ts): the list is asked for again alongside while it
+ *   gets no answer (ask), its body is heard as a data file's is, and giving the watch up fails the
+ *   fetch at once.
  * @return The index; throws a readable error when it is missing or malformed.
  */
-export async function loadVersions(root: string): Promise<GameVersions> {
-  const r = await fetch(`${root}versions.json`, { cache: 'no-cache' });
+export async function loadVersions(root: string, watch?: Watch): Promise<GameVersions> {
+  const at = `${root}versions.json`;
+  // revalidated, or fetched anew when its last download was given up
+  const r: Fetched = watch ? heard(await ask(at, watch, { cache: 'no-cache' }), watch, at) : await fetch(at, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`the game version list is missing (HTTP ${r.status})`);
   const v = (await r.json()) as Partial<GameVersions>;
   const list = Array.isArray(v.versions) ? v.versions.filter((x) => x && typeof x.id === 'string' && /^[\w.-]+$/.test(x.id)) : [];

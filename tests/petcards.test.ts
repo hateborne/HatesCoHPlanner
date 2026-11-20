@@ -566,3 +566,65 @@ describe('Thunderspy', () => {
     expect(cs.map((c) => c.name)).toEqual(expect.arrayContaining(['Protector Bot', 'Assault Bot']));
   });
 });
+
+describe("a pet power's detailed info", () => {
+  /**
+   * A Mastermind with Poison as its secondary and Poison Trap picked.
+   *
+   * @param data The server's game data, with its real pets file.
+   * @param server The server's id, when it is not Homecoming.
+   * @return The build.
+   */
+  function poisoner(data: GameData, server?: string): Build {
+    const sec = data.setByName.get('mastermind_buff.poison')!;
+    const levels = data.core.schedule.power;
+    const b = newBuild({
+      ...(server ? { server } : {}),
+      dataVersion: data.core.manifest.dataVersion,
+      at: data.archetypeByName.get('class_mastermind')!.id,
+      origin: data.core.origins[0]!.id,
+      alignment: 'Villain',
+      primary: data.setByName.get('mastermind_summon.robotics')!.id,
+      secondary: sec.id,
+      pickCount: levels.length,
+    });
+    const k = sec.p.findIndex((id) => data.power(id).n === 'Mastermind_Buff.Poison.Poison_Trap');
+    const i = levels.findIndex((l) => l >= (sec.av[k] ?? 0));
+    b.picks[i] = { power: sec.p[k]!, level: levels[i]!, slots: [{ level: levels[i]! }] };
+    return b;
+  }
+
+  it.each([
+    ['Homecoming', () => gd, undefined],
+    ['Thunderspy', () => withHenchmen(loadData(undefined, 'thunderspy'), 'thunderspy'), 'thunderspy'],
+  ] as const)(
+    "leaves the damage per cast cycle out for a power with neither cast time nor recharge (%s: Poison Trap's Self Destruct)",
+    (_, load, server) => {
+      const data = load();
+      const b = poisoner(data, server);
+      const at = data.archetype(b.at);
+      const cs = petCards(data, new BuildRules(data, b), b, 49);
+      const trap = cs.find((c) => c.attacks.some((a) => a.name === 'Self Destruct'))!;
+      expect(trap).toBeDefined();
+      const boom = trap.attacks.find((a) => a.name === 'Self Destruct')!;
+      const rows = powerInfo(data, at, boom.power, trap.level, trap.strength, trap.run).stats.map((r) => `${r.label} ${segText(r.value)}`);
+      expect(rows.some((r) => r.startsWith('Average Damage:'))).toBe(true);
+      expect(rows.some((r) => r.startsWith('Damage Per Cast Cycle:'))).toBe(false);
+      // and nothing any of the card's powers shows reads as no number at all
+      for (const pw of [...trap.attacks.map((a) => a.power), ...trap.powers.map((x) => x.power)]) {
+        const all = powerInfo(data, at, pw, trap.level, trap.strength, trap.run).stats.map((r) => `${r.label} ${segText(r.value)}`);
+        expect(all.filter((r) => /NaN|Infinity/.test(r))).toEqual([]);
+      }
+    },
+  );
+
+  it('keeps the damage per cast cycle for a pet attack that has a cycle', () => {
+    const b = mastermind('Robotics');
+    const drone = card(cards(b), 'Battle Drone');
+    const shot = drone.attacks.find((a) => a.damage.base > 0)!;
+    const rows = powerInfo(gd, gd.archetype(b.at), shot.power, drone.level, drone.strength, drone.run).stats.map((r) => `${r.label} ${segText(r.value)}`);
+    const cycle = rows.find((r) => r.startsWith('Damage Per Cast Cycle:'));
+    expect(cycle).toBeDefined();
+    expect(cycle).not.toMatch(/NaN|Infinity/);
+  });
+});
