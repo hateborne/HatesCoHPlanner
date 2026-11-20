@@ -117,6 +117,12 @@ journalctl -u planner-update.service -n 20    # what the last runs did
 ls -l /srv/planner/current /srv/planner/releases
 ```
 
+After the host has been put right, the deploy looks at the domain again from GitHub: "Re-run failed
+jobs" on the run that failed, or a new run for the domain alone (`gh workflow run pages.yml --ref
+main -f target=domain`; no bump is needed while main's newest commit is the one already released).
+The same run attaches the site file first when the release still lacks it (`docs/releases.md`,
+"The deploy's stages").
+
 Anything that changes the site's folder runs as its user (`sudo -u planner`): `planner-update`
 refuses to run as anyone else, since a file root leaves there stops every later run.
 

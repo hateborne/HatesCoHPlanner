@@ -40,7 +40,9 @@ When you hand back a pull request, say which bump it calls for, so the owner can
 
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
-bump=<patch|minor|major>`); it publishes `main` only and runs one at a time.
+bump=<patch|minor|major>`); it publishes `main` only and runs one at a time. It goes to both
+GitHub Pages and the site's own domain unless a target is picked (`-f target=pages` or
+`-f target=domain`), which is for deploying one of them again after it failed.
 
 ## The deploy's stages
 
@@ -66,6 +68,15 @@ Stages 1 and 2 are what both targets share: a failure there stops the deploy for
 - **Trying a target again:** "Re-run failed jobs" on the run. Only that target's jobs run: the
   first job is not run again, so the version stands, and the other target's jobs are not touched.
   (If the `release` job itself failed, re-run all jobs, as above.)
+- **One target alone, in a run of its own:** the `target` choice when starting a deploy (`both`
+  by default, `pages` or `domain`). The other target's jobs are skipped and its site stays as it
+  is; the report lists it as left out. This is the way to deploy one site again without the run
+  that failed, for example once that run is too old to re-run (its build files are kept 1 to 7
+  days). On a commit that already has its version, no bump is needed and nothing is tagged. If main
+  has moved on since with changes to the site, the run needs a bump like any other and releases a
+  new version, to that one site: the other is then a version behind until a run that includes it,
+  and the report says so. A run for the domain alone that can do nothing for it (its version is not
+  the newest release) ends failed, and says that too.
 - **A try that comes without the first job's checks** looks again at what those checks guard,
   since a newer deploy may have gone out in between. The `release` job tags only while this is
   still main's newest commit, and the publishing jobs go on only while this version is still the
@@ -75,15 +86,21 @@ Stages 1 and 2 are what both targets share: a failure there stops the deploy for
 - **The tag comes before the builds**, so that trying one target again never comes back through
   the `release` job. A version whose builds both fail is tagged with nothing deployed under it:
   try again, or let the next deploy take the next number.
-- **When the domain's stages run:** for every new version, and for a later deploy of the newest
-  release when it still has no site file (its domain stages failed before). They don't run when the
-  release has its file, or when an older release is put back on GitHub Pages: the domain only moves
-  forward on its own (`docs/hosting.md`, "By hand"). If GitHub can't be asked which it is, the
-  domain is left alone and the report says it was not checked.
+- **What the domain's stages do** (unless the run is for GitHub Pages alone): for a new version,
+  and for the newest release while it still has no site file (its domain stages failed, or were
+  left out, before), they build the site, attach it and check the domain. When the newest release
+  has its file already, only the check runs, so a host that failed to fetch it shows up again.
+  When an older release is put back on GitHub Pages they do nothing: the domain only moves forward
+  on its own (`docs/hosting.md`, "By hand"). If GitHub can't be asked which it is, the domain is
+  left alone and the report says it was not checked.
+- **The check compares the domain with the release's own site file**, the very one its host
+  fetches, not with a build of the run, after checking that file against its checksum as the host
+  does. When the check can't be made at all (GitHub doesn't answer, or a newer release has gone out
+  since), the report says that, and not that the host is stuck.
 - **Published but not seen live:** the release has its site file, yet the domain did not serve it
   in time. Nothing in the deploy can put that right: look at the host (`docs/hosting.md`, "By
-  hand"). Once it is mended it fetches the release by itself, and "Re-run failed jobs" has the
-  domain looked at again.
+  hand"). Once it is mended it fetches the release by itself, and "Re-run failed jobs", or a new
+  run with `target=domain`, has the domain looked at again.
 - **How long it takes:** GitHub Pages is live after its own jobs, as before. The run itself ends
   when the domain check does, usually within about 12 minutes of the release (the host looks every
   10), and 20 when the domain never switches. A deploy started meanwhile waits for it, and of
