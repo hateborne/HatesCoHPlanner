@@ -7,7 +7,7 @@
 import type { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
 import { cleanName, toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
-import { BuildRules } from './rules.ts';
+import { BuildRules, isArchetypeInherent } from './rules.ts';
 
 export interface Checked {
   build: Build | null; // null: unusable, start a new build
@@ -106,7 +106,9 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
       fixes.push('dropped settings for an unknown granted power');
       continue;
     }
-    granted[pid] = { slots: slotsOk(g.slots, pw.dn), on: typeof g.on === 'boolean' ? g.on : undefined };
+    // the archetype's inherent always runs: a switch an older build stored for it isn't kept
+    const on = typeof g.on === 'boolean' && !isArchetypeInherent(gd, gd.archetype(b.at), pw) ? g.on : undefined;
+    granted[pid] = { slots: slotsOk(g.slots, pw.dn), on };
   }
 
   const out: Build = {

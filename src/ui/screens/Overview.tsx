@@ -318,8 +318,10 @@ export function Overview({ skin }: { skin: Skin }) {
   const mouse = usePointer();
 
   if (!gd || !build || !rules || !totals) return null;
-  // every pick (even unslottable ones such as Adaptation), plus granted powers the game lets you slot
-  const entries = rules.entries().filter((e) => e.source === 'pick' || (e.power.sm !== 0 && rules.slottable(e.power)));
+  // every pick (even unslottable ones such as Adaptation), granted powers the game lets you slot,
+  // and the archetype's inherent
+  const inherent = rules.inherentShown();
+  const entries = rules.entries().filter((e) => e.source === 'pick' || (e.power.sm !== 0 && rules.slottable(e.power)) || inherent.has(e.key));
   const originIndex = gd.core.origins.findIndex((o) => o.id === build.origin);
   const end = build.endLevel ?? 49;
   const who = `${gd.core.origins.find((o) => o.id === build.origin)?.dn ?? ''} ${gd.archetype(build.at).dn}`.trim().toUpperCase();
@@ -372,6 +374,8 @@ export function Overview({ skin }: { skin: Skin }) {
         // phones: a long press shows the power's tooltip (with the rule it breaks, if any)
         const longBar = g.phone ? (pt: { x: number; y: number }) => useHover.setState({ press: { kind: 'power', entry: e, notes: flagged.map((f) => f.message), ...pt } }) : undefined;
         const toggleOn = () => {
+          // the archetype's inherent always runs: its switch stays on
+          if (e.inherent) return;
           let nb = setOn(build, e.key, !on === dflt ? undefined : !on);
           // as in the game, switching on one of toggles that exclude each other switches the rest off
           if (!on) {
@@ -438,11 +442,11 @@ export function Overview({ skin }: { skin: Skin }) {
             <div
               key={`${e.key}:on`}
               className="abs switch-hover"
-              title={on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
+              title={e.inherent ? 'Always counted in totals' : on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
               onClick={toggleOn}
               {...pressKeys(toggleOn, undefined, on ? 'Counted in totals' : 'Not counted in totals')}
-              {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
-              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: 'pointer', zIndex: 9 }}
+              {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: e.inherent ? 'Always counted in the totals.' : on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
+              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: e.inherent ? 'default' : 'pointer', zIndex: 9 }}
             >
               <OnSwitch skin={skin} on={on} size={g.sw} />
             </div>,

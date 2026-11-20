@@ -13,6 +13,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - When a new power can't hold the old one's slots, you place the freed slots right away.
 - A power you take later in the build can be swapped into an earlier level, and the planner moves or asks you to choose the power it replaces.
 - The enhancement picker and the planner's buttons now match your build's hero, villain or Praetorian colors.
+- The build overview's Inherent section shows your archetype's inherent power (Defiance, Fury, Domination and the rest), always counted in the totals.
 - Tooltips, the totals switches and the level orbs on the build screen now match your build's hero, villain or Praetorian colors; each level orb shows the power picked there or the slots it adds, and the level on hover.
 - Build screen columns that fit no longer show a scroll bar.
 - The on/off switches on the build screen and in the enhancement picker now use the game's own check boxes for every alignment.

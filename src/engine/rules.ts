@@ -44,6 +44,7 @@ export interface BuildEntry {
   source: 'pick' | 'grant';
   pickIndex?: number;
   on?: boolean;
+  inherent?: boolean; // a piece of the archetype's inherent: always on (isArchetypeInherent)
 }
 
 export interface Issue {
@@ -90,6 +91,25 @@ export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: st
   if (toAlignment(b.alignment) !== 'Hero' || !isPatronSet(gd, set)) return null;
   const text = `${set.dn} is a Patron pool. In the game, Patron pools unlock by finishing a Patron story arc, a villain arc offered from level 35. Heroes have to switch to villain to run it; the pools stay unlocked after switching back.`;
   return gd.server === DEFAULT_SERVER ? { text, link: { phrase: 'Patron pool', href: PATRON_WIKI } } : { text };
+}
+
+/**
+ * Whether a power is a piece of an archetype's inherent (Defiance, Fury, Assassination, ...).
+ *
+ * The data marks them: auto powers of the Inherent set whose BuyRequires asks for the archetype
+ * alone ("$archetype @Class_Blaster =="). In the game they are always running, so the planner
+ * counts them on whatever a build stores (a Mids import's StatInclude included).
+ *
+ * @param gd Game data.
+ * @param at The build's archetype.
+ * @param p The power.
+ * @return True for the archetype's own inherent pieces.
+ */
+export function isArchetypeInherent(gd: GameData, at: Archetype, p: Power): boolean {
+  if (p.type !== 'Auto' || !p.auto) return false;
+  const br = p.br ?? [];
+  if (br.length !== 3 || br[0]?.toLowerCase() !== '$archetype' || br[1]?.toLowerCase() !== `@${at.n.toLowerCase()}` || br[2] !== '==') return false;
+  return gd.setOfPower.get(p.id)?.set.n === 'Inherent.Inherent';
 }
 
 // levelUpRespec() per archetype (undefined is kept too: the archetype never respecs on training)
@@ -543,14 +563,36 @@ export class BuildRules {
     for (const [pid, level] of grants) {
       const power = this.gd.power(pid);
       const st = this.b.granted[pid];
+      const inherent = isArchetypeInherent(this.gd, this.at, power);
       out.push({
         key: `grant:${pid}`,
         power,
         level,
         slots: this.normSlots(power, level, st?.slots),
         source: 'grant',
-        on: st?.on,
+        // the inherent always runs; a stored switch is kept in the build (and its link) but not read
+        on: inherent ? true : st?.on,
+        ...(inherent ? { inherent: true } : {}),
       });
+    }
+    return out;
+  }
+
+  /**
+   * The archetype's inherent as the overview's Inherent section lists it: one power per name
+   * (Domination is six pieces in the data), the first of each in set order, of the pieces the
+   * game hides from Manage.
+   *
+   * @return Keys of the entries to list.
+   */
+  inherentShown(): Set<string> {
+    const names = new Set<string>();
+    const out = new Set<string>();
+    const idx = (e: BuildEntry) => this.gd.setOfPower.get(e.power.id)?.index ?? 0;
+    for (const e of this.entries().filter((x) => x.inherent && x.power.sm === 0).sort((a, b) => idx(a) - idx(b))) {
+      if (names.has(e.power.dn)) continue;
+      names.add(e.power.dn);
+      out.add(e.key);
     }
     return out;
   }

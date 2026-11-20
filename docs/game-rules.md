@@ -128,6 +128,10 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   level test (e.g. `Pool.Flight.Fly_Boost` "Afterburner" with `BuyRequires Pool.Flight.Fly`).
 - Level bought: `AutoIssueSaveLevel` -> level actually granted; otherwise `Available` (may be -1).
 - AT inherents (Defiance, Fury, ...) are ordinary Inherent powers gated by `$archetype`.
+  Their auto pieces (BuyRequires exactly `$archetype @Class_X ==`) always run in the game, so
+  the planner counts them on whatever switch a build stores (`isArchetypeInherent`); the overview's
+  Inherent section lists one per name of the pieces hidden from Manage (`inherentShown`), with its
+  switch fixed on. Nothing about them is stored, so links don't change.
 
 ## Enhancement slots
 
