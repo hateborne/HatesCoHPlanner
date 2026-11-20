@@ -18,7 +18,7 @@ import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitl
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PatchNotesBar, PatchNotesBox, patchNotesHeight } from '../components/PatchNotes.tsx';
-import { phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
+import { PHONE_SET_GAP, phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
 import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
 import { DescTip, EnhTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
@@ -245,9 +245,11 @@ function LevelOrb({ level, className, style, title, onClick, face, bare, childre
       className={className}
       style={bare && !hovered ? { ...style, border: '2px solid transparent', background: 'transparent' } : style}
     >
+      {/* what it shows takes no pointer: hovering swaps the face for the number, and a press landing
+          on a part that swap removes would lose its click (the pointer arriving and pressing at once) */}
       {/* under the number, so the number stays readable while the orb lights */}
-      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: hovered ? 0 : 2 }} /> : null}
-      {hovered ? <span style={{ position: 'relative', zIndex: 1 }}>{children}</span> : face}
+      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: hovered ? 0 : 2, pointerEvents: 'none' }} /> : null}
+      {hovered ? <span style={{ position: 'relative', zIndex: 1, pointerEvents: 'none' }}>{children}</span> : <span style={{ display: 'contents', pointerEvents: 'none' }}>{face}</span>}
     </div>
   );
 }
@@ -355,7 +357,8 @@ export function Overview({ skin }: { skin: Skin }) {
     let primY = g.start;
     let bottom = 0; // the lowest thing drawn so far: a row's slot rings or its rule note
     for (const grp of list) {
-      primY += g.row;
+      // a set after another starts a row down (the game's); phones: just past the rings above it
+      primY += g.phone && grp !== list[0] ? PHONE_SET_GAP : g.row;
       const top = primY;
       const boxAt = items.length;
       items.push(<GameText key={`h${grp.set?.id ?? 'x'}`} font="title_12" scale={S} x={g.barCX + g.boxW / 2} y={top - 23 * u} align="center" colors={skin.heading} text={grp.title} />);
@@ -572,8 +575,10 @@ export function Overview({ skin }: { skin: Skin }) {
           level={s.level}
           onClick={() => {
             if (!isPick) return editSlots(s.level);
-            // every pick of the level in turn: level 1's primary power, then its secondary
-            editPick(s.picks[0]!, s.picks.slice(1));
+            // every pick of the level in turn: level 1's primary power, then its secondary (a Respec
+            // build's the other way round, as its respec asks them)
+            const order = build.respecTo !== undefined && s.picks.length > 1 ? [...s.picks].reverse() : s.picks;
+            editPick(order[0]!, order.slice(1));
           }}
           title={orbTitle(s)}
           face={face}

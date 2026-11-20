@@ -580,6 +580,10 @@ From the live clients' power_AddEffects and power_AddTargetInfo (Homecoming i28p
 
 - A typed defense of aspect Current reads like a Strength one: "+9.75% strength to ranged defense"
   (Homecoming's Hail of Bullets, in game). Both clients do it.
+- A Constant or Expression effect shows its template's own magnitude (modGetMagnitudeAndDuration),
+  1 when the data stores none (the pipeline leaves out a magnitude of 1): the Singularity's
+  Gravitational Pull reads "1.00 magnitude repel" and Inner Will's mez lines "1.00 magnitude stun"
+  (Homecoming, in game for the first).
 - "All damage" and "all defense" (markAllTypes in the source; Homecoming 0x1404e1540 and
   Thunderspy 0x1404d6af0, which walk each effect's attribute list; `markAllTypes` in
   `src/engine/powerinfo.ts`). For each target, kind and aspect the client walks all the power's
