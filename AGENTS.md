@@ -171,7 +171,8 @@ The full map, file by file, is in `docs/architecture.md`.
 ```
 src/data/       game data loading, versions.ts, servers.ts (SERVERS), types.ts
 src/engine/     pure build rules: rules.ts (BuildRules), totals.ts, enhance.ts, setbonus.ts,
-                requires.ts (RPN), validate.ts (checkBuild), schedule.ts, actions.ts, migrate.ts,
+                requires.ts (RPN), context.ts (its contexts), validate.ts (checkBuild), schedule.ts,
+                actions.ts, migrate.ts,
                 petcards.ts and petstats.ts (the totals' Pets and Minions rows and pet pane);
                 finder/ (the set finder's engine: ranked swaps of sets into existing slots)
 src/io/         share.ts (#b= links), mids.ts, midsPatches.ts, buildtxt.ts, importProblem.ts,
@@ -352,7 +353,8 @@ it, and the full list of what counts: `docs/releases.md`.
 
 - Levels in data are 0-based (`Available[]`, schedules, `SpecializeAt`); the UI shows level + 1.
 - Requirement strings (`BuyRequires`, set requirements) are the engine's RPN expressions. Use
-  `src/engine/requires.ts`; don't re-implement them.
+  `src/engine/requires.ts`; don't re-implement them. Build the context they are read with from
+  `src/engine/context.ts`, never by hand: a target is always given whole (`aimedAt`).
 - Auto-granted powers (Fitness, Brawl, Sprint, archetype inherents, Kheldian form attacks, Bio
   Armor adaptations, Dual Pistols ammo, ...) come from the data and `BuildRules.granted()`. They
   are not hard-coded.

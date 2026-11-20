@@ -20,6 +20,7 @@
 import type { GameData } from '../data/gamedata.ts';
 import type { Archetype, Effect, HenchmenFile, Mod, Power } from '../data/types.ts';
 import type { Build } from './build.ts';
+import { aimedAt } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { affectsSelf, attribLines, finishTotals, lineBook, type ClassTables, type Totals } from './totals.ts';
 
@@ -217,13 +218,13 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   // Cover gives the others) reaches the pet and one "for the caster only" doesn't. Said here for
   // every caster, as the creator's context comes from the totals, where the target is the source.
   const isClass = (n: string) => n.startsWith('arch') || n === 'class';
-  const aimedAt = (ctx: EvalContext, own: boolean): EvalContext => ({
-    ...ctx,
-    targetEntType: 'critter',
-    targetIsSource: own,
-    targetVillain: (n) => n.toLowerCase() === vd,
-    targetProp: (n) => (n === 'group' ? (pet.grp ?? '') : n === 'combatlevel' ? level + 1 : isClass(n) ? pet.cls : undefined),
-  });
+  const atPet = (ctx: EvalContext, own: boolean): EvalContext =>
+    aimedAt(ctx, {
+      type: 'critter',
+      isSource: own,
+      villain: (n) => n.toLowerCase() === vd,
+      prop: (n) => (n === 'group' ? (pet.grp ?? '') : n === 'combatlevel' ? level + 1 : isClass(n) ? pet.cls : undefined),
+    });
   const collective = (p: Power, m: Mod) => !!file.collective?.[p.n]?.includes(placeOf(p, m));
   // collective mods already counted, by power and place: a second caster adds nothing
   const once = new Set<string>();
@@ -243,7 +244,7 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   const toggles: { name: string; perSec: number; slotted: number }[] = [];
   for (const p of pet.powers) {
     if (p.life || !petPowerOn(gd, build, p)) continue;
-    const self = aimedAt(pet.ctx, /*own=*/ true);
+    const self = atPet(pet.ctx, /*own=*/ true);
     const own = (m: Mod) => {
       if (!affectsSelf(p, m) && !OWNER_AND_PETS.has(m.tg)) return;
       if (collective(p, m)) firstCopy(p, m);
@@ -258,7 +259,7 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   for (const f of field) {
     const casters = f.count - (f.key === pet.key ? 1 : 0);
     if (casters <= 0) continue;
-    const ctx = aimedAt(f.ctx, /*own=*/ false);
+    const ctx = atPet(f.ctx, /*own=*/ false);
     for (const p of f.powers) {
       if (p.life || !petPowerOn(gd, build, p)) continue;
       const main = !AIMED_ELSEWHERE.has(p.tgt);
@@ -273,7 +274,7 @@ export function petStats(input: PetStatsInput, pet: StatPet): Totals {
   }
 
   // the creator's running powers that reach friends or its pets
-  const fromOwner = aimedAt(ownerCtx, /*own=*/ false);
+  const fromOwner = atPet(ownerCtx, /*own=*/ false);
   for (const { power: p, strength } of owner) {
     const main = !AIMED_ELSEWHERE.has(p.tgt);
     const mine = (m: Mod) => {
