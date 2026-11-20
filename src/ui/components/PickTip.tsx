@@ -59,5 +59,5 @@ export function PickTip({ gd, skin, rules, pick }: { gd: GameData; skin: Skin; r
   if (!power || tipLevel !== 'advanced' || phone) return null;
   const level = rules.pickLevel(pick);
   const entry = pickEntry(entries, power, level);
-  return <SlotTip gd={gd} skin={skin} power={power} x={mouse.current.x} y={mouse.current.y} avoid={desc?.at} advanced={<AdvancedInfo gd={gd} at={rules.at} entry={entry} level={level} />} />;
+  return <SlotTip gd={gd} skin={skin} power={power} x={mouse.current.x} y={mouse.current.y} avoid={desc?.at} advanced={<AdvancedInfo gd={gd} at={rules.at} entry={entry} level={level} rules={rules} />} />;
 }

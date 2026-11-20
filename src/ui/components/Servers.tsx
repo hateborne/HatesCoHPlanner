@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_SERVER, defaultServer, serverById, serverOf, SERVERS, type GameServer } from '../../data/servers.ts';
 import { hasWork, skinOf } from '../../engine/build.ts';
+import { saveFirstText } from '../../io/library.ts';
 import { lastServer } from '../../state/lastServer.ts';
 import { CONTINUE_BUILD, useStore, type ResumeLabel } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
@@ -32,9 +33,10 @@ async function switchServer(): Promise<void> {
   // a build with nothing in it (left on its first power screen) is cleared without asking
   if (build && hasWork(build)) {
     const from = serverById(serverOf(build))?.label ?? 'another server';
+    const keep = await saveFirstText(build, 'Saved builds / Import');
     const ok = await askConfirm({
       title: `Switch to ${to.label}?`,
-      text: `This clears ${build.name ? `"${build.name}"` : 'your current build'}: it is a ${from} build and can't move to another server. Save it first (Saved builds / Import) if you want to keep it.`,
+      text: `This clears ${build.name ? `"${build.name}"` : 'your current build'}: it is a ${from} build and can't move to another server.${keep}`,
       okLabel: 'Switch',
     });
     if (!ok) return;

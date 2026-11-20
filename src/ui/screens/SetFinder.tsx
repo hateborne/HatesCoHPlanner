@@ -778,7 +778,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
             )}
           </div>
           {/* the overview's own long-press tooltip is under this pane */}
-          <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={rules.lastLevel()} />
+          <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={rules.lastLevel()} rules={rules} />
         </div>
       </div>
     );

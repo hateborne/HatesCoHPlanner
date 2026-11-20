@@ -55,19 +55,14 @@ const cards = (b: Build, level = 49) => petCards(gd, new BuildRules(gd, b), b, l
 const card = (cs: readonly PetCard[], name: string) => cs.find((c) => c.name === name)!;
 const attack = (c: PetCard, name: string) => c.attacks.find((a) => a.name === name);
 const pickOf = (b: Build, power: string) => b.picks.find((p) => p?.power === pid(gd, power))!;
-/** @return The build with the Mastermind's Supremacy switched off. */
-function noSupremacy(b: Build): Build {
-  b.granted[pid(gd, 'Inherent.Inherent.Supremacy')] = { slots: [], on: false };
-  return b;
-}
 /** @return A henchman minion's maximum hit points at level 50, from its class. */
 const minionHp = () => GameData.attrAt(gd.henchmen!.classes['Class_Henchman_Minion']!.max!, 'HitPoints', 49);
 /** @return A card's defense line of a type ("Melee"). */
 const defLine = (c: PetCard, label: string) => [...c.stats.lines.values()].find((l) => l.key.startsWith('def.') && l.label === label);
-/** @return The damage types a card has resistance to, in the totals' order. */
-const resTypes = (c: PetCard) =>
+/** @return The damage types a card has resistance to, in the totals' order, leaving one source out. */
+const resTypes = (c: PetCard, without = '') =>
   [...c.stats.lines.values()]
-    .filter((l) => /^res\.\d+$/.test(l.key) && l.value !== 0)
+    .filter((l) => /^res\.\d+$/.test(l.key) && l.sources.some((x) => x.name !== without && x.value !== 0))
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((l) => l.label);
 /** @return Every source of a card's stats with a name. */
@@ -152,15 +147,15 @@ describe('which pets a build makes', () => {
 
 describe('upgrades follow the build', () => {
   it('gives a henchman what Equip and Upgrade grant only once the build has them', () => {
-    // Supremacy switched off: it gives every pet resistance too
-    const full = card(cards(noSupremacy(mastermind('Robotics'))), 'Battle Drone');
+    // Supremacy left out: it gives every pet resistance too
+    const full = card(cards(mastermind('Robotics')), 'Battle Drone');
     expect(attack(full, 'Heavy Laser Burst')).toBeDefined(); // Equip Robot
     expect(attack(full, 'Full Auto Laser')).toBeDefined(); // Upgrade Robot
-    expect(resTypes(full)).toEqual(['Lethal', 'Cold', 'Psionic']); // Equip Robot's Resistance
-    const bare = card(cards(noSupremacy(mastermind('Robotics', ['Mastermind_Summon.Robotics.Equip_Robot', 'Mastermind_Summon.Robotics.Upgrade_Robot']))), 'Battle Drone');
+    expect(resTypes(full, 'Supremacy (yours)')).toEqual(['Lethal', 'Cold', 'Psionic']); // Equip Robot's Resistance
+    const bare = card(cards(mastermind('Robotics', ['Mastermind_Summon.Robotics.Equip_Robot', 'Mastermind_Summon.Robotics.Upgrade_Robot'])), 'Battle Drone');
     expect(attack(bare, 'Heavy Laser Burst')).toBeUndefined();
     expect(attack(bare, 'Full Auto Laser')).toBeUndefined();
-    expect(resTypes(bare)).toEqual([]);
+    expect(resTypes(bare, 'Supremacy (yours)')).toEqual([]);
     // at a level before Upgrade Robot is taken, only Equip Robot's attacks
     const b = mastermind('Robotics');
     const at20 = card(cards(b, pickOf(b, 'Mastermind_Summon.Robotics.Upgrade_Robot').level - 1), 'Battle Drone');
@@ -423,12 +418,12 @@ describe("what lands on a pet (the pet pane's stats)", () => {
     expect(cap).toBeCloseTo(GameData.attrAt(gd.henchmen!.classes['Class_Henchman_Minion']!.resMax!, 'DamageType01', 49), 6);
   });
 
-  it("counts the Mastermind's Supremacy, unless it is switched off", () => {
+  it("counts the Mastermind's Supremacy, even with a switch stored off (the inherent always runs)", () => {
     const b = mastermind('Robotics');
     expect(sourceNames(card(cards(b), 'Battle Drone'), 'dmg.00')).toContain('Supremacy (yours)');
     expect(sourceNames(card(cards(b), 'Battle Drone'), 'tohit')).toContain('Supremacy (yours)');
     b.granted[pid(gd, 'Inherent.Inherent.Supremacy')] = { slots: [], on: false };
-    expect(sourceNames(card(cards(b), 'Battle Drone'), 'dmg.00')).not.toContain('Supremacy (yours)');
+    expect(sourceNames(card(cards(b), 'Battle Drone'), 'dmg.00')).toContain('Supremacy (yours)');
   });
 
   it("counts the Mastermind's toggles that reach its pets, and a click only once switched on", () => {
@@ -480,7 +475,7 @@ describe("what lands on a pet (the pet pane's stats)", () => {
   });
 
   it('counts every earned copy of a set bonus that reaches pets (Decimation in two attacks)', () => {
-    const b = noSupremacy(mastermind('Robotics'));
+    const b = mastermind('Robotics');
     const set = gd.boostSets.find((x) => x.n === 'Decimation')!;
     const pieces = [set.slots[0]![0]!, set.slots[1]![0]!];
     for (const power of ['Mastermind_Summon.Robotics.Pulse_Rifle_Blast', 'Mastermind_Summon.Robotics.Pulse_Rifle_Burst']) {

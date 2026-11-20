@@ -123,9 +123,10 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   }, [ps.pools, ps.epic, phone, pickKey]);
   const pick = level ? currentPick(steps, level) : -1;
   const rules = useMemo(() => (gd && level ? new BuildRules(gd, level.base) : null), [gd, level]);
-  // reopened from the overview: a power the build takes later can be taken here instead
-  // (store.takeEarlierFlow), when it could be taken at this level (worked out once per screen)
-  const earlier = level?.mode === 'edit' && !level.chain;
+  // reopened from the overview, or chosen again after a swap: a power the build takes later can be
+  // taken here instead (store.takeEarlierFlow), when it could be taken at this level (worked out once
+  // per screen)
+  const earlier = level?.mode === 'edit';
   const offerOf = useMemo(() => {
     const seen = new Map<number, PowerOption>();
     return (o: PowerOption) => {
@@ -170,6 +171,8 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
   const firstStep = level.step === 0 && level.pickInStep === 0;
   const lvl = stepsOf(steps, level)[level.step]?.level ?? 0;
   const respec = !!level.flow;
+  // a pick within a Respec build's respec, reopened from the overview, is labelled as the respec does
+  const respecLabel = respec || (level.mode === 'edit' && inRespec(gd, level.base, pick));
   // respec_powerCounter: picks still to make up to the respec level (this one included)
   const respecEnd = level.base.respecTo ?? 49;
   const remaining = level.base.picks.filter((p, i) => !p && (gd.core.schedule.power[i] ?? 99) <= respecEnd).length;
@@ -217,9 +220,9 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
     </>
   );
   const levelLabel = (x: number, y: number) =>
-    respec && phone ? (
+    respecLabel && phone ? (
       <GameText font="title_12" scale={S} x={x} y={y} align="right" colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${lvl}`} />
-    ) : respec ? (
+    ) : respecLabel ? (
       // uiReSpec.c respec_powerLevel: prnt(450 sx, 30 sy) in title_12, white to grey, with the
       // character's level as the game holds it (0 for level 1). The live game draws it unstretched
       // at the screen's height scale (about 300 wide at 2000, measured on an in-game screenshot)
@@ -243,7 +246,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
         <PowerColumn skin={skin} g={g} sets={lists[shownTab] ?? []} pending={level.pendingPower} onPick={onPick} onHover={hoverPower} onLong={onLong} flash={lockFlash} />
         {desc}
         {buttons}
-        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} />
+        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} rules={rules} />
       </>
     );
   }

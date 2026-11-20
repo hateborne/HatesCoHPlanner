@@ -8,7 +8,7 @@ import type { GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverByMidsDb, SERVERS, type GameServer } from '../data/servers.ts';
 import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { enhKind, shortName } from '../engine/enhance.ts';
-import { BuildRules } from '../engine/rules.ts';
+import { BuildRules, isArchetypeInherent } from '../engine/rules.ts';
 import { defaultOn, defaultsOf, exclusiveGroups, isPetUpgrade } from '../engine/totals.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
 import { ImportProblem, MAX_BUILD_FILE, noMids, READABLE, readable, readableOn, readablePower } from './importProblem.ts';
@@ -394,11 +394,13 @@ function applyStats(gd: GameData, b: Build, stats: Map<string, boolean>): void {
   } catch {
     // a build the rules can't read yet: per-power defaults below, and checkBuild decides later
   }
+  const at = gd.core.archetypes.find((a) => a.id === b.at);
   for (const [key, on] of stats) {
     const pid = powerOf(key);
     // a pet upgrade keeps its default (on): Mids leaves clicks out of its stats, upgrades included,
     // and its switch says nothing about the pets
-    if (pid !== undefined && gd.powerById.has(pid) && isPetUpgrade(gd, gd.power(pid))) {
+    // so does the archetype's inherent: it always runs, and a switch stored for it would only grow links
+    if (pid !== undefined && gd.powerById.has(pid) && (isPetUpgrade(gd, gd.power(pid)) || (at && isArchetypeInherent(gd, at, gd.power(pid))))) {
       setOn(key, undefined);
       continue;
     }

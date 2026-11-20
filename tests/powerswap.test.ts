@@ -229,6 +229,72 @@ describe('taking a power the build has later at an earlier pick', () => {
     expect(st().confirm).toBeNull();
     expect(st().level!.chain).toBeDefined();
   });
+
+  it("a Respec build's freed slots placed on a later power are booked at or after its level when they can be", async () => {
+    const orig = build(49);
+    const all = (b: Build) => new BuildRules(gd, b).entries().flatMap((e) => e.slots.slice(1).map((s) => ({ owned: e.level, level: s.level })));
+    const below = (b: Build) => all(b).filter((s) => s.level < s.owned).length;
+    expect(below(orig)).toBe(0);
+    // Quantum Acceleration takes no bought slots: Incandescence's two (at an early level) are freed
+    swap(orig, 1, QUANTUM);
+    st().closeConfirm(true);
+    await tick();
+    // both go on Glinting Eye, taken later than that level
+    st().addPendingSlot('pick:6');
+    st().addPendingSlot('pick:6');
+    const placed = previewBuild(gd, steps, st().level!);
+    expect(below(placed)).toBe(2);
+    st().finishLevel();
+    const b = st().build!;
+    expect(st().view).toBe('overview');
+    // the same levels, handed out again: one empty slot level is past both Combat Jumping's and
+    // Glinting Eye's levels, so one slot below its power's level is the fewest there can be
+    expect(all(b).map((s) => s.level).sort((x, y) => x - y)).toEqual(all(placed).map((s) => s.level).sort((x, y) => x - y));
+    expect(below(b)).toBe(1);
+    expect(b.picks[6]!.slots.length).toBe(3);
+    // the slotted ones kept their levels
+    expect(b.picks[3]!.slots.filter((s) => s.enh).map((s) => s.level)).toEqual(orig.picks[3]!.slots.filter((s) => s.enh).map((s) => s.level));
+  });
+
+  it('a pick chosen again may take a power the build has later still, chaining on to that pick', async () => {
+    const HASTEN = pid(gd, 'Pool.Speed.Hasten');
+    const orig = build(49);
+    orig.picks[9] = { power: HASTEN, level: P[9]!, slots: [{ level: P[9]!, enh: { boost: RECH, ioLevel: 49 } }] };
+    swap(orig, 3, GLINT);
+    st().closeConfirm(true);
+    await tick();
+    // pick 6 chosen again: Hasten, taken at pick 9, is offered there
+    let l = st().level!;
+    const base = l.base;
+    const rules = new BuildRules(gd, base);
+    expect(earlierOption(gd, base, 6, rules.powerOption(HASTEN, 6)).state).toBe('available');
+    st().choosePower(HASTEN);
+    // the preview moves Hasten instead of counting it twice
+    const shown = previewBuild(gd, steps, st().level!);
+    expect(shown.picks.filter((p) => p?.power === HASTEN)).toHaveLength(1);
+    expect(shown.picks[9]).toBeNull();
+    st().finishLevel();
+    const c = st().confirm!;
+    expect(c.text).toBe(`Selecting Hasten at level ${P[6]! + 1} will require that a power be reselected at level ${P[9]! + 1}.`);
+    st().closeConfirm(true);
+    await tick();
+    // pick 9 is chosen next, the slots to place still gathered
+    l = st().level!;
+    expect([l.sub, l.mode, l.chain?.freed]).toEqual(['power', 'edit', [slotBetween, slotAfter]]);
+    expect(steps[l.step]!.picks[l.pickInStep]).toBe(9);
+    expect(l.base.picks[6]).toMatchObject({ power: HASTEN, level: P[6] });
+    expect(l.base.picks[6]!.slots[0]!.enh?.boost).toBe(RECH); // it moves with its enhancement
+    expect(l.orig).toBe(orig);
+    st().choosePower(CJ);
+    st().finishLevel();
+    await tick();
+    l = st().level!;
+    expect(l.freed).toBe(true);
+    expect(l.flow![0]!.slotLevels).toEqual([slotBetween, slotAfter]);
+    // Undo Swap still undoes it all
+    st().cancelLevel();
+    expect(st().build).toBe(orig);
+  });
 });
 
 describe('review fixes', () => {

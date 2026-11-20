@@ -17,7 +17,7 @@ import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitl
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PatchNotesBar, PatchNotesBox, patchNotesHeight } from '../components/PatchNotes.tsx';
-import { phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
+import { PHONE_SET_GAP, phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
 import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
 import { DescTip, EnhTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
@@ -244,15 +244,17 @@ function LevelOrb({ level, className, style, title, onClick, face, bare, childre
       className={className}
       style={bare && !hovered ? { ...style, border: '2px solid transparent', background: 'transparent' } : style}
     >
+      {/* what it shows takes no pointer: hovering swaps the face for the number, and a press landing
+          on a part that swap removes would lose its click (the pointer arriving and pressing at once) */}
       {/* under the number, so the number stays readable while the orb lights */}
-      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: hovered ? 0 : 2 }} /> : null}
-      {hovered ? <span style={{ position: 'relative', zIndex: 1 }}>{children}</span> : face}
+      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: hovered ? 0 : 2, pointerEvents: 'none' }} /> : null}
+      {hovered ? <span style={{ position: 'relative', zIndex: 1, pointerEvents: 'none' }}>{children}</span> : <span style={{ display: 'contents', pointerEvents: 'none' }}>{face}</span>}
     </div>
   );
 }
 
 /** The power / enhancement hover boxes; the only part of the overview that follows the pointer. */
-function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; build: Build; end: number }) {
+function OverviewTips({ gd, skin, build, rules, end }: { gd: GameData; skin: Skin; build: Build; rules: BuildRules; end: number }) {
   const { tip, ringTip } = useHover(useShallow((h) => ({ tip: h.tip, ringTip: h.ringTip })));
   const tipLevel = useTipLevel();
   const hint = useShiftHint();
@@ -261,7 +263,7 @@ function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; buil
       {ringTip && tipLevel !== 'off' ? <EnhTip key={`${ringTip.entry.key}:${ringTip.slot}`} gd={gd} skin={skin} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
       {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} hint={hint} /> : null}
       {tip && tipLevel === 'advanced' ? (
-        <SlotTip gd={gd} skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
+        <SlotTip gd={gd} skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} rules={rules} />} />
       ) : null}
     </>
   );
@@ -319,8 +321,10 @@ export function Overview({ skin }: { skin: Skin }) {
   const mouse = usePointer();
 
   if (!gd || !build || !rules || !totals) return null;
-  // every pick (even unslottable ones such as Adaptation), plus granted powers the game lets you slot
-  const entries = rules.entries().filter((e) => e.source === 'pick' || (e.power.sm !== 0 && rules.slottable(e.power)));
+  // every pick (even unslottable ones such as Adaptation), granted powers the game lets you slot,
+  // and the archetype's inherent
+  const inherent = rules.inherentShown();
+  const entries = rules.entries().filter((e) => e.source === 'pick' || (e.power.sm !== 0 && rules.slottable(e.power)) || inherent.has(e.key));
   const originIndex = gd.core.origins.findIndex((o) => o.id === build.origin);
   const end = build.endLevel ?? 49;
   const who = `${gd.core.origins.find((o) => o.id === build.origin)?.dn ?? ''} ${gd.archetype(build.at).dn}`.trim().toUpperCase();
@@ -356,7 +360,8 @@ export function Overview({ skin }: { skin: Skin }) {
     let primY = g.start;
     let bottom = 0; // the lowest thing drawn so far: a row's slot rings or its rule note
     for (const grp of list) {
-      primY += g.row;
+      // a set after another starts a row down (the game's); phones: just past the rings above it
+      primY += g.phone && grp !== list[0] ? PHONE_SET_GAP : g.row;
       const top = primY;
       const boxAt = items.length;
       items.push(<GameText key={`h${grp.set?.id ?? 'x'}`} font="title_12" scale={S} x={g.barCX + g.boxW / 2} y={top - 23 * u} align="center" colors={skin.heading} text={grp.title} />);
@@ -373,6 +378,8 @@ export function Overview({ skin }: { skin: Skin }) {
         // phones: a long press shows the power's tooltip (with the rule it breaks, if any)
         const longBar = g.phone ? (pt: { x: number; y: number }) => useHover.setState({ press: { kind: 'power', entry: e, notes: flagged.map((f) => f.message), ...pt } }) : undefined;
         const toggleOn = () => {
+          // the archetype's inherent always runs: its switch stays on
+          if (e.inherent) return;
           let nb = setOn(build, e.key, !on === dflt ? undefined : !on);
           // as in the game, switching on one of toggles that exclude each other switches the rest off
           if (!on) {
@@ -439,11 +446,11 @@ export function Overview({ skin }: { skin: Skin }) {
             <div
               key={`${e.key}:on`}
               className="abs switch-hover"
-              title={on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
+              title={e.inherent ? 'Always counted in totals' : on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
               onClick={toggleOn}
               {...pressKeys(toggleOn, undefined, on ? 'Counted in totals' : 'Not counted in totals')}
-              {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
-              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: 'pointer', zIndex: 9 }}
+              {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: e.inherent ? 'Always counted in the totals.' : on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
+              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: e.inherent ? 'default' : 'pointer', zIndex: 9 }}
             >
               <OnSwitch skin={skin} on={on} size={g.sw} />
             </div>,
@@ -573,8 +580,10 @@ export function Overview({ skin }: { skin: Skin }) {
           level={s.level}
           onClick={() => {
             if (!isPick) return editSlots(s.level);
-            // every pick of the level in turn: level 1's primary power, then its secondary
-            editPick(s.picks[0]!, s.picks.slice(1));
+            // every pick of the level in turn: level 1's primary power, then its secondary (a Respec
+            // build's the other way round, as its respec asks them)
+            const order = build.respecTo !== undefined && s.picks.length > 1 ? [...s.picks].reverse() : s.picks;
+            editPick(order[0]!, order.slice(1));
           }}
           title={orbTitle(s)}
           face={face}
@@ -687,7 +696,7 @@ export function Overview({ skin }: { skin: Skin }) {
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
         <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
-        {finderUp ? null : <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />}
+        {finderUp ? null : <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} rules={rules} />}
       </>
     );
   }
@@ -724,7 +733,7 @@ export function Overview({ skin }: { skin: Skin }) {
       <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
         <TotalsPanel gd={gd} t={totals} width={420} pets={pets} />
       </GameScroll>
-      <OverviewTips gd={gd} skin={skin} build={build} end={end} />
+      <OverviewTips gd={gd} skin={skin} build={build} rules={rules} end={end} />
       <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />

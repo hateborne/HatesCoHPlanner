@@ -18,7 +18,7 @@ from pipeline.coh import p7reader as P
 from pipeline.coh.messages import decode_messages
 from pipeline.label.attribs import all_attributes
 
-CACHE_VERSION = 8
+CACHE_VERSION = 9
 
 
 @dataclass
@@ -277,7 +277,10 @@ def _villains(health) -> tuple[list, list]:
     villains = [{"Name": v.get("Name") or "", "Class": v.get("Class") or "",
                  "Power": [{k: r.get(k) or "" for k in ("PowerCategory", "PowerSet", "Power")}
                            for r in v.get("Power") or []],
-                 "DisplayName": _first_display_name(v), "VillainGroup": group(v)}
+                 "DisplayName": _first_display_name(v), "VillainGroup": group(v),
+                 # a pet made from this def gets a copy of its creator's strength mods
+                 # (character_CreatePet, character_pet.c)
+                 "CopyCreatorMods": 1 if v.get("CopyCreatorMods") else 0}
                 for v in defs]
     classes = _earray("bin/villain_classes.bin",
                       P.pick_table("PrimaryCategory", {"Name", "PrimaryCategory", "ModTable"}),
