@@ -23,6 +23,10 @@
 # jobs of its own, and none of them needs any of the other's. So a failure for one target leaves
 # its site on the version it had while the other goes live, the run is marked failed (GitHub
 # notifies whoever started it), and "Re-run failed jobs" tries that target alone again.
+#
+# A run goes to both targets unless it is started for one (the `target` input: `-f target=pages`
+# or `-f target=domain`), which is how one site is deployed again after it failed. The other
+# target's jobs are then skipped, and its site stays as it is.
 name: Deploy to GitHub Pages
 
 on:
@@ -38,8 +42,23 @@ on:
           - patch
           - minor
           - major
+      target:
+        description: 'Where to deploy: both (the usual), or one site alone, to deploy it again after it failed (pages = GitHub Pages, domain = the site''s own domain)'
+        type: choice
+        required: true
+        default: both
+        options:
+          - both
+          - pages
+          - domain
 
 permissions: {}
+
+# Every step's script stops at its first failing command, a failing part of a pipeline included
+# (naming the shell is what turns that on: the default leaves pipelines unchecked).
+defaults:
+  run:
+    shell: bash
 
 concurrency:
   group: pages
@@ -63,6 +82,8 @@ jobs:
       fresh: ${{ steps.version.outputs.fresh }}
       previous: ${{ steps.version.outputs.previous }}
       notes: ${{ steps.notes.outputs.notes }}
+      # whether this run deploys to GitHub Pages ("true", or "false" when started for the domain alone)
+      pages: ${{ inputs.target != 'domain' }}
       domain: ${{ steps.domain.outputs.state }}
       # the try of this run these checks were made in: a later job run again without them
       # ("Re-run failed jobs") sees another number
@@ -101,23 +122,28 @@ jobs:
       # the domain's build runs no type check of its own (GitHub Pages' `npm run build` does), so
       # one is made here, before anything is tagged, for both
       - run: npm run typecheck
-      # Whether the domain's stages run (the output `domain`):
+      # What the domain's stages do (the output `domain`):
+      #   off       the run was started for GitHub Pages alone: none of them runs
       #   needed    a new version, or the newest release still has no site file (the domain's
-      #             stages failed in an earlier deploy of it)
-      #   has-file  the newest release has its site file: nothing to do
+      #             stages failed, or were left out, in an earlier deploy of it): build, attach, check
+      #   has-file  the newest release has its site file: only the check runs, so a host that
+      #             failed to fetch it shows up again
       #   older     this deploy puts an older release back on GitHub Pages; the domain only moves
       #             forward on its own, so it is left alone (docs/hosting.md, "By hand")
       #   unknown   GitHub could not be asked: the domain is left alone and the report says so
       # Whatever happens here, GitHub Pages goes on.
-      - name: See whether the domain needs this deploy
+      - name: See what the domain needs of this deploy
         id: domain
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           FRESH: ${{ steps.version.outputs.fresh }}
+          TARGET: ${{ inputs.target }}
         run: |
           state=needed
-          if [ "${FRESH}" != "true" ]; then
+          if [ "${TARGET}" = "pages" ]; then
+            state=off
+          elif [ "${FRESH}" != "true" ]; then
             state=unknown
             for try in 1 2 3; do
               if newest="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)" \
@@ -169,10 +195,12 @@ jobs:
           if [ -n "${NOTES}" ]; then set -- "$@" --notes "${NOTES}"; fi
           gh release create "$@"
 
-  # Stage 3a. The site for GitHub Pages, under its /HatesCoHPlanner/ path.
+  # Stage 3a. The site for GitHub Pages, under its /HatesCoHPlanner/ path. Skipped in a run started
+  # for the domain alone.
   build-pages:
     name: 3a. Build for GitHub Pages
     needs: prepare
+    if: needs.prepare.outputs.pages == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -313,25 +341,57 @@ jobs:
           gh release upload "v${VERSION}" planner-site.tar.gz.sha256 --repo "${GITHUB_REPOSITORY}" --clobber
           gh release upload "v${VERSION}" planner-site.tar.gz --repo "${GITHUB_REPOSITORY}"
 
-  # Stage 5. The domain is seen to serve this build. Its host fetches a release by itself, so this
-  # is the only place a stuck host shows up (a full disk, a stopped timer, a failed download).
+  # Stage 5. The domain is seen to serve this release. Its host fetches a release by itself, so
+  # this is the only place a stuck host shows up (a full disk, a stopped timer, a failed download).
+  # It runs once the site file is attached, and also when the release had its file already, which
+  # is how the domain is looked at again after its host has been put right.
   check-domain:
     name: 5. Check the domain switched
     needs: [prepare, publish-domain]
-    if: ${{ !cancelled() && needs.publish-domain.result == 'success' }}
+    if: ${{ !cancelled() && (needs.publish-domain.result == 'success' || (needs.prepare.result == 'success' && needs.prepare.outputs.domain == 'has-file')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: {}
+    outputs:
+      # why the check stopped without seeing the release live, for the report to word: "host" (the
+      # domain never served it), "newer", "github", "no-file" or "bad-file" (the step below)
+      why: ${{ steps.wait.outputs.why }}
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: own-domain-site
-      # Every build's page names its own script file, so the page tells the builds apart. The host
-      # looks for a release every 10 minutes: 20 minutes of asking leaves it two chances.
-      - name: Wait for the domain to serve this build
+      # The page to look for comes from the release's own site file, the very one the host
+      # fetches (a public download: no permission is needed for it). Every build's page names its
+      # own script file, so the page tells the builds apart. The host looks for a release every 10
+      # minutes: 20 minutes of asking leaves it two chances.
+      - name: Wait for the domain to serve this release
+        id: wait
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          CHECKED_IN: ${{ needs.prepare.outputs.attempt }}
         run: |
+          # stop with the reason (for the report) and what to tell whoever reads the run
+          stop() { echo "why=$1" >> "${GITHUB_OUTPUT}"; echo "::error::$2"; exit 1; }
+          releases="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases"
+          # as in the publishing jobs: run again without the first job ("Re-run failed jobs"), this
+          # goes on only while its version is still the newest release, since the host never goes
+          # back to an older one and the wait would be for nothing
+          if [ "${CHECKED_IN}" != "${GITHUB_RUN_ATTEMPT}" ]; then
+            answer="$(curl -fsSI --max-time 30 "${releases}/latest")" || stop github "GitHub could not be asked which release is the newest. Run this job again."
+            newest="$(printf '%s\n' "${answer}" | tr -d '\r' | sed -n 's|^[Ll]ocation: .*/releases/tag/||p' | tail -n 1)"
+            if [ -z "${newest}" ]; then stop github "GitHub did not name its newest release. Run this job again."; fi
+            if [ "${newest}" != "v${VERSION}" ]; then
+              stop newer "${newest} has been released since this run started, and the domain only moves forward: there is nothing to wait for. Start a new deploy."
+            fi
+          fi
+          # the site file and its checksum (a download just attached can take a moment to appear)
+          get() { curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors --max-time 300 -o "$1" "${releases}/download/v${VERSION}/$1"; }
+          if ! get planner-site.tar.gz || ! get planner-site.tar.gz.sha256; then
+            stop no-file "Release v${VERSION}'s site file could not be fetched from GitHub, so there is nothing to compare the domain with. Run this job again."
+          fi
+          # the host takes the file only when it matches its checksum, so that is looked at first
+          want="$(awk 'NR==1 {print $1}' planner-site.tar.gz.sha256)"
+          got="$(sha256sum planner-site.tar.gz | awk '{print $1}')"
+          if [ "${want}" != "${got}" ]; then
+            stop bad-file "Release v${VERSION}'s site file does not match its checksum, so the host refuses it. Delete planner-site.tar.gz from the release, then run the deploy for the domain: it builds and attaches the file again."
+          fi
           tar -xzf planner-site.tar.gz -O ./index.html > want.html
           test -s want.html
           deadline=$((SECONDS + 1200))
@@ -348,9 +408,8 @@ jobs:
           # what it was serving instead, for whoever looks into it
           script() { grep -o 'assets/index-[^"]*\.js' "$1" 2>/dev/null | head -n 1 || true; }
           seen="$(script got.html)"
-          echo "This build's page names $(script want.html). The domain last answered ${code:-nothing}${seen:+, with a page naming ${seen}}."
-          echo "::error::The domain was not serving v${VERSION} after 20 minutes. Its release carries the site file, so see what the update runs on the host say (docs/hosting.md, By hand)."
-          exit 1
+          echo "This release's page names $(script want.html). The domain last answered ${code:-nothing}${seen:+, with a page naming ${seen}}."
+          stop host "The domain was not serving v${VERSION} after 20 minutes. Its release carries the site file, so see what the update runs on the host say (docs/hosting.md, By hand)."
 
   # Stage 6. What each target got, on the run's summary page (scripts/deploy-report.mjs). It fails
   # when a target is not where it should be, so a deploy that left one behind never ends green.
@@ -369,8 +428,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      # the jobs' results go in through the environment, never the script text
+      # the jobs' results and the run's target go in through the environment, never the script
+      # text (the target from the run's own input, so it is known even when the first job failed)
       - name: Say what each target got
         env:
           NEEDS: ${{ toJSON(needs) }}
+          TARGET: ${{ inputs.target }}
         run: node scripts/deploy-report.mjs
