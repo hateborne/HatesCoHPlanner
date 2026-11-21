@@ -2,10 +2,15 @@
 # Fetch the planner's newest release and switch the site on this host to it (docs/hosting.md).
 #
 # The deploy attaches the site, built for the root path, to each GitHub release (planner-site.tar.gz
-# and its .sha256). This script asks GitHub which release is the newest, and when that is newer than
-# the one the site is on it downloads the file, checks it, unpacks it beside the site and switches
-# over in one step. Anything that goes wrong leaves the site as it was. It needs no account or key:
-# GitHub holds none to this host, and the repository doesn't hold the host's address.
+# with its .sha256 and its .sig). This script asks GitHub which release is the newest, and when that
+# is newer than the one the site is on it downloads the file, checks it, unpacks it beside the site
+# and switches over in one step. Anything that goes wrong leaves the site as it was. GitHub holds no
+# key to this host, and the repository doesn't hold the host's address.
+#
+# A file is installed only with a signature for its own release by the deploy's signing key, whose
+# public half is in $SIGNERS (docs/hosting.md, "The site file's signature"). Only a deploy from main
+# can sign, so a release or a file put up by anything else (a workflow on another branch with a
+# write token, say) is refused, and so is one release's file attached to another.
 #
 #   planner-update                      fetch the newest release (the timer runs this)
 #   planner-update --file FILE NAME     install a site file already on this host, as release NAME
@@ -17,6 +22,8 @@ set -euo pipefail
 REPO="https://github.com/hateborne/HatesCoHPlanner"
 ASSET="planner-site.tar.gz"
 ROOT="${PLANNER_ROOT:-/srv/planner}"
+SIGNERS="${PLANNER_SIGNERS:-/etc/planner-update/allowed_signers}"  # the signing key's public half
+SIGNER="planner-release"                                             # its name in that file
 KEEP=2                # releases kept beside the current one, to go back to by hand
 MAX_BYTES=524288000   # no site file is near this (500 MB): a larger one is refused
 MIN_FREE_KB=1048576   # room the disk must have before a download (1 GB)
@@ -134,6 +141,9 @@ fetch() {
   want="$(awk 'NR==1 {print $1}' "$tmp/$ASSET.sha256")"
   got="$(sha256sum "$tmp/$ASSET" | awk '{print $1}')"
   [[ "$want" =~ ^[0-9a-f]{64}$ ]] && [ "$want" = "$got" ] || fail "release $name does not match its checksum; the site stays as it was"
+  # signed for this very release (the namespace names it), by the deploy's key
+  curl -fsSL "${HTTPS[@]}" --max-time 60 --max-filesize 4096 -o "$tmp/$ASSET.sig" "$REPO/releases/download/$name/$ASSET.sig"     || fail "release $name has no signature; the site stays as it was"
+  ssh-keygen -Y verify -f "$SIGNERS" -I "$SIGNER" -n "planner-site-$name" -s "$tmp/$ASSET.sig" < "$tmp/$ASSET" > /dev/null     || fail "release $name is not signed by the deploy's key; the site stays as it was"
   unpack "$tmp/$ASSET" "$tmp/site" || fail "release $name could not be unpacked; the site stays as it was"
   install_site "$tmp/site" "$name"
   prune
@@ -162,6 +172,10 @@ main() {
   [ -d "$ROOT" ] || fail "$ROOT does not exist"
   # as the folder's owner only: a file root left in it would stop every later run
   [ -O "$ROOT" ] || fail "run this as the user $ROOT belongs to (sudo -u planner planner-update ...)"
+  # without the key nothing fetched could be trusted (a file installed by hand needs none)
+  if [ "$mode" = "fetch" ]; then
+    [ -s "$SIGNERS" ] || fail "$SIGNERS is missing, so no release can be checked; the site stays as it was"
+  fi
   # work from the site's folder: the one this was started in may be closed to the site's user
   cd "$ROOT"
   # one run at a time
