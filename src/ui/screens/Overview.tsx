@@ -650,6 +650,8 @@ export function Overview({ skin }: { skin: Skin }) {
       gd={gd}
       skin={skin}
       entry={picker.entry}
+      entries={rules?.entries() ?? []}
+      bonusLevel={build.exemplar ?? build.endLevel ?? 49}
       slot={picker.slot}
       originIndex={originIndex}
       atId={build.at}

@@ -4,6 +4,7 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import type { BoostSet, BoostSetBonus, Power } from '../data/types.ts';
+import type { Slot } from './build.ts';
 import type { BuildEntry } from './rules.ts';
 import { nobody, withSlotted } from './context.ts';
 import { evalRequires } from './requires.ts';
@@ -90,6 +91,51 @@ export function earnedBonuses(gd: GameData, entries: BuildEntry[], level = 49): 
         }
       }
     }
+  }
+  return out;
+}
+
+/** How one of a set's bonuses stands for a power: earned already, newly earned by a change, or not earned. */
+export type BonusState = 'earned' | 'new' | 'none';
+
+/** One line of a set's bonus list: a bonus power, the pieces it takes, and how it stands. */
+export interface SetBonusLine {
+  min: number; // pieces of the set it takes
+  power: number; // the bonus power's id
+  state: BonusState;
+}
+
+/**
+ * A set's bonuses for one power, before and after a change to its slots: what the enhancement
+ * picker lights up for the pieces chosen but not placed yet.
+ *
+ * Counted as the totals count them (earnedBonuses): distinct pieces that work at the level, and
+ * no copy past the rule of five. A bonus the power earns now and keeps is `earned`; one only the
+ * changed slots earn is `new`; the rest, one the change would lose included, are `none`.
+ *
+ * @param gd Game data.
+ * @param entries The build's entries (BuildRules.entries()).
+ * @param key The power's entry key.
+ * @param set The set.
+ * @param after The power's slots as the change would leave them.
+ * @param level 0-based level the totals are worked out at.
+ * @return The lines in the set's order (a piece's own global left out), each bonus power once per tier.
+ */
+export function setBonusLines(gd: GameData, entries: BuildEntry[], key: string, set: BoostSet, after: Slot[], level = 49): SetBonusLine[] {
+  /** @return The bonus powers the power earns from the set, unsuppressed, and its pieces that count. */
+  const read = (list: BuildEntry[]): { got: Set<number>; pieces: number } => {
+    const mine = earnedBonuses(gd, list, level).filter((b) => b.entryKey === key && b.set.id === set.id);
+    return { got: new Set(mine.filter((b) => !b.suppressed).map((b) => b.power.id)), pieces: mine[0]?.slotted ?? 0 };
+  };
+  const now = read(entries);
+  const then = read(entries.map((e) => (e.key === key ? { ...e, slots: after } : e)));
+  const out: SetBonusLine[] = [];
+  for (const b of set.bon) {
+    if (isPieceGlobal(b)) continue;
+    for (const power of b.auto) out.push({ min: b.min, power, state: then.got.has(power) ? (now.got.has(power) ? 'earned' : 'new') : 'none' });
+    // its extra power (not one the totals list): by the pieces alone
+    const within = (n: number) => n >= b.min && n <= b.max;
+    if (b.bp !== undefined) out.push({ min: b.min, power: b.bp, state: within(then.pieces) ? (within(now.pieces) ? 'earned' : 'new') : 'none' });
   }
   return out;
 }

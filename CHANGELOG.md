@@ -7,6 +7,20 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ### New
 
+- The detailed power tooltip (on phones, a power's long-press info) now shows a power's slotted bonuses: the total its enhancements add stands at the right of each number they change, such as Accuracy or Recharge Time.
+- Hover over a set's name while placing enhancements (on phones, long press it) to see all of the set's bonuses: the ones the power already earns glow, and the ones the enhancements you have chosen would add glow brighter.
+- On phones, the enhancement categories are now one row you can drag sideways, the set names sit in their own box, and the details no longer repeat the enhancement's icon and name, which leaves more room for the lists.
+- On phones, a long press on an enhancement turns on Select several and picks it.
+- Set Finder, for Homecoming builds: choose what matters to you and it ranks the enhancement sets your build could slot, shows what each swap gains and loses, and makes a shopping list of the recipes and salvage.
+
+### Improved
+
+- The detailed power tooltip no longer has the "Damage Includes" row; the damage still counts your bonuses and the powers you switch on.
+
+## v1.2.0 - November 20, 2026
+
+### New
+
 - The totals have a Pets and Minions section: click a pet to open its own stats and powers, counting your upgrades, summon slotting, pet aura enhancements, Supremacy, your powers that buff pets and the other pets' buffs, with switches for the pets' own powers.
 - The detailed power tooltip's damage now counts your damage bonuses and the powers you switch on in the build screen's totals, such as Build Up, Aim and Rage; Fiery Embrace's extra fire damage counts only while it is switched on.
 - Advanced Respec, for Respec builds: set the new Respec button to Advanced (or click the ticked Respec bubble on New Build) and each power you click in the respec moves you straight to the next pick.
@@ -21,7 +35,6 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - The enhancement picker's Sets and Special lists fold into groups you can open and close; Special enhancements are grouped as Hydra, Titan, Hamidon, D-Sync, Synthetic Hamidon, Talisman and Other.
 - The enhancement picker can put every piece in as high as your build's level allows, and raise them when the build levels further.
 - Ctrl+Click (or Select several on phones) picks several enhancements at once and fills the power's empty slots in one go, with their total shown after enhancement diversification.
-- Set Finder, for Homecoming builds: choose what matters to you and it ranks the enhancement sets your build could slot, shows what each swap gains and loses, and makes a shopping list of the recipes and salvage.
 
 ### Improved
 

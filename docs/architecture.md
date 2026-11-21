@@ -153,8 +153,8 @@ hosting/                     the site's own domain (docs/hosting.md): Caddyfile,
                              and its systemd service and timer
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
-.github/workflows/           ci.yml (pull request checks), pages.yml (tag a release and deploy main,
-                             started by hand)
+.github/workflows/           ci.yml (pull request checks, always main's copy), pages.yml (tag a
+                             release and deploy main, started by hand)
 ```
 
 ## Servers and versions
@@ -685,7 +685,26 @@ plus `levelsAbove`, whichever is lower), and on reaching the overview from level
 the walk or View Build) every crafted piece below its cap is raised to it (`raiseToCap`; none is
 ever lowered). Its frames, tabs and level box follow the build's skin. Ctrl+Click (phones: Select several) chooses several pieces, up to the clicked slot
 plus the power's empty slots; Place fills those slots left to right in the list's order, so no
-piece already slotted elsewhere in the power is replaced.
+piece already slotted elsewhere in the power is replaced. On a phone a long press on a piece ticks
+Select several with that piece in (with a single slot to fill it just chooses the piece). A set's name shows the set's bonuses (`SetDetails`): beside the
+pointer on the desktop (`useHover.setTip`, `SetTipLayer`; not while tooltips are Disabled), in a
+long-press box on a phone (`PressTip` kind `set`, `PhoneSetTipLayer`, drawn inside the picker
+because the picker covers the overview's own layer). The bonuses light up as the totals would count them (`setBonusLines` in
+`engine/setbonus.ts`: distinct pieces that work at the level, the rule of five) for the power as it
+is and as it would be once the chosen pieces are placed where Place puts them (`placements` in
+`engine/placing.ts`, which Place itself uses): one it already earns glows green, one the chosen
+pieces would newly earn is lighter and glows stronger, and one it would lose reads as not earned
+(`BonusLines`). Phones also get the categories as one row that scrolls sideways
+(`PhoneTabStrip`), the set names in a rounded box of their own (as tall as its list, up to 45% of
+the list area), and details without the piece's icon and name.
+
+**Slotted bonuses.** `powerInfo` marks each stat row and effect line that the power's own
+enhancements change with their strength after ED (`InfoRow.bonus`, `InfoEffect.bonus`), set where
+the row is written from the same strength. A damage line's is its own enhancement, never the
+build's damage boosts; the Average Damage row's is read back from the damage (enhanced over base),
+so it is lower than the lines' when part of the damage takes no enhancement (a pet's). The Advanced tooltip and the phone's long-press info print it at the right
+end of its row, with no label (`AdvancedInfo`, `InfoBlocks`' `bonus`); a power with nothing slotted
+has no such column, nor one whose enhancements change no number.
 
 **Stage.** Every screen draws on a fixed stage scaled to the window with CSS zoom:
 
@@ -753,6 +772,9 @@ piece already slotted elsewhere in the power is replaced.
   test holds back the pane's code and then refuses it: meanwhile the phone's overview still shows
   a long press's tooltip, then the notice shows, and the next opening works. A third opens a
   Thunderspy build: no finder button and no row in the phone menu.
+  `phonepicker.spec.ts` (phone only) long presses a slotted power (its info shows the slotted
+  bonuses), then in the enhancement picker reaches the last category in the scrolling row, long presses a
+  set's name (its bonuses close without closing the picker) and a piece (ticks Select several).
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens, the level-up flow or the set

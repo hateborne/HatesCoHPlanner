@@ -148,11 +148,16 @@ the project)
   forms. (Game text decoded from the client is data and is left as it is.)
 
 **Git and GitHub**
-- `main` is protected: every change goes through a pull request, all CI checks must pass on a
+- `main` is protected: every change goes through a pull request (the one exception is the
+  deploy's changelog stamp, `docs/releases.md`), all CI checks must pass on a
   branch that is up to date with `main` (update it, then let CI run again, before merging), and
   pull requests need the owner's approval (CODEOWNERS); the owner may approve their own.
 - Never force-push `main`, rewrite its history, or change repository settings, rulesets or
   secrets.
+- A workflow file runs from the branch that adds it, so nothing a branch's run could reach may be
+  worth taking: secrets live only in environments that run from main (never at repository level),
+  version tags and the domain's site file are guarded as `docs/releases.md` says ("What a branch's
+  workflow can't do"). Keep it that way in any workflow change.
 - Commit, push or open a pull request only when the owner asks for it. The same goes for starting
   a Pages deploy.
 - Exception, standing permission for this repository: on a pull request you opened, watching its
@@ -274,6 +279,12 @@ touches configuration or dependencies.
 | Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.henchmen_test pipeline.info_test pipeline.pvp_test pipeline.recipes_test pipeline.check_ids_test pipeline.patch_history_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the real pets export, the power-info extras export, the PvP-only test, the recipe export, the stable ids check, the patch timeline's fields); `pipeline/check_ids.py` (every ids file well formed, and every id the base branch has kept unchanged, in each ids file the base branch holds); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
+The checks always run as main's `ci.yml` has them (`pull_request_target`), on the pull request's own
+commit: a pull request's edits to `ci.yml` take effect only once merged. So a pull request that
+renames or removes something main's `ci.yml` names (a pipeline test module, say) fails its checks;
+update `ci.yml` in an earlier pull request that keeps both working. Never give these jobs secrets,
+a write token, kept credentials or a cache: they run the pull request's code.
+
 Merging does not deploy. The owner starts a Pages deploy by hand (Actions -> "Deploy to GitHub
 Pages" -> Run workflow, picking a version bump, or `gh workflow run pages.yml --ref main -f
 bump=<patch|minor|major>`); it publishes `main` only and runs one at a time. It goes to both
@@ -349,7 +360,8 @@ it, and the full list of what counts: `docs/releases.md`.
   screenshots of the screens touched).
 - A change players can see adds one line to `CHANGELOG.md` under `## Unreleased`: one sentence in
   plain words for players, with no internals (file names, pull request numbers, engine terms). The
-  deploy puts the new lines at the top of the release's notes (`docs/releases.md`, "The changelog").
+  deploy puts the new lines at the top of the release's notes, then moves them under the version's
+  own heading on main by itself (`docs/releases.md`, "The changelog"): no pull request does that.
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
   `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/ids.json`) change only through a
   pipeline run, never by hand. The same goes for the build research's `public/data/finder/stats.json`

@@ -7,15 +7,12 @@
 import type { GameData } from '../data/gamedata.ts';
 import type { Effect } from '../data/types.ts';
 import type { BuildRules } from './rules.ts';
-import { computeTotals, lineCap, runningLines, totalsState } from './totals.ts';
+import { computeTotals, lineCap, totalsState } from './totals.ts';
 
 /** What a build adds to every attack's damage while the powers counted in its totals run. */
 export interface DamageBoost {
   str: Map<number, number>; // damage attribute offset -> character-wide damage strength (0.8 = +80%), before the cap
   cap: Map<number, number>; // damage attribute offset -> the archetype's cap on 1 + enhancements + strength (5 = 500%)
-  names: string[]; // the click powers switched on that add damage strength, in build order ("Build Up")
-  other: boolean; // something besides those clicks adds damage strength too (set bonuses, toggles, autos)
-  tagNames: Map<string, string>; // raised tag -> the power raising it ("Fiery Embrace")
   switchTags: readonly string[]; // tag modes a power switches, in lower case: their groups count only while raised
   tags: string[]; // those the running powers raise ('fieryembrace')
   switchModes: Set<string>; // power modes a power of the build sets (SetMode), in lower case: tested groups follow them
@@ -57,12 +54,10 @@ function workOut(gd: GameData, rules: BuildRules, level: number): DamageBoost {
   const totals = computeTotals(gd, rules, rules.b, level);
   const str = new Map<number, number>();
   const cap = new Map<number, number>();
-  const offOf = new Map<string, number>(); // totals line key -> damage attribute offset
   for (let i = 0; i < gd.core.attribNames.Damage.length; i++) {
     const nn = String(i).padStart(2, '0');
     const off = gd.attribByName.get(`DamageType${nn}`);
     if (off === undefined) continue;
-    offOf.set(`dmg.${nn}`, off);
     str.set(off, totals.lines.get(`dmg.${nn}`)?.value ?? 0);
     cap.set(off, (lineCap(at, `dmg.${nn}`, level) ?? 4) + 1);
   }
@@ -72,9 +67,6 @@ function workOut(gd: GameData, rules: BuildRules, level: number): DamageBoost {
   const setMode = gd.attribByName.get('SetMode') ?? 473;
   const modeNames = gd.core.attribNames.Mode ?? [];
   const tags: string[] = [];
-  const names: string[] = [];
-  const tagNames = new Map<string, string>();
-  const rest = new Map(str); // the strength left once the named clicks' own is taken off
   const switchModes = new Set<string>();
   /** Collect the modes a power's groups set, whatever their chance or requirements. */
   const modesOf = (effs: Effect[] | undefined): void => {
@@ -91,24 +83,13 @@ function workOut(gd: GameData, rules: BuildRules, level: number): DamageBoost {
     modesOf(p.eff);
     modesOf(p.act);
     if (!st.isOn(e)) continue;
-    if (p.type === 'Click') {
-      const lines = runningLines(gd, at, st, e).lines.filter((l) => offOf.has(l.key));
-      if (lines.some((l) => l.value > 0)) {
-        if (!names.includes(p.dn)) names.push(p.dn);
-        for (const l of lines) rest.set(offOf.get(l.key)!, (rest.get(offOf.get(l.key)!) ?? 0) - l.value);
-      }
-    }
     const lower = p.n.toLowerCase();
     for (const [end, tag] of TAG_RAISERS) {
       if (!lower.endsWith(end) || tags.includes(tag)) continue;
       const has = [...(p.eff ?? []), ...(p.act ?? [])].some((g) => (g.m ?? []).some((m) => m.a.includes(chanceMod)));
-      if (has) {
-        tags.push(tag);
-        tagNames.set(tag, p.dn);
-      }
+      if (has) tags.push(tag);
     }
   }
   const modes = new Set([...switchModes].filter((n) => st.ctx.inMode?.(n)));
-  const other = [...rest.values()].some((v) => Math.abs(v) > 1e-9);
-  return { str, cap, names, other, tagNames, switchTags: SWITCH_TAGS, tags, switchModes, modes };
+  return { str, cap, switchTags: SWITCH_TAGS, tags, switchModes, modes };
 }
