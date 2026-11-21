@@ -5,7 +5,7 @@ owner's machine only. The rules every change must keep are in `AGENTS.md`.
 
 ## MidsReborn exceptions (owner-approved)
 
-- The one exception, approved by the owner: an **approximate version** for an older patch whose
+- The first exception, approved by the owner: an **approximate version** for an older patch whose
   client files are gone (`python -m pipeline.overlay`, for example `i28p3m`, "Issue 28, Page 3
   (approximate)"). It is a published version's data with only each power's available level (and
   so each set's order) taken from Mids' database for that patch. Pool sets keep the base's levels.
@@ -47,8 +47,9 @@ on Thunderspy) is kept. Each version's manifest records the test its groups were
 was made with the first, `pvp_requires_v1`, which dropped any group with a player test and no
 critter test. A run from a published version's own client, `pipeline.pets` and `pipeline.info` use
 that version's test (`Exporter.use_pvp_test`), so they reproduce it and its groups (the info file's
-notes are laid out on them), and warn or refuse when its groups no longer come out the same
-(`Exporter.reproduces`); a new version gets the current test. @TODO the test
+notes are laid out on them). When its groups no longer come out the same, `pipeline.pets` and
+`pipeline.henchmen` refuse the version (`Exporter.reproduces`), `pipeline.info` warns for each power
+whose groups differ, and `pipeline.run` warns; a new version gets the current test. @TODO the test
 reads every target as a critter, as the first did, though an ally's or the caster's own target is a
 player in PvE too (Empathy's Adrenaline Boost heal).
 
@@ -145,6 +146,7 @@ as counts only; `--effects N` writes `report-thunderspy-diff-full.md` (gitignore
 effect lines a side per power. The owner uses it to know what to spot-check in the Thunderspy client. A Thunderspy `pipeline.run` summarises it in
 `report-thunderspy.md` ("Differences from Homecoming"); re-run it after a new release or a new
 Homecoming default.
+
 An older patch with no client files left can get an approximate version:
 `python -m pipeline.overlay [--base i28p4]` copies the base version and takes each power's available
 level from the configured Mids database (its header names the issue and page). The base's pets, real
@@ -179,7 +181,8 @@ defense.
 
 `python -m pipeline.henchmen [--server S] [--game-version V]` writes only that file, for a version
 published before it existed, from the client the version was made from (`COH_CLIENT` pointing at a
-copy of an older client for an older version); any other client is refused. It changes no build and
+copy of an older client for an older version); any other client is refused, and so is an
+approximate version (`pipeline.overlay` copies its base's real pets file). It changes no build and
 is not part of the version hash. The planner fetches it only for a build with a power that makes a
 pet, and a missing or damaged file only hides the Pets and Minions section. A real pets file is
 regenerated the same way when its format grows, as long as no deploy has published it.
@@ -197,7 +200,8 @@ for the same pieces, and common IO recipes, are left out. Like the pseudo-pet fi
 the version folders, is not part of the version hash, and is refused for any client but the one
 the version was made from (`COH_CLIENT` pointing at a copy of an older client for an older
 version). `pipeline.run` writes it with a new Homecoming version (a failure there is a warning in
-the report, never a failed export). The file format is described at the top of
+the report, never a failed export). It is Homecoming's only, as the set finder is so far:
+`pipeline.recipes` has no `--server`, and a Thunderspy run writes no recipe file. The file format is described at the top of
 `pipeline/recipes.py`.
 
 Nothing is written when a record does not decode cleanly or the records disagree with each other

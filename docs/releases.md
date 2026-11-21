@@ -25,14 +25,16 @@ When you hand back a pull request, say which bump it calls for, so the owner can
 - The build gets the version from `HCP_VERSION` and the commit from `HCP_COMMIT`
   (`vite.config.ts`, read through `src/version.ts`). Builds outside a deploy (dev server, tests,
   pull request checks) are `dev`.
-- Before the site goes live, the deploy's `release` job tags the commit and publishes a GitHub
+- Before the site goes live, the deploy's `release` job tags the commit (pushing the tag with the
+  deploy key: "The release key and main's rules", below) and publishes a GitHub
   Release: the changelog's new lines for players (below), then the pull requests merged since the
   last one. So a failed deploy can't let another build take the same number. If that job fails,
   nothing was deployed: re-run all jobs (a fresh build sees whether the tag was made, and reuses it
   if so; if main has moved on and no tag was made, start a new deploy).
 - The site goes to two targets, GitHub Pages and its own domain, each through stages of its own
   ("The deploy's stages", below). The domain's stages attach its site file to the release
-  (`planner-site.tar.gz` and its `.sha256`), where its host fetches it (`docs/hosting.md`).
+  (`planner-site.tar.gz`, its `.sha256` and its signature, `.sig`), where its host fetches it
+  (`docs/hosting.md`).
 - The footer names the version after the planner's name, as plain text. The crash page and the
   browser console name it with its commit, and Mids exports carry it in `BuiltWith.Version`
   (`0.0.0` from a dev build; imports ignore it). Each version's notes are on the repository's
@@ -56,7 +58,7 @@ Its stages are the jobs of `.github/workflows/pages.yml`:
    build waits for it.
 3. **Build**, one job per target, side by side (`build-pages`, `build-domain`).
 4. **Publish**, one job per target: `deploy-pages` puts its build live on GitHub Pages, and
-   `publish-domain` attaches the domain's site file to the release.
+   `publish-domain` signs the domain's site file and attaches it to the release.
 5. **Check the domain switched** (`check-domain`): its host fetches a release by itself, so this
    stage waits (up to 20 minutes) until the domain serves the new build.
 6. **Report** (`report`, `scripts/deploy-report.mjs`): the run's summary page says what each
@@ -91,15 +93,17 @@ changelog stamp, which holds nothing back). From stage
   the `release` job. A version whose builds both fail is tagged with nothing deployed under it:
   try again, or let the next deploy take the next number.
 - **What the domain's stages do** (unless the run is for GitHub Pages alone): for a new version,
-  and for the newest release while it still has no site file (its domain stages failed, or were
-  left out, before), they build the site, attach it and check the domain. When the newest release
-  has its file already, only the check runs, so a host that failed to fetch it shows up again.
+  and for the newest release while it still has no signed site file (its domain stages failed, or
+  were left out, before, or it is from before files were signed), they build the site, sign and
+  attach it, and check the domain. When the newest release has its signed file already, only the
+  check runs, so a host that failed to fetch it shows up again.
   When an older release is put back on GitHub Pages they do nothing: the domain only moves forward
   on its own (`docs/hosting.md`, "By hand"). If GitHub can't be asked which it is, the domain is
   left alone and the report says it was not checked.
 - **The check compares the domain with the release's own site file**, the very one its host
   fetches, not with a build of the run, after checking that file against its checksum as the host
-  does. When the check can't be made at all (GitHub doesn't answer, or a newer release has gone out
+  does. It does not check the signature: a host that refuses one shows up as not seen live, with
+  the reason in the host's update log. When the check can't be made at all (GitHub doesn't answer, or a newer release has gone out
   since), the report says that, and not that the host is stuck.
 - **Published but not seen live:** the release has its site file, yet the domain did not serve it
   in time. Nothing in the deploy can put that right: look at the host (`docs/hosting.md`, "By
@@ -165,41 +169,46 @@ main's tip with the newest version's commit, file by file (`affectsSite` in
     a new version by itself.
 - A line reworded after its release counts as new, so leave released lines as they are.
 
-### Setting up the changelog push
+### The release key and main's rules
 
-`main` takes changes through pull requests only, so the stamp is pushed with a deploy key that
-main's rules let through, and nothing else holds that key. The owner sets this up once, on GitHub
-(an agent never changes settings, rulesets or secrets):
+`main` takes changes through pull requests only, so the stamp (and each new version tag) is pushed
+with a deploy key that main's rules let through. Only the `release` environment holds it. This is
+how the repository is set up (an agent never changes settings, rulesets or secrets on its own):
+
+- **The deploy key:** one key with write access, under Settings -> Deploy keys. Its private half
+  is the secret `RELEASE_DEPLOY_KEY` of the `release` environment.
+- **The `release` environment:** deploys from `main` only. It holds `RELEASE_DEPLOY_KEY` and
+  `SITE_SIGNING_KEY` (the domain's signing key: `docs/hosting.md`, "The site file's signature").
+- **The rulesets** (Settings -> Rules -> Rulesets). A ruleset's "Deploy keys" bypass lets every
+  deploy key of the repository through, so any other deploy key added here must be read-only.
+
+| Ruleset | Applies to | Rules | Bypass |
+|---|---|---|---|
+| main: history kept | the default branch | no deleting it, no force pushes | none |
+| main: pull requests, owner approval | the default branch | a pull request with the code owner's approval (approval of the last push, stale approvals dismissed) | deploy keys (always); repository admins (for pull requests only, which is how the owner approves their own) |
+| main: required checks | the default branch | the four checks of `ci.yml`, on a branch up to date with main | deploy keys (always) |
+| version tags: deploy key only | tags `v*` | no making, moving or deleting them | deploy keys (always) |
+
+Force pushes and deleting main are kept in a ruleset of their own with no bypass, so the key can
+skip the pull request and the checks but nothing else.
+
+What else guards the stamp's push:
+
+- The key lives in an environment that only runs from main, so a workflow run from any other
+  branch can't read it.
+- The job refuses to run from another branch or for anyone but the owner, refuses a stamp that
+  changes any file but `CHANGELOG.md`, and never forces: if main moves while it works, it starts
+  again from the new tip (three tries).
+- Its commit is made in the name of `github-actions[bot]`, so it is easy to pick out in main's
+  history.
+
+To replace the key (lost, or suspected leaked):
 
 1. Make a key pair with no passphrase: `ssh-keygen -t ed25519 -N "" -C release-deploy -f stamp`.
-2. Settings -> Deploy keys -> Add deploy key: the public half (`stamp.pub`), titled
-   `release-deploy`, with **Allow write access** ticked.
-3. Settings -> Environments -> New environment `release`. Deployment branches and tags:
-   **Selected branches and tags**, with `main` only. Add the environment secret
-   `RELEASE_DEPLOY_KEY`: the private half (`stamp`). Then delete both files from your machine.
-4. Settings -> Rules -> Rulesets:
-   - **main: pull requests, owner approval**: add **Deploy keys** to the bypass list, set to
-     **Always allow**.
-   - **main: checks pass, history kept** also forbids force pushes and deleting main, which the
-     key must never get past. So move its required status checks into a new ruleset of their own
-     (target: the default branch; the same four checks, "Require branches to be up to date"
-     ticked) with **Deploy keys** on its bypass list (**Always allow**), and leave the history
-     ruleset with no bypass at all.
-   - A new ruleset for version tags: target **Tags**, include the pattern `v*`, rules **Restrict
-     creations**, **Restrict updates** and **Restrict deletions**, and **Deploy keys** on its
-     bypass list (**Always allow**). The deploy's `release` job pushes each new tag with the key.
-5. For the domain, the signing key in the same environment: `docs/hosting.md`, "The site file's
-   signature".
-
-What guards the push:
-
-- The key is the only one that may skip the pull request and the checks. It is kept in an
-  environment that only runs from main, so a workflow run from any other branch can't read it.
-- The job refuses to run from another branch, refuses a stamp that changes any file but
-  `CHANGELOG.md`, and never forces: if main moves while it works, it starts again from the new tip
-  (three tries).
-- Force pushes and deleting main stay forbidden for everyone, the key included.
-- Its commit is made in the name of `github-actions[bot]`, so it is easy to pick out in main's history.
+2. Settings -> Deploy keys: delete the old key, then add the public half (`stamp.pub`) with
+   **Allow write access** ticked.
+3. Settings -> Environments -> `release`: set `RELEASE_DEPLOY_KEY` to the private half (`stamp`).
+   Then delete both files from your machine. The rulesets need no change.
 
 ## What a branch's workflow can't do
 
@@ -211,8 +220,9 @@ within its reach:
 - **Secrets:** none at repository level, ever. Every secret lives in an environment that runs from
   main only (`release`: the deploy key and the signing key; `github-pages`), which a branch's run
   can't enter.
-- **main:** its rulesets want a pull request with the owner's approval and passing checks; only
-  the deploy key gets past them, and force pushes and deleting main are forbidden for everyone.
+- **main:** its rulesets want a pull request with the owner's approval and passing checks. Only
+  the deploy key gets past them without a pull request, and force pushes and deleting main are
+  forbidden for everyone (the table above).
 - **The pull request checks:** always main's copy of `ci.yml` (`pull_request_target`).
 - **Version tags:** only the deploy key may make, move or delete a `v*` tag, so a branch's token
   can't make a release with a new version (and so a release that looks newer than the real one).

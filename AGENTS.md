@@ -198,7 +198,8 @@ public/assets/  generated icons, textures, fonts, sounds; thunderspy/ for its ic
 pipeline/       Python data pipeline (owner's machine only); ids*.json (append-only), report*.md
 tools/          standard-library Python decoders for client file formats
 hosting/        the site's own domain: web server settings and the script that fetches each release
-docs/           architecture.md, pipeline.md, releases.md, hosting.md, game-rules.md, exemplar-rules.md
+docs/           architecture.md, pipeline.md, releases.md, hosting.md, game-rules.md, exemplar-rules.md,
+                patch-history.md
 ```
 
 ## How it works
@@ -216,6 +217,8 @@ Read the doc for the area you are changing:
 - `docs/hosting.md`: the site's copy on its own domain: its short addresses, how a release reaches
   it, and how its host is set up.
 - `docs/game-rules.md`: the engine rules already ported, with the source each comes from.
+- `docs/patch-history.md`: the patch timeline from Issue 24 to now, to tell which patch an old
+  client is.
 
 Rules from those areas that hold for every change:
 
