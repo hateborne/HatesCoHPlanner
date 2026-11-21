@@ -5,6 +5,9 @@
  * loader does, and a build opens the same whether the file is there or not.
  */
 
+import { heard } from './packed.ts';
+import { ask, Watch } from './watch.ts';
+
 /** Folder beside a server's version folders holding each version's recipes (recipes/<version>.json). */
 export const RECIPES_FOLDER = 'recipes';
 
@@ -73,15 +76,31 @@ export function checkRecipes(raw: unknown): RecipeData | null {
 /**
  * Download one game version's recipes.
  *
+ * A web page for an answer means two things. A dev server answers any address with its own page,
+ * so there it is a version without recipes. The site answers 404 for a file it lacks, so there a
+ * page is someone else's (a network's sign-in page): a failed download, to be asked for again,
+ * never "this version has no recipes" for the life of the tab.
+ *
  * @param root The server's data folder as the site serves it (dataRoot), with its closing slash.
  * @param version The game version's id.
+ * @param watch The watch on the download: a file that gets no answer is asked for again alongside
+ *   (ask), and a download that stalls can be given up through it.
+ * @param dev Whether a dev server serves the page (it answers any address with its own page).
  * @return The recipes; null when the site has none for that version (an approximate version: its
- *   client files are gone). The site answers 404 then; a dev server answers with its own page.
+ *   client files are gone).
  * @raise Error when the download fails, or the file is not that version's recipe file.
  */
-export async function loadRecipes(root: string, version: string): Promise<RecipeData | null> {
-  const r = await fetch(`${root}${RECIPES_FOLDER}/${encodeURIComponent(version)}.json`, { cache: 'no-cache' });
-  if (r.status === 404 || (r.ok && /^text\/html/i.test(r.headers?.get('content-type') ?? ''))) return null;
+export async function loadRecipes(root: string, version: string, watch: Watch = new Watch(), dev: boolean = import.meta.env.DEV): Promise<RecipeData | null> {
+  const url = `${root}${RECIPES_FOLDER}/${encodeURIComponent(version)}.json`;
+  const answer = await ask(url, watch, { cache: 'no-cache' });
+  const page = answer.ok && /^text\/html/i.test(answer.headers?.get('content-type') ?? '');
+  if (answer.status === 404 || page) {
+    // nothing of it is read: the download is over
+    watch.end(url);
+    if (page && !dev) throw new Error(`the recipes of ${version} did not load (a web page came back)`);
+    return null;
+  }
+  const r = heard(answer, watch, url);
   if (!r.ok) throw new Error(`the recipes of ${version} did not load (HTTP ${r.status})`);
   const data = checkRecipes(await r.json());
   if (!data || data.dataVersion !== version) throw new Error('the recipe file is not in a form this version reads');

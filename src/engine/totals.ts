@@ -11,7 +11,7 @@
 import { GameData } from '../data/gamedata.ts';
 import type { Archetype, BoostSet, Effect, Mod, Power } from '../data/types.ts';
 import type { Build, Slot } from './build.ts';
-import { boostMods, effectiveness, powerStrength } from './enhance.ts';
+import { boostMods, effectiveness, powerStrength, strengthMemo, type StrengthMemo } from './enhance.ts';
 import { aimedAt } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
@@ -473,6 +473,22 @@ function lineSum(gd: GameData): { add: (l: ModLine) => void; lines: () => ModLin
   };
 }
 
+/**
+ * What a caller that reads the same running powers many times over one state (the set finder)
+ * keeps between reads: everything here depends on the state's context and level alone, never on
+ * what a power has slotted.
+ */
+export interface TotalsMemo {
+  own: Map<Effect[], Mod[]>; // effect groups -> their standing mods that land, in walkEffects' order
+  pieces: Map<number, Mod[]>; // enhancement id -> the mods of its own effects that count
+  strength: StrengthMemo; // powerStrength's memo, for the state's archetype and level
+}
+
+/** @return An empty TotalsMemo. */
+export function totalsMemo(): TotalsMemo {
+  return { own: new Map(), pieces: new Map(), strength: strengthMemo() };
+}
+
 /** What the totals are worked out from: the powers counted at a level and whether each runs. */
 export interface TotalsState {
   level: number; // 0-based level the totals are worked out at
@@ -480,6 +496,7 @@ export interface TotalsState {
   ctx: EvalContext; // requirement context, with the modes the running powers set
   entries: BuildEntry[]; // the powers owned at the level
   isOn: (e: BuildEntry) => boolean; // whether a power counts as running
+  memo?: TotalsMemo; // set by a caller that reads the state many times (the set finder's runningLines calls)
 }
 
 /**
@@ -556,19 +573,39 @@ function walkRunning(
   fn: (l: ModLine, src: string) => void,
 ): Map<number, number> {
   const p = e.power;
+  const memo = st.memo;
   const slots = e.slots.filter((s) => s.level <= st.level);
-  const str = powerStrength(gd, at, p, slots.map((s) => s.enh), st.level).post;
+  const str = powerStrength(gd, at, p, slots.map((s) => s.enh), st.level, memo?.strength).post;
   const take = (m: Mod, src: string) => {
     for (const l of modLines(gd, at, st.level, p, m, str)) fn(l, src);
   };
-  walkEffects(p.eff, st.ctx, (m) => take(m, p.dn));
-  walkEffects(p.act, st.ctx, (m) => take(m, p.dn));
+  // the mods that land are the same on every read of a state: with a memo they are listed once
+  const own = (effs: Effect[] | undefined): void => {
+    if (!effs) return;
+    if (!memo) return walkEffects(effs, st.ctx, (m) => take(m, p.dn));
+    let mods = memo.own.get(effs);
+    if (!mods) {
+      const list: Mod[] = [];
+      walkEffects(effs, st.ctx, (m) => list.push(m));
+      memo.own.set(effs, (mods = list));
+    }
+    for (const m of mods) take(m, p.dn);
+  };
+  own(p.eff);
+  own(p.act);
   for (const id of workingPieces(gd, st, e.slots)) {
     if (pieceApplied.has(id)) continue;
     pieceApplied.add(id);
     const boost = gd.power(id);
-    const enhancing = new Set(boostMods(boost));
-    walkEffects(boost.eff, st.ctx, (m) => m.tg === 'Caster' && !enhancing.has(m) && !isNullMod(gd, m) && take(m, boost.dn));
+    let mods = memo?.pieces.get(id);
+    if (!mods) {
+      const list: Mod[] = [];
+      const enhancing = new Set(boostMods(boost));
+      walkEffects(boost.eff, st.ctx, (m) => m.tg === 'Caster' && !enhancing.has(m) && !isNullMod(gd, m) && list.push(m));
+      memo?.pieces.set(id, list);
+      mods = list;
+    }
+    for (const m of mods) take(m, boost.dn);
   }
   return str;
 }
@@ -641,14 +678,6 @@ export function lineCap(at: ClassTables, key: string, level: number): number | u
   return undefined;
 }
 
-/**
- * Compute totals for a build.
- *
- * @param gd Game data.
- * @param rules Rules view of the build.
- * @param b The build (for per-power toggles).
- * @param level 0-based level to compute at (default 49, or the exemplar level).
- */
 /** Totals lines being summed: each made on first use, every contribution kept as a source. */
 export interface LineBook {
   lines: Map<string, StatLine>;
@@ -676,14 +705,24 @@ export function lineBook(): LineBook {
   return { lines, line, add };
 }
 
-export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): Totals {
+/**
+ * Compute totals for a build.
+ *
+ * @param gd Game data.
+ * @param rules Rules view of the build.
+ * @param b The build (for per-power toggles).
+ * @param level 0-based level to compute at (default 49, or the exemplar level).
+ * @param state The totals state of that build at that level, when the caller has it already (totalsState).
+ * @return The totals.
+ */
+export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49, state?: TotalsState): Totals {
   const at: Archetype = rules.at;
   const { lines, line, add } = lineBook();
 
   const damageName = (i: number) => damageNameOf(gd, i);
   const defenseName = (i: number) => defenseNameOf(gd, i);
 
-  const st = totalsState(gd, rules, b, level);
+  const st = state ?? totalsState(gd, rules, b, level);
   const { ctx, entries, isOn } = st;
 
   const apply = (p: Power, m: Mod, strength: Map<number, number> | null, srcName: string) => {

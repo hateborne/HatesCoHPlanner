@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { defaultServer, serverById } from './data/servers.ts';
+import { askFinderStats } from './data/finderStats.ts';
+import { dataRoot, DEFAULT_SERVER, defaultServer, serverById } from './data/servers.ts';
 import { skinOf } from './engine/build.ts';
 import { closeSetFinder, setFinderUp, useFinderOpen } from './state/finderOpen.ts';
 import { useStore } from './state/store.ts';
@@ -18,6 +19,7 @@ import { ChooseNewPower } from './ui/screens/ChooseNewPower.tsx';
 import { ChoosePoolSet } from './ui/screens/ChoosePoolSet.tsx';
 import { Overview } from './ui/screens/Overview.tsx';
 import { Setup } from './ui/screens/Setup.tsx';
+import { useEscape } from './ui/escape.ts';
 import { SKINS, type Skin } from './ui/skin/skin.ts';
 import { setMusicSkin } from './ui/sound.ts';
 import { TitleText } from './ui/components/GameText.tsx';
@@ -26,17 +28,55 @@ import { versionLabel } from './version.ts';
 // the set finder's pane, once downloaded (see FinderPane)
 let finderPane: ComponentType<{ skin: Skin }> | null = null;
 
+// how long the pane's code may take before the wait is said on screen: a download that is quick
+// shows nothing in between
+const FINDER_WAIT_MS = 400;
+
+/**
+ * What stands in for the set finder's pane while its code downloads: after a moment, a line that
+ * says so. It takes no clicks, so the overview under it works as before; Escape gives the wait up.
+ */
+function FinderWait({ skin }: { skin: Skin }) {
+  const stage = useStage();
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLate(true), FINDER_WAIT_MS);
+    return () => clearTimeout(t);
+  }, []);
+  useEscape(closeSetFinder);
+  if (!late) return null;
+  const w = Math.min(460, stage.w - 24);
+  const h = 76;
+  const x = Math.round((stage.w - w) / 2);
+  const y = Math.round((stage.h - h) / 2);
+  return (
+    <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, pointerEvents: 'none', zIndex: 100 }}>
+      <MenuFrame x={x} y={y} w={w} h={h} r25 style={{ background: skin.panel }} skin={skin} />
+      <div className="abs body-text" data-testid="finder:wait" role="status" style={{ left: x, top: y, width: w, height: h, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cfe8ff', fontSize: 20 }}>
+        Loading the Set Finder...
+      </div>
+    </div>
+  );
+}
+
 /**
  * The set finder's pane. Its screen and engine are downloaded when the pane is first opened, not
- * with the page. A download that fails closes the pane with a notice, and the next opening tries
- * again. A page opened before the site was updated asks for a file the update replaced: the notice
- * says so, as the Mids code reader's does (io/mids.ts), since only a reload fixes that.
+ * with the page, and the build statistics are asked for alongside (the pane's state joins that
+ * download). While the code is on its way a line says so (FinderWait). A download that fails
+ * closes the pane with a notice, and the next opening tries again; one that fails after the
+ * player gave the wait up says nothing. A page opened before the site was updated asks for a file
+ * the update replaced: the notice says so, as the Mids code reader's does (io/mids.ts), since only
+ * a reload fixes that.
  */
 function FinderPane({ skin }: { skin: Skin }) {
   const [Pane, setPane] = useState<ComponentType<{ skin: Skin }> | null>(() => finderPane);
   useEffect(() => {
     if (Pane) return;
     let live = true;
+    // the statistics download with the code, not after it (Homecoming builds: the finder covers no other)
+    const { gd, server } = useStore.getState();
+    const s = serverById(server);
+    if (gd && s && gd.server === DEFAULT_SERVER) askFinderStats(dataRoot(s, import.meta.env.BASE_URL));
     import('./ui/screens/SetFinder.tsx')
       .then((m) => {
         finderPane = m.default;
@@ -44,6 +84,8 @@ function FinderPane({ skin }: { skin: Skin }) {
       })
       .catch((e: unknown) => {
         console.warn('set finder: the pane did not load', e);
+        // the player closed it or went elsewhere meanwhile: nothing is waiting for it
+        if (!live) return;
         closeSetFinder();
         useStore.getState().notify("The set finder couldn't load (the site may have been updated since this page was opened). Reload the page, then try again.");
       });
@@ -57,7 +99,7 @@ function FinderPane({ skin }: { skin: Skin }) {
     setFinderUp(/*up=*/ true);
     return () => setFinderUp(/*up=*/ false);
   }, [Pane]);
-  return Pane ? <Pane skin={skin} /> : null;
+  return Pane ? <Pane skin={skin} /> : <FinderWait skin={skin} />;
 }
 
 /**

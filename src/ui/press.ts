@@ -67,11 +67,14 @@ export function longPress(onLong?: (pt: { x: number; y: number }) => void) {
       if (e.pointerType === 'mouse') return;
       cancel();
       const pt = { x: e.clientX, y: e.clientY };
+      const el = e.currentTarget as Element | null;
       press = {
         x: pt.x,
         y: pt.y,
         timer: window.setTimeout(() => {
           press = null;
+          // the element left the page while the finger rested (a list drawn again): nothing to tell about
+          if (el && !el.isConnected) return;
           fired = true;
           navigator.vibrate?.(12);
           onLong(pt);

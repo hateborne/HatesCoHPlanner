@@ -12,7 +12,9 @@
  * 4. Needs: stats nearly every build of the archetype or power set holds (knockback protection).
  *    Falling under the typical amount is marked down; climbing toward it is marked up.
  */
-import { powerInfo } from '../powerinfo.ts';
+import type { GameData } from '../../data/gamedata.ts';
+import type { Archetype, Power } from '../../data/types.ts';
+import { powerInfo, type PowerNumbers } from '../powerinfo.ts';
 import type { BuildEntry } from '../rules.ts';
 import type { Vec } from './bonusVec.ts';
 import type { BonusRef, EntryState, FinderBase } from './core.ts';
@@ -30,6 +32,28 @@ export const NEED_WEIGHT = 6;
 // the least a power counts among the powers of its role, as a share of an even split: a power
 // whose output the planner can't put a number on still matters
 export const SHARE_FLOOR_OF_EVEN = 0.25;
+
+// each power's unenhanced numbers by archetype and level, per game data: they depend on nothing
+// else, and every search of a build (one per kept swap ticked) asks for the same ones again
+const bareNumbers = new WeakMap<GameData, Map<string, PowerNumbers>>();
+
+/**
+ * A power's numbers with nothing slotted (kept after the first look).
+ *
+ * @param gd Game data.
+ * @param at The archetype.
+ * @param power The power.
+ * @param level 0-based level.
+ * @return Its numbers, as powerInfo gives them without slots.
+ */
+function bareNumbersOf(gd: GameData, at: Archetype, power: Power, level: number): PowerNumbers {
+  let known = bareNumbers.get(gd);
+  if (!known) bareNumbers.set(gd, (known = new Map()));
+  const key = `${at.n}|${power.id}|${level}`;
+  let n = known.get(key);
+  if (!n) known.set(key, (n = powerInfo(gd, at, power, level, null).numbers));
+  return n;
+}
 
 /** An aspect of a power that a change guts. */
 export interface Crippled {
@@ -90,7 +114,7 @@ export class Scorer {
     for (const e of base.st.entries) {
       if (!base.rules.slottable(e.power)) continue;
       const roles = this.rolesOf(e).roles;
-      const n = roles.some((r) => r.role !== 'ctrl' && r.role !== 'other') ? powerInfo(gd, base.at, e.power, base.level, null).numbers : undefined;
+      const n = roles.some((r) => r.role !== 'ctrl' && r.role !== 'other') ? bareNumbersOf(gd, base.at, e.power, base.level) : undefined;
       const cycle = e.power.type === 'Click' ? (n?.cast ?? 0) + (n?.recharge.base ?? 0) : (e.power.ap ?? 0);
       for (const r of roles) {
         this.counts[r.role]++;
@@ -161,7 +185,8 @@ export class Scorer {
         const s0 = from.strength.get(a) ?? 0;
         const s1 = to.strength.get(a) ?? 0;
         gain += s1 - s0;
-        lost = Math.max(lost, 1 - (1 + s1) / (1 + s0));
+        // (a strength of -100% or under has no multiplier left to lose a share of)
+        if (1 + s0 > 1e-9) lost = Math.max(lost, 1 - (1 + s1) / (1 + s0));
       }
       return { gain: gain / attrs.length, lost };
     };

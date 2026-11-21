@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import type { FinderStats } from '../src/data/finderStats.ts';
-import { truncateAbove } from '../src/engine/actions.ts';
+import { setEnh, setEnhs, truncateAbove } from '../src/engine/actions.ts';
 import { newBuild, type Build, type Slot } from '../src/engine/build.ts';
 import { setRarity } from '../src/engine/enhance.ts';
 import { pieceKind } from '../src/engine/finder/candidates.ts';
@@ -361,6 +361,10 @@ describe('finder: search', () => {
     expect(steps).toEqual([...steps].sort((x, y) => x - y));
     expect(steps[steps.length - 1]).toBe(1);
     expect(step.value.swaps.length).toBeGreaterThan(0);
+    // it stops for breath after each set of each power and once the build is read, not once a power:
+    // far more often than the build has powers, starting before any power is done
+    expect(steps[0]).toBe(0);
+    expect(steps.length).toBeGreaterThan(3 * new BuildRules(gd, b).entries().length);
     // about 0.2 s on a desktop; the limit only guards against a change that makes it many times slower
     expect(took).toBeLessThan(5000);
   }, 60000);
@@ -502,6 +506,42 @@ describe('finder: kept swaps', () => {
     expect(more.length).toBeGreaterThan(0);
     for (const [i, s] of more.entries()) if (i % 3 === 0) expectNoNewIssue(issues, rules.reslotted(applySwaps(b, keepSwap(both, s))));
   }, 60000);
+});
+
+describe('finder: swaps into a build', () => {
+  it('places every piece with one copy of the build, as placing them one at a time would', async () => {
+    const b = await dominator();
+    const before = JSON.stringify(b);
+    const found = findSwaps({ gd, stats, build: b, query: query({ tags: ALL_TAGS }) }).swaps.slice(0, 4);
+    // one per power, as kept swaps are
+    const swaps = found.filter((s, i) => found.findIndex((x) => x.key === s.key) === i);
+    expect(swaps.length).toBeGreaterThan(1);
+    let one = b;
+    for (const s of swaps) for (const p of s.pieces) one = setEnh(one, s.key, p.slot, p.enh, s.freeLevel);
+    const all = applySwaps(b, swaps);
+    expect(all).toEqual(one);
+    expect(all).not.toBe(b);
+    expect(JSON.stringify(b)).toBe(before);
+    // the new build shares nothing with the swaps it was made from
+    const first = swaps[0]!;
+    const placed = new BuildRules(gd, all).entries().find((e) => e.key === first.key)!.slots[first.pieces[0]!.slot]!.enh;
+    expect(placed).toEqual(first.pieces[0]!.enh);
+    expect(placed).not.toBe(first.pieces[0]!.enh);
+    // nothing to place, or nowhere to place it: the build itself comes back, with no state made for the miss
+    expect(applySwaps(b, [])).toBe(b);
+    expect(setEnhs(b, [{ key: 'pick:9999', slot: 0, enh: first.pieces[0]!.enh, freeLevel: 0 }])).toBe(b);
+    expect(setEnhs(b, [{ key: 'grant:987654321', slot: 5, enh: first.pieces[0]!.enh, freeLevel: 0 }])).toBe(b);
+    expect(JSON.stringify(b)).toBe(before);
+  });
+
+  it('never searches on from a kept swap whose pieces the game data lacks', async () => {
+    const b = await dominator();
+    const real = findSwaps({ gd, stats, build: b, query: query({}) }).swaps[0]!;
+    const bad: Swap = { ...real, pieces: real.pieces.map((p) => ({ ...p, enh: { boost: -5 } })) };
+    const res = findSwaps({ gd, stats, build: b, kept: [bad], query: query({}) });
+    expect(res.stale).toEqual([bad.key]);
+    expect(res.swaps.length).toBeGreaterThan(0);
+  });
 });
 
 describe('finder: swaps together', () => {

@@ -137,6 +137,61 @@ describe('finder store', () => {
     expect(checkFinderStats({ v: 2, dataVersion: 'i28p4', minGroup: 25, groups: { all: { n: 1, stats: {} } }, needs: {} })).toBeNull();
     expect(checkFinderStats({ v: 1, dataVersion: 'i28p4', minGroup: 25, groups: {}, needs: {} })).toBeNull();
     expect(checkFinderStats('<html>')).toBeNull();
+    // every part a search reads is checked, not the top of the file alone
+    const good = (): Record<string, unknown> => ({
+      v: 1,
+      dataVersion: 'i28p4',
+      builds: 3,
+      minGroup: 25,
+      groups: { all: { n: 3, stats: { rech: { share: 0.2, lift: 1.1, unit: 0.05, total: 0.7, bonus: 0.4 } } } },
+      needs: { Class_Blaster: { 'mezprot.Knock': { share: 0.9, typical: 4 } } },
+      sets: { Luck_of_the_Gambler: { builds: 0.8, pieces: [1, 2, 3, 0, 0], at: { Class_Blaster: 0.7 } } },
+      pieces: { Crafted_Luck_of_the_Gambler_F: 0.8 },
+    });
+    expect(checkFinderStats(good())).not.toBeNull();
+    const broken: [string, (s: Record<string, unknown>) => void][] = [
+      ['a group that is not one', (s) => (s.groups = { all: 'x' })],
+      ['a stat that is not one', (s) => (s.groups = { all: { n: 3, stats: { rech: null } } })],
+      ['a unit under zero', (s) => (s.groups = { all: { n: 3, stats: { rech: { share: 0.2, lift: 1.1, unit: -0.05, total: 0.7, bonus: 0.4 } } } })],
+      ['a number that is no number', (s) => (s.groups = { all: { n: 3, stats: { rech: { share: 0.2, lift: 'big', unit: 0.05, total: 0.7, bonus: 0.4 } } } })],
+      ['a need that is not one', (s) => (s.needs = { Class_Blaster: { 'mezprot.Knock': 4 } })],
+      ['a typical amount under zero', (s) => (s.needs = { Class_Blaster: { 'mezprot.Knock': { share: 0.9, typical: -4 } } })],
+      ['needs that are a list', (s) => (s.needs = [])],
+      ['sets that are missing', (s) => delete s.sets],
+      ['a set with no counts', (s) => (s.sets = { Luck_of_the_Gambler: { builds: 0.8, at: {} } })],
+      ['pieces that are not numbers', (s) => (s.pieces = { Crafted_Luck_of_the_Gambler_F: 'often' })],
+    ];
+    for (const [what, spoil] of broken) {
+      const s = good();
+      spoil(s);
+      expect(checkFinderStats(s), what).toBeNull();
+    }
+  });
+
+  it('gives a statistics download that stalled up when the pane opens again, and asks afresh', async () => {
+    // the first ask never gets an answer; the next one does
+    vi.stubGlobal('fetch', (url: string) => {
+      fetched.push(url);
+      return fetched.length === 1 ? new Promise(() => undefined) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(statsText) as unknown });
+    });
+    const clock = vi.spyOn(performance, 'now');
+    try {
+      const started = performance.now();
+      useFinder.getState().prepare();
+      expect(useFinder.getState().loading).toBe(true);
+      // opened again at once: the download is only slow so far, and is left alone
+      useFinder.getState().prepare();
+      expect(fetched).toHaveLength(1);
+      // opened again after nothing arrived for a while
+      clock.mockImplementation(() => started + 60_000);
+      useFinder.getState().prepare();
+      expect(fetched).toHaveLength(2);
+      clock.mockRestore();
+      await until(() => !!useFinder.getState().stats);
+      expect(useFinder.getState()).toMatchObject({ loading: false, problem: null });
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('searches in slices and reports its progress', async () => {
@@ -275,6 +330,50 @@ describe('finder store', () => {
     // the next step that works clears the note
     useFinder.getState().drop(a.key);
     expect(useFinder.getState()).toMatchObject({ kept: [], note: null });
+  });
+
+  it('lets go of what only fitted with the swap let go, and applies nothing the game would refuse', async () => {
+    useFinder.getState().prepare();
+    await until(() => !!useFinder.getState().stats);
+    const build = useStore.getState().build!;
+    const rules = new BuildRules(gd, build);
+    const swap = (name: string, set: string, slot: number, enh: { boost: number; ioLevel?: number }): RankedSwap => {
+      const e = rules.entries().find((x) => x.power.n === name)!;
+      return { key: e.key, power: e.power.id, freeLevel: e.level, set: gd.boostSets.find((s) => s.n === set)!.id, count: 1, pieces: [{ slot, enh }], before: slotIds(e.slots), score: 0, lines: [], warnings: [], displaced: [] };
+    };
+    // Aria of Stasis holds a unique archetype piece: one swap takes it out, the other puts it into another power
+    const unique = pid(gd, 'Boosts.Superior_Attuned_Superior_Dominating_Grasp_E.Superior_Attuned_Superior_Dominating_Grasp_E');
+    const out = swap('Dominator_Control.Symphony_Control.Aria_of_Stasis', 'Annihilation', 0, { boost: pid(gd, 'Boosts.Crafted_Annihilation_A.Crafted_Annihilation_A'), ioLevel: 49 });
+    const into = swap('Dominator_Control.Symphony_Control.Hymn_of_Dissonance', 'Superior_Dominating_Grasp', 3, { boost: unique });
+    expect(build.picks.find((p) => p?.power === out.power)!.slots[0]!.enh?.boost).toBe(unique);
+    expect(swapsLegal(gd, build, [out])).toBe(true);
+    expect(swapsLegal(gd, build, [into])).toBe(false);
+    expect(swapsLegal(gd, build, [out, into])).toBe(true);
+    useFinder.getState().keep(out);
+    useFinder.getState().keep(into);
+    expect(useFinder.getState().kept).toEqual([out, into]);
+    // letting the first go would leave the second one the game refuses: it goes too, and is named
+    useFinder.getState().drop(out.key);
+    expect(useFinder.getState().kept).toEqual([]);
+    expect(useFinder.getState().note).toMatch(/Superior Dominating Grasp into Hymn of Dissonance only fitted with the swap you let go/);
+    // letting the second go leaves the first, which stands by itself
+    useFinder.getState().keep(out);
+    useFinder.getState().keep(into);
+    useFinder.getState().drop(into.key);
+    expect(useFinder.getState()).toMatchObject({ kept: [out], note: null });
+    // kept swaps that do not fit together (however they came to be kept) are never written into the build
+    let asked = 0;
+    useStore.setState({
+      askConfirm: async () => {
+        asked++;
+        return true;
+      },
+    });
+    useFinder.setState({ kept: [into], note: null });
+    await useFinder.getState().apply();
+    expect(asked).toBe(0);
+    expect(useStore.getState().build).toBe(build);
+    expect(useFinder.getState().note).toMatch(/don't fit together any more/);
   });
 
   it('keeps swaps beside the build, ranks again, and writes the new-build link', async () => {
@@ -452,6 +551,30 @@ describe('finder store: shopping list', () => {
       expect(fetched).toHaveLength(2);
     } finally {
       warn.mockRestore();
+    }
+  });
+
+  it('gives a recipe download that stalled up when the list opens again, and asks afresh', async () => {
+    vi.stubGlobal('fetch', (url: string) => {
+      fetched.push(url);
+      return fetched.length === 1 ? new Promise(() => undefined) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(recipesText) as unknown });
+    });
+    const clock = vi.spyOn(performance, 'now');
+    try {
+      const started = performance.now();
+      useFinder.getState().openShopping();
+      expect(useFinder.getState().recipesLoading).toBe(true);
+      // opened again at once: left alone
+      useFinder.getState().openShopping();
+      expect(fetched).toHaveLength(1);
+      clock.mockImplementation(() => started + 60_000);
+      useFinder.getState().openShopping();
+      expect(fetched).toHaveLength(2);
+      clock.mockRestore();
+      await until(() => !!useFinder.getState().recipes);
+      expect(useFinder.getState()).toMatchObject({ recipesLoading: false, recipesMissing: false, recipesFailed: null });
+    } finally {
+      clock.mockRestore();
     }
   });
 

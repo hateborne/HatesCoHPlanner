@@ -123,6 +123,7 @@ interface Found {
   before: (number | null)[]; // the power's slots as the swap found them
   scored: Scored; // its score and what that was made from
   score: number; // the score less what the displaced pieces and the set's cost take off
+  others?: Found[]; // the same set into the same power with other piece counts, best first
 }
 
 /**
@@ -136,11 +137,13 @@ interface Found {
  *    each does for the power, then try every piece count the search allows, the new pieces going
  *    into the slots that cost least. Keep the best count.
  * 4. Rank everything found, drop what the game would refuse on the build with every kept swap and
- *    the new one in, and return the top of the list with its warnings.
+ *    the new one in (the next best piece count of that set for that power then takes its turn),
+ *    and return the top of the list with its warnings.
  *
  * @param input The search's inputs.
- * @return A generator: it yields the share of the powers done (0..1) after each power, so a
- *   screen can spread the work over frames, and returns the result.
+ * @return A generator: it yields the share of the work done (0..1) once the build is read, after
+ *   each set of each power and after each swap checked at the end, so a screen can spread the work
+ *   over frames (no step between two yields is long), and returns the result.
  */
 export function* searchSwaps(input: FinderInput): Generator<number, FinderResult, void> {
   const { gd, stats, build, query: q } = input;
@@ -152,7 +155,8 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
   // a kept swap counts only for the power and the slots it was made for
   const fits = (k: Swap): boolean => {
     const entry = ownEntries.get(k.key);
-    return !!entry && entry.power.id === k.power && !isStale(k, entry.slots);
+    // (and for this game data: every piece it places is one the data has)
+    return !!entry && entry.power.id === k.power && !isStale(k, entry.slots) && k.pieces.every((p) => gd.powerById.has(p.enh.boost));
   };
   const kept = (input.kept ?? []).filter(fits);
   const stale = (input.kept ?? []).filter((k) => !fits(k)).map((k) => k.key);
@@ -161,7 +165,9 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
   const rules = kept.length ? ownRules.reslotted(pending) : ownRules;
   const base = new FinderBase(gd, rules, pending);
   const weights = weightsFor(gd, stats, base.at.n, q);
-  const scorer = new Scorer(base, weights, needsFor(stats.needs, [base.at.n, gd.powerset(build.primary).n, gd.powerset(build.secondary).n]));
+  // (a power set the data lacks has no needs: nothing here may stop the search)
+  const names = [base.at.n, gd.setById.get(build.primary)?.n, gd.setById.get(build.secondary)?.n].filter((n): n is string => !!n);
+  const scorer = new Scorer(base, weights, needsFor(stats.needs, names));
   const origin = gd.core.origins.findIndex((o) => o.id === build.origin);
   const [lo, hi] = depthRange(q.main?.depth);
   const attuned = !!q.attuned;
@@ -282,7 +288,7 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
     const prefer = new Set(mainsOf(set).map((o) => o.letter).filter((l): l is number => l !== undefined));
     const ranked = orderOffers(e, from, free, offers, most, now, prefer);
 
-    let best: Found | undefined;
+    const all: Found[] = [];
     for (let k = 1; k <= most; k++) {
       const count = have.size + k;
       if (count < lo || count > hi) continue;
@@ -311,11 +317,18 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
         if (!mainsOf(set).some((o) => earns(o) && o.bonus.some((id) => (scored.counted.get(id) ?? 0) > 0))) continue;
       }
       const score = scored.score - displaced.reduce((n, s) => n + keepValue(s), 0) - COST_STEP * costOf(set);
-      if (!best || score > best.score) best = { entry: e, set, count, pieces, displaced, before: slotIds(from), scored, score };
+      // (a score that is no number would scramble the ranking: such a count is not offered)
+      if (Number.isFinite(score)) all.push({ entry: e, set, count, pieces, displaced, before: slotIds(from), scored, score });
     }
+    if (!all.length) return undefined;
+    // best first; of two counts worth the same, the smaller (the order they were tried in)
+    all.sort((a, b) => b.score - a.score || a.count - b.count);
+    const [best, ...others] = all;
+    if (others.length) best!.others = others;
     return best;
   };
 
+  yield 0;
   const entries = base.st.entries.filter((e) => e.level <= base.last && rules.slottable(e.power));
   const found: Found[] = [];
   for (let n = 0; n < entries.length; n++) {
@@ -326,35 +339,49 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
     if (sets.length) {
       const now = base.state(e, e.slots);
       const order = removalOrder(e, from, usable, now);
-      for (const set of sets) {
-        const f = bestOf(e, from, usable, order, now, set);
+      for (let i = 0; i < sets.length; i++) {
+        const f = bestOf(e, from, usable, order, now, sets[i]!);
         if (f) found.push(f);
+        if (i < sets.length - 1) yield (n + (i + 1) / sets.length) / entries.length;
       }
     }
     yield (n + 1) / entries.length;
   }
 
-  found.sort((a, b) => b.score - a.score || (a.set.n < b.set.n ? -1 : a.set.n > b.set.n ? 1 : 0) || (a.entry.key < b.entry.key ? -1 : 1));
+  const byRank = (a: Found, b: Found): number =>
+    b.score - a.score || (a.set.n < b.set.n ? -1 : a.set.n > b.set.n ? 1 : 0) || (a.entry.key < b.entry.key ? -1 : a.entry.key > b.entry.key ? 1 : 0);
+  found.sort(byRank);
+  const considered = found.length;
   // the game must take every piece of every kept swap and of the new one on the finished build: a
   // swap that replaces a kept one can free or crowd a unique piece another kept swap relies on
   const legal = (swap: Swap): boolean => swapsLegal(gd, build, [...kept.filter((k) => k.key !== swap.key), swap], ownRules);
   const swaps: RankedSwap[] = [];
   const limit = input.limit ?? DEFAULT_LIMIT;
-  for (const f of found) {
+  for (let n = 0; n < found.length; n++) {
+    const f = found[n]!;
     if (swaps.length >= limit) break;
     // without a wanted bonus, only swaps that leave the build better off by the search's own measure
     if (!q.main && f.score <= 0) break;
     const swap: Swap = { key: f.entry.key, power: f.entry.power.id, freeLevel: f.entry.level, set: f.set.id, count: f.count, pieces: f.pieces, before: f.before };
-    if (!legal(swap)) continue;
-    swaps.push({
-      ...swap,
-      score: f.score,
-      lines: [...f.scored.lines],
-      warnings: warningsOf(gd, f.scored, f.displaced),
-      displaced: f.displaced.map((s) => s.enh!.boost),
-    });
+    if (legal(swap)) {
+      swaps.push({
+        ...swap,
+        score: f.score,
+        lines: [...f.scored.lines],
+        warnings: warningsOf(gd, f.scored, f.displaced),
+        displaced: f.displaced.map((s) => s.enh!.boost),
+      });
+    } else if (f.others?.length) {
+      // refused with this many pieces: the pair's next best count takes its place in the ranking
+      const [next, ...rest] = f.others;
+      if (rest.length) next!.others = rest;
+      let at = n + 1;
+      while (at < found.length && byRank(found[at]!, next!) <= 0) at++;
+      found.splice(at, 0, next!);
+    }
+    yield 1;
   }
-  return { swaps, considered: found.length, stale };
+  return { swaps, considered, stale };
 }
 
 /**

@@ -8,8 +8,10 @@
  * on the shopping list's bar and rings it shows their hint, and it never also does what a tap
  * does. The shopping list stays in the browser until it is cleared.
  *
- * A pane whose code can't be downloaded closes with a notice, and opens on the next try.
- * A Thunderspy build gets no finder: no button on its overview and no row in its phone menu.
+ * A pane whose code can't be downloaded closes with a notice, and opens on the next try; while
+ * the code is on its way a line says so, and Escape gives the wait up (a failure after that says
+ * nothing). A Thunderspy build gets no finder: no button on its overview and no row in its phone
+ * menu.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -183,6 +185,8 @@ test('a set is found, kept, listed for shopping and applied', async ({ page, con
   await expect(me.id('finder:losses')).toBeVisible();
   await me.press(me.id(rowId.replace('finder:swap:', 'finder:keep:')));
   await expect(me.id('finder:kept').getByTestId(rowId)).toBeVisible();
+  // the box went to the Kept list with its row: the keyboard's place goes with it
+  if (!me.phone) await expect(me.id('finder:kept').getByTestId(rowId.replace('finder:swap:', 'finder:keep:'))).toBeFocused();
   // the list is ranked again around the kept swap: wait it out
   await tab('Search');
   await expect(search).toBeEnabled({ timeout: 120_000 });
@@ -295,12 +299,45 @@ test('a set finder that cannot be downloaded says so, and opens on the next try'
     await me.press(tip);
     await expect(tip).toHaveCount(0);
   } else await me.press(me.id('finder:open'));
+  // the wait is said on screen (it takes no clicks: the long press above went through it)
+  await expect(me.id('finder:wait')).toBeVisible();
   refuse();
+  await expect(me.id('finder:wait')).toHaveCount(0);
   // the notice (the desktop also holds an unseen copy of it, to measure it)
   await expect(page.getByText("The set finder couldn't load").last()).toBeVisible();
   await expect(me.id('finder:close')).toHaveCount(0);
   await expect(tip).toHaveCount(0);
   // the next opening asks for the code again
+  await page.unroute(/SetFinder/);
+  await openFinder(me);
+});
+
+test('the wait for the set finder can be given up, and a failure after that says nothing', async ({ page }, info) => {
+  const me = new Player(page, info.project.name === 'phone');
+  await page.goto('./Homecoming/');
+  await me.importBuild(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', FILE), 'utf-8'));
+  let refuse!: () => void;
+  const held = new Promise<void>((done) => (refuse = done));
+  let refused!: () => void;
+  const over = new Promise<void>((done) => (refused = done));
+  await page.route(/SetFinder/, async (route) => {
+    await held;
+    await route.abort();
+    refused();
+  });
+  if (me.phone) {
+    await me.press(me.button('Menu'));
+    await me.press(page.getByTitle(MENU_ROW_TITLE));
+  } else await me.press(me.id('finder:open'));
+  await expect(me.id('finder:wait')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(me.id('finder:wait')).toHaveCount(0);
+  // the download fails once nobody waits for it: no notice
+  refuse();
+  await over;
+  await page.waitForTimeout(500);
+  await expect(page.getByText("The set finder couldn't load")).toHaveCount(0);
+  // and the next opening works
   await page.unroute(/SetFinder/);
   await openFinder(me);
 });

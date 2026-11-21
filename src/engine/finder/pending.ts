@@ -3,7 +3,7 @@
  * holds: a kept swap is only a list of pieces and the slots they go in, until it is applied.
  */
 import type { Build, Slot, SlottedEnh } from '../build.ts';
-import { setEnh } from '../actions.ts';
+import { setEnhs } from '../actions.ts';
 
 /** One enhancement a swap places. */
 export interface SwapPiece {
@@ -53,20 +53,21 @@ export function isStale(swap: Swap, slots: readonly Slot[]): boolean {
  * @return The new build.
  */
 export function applySwap(b: Build, swap: Swap): Build {
-  let out = b;
-  for (const p of swap.pieces) out = setEnh(out, swap.key, p.slot, p.enh, swap.freeLevel);
-  return out;
+  return applySwaps(b, [swap]);
 }
 
 /**
  * A build with every kept swap in place.
  *
+ * The build is copied once for all of them (setEnhs): a copy per piece was most of what a
+ * legality check cost.
+ *
  * @param b The build (left as it is).
  * @param kept The kept swaps (one per power: see keepSwap).
- * @return The new build.
+ * @return The new build, or `b` itself when no swap placed anything.
  */
 export function applySwaps(b: Build, kept: readonly Swap[]): Build {
-  return kept.reduce(applySwap, b);
+  return setEnhs(b, kept.flatMap((swap) => swap.pieces.map((p) => ({ key: swap.key, slot: p.slot, enh: p.enh, freeLevel: swap.freeLevel }))));
 }
 
 /**

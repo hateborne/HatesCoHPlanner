@@ -46,6 +46,16 @@ export function shortName(p: Power): string {
   return p.n.split('.')[1] ?? p.n;
 }
 
+// each power's short name in lower case, kept after the first look (a power's name never changes)
+const lowerShort = new WeakMap<Power, string>();
+
+/** @return A power's short name in lower case, as requirement expressions compare it. */
+export function lowerShortName(p: Power): string {
+  let n = lowerShort.get(p);
+  if (n === undefined) lowerShort.set(p, (n = shortName(p).toLowerCase()));
+  return n;
+}
+
 /**
  * @return The mods of an enhancement that strengthen the power it is slotted in.
  *
@@ -517,6 +527,21 @@ export interface PowerStrength {
 }
 
 /**
+ * What a caller that works out the strength of the same powers many times (the set finder) keeps
+ * between calls. One memo serves one game data, archetype and character level: the caller never
+ * passes it with another.
+ */
+export interface StrengthMemo {
+  values: Map<string, EnhContribution[]>; // power id and slotted piece -> what enhValues gave
+  curves: Map<number, (attrib: number) => DimCurve | undefined>; // power id -> its ED curves
+}
+
+/** @return An empty StrengthMemo. */
+export function strengthMemo(): StrengthMemo {
+  return { values: new Map(), curves: new Map() };
+}
+
+/**
  * Sum every slotted enhancement in a power and apply ED.
  *
  * @param gd Game data.
@@ -524,6 +549,7 @@ export interface PowerStrength {
  * @param power The power.
  * @param slots Enhancements in its slots (undefined entries are empty slots).
  * @param charLevel 0-based character level.
+ * @param memo What earlier calls for the same game data, archetype and level worked out (optional).
  */
 export function powerStrength(
   gd: GameData,
@@ -531,19 +557,32 @@ export function powerStrength(
   power: Power,
   slots: (SlottedEnh | undefined)[],
   charLevel: number,
+  memo?: StrengthMemo,
 ): PowerStrength {
   const pre = new Map<number, number>();
   const raw = new Map<number, number>();
   const noED = new Map<number, number>();
   for (const e of slots) {
     if (!e) continue;
-    for (const c of enhValues(gd, at, power, e, charLevel)) {
+    let values: EnhContribution[] | undefined;
+    if (memo) {
+      const key = `${power.id}|${e.boost}|${e.ioLevel ?? ''}|${e.rel ?? ''}|${e.boosters ?? ''}`;
+      values = memo.values.get(key);
+      if (!values) memo.values.set(key, (values = enhValues(gd, at, power, e, charLevel)));
+    } else {
+      values = enhValues(gd, at, power, e, charLevel);
+    }
+    for (const c of values) {
       pre.set(c.attrib, (pre.get(c.attrib) ?? 0) + c.value);
       const target = c.ignoreED ? noED : raw;
       target.set(c.attrib, (target.get(c.attrib) ?? 0) + c.value);
     }
   }
-  const curve = edCurves(gd.core.dimReturns, power);
+  let curve = memo?.curves.get(power.id);
+  if (!curve) {
+    curve = edCurves(gd.core.dimReturns, power);
+    memo?.curves.set(power.id, curve);
+  }
   const post = new Map<number, number>();
   for (const a of new Set([...raw.keys(), ...noED.keys()])) {
     post.set(a, applyED(raw.get(a) ?? 0, curve(a)) + (noED.get(a) ?? 0));

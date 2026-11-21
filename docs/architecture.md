@@ -22,7 +22,8 @@ src/
     info.ts                  the shape check of a version's power-info extras file (readInfoFile)
     types.ts                 shapes of the exported JSON
     finderStats.ts           the set finder's build statistics (public/data/finder/): their shape,
-                             checkFinderStats, loadFinderStats
+                             checkFinderStats, loadFinderStats, askFinderStats (one download for
+                             the page and the finder's state)
     recipes.ts               a version's recipes (public/data/recipes/<version>.json): their shape,
                              checkRecipes, loadRecipes
   engine/                    pure TypeScript build rules (no React, no DOM)
@@ -47,7 +48,8 @@ src/
       candidates.ts          which sets and pieces may be offered; piece kinds; wanted-bonus options
       search.ts              searchSwaps / findSwaps: the ranked swaps, legal ones only
       warnings.ts            what a swap costs that the player should see
-      pending.ts             kept swaps and the build they make (applySwaps, keepSwap)
+      pending.ts             kept swaps and the build they make (applySwaps: one copy of the
+                             build for all of them; keepSwap)
       diff.ts                buildDiff: exact gains and losses from two full totals
       powerNumbers.ts        a power's own numbers with a slotting (slottedNumbers)
       bonusVec.ts, eligible.ts   bonus lines kept per search; the sets each power takes
@@ -495,6 +497,10 @@ screens are described under "Set finder (screens)" below. The parts:
   bonuses its slots earn (`earnedBonuses`, then the rule of five against the rest of the build)
   and the running toggles' cost, so `FinderBase.delta` works those out with the totals' own
   functions and reads the rest from one `computeTotals`. A test holds the two equal line by line.
+  Between candidates the search keeps what the slots can't change (`TotalsMemo`, set on the
+  search's own totals state: the mods of a power that land, a piece's own mods, each piece's
+  values in each power, the ED curves), so a candidate costs only what its slots change. The
+  totals themselves never use the memo.
   A piece with an effect of its own counts once however many running powers hold it, as in the
   totals. Everything is worked out at the build's last level (its stop level, else 50), whatever
   exemplar level the build is set to show: sets are bought for the whole build.
@@ -518,17 +524,23 @@ screens are described under "Set finder (screens)" below. The parts:
   or attuned. A single piece is offered only for a unique piece's global. At 50 a Superior set
   stands in for its plain version. With a wanted bonus, a swap counts only when the stat rises
   under its cap through a bonus of the asked depth that the swap newly earns and the rule of five
-  still counts. The best count per power and set is kept, the list is sorted, and what the game
-  would refuse (`enhRefusal`) on the build with every kept swap and the new one in is dropped.
-  `searchSwaps` is a generator that yields after each power, so a screen can spread the work.
+  still counts. The counts of a power and set are ranked and the best one stands for the pair,
+  the list is sorted, and what the game would refuse (`enhRefusal`) on the build with every kept
+  swap and the new one in is dropped; the pair's next best count then takes its place in the
+  ranking. `searchSwaps` is a generator that yields once the build is read, after each set of
+  each power and after each swap checked at the end, so a screen can spread the work and no step
+  between two yields is long (about 10 ms for reading the build, a millisecond or two after).
 - **Kept swaps** (`pending.ts`): a list beside the build, one per power; the build the planner
   holds is never changed by a search. A search given kept swaps ranks against the build with them
   in; a power that has one is searched from its own slots, so a new swap replaces the kept one.
   A swap records the power's slots as it found them (`before`): one made for another build, or
-  before the player changed that power's slots, is left out and named in the result (`stale`).
+  before the player changed that power's slots, is left out and named in the result (`stale`);
+  so is one that places a piece the game data lacks. `applySwaps` copies the build once for all
+  the swaps (`setEnhs` in `actions.ts`), not once a piece.
 - **Gains and losses** (`diff.ts`): for a hovered swap or the summary, `buildDiff` compares two
   full totals and the changed powers' own numbers (`slottedNumbers`: damage, heal, accuracy,
-  endurance cost, recharge time with the build's global recharge).
+  endurance cost, recharge time with the build's global recharge). A caller comparing one build
+  with many hands the "before" totals in, worked out once.
 
 **Set finder (screens).** The pane is `src/ui/screens/SetFinder.tsx`, over the build overview
 like the enhancement picker (the whole screen on phones, with Search / Results / Kept / List tabs).
@@ -537,14 +549,24 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   overview's origin and archetype label, and a row in the phone menu, both for Homecoming builds
   only. They set `finderOpen.ts`'s flag; `App.tsx`
   (`FinderPane`) then downloads the pane and the finder's engine as their own chunk, so neither
-  is in the page's first download. A failed download closes the pane with a notice, and the next
-  opening tries again. The notice says to check the connection and, if that is not it, to reload
+  is in the page's first download, and asks for the build statistics alongside (`askFinderStats`;
+  the finder's state joins that download). While the code is on its way a line says so after a
+  moment (`FinderWait`: it takes no clicks, so the overview under it works as before) and Escape
+  gives the wait up. A failed download closes the pane with a notice, and the next
+  opening tries again; one that fails after the player gave the wait up says nothing. The notice
+  says to check the connection and, if that is not it, to reload
   the page: a page left open across a deploy asks for the old release's file, which is gone.
   Leaving the overview closes the pane (`App.tsx`), so it never comes back on its own.
 - **State** (`src/state/finder.ts`, not saved, never in a link): the statistics
-  (`loadFinderStats`, fetched once from the data folder and shape-checked), the search as the form
-  holds it, the last result, the kept swaps, and a share link to the build with them in. A search
-  runs the engine's generator in slices of about 12 ms on timers, so the page keeps responding,
+  (`loadFinderStats`, fetched once from the data folder and checked down to every number a search
+  reads), the search as the form
+  holds it, the last result, the kept swaps, and a share link to the build with them in. The
+  statistics and the recipes download under a watch like the page's other files ("Loading" above:
+  a file that gets no answer is asked for again alongside), and one that has stalled is given up
+  and asked for afresh the next time the pane, or the shopping list, opens. A search
+  runs the engine's generator in slices of about 12 ms, each on the page's next turn (`afterTurn`:
+  a message the page sends itself, since browsers hold chained timers back to 4 ms, and far longer
+  in a tab that is not showing), so the page keeps responding,
   and a newer search makes an older one give up; so does closing the pane. Keeping or letting go
   of a swap ranks the list again (`rerank`), for the search the list was made with, or the one
   being worked on while a search runs; with no list yet, nothing is ranked. The form may have
@@ -552,7 +574,9 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   names the search and the kept swaps it was made with (`searched`, `searchedKept`) only once it
   is shown, so a search given up or failed leaves the old list marked out of date. While a search
   runs the list on screen is the old one, so nothing in it can be kept, and a swap is only kept
-  when the game would take every kept swap together (`swapsLegal`); a refusal, a search that
+  when the game would take every kept swap together (`swapsLegal`). Letting a swap go lets go of
+  the kept swaps the game would refuse without it as well (one put a unique piece where the other
+  had taken it out), and the note names them; a refusal, a search that
   failed (details in the console; the pane never stays "Searching"), or a link that could not be
   written shows as a red line in the pane (`note`). Any change to the build (an edit, another
   build, the swaps applied) clears the results and the kept swaps: they belonged to the build as
@@ -563,13 +587,18 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   form, or the kept swaps (a ranking given up or failed), have changed since the list was made.
   Pointing at a swap (tapping it, on a phone) shows its net gains and losses from `buildDiff`:
   what a result would change on top of the kept swaps, or what a kept swap is adding. The hovered
-  row is in `hover.ts` (`swap`, desktop only), so only the gains and losses pane redraws; ticking
-  a box clears it, as the row moves to the other list with no mouseleave. The search's progress
+  row is in `hover.ts` (`swap`, desktop only), so only the gains and losses pane redraws; it is
+  cleared when the pointer leaves the lists (not each row: between two rows the pane keeps the
+  last one), when a list is ranked again, and when a box is ticked, as the row moves to the other
+  list with no mouseleave (the keyboard's place goes with the box). A row is drawn again only
+  when what it shows changes, and the pane's parts each read what they draw from, so a click on
+  one row or a change to the form does not draw the lists again. The search's progress
   redraws only its own label. With nothing pointed at, the pane shows the kept swaps together
   against the build as it is. Figures are written as the totals pane writes them (mph, ft, per
   second).
 - **Applying.** "Apply to this build" asks first (`askConfirm`, naming how many enhancements are
-  replaced), then `setBuild`; if the kept swaps changed while the question was up, nothing is
+  replaced), then `setBuild`; if the kept swaps changed while the question was up, or the game
+  would not take them together, nothing is
   applied and the note says so. "Open as new build" is a plain link to the share link the store
   wrote (`target="_blank"`, the player's own click, an address the code built), so the build in
   hand is left alone and no pop-up blocker is involved.
@@ -595,8 +624,10 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   new tab, once (`settled`), so a swap let go leaves nothing behind. The list is never part of a
   build, a saved build or a link, and stays until "Clear list" (which asks first; the kept swaps'
   pieces then show again as not stored yet). Opening the changed build means a click or a middle
-  click on "Open as new build": a build opened from the link's right-click menu, or by a long
-  press on a phone, adds nothing to the list.
+  click on "Open as new build", the link's own menu (a right click, or a long press where the
+  browser reports one) or dragging the link: the page is not told what was chosen in the menu,
+  so bringing it up counts as opening. A browser that reports no long press on a link (Safari on
+  an iPhone) adds nothing to the list that way.
   - Tabs share the stored list. A change made in another tab is shown at once (the `storage`
     event, `shoppingChangedElsewhere`), and marking a piece reads the stored list first: what
     another tab added is kept, and when the list is no longer the one shown, nothing is marked and
@@ -614,7 +645,10 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
     crafted piece needs the dropped recipe of its level and that recipe's salvage, added up; a
     piece no recipe makes (attuned, winter and archetype sets) is listed as an enhancement to buy.
     A version the site has no recipe file for (an approximate one) lists every piece that way and
-    is not asked for again; after a download that failed, the next opening asks again. A recipe's
+    is not asked for again; after a download that failed, the next opening asks again. A web page
+    for an answer is "no recipe file" on a dev server only (it answers any address with its own
+    page); on the site, which answers 404 for a file it lacks, it is a failed download (a
+    network's sign-in page). A recipe's
     row shows its set's round icon alone, an enhancement's row the framed piece.
   - Desktop only: the auction house lines (`auctionLines`) join names with commas into lines of at
     most 128 characters, the search box's limit; the search lists every item whose name holds one
@@ -793,9 +827,12 @@ has no such column, nor one whose enhancements change no number.
   the browser's own touch input): on the row it must name the pieces and select nothing, on a tick
   box show its hint and tick nothing, on the shopping bar and a ring show theirs and mark nothing;
   a finger that slides shows no tooltip. Anything the page's Content-Security-Policy refused, in
-  either tab, fails the test (only a built site has the policy: `npm run e2e:built`). A second
+  either tab, fails the test (only a built site has the policy: `npm run e2e:built`). On the
+  desktop the keyboard's place must follow a ticked box into the Kept list. A second
   test holds back the pane's code and then refuses it: meanwhile the phone's overview still shows
-  a long press's tooltip, then the notice shows, and the next opening works. A third opens a
+  a long press's tooltip and the line that says the finder is loading shows, then the notice
+  shows, and the next opening works. A third gives the wait up with Escape: the download then
+  fails with no notice, and the next opening works. A fourth opens a
   Thunderspy build: no finder button and no row in the phone menu.
   `phonepicker.spec.ts` (phone only) long presses a slotted power (its info shows the slotted
   bonuses), then in the enhancement picker reaches the last category in the scrolling row, long presses a

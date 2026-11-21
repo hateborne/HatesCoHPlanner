@@ -114,6 +114,9 @@ describe('recipe file', () => {
         },
       }));
       expect(await loadRecipes('/x/data/', 'i28p4')).toBeNull();
+      // the site answers 404 for a file it lacks: a page there is someone else's (a network's
+      // sign-in page), a failed download and never "this version has no recipes"
+      await expect(loadRecipes('/x/data/', 'i28p4', undefined, /*dev=*/ false)).rejects.toThrow(/did not load/);
       vi.stubGlobal('fetch', async (url: string) => {
         asked.push(url);
         if (url.includes('other')) return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => raw() };
