@@ -5,6 +5,8 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ## Unreleased
 
+## v1.2.0 - November 20, 2026
+
 ### New
 
 - The totals have a Pets and Minions section: click a pet to open its own stats and powers, counting your upgrades, summon slotting, pet aura enhancements, Supremacy, your powers that buff pets and the other pets' buffs, with switches for the pets' own powers.
