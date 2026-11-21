@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { GameData } from '../../data/gamedata.ts';
-import type { Archetype, Power } from '../../data/types.ts';
+import type { Archetype, BoostSet, Power } from '../../data/types.ts';
 import { allowedSetCategories, allowedTypes, boostHelpText, setRarity, type RarityKind, type SetRarity } from '../../engine/enhance.ts';
 import type { Slot } from '../../engine/build.ts';
-import { useStore } from '../../state/store.ts';
+import type { SetBonusLine } from '../../engine/setbonus.ts';
+import { useStore, useTipLevel } from '../../state/store.ts';
+import { useHover } from '../hover.ts';
 import { FONTS, S } from '../skin/metrics.ts';
 import { icon, ui, type Skin } from '../skin/skin.ts';
 import { smf } from '../smf.tsx';
@@ -520,19 +522,103 @@ export function EnhDetails({ gd, at, slots, slot, level }: { gd: GameData; at: A
                 })}
               </div>
               <div style={gap}>
-                <div style={{ color: SMF.infoBlue }}>Set Bonus:</div>
-                {set.bon
-                  .filter((bn) => bn.min > 1)
-                  .flatMap((bn, i) =>
-                    [...bn.auto, ...(bn.bp !== undefined ? [bn.bp] : [])].map((pid, j) => (
-                      <div key={`${i}:${j}`} style={{ color: numSlotted >= bn.min ? SMF.springGreen : SMF.gray }}>
-                        ({bn.min}) {gameText(gd.powerById.get(pid)?.lh)}
-                      </div>
-                    )),
-                  )}
+                <SetBonusList gd={gd} set={set} pieces={numSlotted} />
               </div>
             </>
           ) : null}
     </>
+  );
+}
+
+// the picker's set bonuses: a bonus already earned glows; one the chosen pieces would newly earn is
+// about a fifth lighter and glows stronger
+const BONUS_GLOW = '0 0 6px rgba(0, 255, 127, 0.55)';
+const BONUS_NEW = '#66ffb2';
+const BONUS_NEW_GLOW = '0 0 5px rgba(255, 255, 255, 0.45), 0 0 12px #00ff7f';
+
+/**
+ * A set's bonuses as the game's enhancement tooltip lists them: "Set Bonus:", then one line per
+ * bonus with the pieces it takes, green once the power holds that many and grey until then.
+ *
+ * @param props.set The set.
+ * @param props.pieces How many of its pieces the power holds.
+ */
+export function SetBonusList({ gd, set, pieces }: { gd: GameData; set: BoostSet; pieces: number }) {
+  const lines = set.bon.filter((bn) => bn.min > 1).flatMap((bn) => [...bn.auto, ...(bn.bp !== undefined ? [bn.bp] : [])].map((power): SetBonusLine => ({ min: bn.min, power, state: pieces >= bn.min ? 'earned' : 'none' })));
+  return <BonusLines gd={gd} lines={lines} rest={SMF.gray} />;
+}
+
+/**
+ * "Set Bonus:" and its lines, each colored by how it stands.
+ *
+ * @param props.lines The bonuses, in the set's order.
+ * @param props.rest Color of the bonuses not earned.
+ * @param props.glow The earned bonuses glow, and the newly earned ones are lighter and glow
+ *   stronger (the enhancement picker); without it an earned bonus is plain green.
+ */
+function BonusLines({ gd, lines, rest, glow }: { gd: GameData; lines: SetBonusLine[]; rest: string; glow?: boolean }) {
+  /** @return A line's look. */
+  const look = (l: SetBonusLine): CSSProperties => {
+    if (l.state === 'none') return { color: rest };
+    if (!glow) return { color: SMF.springGreen };
+    return l.state === 'earned' ? { color: SMF.springGreen, textShadow: BONUS_GLOW } : { color: BONUS_NEW, textShadow: BONUS_NEW_GLOW };
+  };
+  return (
+    <>
+      <div style={{ color: SMF.infoBlue }}>Set Bonus:</div>
+      {lines.map((l, i) => (
+        <div key={i} data-bonus={l.state} style={look(l)}>
+          ({l.min}) {gameText(gd.powerById.get(l.power)?.lh)}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * A set's name and its bonuses: what the enhancement picker shows for a set name (hovered, or
+ * long pressed on a phone). The bonuses not earned read white here, where the list is the whole
+ * point; the earned ones glow, the newly earned more. Sizes are relative to the box's font size.
+ *
+ * @param props.set The set.
+ * @param props.lines Its bonuses as they stand for the power with the chosen pieces placed
+ *   (setBonusLines).
+ */
+export function SetDetails({ gd, set, lines }: { gd: GameData; set: BoostSet; lines: SetBonusLine[] }) {
+  return (
+    <>
+      <div style={{ color: SMF.infoBlue, fontWeight: 700, fontSize: '1.1em' }}>{set.dn}</div>
+      <BonusLines gd={gd} lines={lines} rest="#ffffff" glow />
+    </>
+  );
+}
+
+/**
+ * The enhancement picker's hover box for a set name (useHover.setTip): the set's bonuses, in the
+ * enhancement tooltip's box. Nothing while tooltips are Disabled.
+ */
+export function SetTipLayer({ gd, skin }: { gd: GameData; skin: Skin }) {
+  const tip = useHover((h) => h.setTip);
+  const level = useTipLevel();
+  if (!tip || level === 'off') return null;
+  return (
+    <Floating
+      key={tip.set.id}
+      x={tip.x}
+      y={tip.y}
+      w={620}
+      gap={34}
+      left={30}
+      render={(box, ref) => (
+        <div
+          ref={ref}
+          className="abs scroll-y"
+          role="tooltip"
+          style={{ left: box.x, top: box.y, width: 620 + box.bar, maxHeight: box.maxH, boxSizing: 'border-box', padding: `${TIP_PX * 0.6}px ${TIP_PX * 0.8 + box.gutter}px ${TIP_PX * 0.6}px ${TIP_PX * 0.8}px`, background: skin.panel, border: `2px solid ${skin.panelBorder}`, borderRadius: TIP_PX * 0.6, fontFamily: "'Montreal'", fontSize: TIP_PX, lineHeight: 1.3, color: '#ffffff' }}
+        >
+          <SetDetails gd={gd} set={tip.set} lines={tip.lines} />
+        </div>
+      )}
+    />
   );
 }

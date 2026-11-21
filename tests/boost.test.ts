@@ -107,10 +107,9 @@ describe('powerInfo with damage boosts', () => {
     const base = up.numbers.damage.base;
     expect(up.numbers.damage.enh).toBeCloseTo(base * 1.95, 4);
     expect(up.numbers.damageBoosted).toBeCloseTo(base * (1 + 0.95 + 0.8), 4);
-    // the same rows, the boosted damage in place of the enhanced, and one row naming the boost
-    expect(Object.keys(up.rows).filter((k) => k !== 'Damage Includes:')).toEqual(Object.keys(plain.rows));
-    expect(up.rows['Damage Includes:']).toBe('Build Up');
-    expect(plain.rows['Damage Includes:']).toBeUndefined();
+    // the same rows, the boosted damage in place of the enhanced, and no row naming the boost
+    expect(Object.keys(up.rows)).toEqual(Object.keys(plain.rows));
+    expect(up.rows['Damage Includes:']).toBeUndefined();
     expect(up.rows['Average Damage:']).toBe(`${f2(base * 2.75)} (${f2(base)})`);
     expect(up.rows['Recharge Time:']).toBe(plain.rows['Recharge Time:']);
     expect(up.rows['Endurance Cost:']).toBe(plain.rows['Endurance Cost:']);
@@ -134,7 +133,6 @@ describe('powerInfo with damage boosts', () => {
     expect(on.numbers.damage.base).toBeGreaterThan(off.numbers.damage.base);
     expect(on.numbers.damage.enh).toBeCloseTo(on.numbers.damage.base, 6);
     expect(on.rows['Average Damage:']).toBe(f2(on.numbers.damage.base));
-    expect(on.rows['Damage Includes:']).toBe('Fiery Embrace');
   });
 
   it('Fiery Embrace and Build Up on: the tagged damage is boosted too', () => {
@@ -197,17 +195,6 @@ describe('powerInfo with damage boosts', () => {
       expect(boosted.rows, name).toEqual(Object.fromEntries(bare.stats.map((r) => [r.label, segText(r.value)])));
       expect(boosted.numbers.heal, name).toEqual(bare.numbers.heal);
     }
-  });
-
-  it('"Damage Includes" names the clicks, the raised modes and other bonuses that count', () => {
-    const b = brute(true, true);
-    put(gd, b, 5, 'Pool.Leadership.Assault');
-    expect(info(b, SCORCH).rows['Damage Includes:']).toBe('Build Up, Fiery Embrace, other bonuses');
-    const quiet = brute();
-    put(gd, quiet, 5, 'Pool.Leadership.Assault');
-    expect(info(quiet, SCORCH).rows['Damage Includes:']).toBe('other bonuses');
-    // a power without damage has no such row
-    expect(info(b, 'Brute_Melee.Fiery_Melee.Build_Up').rows['Damage Includes:']).toBeUndefined();
   });
 
   it("a pet that copies its creator's mods by its villain def takes the boost (Rain of Fire); one that doesn't takes none (Caltrops)", () => {
