@@ -154,6 +154,10 @@ the project)
   pull requests need the owner's approval (CODEOWNERS); the owner may approve their own.
 - Never force-push `main`, rewrite its history, or change repository settings, rulesets or
   secrets.
+- A workflow file runs from the branch that adds it, so nothing a branch's run could reach may be
+  worth taking: secrets live only in environments that run from main (never at repository level),
+  version tags and the domain's site file are guarded as `docs/releases.md` says ("What a branch's
+  workflow can't do"). Keep it that way in any workflow change.
 - Commit, push or open a pull request only when the owner asks for it. The same goes for starting
   a Pages deploy.
 - Exception, standing permission for this repository: on a pull request you opened, watching its

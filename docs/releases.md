@@ -185,6 +185,11 @@ main's rules let through, and nothing else holds that key. The owner sets this u
      (target: the default branch; the same four checks, "Require branches to be up to date"
      ticked) with **Deploy keys** on its bypass list (**Always allow**), and leave the history
      ruleset with no bypass at all.
+   - A new ruleset for version tags: target **Tags**, include the pattern `v*`, rules **Restrict
+     creations**, **Restrict updates** and **Restrict deletions**, and **Deploy keys** on its
+     bypass list (**Always allow**). The deploy's `release` job pushes each new tag with the key.
+5. For the domain, the signing key in the same environment: `docs/hosting.md`, "The site file's
+   signature".
 
 What guards the push:
 
@@ -195,3 +200,28 @@ What guards the push:
   (three tries).
 - Force pushes and deleting main stay forbidden for everyone, the key included.
 - Its commit is made in the name of `github-actions[bot]`, so it is easy to pick out in main's history.
+
+## What a branch's workflow can't do
+
+GitHub runs a workflow file from the branch that adds it: a new file with a `push` or
+`pull_request` trigger runs from that branch before anyone has looked at it, and may ask for a token
+that writes to the repository. GitHub has no setting to stop that, so nothing worth taking is left
+within its reach:
+
+- **Secrets:** none at repository level, ever. Every secret lives in an environment that runs from
+  main only (`release`: the deploy key and the signing key; `github-pages`), which a branch's run
+  can't enter.
+- **main:** its rulesets want a pull request with the owner's approval and passing checks; only
+  the deploy key gets past them, and force pushes and deleting main are forbidden for everyone.
+- **The pull request checks:** always main's copy of `ci.yml` (`pull_request_target`).
+- **Version tags:** only the deploy key may make, move or delete a `v*` tag, so a branch's token
+  can't make a release with a new version (and so a release that looks newer than the real one).
+- **The domain:** its host installs only a site file signed for its own release by the signing key
+  (`docs/hosting.md`), so a file or release put up with a branch's token is refused.
+- **GitHub Pages:** its environment deploys from main only.
+- **Starting a deploy:** a branch's token may start or re-run the deploy, which then publishes
+  main as it is; its jobs refuse any run the owner did not start or re-run.
+
+What such a run can still do with a write token is untidy rather than harmful, and shows up on the
+repository: push other branches and non-version tags, edit or delete a release's notes or files
+(the host refuses what it can't verify), or cancel runs.

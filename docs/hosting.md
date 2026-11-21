@@ -39,9 +39,9 @@ settings are in `hosting/`.
 
 - The deploy (`.github/workflows/pages.yml`) builds the site a second time for `/`, writes
   pre-compressed copies of its text files beside them (`scripts/precompress.mjs`: `name.br` and
-  `name.gz`), packs it as `planner-site.tar.gz` with a `.sha256`, and attaches both to the GitHub
-  release. It does so for every new version, and again for the newest release while that still has
-  no site file (its first try failed).
+  `name.gz`), packs it as `planner-site.tar.gz` with a `.sha256` and a signature (`.sig`, below),
+  and attaches all three to the GitHub release. It does so for every new version, and again for the
+  newest release while that still has no signed site file (its first try failed).
 - The domain is a target of its own in the deploy (`docs/releases.md`, "The deploy's stages"). If
   its build or its file fails, GitHub Pages still goes live, and the other way round; the run is
   marked failed and its summary says which site was left behind. So the two can differ for a
@@ -50,7 +50,7 @@ settings are in `hosting/`.
   fails if it never does: the only sign of a host that is stuck.
 - On the host a timer runs `planner-update` every 10 minutes (`hosting/planner-update.sh`). It asks
   GitHub for the newest release's name. When that is newer than the release the site is on, it
-  downloads the file, checks it against its checksum, unpacks it beside the site and switches over
+  downloads the file, checks it against its checksum and its signature, unpacks it beside the site and switches over
   by renaming a link (`current`), so a request sees one release or the other, never half of each.
 - Whatever goes wrong leaves the site as it was, the run is marked failed (`systemctl status
   planner-update.service`), and the next run tries again.
@@ -68,6 +68,39 @@ settings are in `hosting/`.
 - A change to `scripts/precompress.mjs` or to the deploy's packing steps alone makes no new version
   (`docs/releases.md`, "What counts as a new version"), so it reaches the domain with the next
   version. A change to `hosting/` is installed on the host by hand (below).
+
+## The site file's signature
+
+The host installs a site file only when it carries a signature for its own release made with the
+deploy's signing key. A file put on a release by anything else (a workflow on a branch, which can
+get a token that writes releases), or one release's file attached to another, is refused, and the
+site stays as it was.
+
+- The deploy's `publish-domain` job signs with `ssh-keygen -Y sign`, in the namespace
+  `planner-site-vX.Y.Z` (the release's own name). The private key is the secret `SITE_SIGNING_KEY`
+  of the `release` environment, which runs from main only.
+- The host checks it with `ssh-keygen -Y verify` against the public half in
+  `/etc/planner-update/allowed_signers`, under the name `planner-release`. Without that file it
+  fetches nothing. `planner-update --file` (a file put on the host by hand) needs no signature.
+- A release whose file is not signed (from before signing, or attached by something else) gets a
+  signed file from a deploy with `target=domain`, while it is the newest release.
+
+Setting it up, once (the owner; an agent never handles secrets):
+
+1. Make a key pair with no passphrase: `ssh-keygen -t ed25519 -N "" -C planner-release -f sign`.
+2. GitHub: Settings -> Environments -> `release` (made for the deploy key, `docs/releases.md`) ->
+   add the secret `SITE_SIGNING_KEY`: the whole private half (`sign`).
+3. On the host, as root: `install -d -m 755 /etc/planner-update`, then write the public half
+   there, named, and readable by the site's user:
+   `printf 'planner-release %s
+' "$(cat sign.pub)" > /etc/planner-update/allowed_signers` and
+   `chmod 644 /etc/planner-update/allowed_signers`.
+4. Install the new `hosting/planner-update.sh` (below), then delete both key files from your machine.
+5. Run the deploy with `target=domain`, so the newest release carries a signed file (the host
+   fetches it only when that release is newer than the one it is on).
+
+To change the key, do steps 1 to 3 again; releases signed with the old key are then refused, so run
+the deploy with `target=domain` again.
 
 ## The host
 
@@ -97,6 +130,7 @@ ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443 && ufw --force enable
 useradd --system --home-dir /srv/planner --shell /usr/sbin/nologin planner
 install -d -o planner -g planner -m 755 /srv/planner
 install -m 755 hosting/planner-update.sh /usr/local/bin/planner-update
+install -d -m 755 /etc/planner-update   # then its allowed_signers ("The site file's signature")
 install -m 644 hosting/planner-update.service hosting/planner-update.timer /etc/systemd/system/
 install -m 644 hosting/Caddyfile /etc/caddy/Caddyfile
 systemctl daemon-reload

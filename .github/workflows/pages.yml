@@ -90,6 +90,14 @@ jobs:
       # ("Re-run failed jobs") sees another number
       attempt: ${{ github.run_attempt }}
     steps:
+      # only the owner starts or re-runs a deploy: a workflow on any branch could otherwise start this
+      # one with its own token (docs/releases.md, "What a branch's workflow can't do")
+      - name: Refuse runs the owner did not start
+        env:
+          BY: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "${BY}" != "${OWNER}" ]; then echo "::error::Only ${OWNER} starts or re-runs a deploy (this one: ${BY})."; exit 1; fi
       # the Run workflow button lets any branch be picked; only main is ever published
       - name: Refuse branches other than main
         if: github.ref != 'refs/heads/main'
@@ -125,9 +133,10 @@ jobs:
       - run: npm run typecheck
       # What the domain's stages do (the output `domain`):
       #   off       the run was started for GitHub Pages alone: none of them runs
-      #   needed    a new version, or the newest release still has no site file (the domain's
-      #             stages failed, or were left out, in an earlier deploy of it): build, attach, check
-      #   has-file  the newest release has its site file: only the check runs, so a host that
+      #   needed    a new version, or the newest release still has no signed site file (the
+      #             domain's stages failed, or were left out, in an earlier deploy of it, or it is
+      #             from before files were signed): build, sign, attach, check
+      #   has-file  the newest release has its signed site file: only the check runs, so a host that
       #             failed to fetch it shows up again
       #   older     this deploy puts an older release back on GitHub Pages; the domain only moves
       #             forward on its own, so it is left alone (docs/hosting.md, "By hand")
@@ -150,7 +159,7 @@ jobs:
               if newest="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)" \
                 && names="$(gh release view "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name')"; then
                 if [ "${newest}" != "v${VERSION}" ]; then state=older
-                elif grep -qx 'planner-site.tar.gz' <<< "${names}"; then state=has-file
+                elif grep -qx 'planner-site.tar.gz' <<< "${names}" && grep -qx 'planner-site.tar.gz.sig' <<< "${names}"; then state=has-file
                 else state=needed
                 fi
                 break
@@ -164,7 +173,9 @@ jobs:
   # Stage 2. Tag the new version and publish its notes (the changelog's new lines for players, then
   # the pull requests merged since the last release), as soon as the shared checks have passed and
   # before any site goes live. Skipped when the commit already carries a version. It needs neither
-  # build, so trying one target again never comes back through here.
+  # build, so trying one target again never comes back through here. Version tags (v*) can be made
+  # only with the deploy key (a tag ruleset), which only the `release` environment holds, so the tag
+  # is pushed with it and the release is then made on that tag.
   release:
     name: 2. Tag the release
     needs: prepare
@@ -173,7 +184,25 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+    environment: release
     steps:
+      # only the owner starts or re-runs a deploy: a workflow on any branch could otherwise start this
+      # one with its own token (docs/releases.md, "What a branch's workflow can't do")
+      - name: Refuse runs the owner did not start
+        env:
+          BY: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "${BY}" != "${OWNER}" ]; then echo "::error::Only ${OWNER} starts or re-runs a deploy (this one: ${BY})."; exit 1; fi
+      - name: Refuse a missing key
+        env:
+          KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then echo "::error::The release environment has no RELEASE_DEPLOY_KEY secret (docs/releases.md, \"Setting up the changelog push\")."; exit 1; fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          persist-credentials: true # the tag goes up with the key
       - name: Tag the release and publish its notes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -192,7 +221,10 @@ jobs:
               exit 1
             fi
           fi
-          set -- "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
+          # the same tag on the same commit again (a re-run) is no change; on another commit it is refused
+          git tag "v${VERSION}" "${GITHUB_SHA}"
+          git push --quiet origin "refs/tags/v${VERSION}"
+          set -- "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --verify-tag --title "v${VERSION}" --generate-notes --notes-start-tag "${PREVIOUS}"
           if [ -n "${NOTES}" ]; then set -- "$@" --notes "${NOTES}"; fi
           gh release create "$@"
 
@@ -216,6 +248,14 @@ jobs:
       # stamped, already or empty (scripts/changelog-stamp.mjs)
       outcome: ${{ steps.stamp.outputs.outcome }}
     steps:
+      # only the owner starts or re-runs a deploy: a workflow on any branch could otherwise start this
+      # one with its own token (docs/releases.md, "What a branch's workflow can't do")
+      - name: Refuse runs the owner did not start
+        env:
+          BY: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "${BY}" != "${OWNER}" ]; then echo "::error::Only ${OWNER} starts or re-runs a deploy (this one: ${BY})."; exit 1; fi
       - name: Refuse branches other than main, and a missing key
         env:
           KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
@@ -356,6 +396,14 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # only the owner starts or re-runs a deploy: a workflow on any branch could otherwise start this
+      # one with its own token (docs/releases.md, "What a branch's workflow can't do")
+      - name: Refuse runs the owner did not start
+        env:
+          BY: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "${BY}" != "${OWNER}" ]; then echo "::error::Only ${OWNER} starts or re-runs a deploy (this one: ${BY})."; exit 1; fi
       # "Re-run failed jobs" brings this job back without the first job, whose version pick is what
       # keeps old code from taking a new deploy's place. So a try that comes without it goes on
       # only while its version is still the newest release. ("Re-run all jobs" makes the first
@@ -385,7 +433,21 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    environment: release # the signing key
     steps:
+      # only the owner starts or re-runs a deploy: a workflow on any branch could otherwise start this
+      # one with its own token (docs/releases.md, "What a branch's workflow can't do")
+      - name: Refuse runs the owner did not start
+        env:
+          BY: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "${BY}" != "${OWNER}" ]; then echo "::error::Only ${OWNER} starts or re-runs a deploy (this one: ${BY})."; exit 1; fi
+      - name: Refuse a missing signing key
+        env:
+          KEY: ${{ secrets.SITE_SIGNING_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then echo "::error::The release environment has no SITE_SIGNING_KEY secret (docs/hosting.md, \"The site file's signature\")."; exit 1; fi
       # as in deploy-pages: the host only moves forward, so a file for a release that is no longer
       # the newest would never be fetched, and the stage after this one would wait for nothing
       - name: Refuse an older version on a partial re-run
@@ -403,16 +465,29 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: own-domain-site
-      # The host takes the site file first and its checksum second, so the checksum goes up first:
-      # a host that looks in between finds no site file yet and waits, instead of a file it can't
+      # Signed for this release alone (the namespace names it), with the key only main's runs can
+      # read: the host installs nothing else (docs/hosting.md, "The site file's signature").
+      - name: Sign the site file
+        env:
+          KEY: ${{ secrets.SITE_SIGNING_KEY }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          key="${RUNNER_TEMP}/signing-key"
+          trap 'rm -f "${key}"' EXIT
+          (umask 077 && printf '%s\n' "${KEY}" > "${key}")
+          rm -f planner-site.tar.gz.sig
+          ssh-keygen -q -Y sign -f "${key}" -n "planner-site-v${VERSION}" planner-site.tar.gz
+          test -s planner-site.tar.gz.sig
+      # The host takes the site file first, then its checksum and signature, so those go up first: a
+      # host that looks in between finds no site file yet and waits, instead of a file it can't
       # check. A file left by an earlier try comes off first, for the same reason.
-      - name: Attach the site file and its checksum to the release
+      - name: Attach the site file, its checksum and its signature to the release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           gh release delete-asset "v${VERSION}" planner-site.tar.gz --repo "${GITHUB_REPOSITORY}" --yes 2>/dev/null || true
-          gh release upload "v${VERSION}" planner-site.tar.gz.sha256 --repo "${GITHUB_REPOSITORY}" --clobber
+          gh release upload "v${VERSION}" planner-site.tar.gz.sha256 planner-site.tar.gz.sig --repo "${GITHUB_REPOSITORY}" --clobber
           gh release upload "v${VERSION}" planner-site.tar.gz --repo "${GITHUB_REPOSITORY}"
 
   # Stage 5. The domain is seen to serve this release. Its host fetches a release by itself, so
