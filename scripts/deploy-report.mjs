@@ -24,7 +24,7 @@ const LOOK_AGAIN = 'Choose "Re-run failed jobs" to have the domain looked at aga
 const NEW_DEPLOY = 'Start a new deploy: it brings both sites to the newest version.';
 const ATTACH_AGAIN = 'Delete planner-site.tar.gz from the release on GitHub, then run the deploy for the domain (target=domain): it builds and attaches the file again.';
 const STAMP_AGAIN =
-  'Choose "Re-run failed jobs": stamping is safe to try again (a changelog that has its version heading already is left as it is). If it keeps failing, see docs/releases.md, "Setting up the changelog push".';
+  `Choose "Re-run failed jobs": stamping is safe to try again (a changelog that has its version heading already is left as it is). If it keeps failing, see docs/releases.md, "The release key and main's rules".`;
 
 const MARK = { live: 'Live', done: 'Done', unchanged: 'Unchanged', skipped: 'Left out', failed: 'FAILED', refused: 'NOT DONE', unconfirmed: 'NOT CONFIRMED', unchecked: 'NOT CHECKED' };
 // the states that are as they should be; any other is an error on the run
