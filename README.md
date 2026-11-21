@@ -31,7 +31,8 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
   after 4 hours or more away, the same list greets you with a button that continues your last build.
   Thunderspy has no Mids import or export (MidsReborn has no Thunderspy
   database) and no `/build_save` import (its client doesn't write one); its builds share by link.
-- Hero, villain and Praetorian skins by alignment; the game's UI sounds (with a mute switch);
+- Hero, villain and Praetorian skins by alignment; the game's UI sounds and music (off until
+  switched on with the Sound and Music buttons);
   a one-panel-at-a-time layout on phones.
 
 ## Data
@@ -95,7 +96,7 @@ page), for example `i28p3m`, "Issue 28, Page 3 (approximate)" (since replaced by
 `i28p3`). It is the one place Mids data
 reaches the planner, it is never the default, and `versions.json` marks it with `"approx": true`
 and its `"patch"`. Review `pipeline/report-<id>.md`, which lists every changed level. Mids builds
-made on that patch then open on it; see AGENTS.md, "Imports and patches".
+made on that patch then open on it; see `docs/architecture.md`, "Imports and patches".
 
 Refreshing the data after a game patch:
 
@@ -121,8 +122,10 @@ Engine notes: `docs/game-rules.md` (pick, auto-grant and slot rules) and `docs/e
 
 ## Development
 
+Node 20 or newer (CI uses 22).
+
 ```bash
-npm install
+npm ci
 npm run dev
 npm test
 npm run build

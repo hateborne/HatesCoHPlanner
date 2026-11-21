@@ -198,7 +198,7 @@ jobs:
         env:
           KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
         run: |
-          if [ -z "${KEY}" ]; then echo "::error::The release environment has no RELEASE_DEPLOY_KEY secret (docs/releases.md, \"Setting up the changelog push\")."; exit 1; fi
+          if [ -z "${KEY}" ]; then echo "::error::The release environment has no RELEASE_DEPLOY_KEY secret (docs/releases.md, \"The release key and main's rules\")."; exit 1; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
@@ -261,7 +261,7 @@ jobs:
           KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
         run: |
           if [ "${GITHUB_REF}" != refs/heads/main ]; then echo "::error::The changelog is stamped from main only (this run was started on ${GITHUB_REF})."; exit 1; fi
-          if [ -z "${KEY}" ]; then echo "::error::The release environment has no RELEASE_DEPLOY_KEY secret (docs/releases.md, \"Setting up the changelog push\")."; exit 1; fi
+          if [ -z "${KEY}" ]; then echo "::error::The release environment has no RELEASE_DEPLOY_KEY secret (docs/releases.md, \"The release key and main's rules\")."; exit 1; fi
       # main's tip, not the released commit: the stamp goes on top of whatever has merged since
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -307,7 +307,7 @@ jobs:
             fi
             sleep 5
           done
-          echo "::error::main kept moving, or refused the push (is the deploy key allowed to bypass main's rules? docs/releases.md, \"Setting up the changelog push\")."
+          echo "::error::main kept moving, or refused the push (is the deploy key allowed to bypass main's rules? docs/releases.md, \"The release key and main's rules\")."
           exit 1
 
   # Stage 3a. The site for GitHub Pages, under its /HatesCoHPlanner/ path. Skipped in a run started
