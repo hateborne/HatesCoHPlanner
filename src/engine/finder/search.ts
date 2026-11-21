@@ -65,14 +65,22 @@ export interface FinderInput {
 /**
  * Why the finder can't work on a build, if it can't.
  *
+ * The statistics serve every game version of their server: they are keyed by the game's internal
+ * names, and a search reads only each archetype's stat values and the needs of the archetype and
+ * its two power sets from them. Which sets exist and what a power takes come from the build's own
+ * game data. So a build on an older or a newer patch than the one they were made on is searched
+ * like any other (an archetype the statistics never saw gets the all-builds values, and a power
+ * set they never saw has no needs).
+ *
  * @param gd The build's game data.
- * @param build The build.
- * @param stats The build statistics, or null when they did not load.
+ * @param stats The build statistics, or null when none are loaded. A guard: the pane has its own
+ *   words while they download and when the download fails, so its sentence is not one a player
+ *   meets in normal use.
  * @return Null when it can, else a sentence for the player.
  */
-export function finderProblem(gd: GameData, build: Build, stats: FinderStats | null): string | null {
+export function finderProblem(gd: GameData, stats: FinderStats | null): string | null {
   if (gd.server !== DEFAULT_SERVER) return 'The set finder covers Homecoming builds only for now.';
-  if (!stats || stats.dataVersion !== build.dataVersion) return "The set finder has no build statistics for this build's game version yet.";
+  if (!stats) return 'The set finder has no build statistics to work from.';
   return null;
 }
 
@@ -136,7 +144,7 @@ interface Found {
  */
 export function* searchSwaps(input: FinderInput): Generator<number, FinderResult, void> {
   const { gd, stats, build, query: q } = input;
-  const problem = finderProblem(gd, build, stats) ?? queryProblem(q);
+  const problem = finderProblem(gd, stats) ?? queryProblem(q);
   if (problem) return { swaps: [], considered: 0, stale: [], problem };
 
   const ownRules = new BuildRules(gd, build);

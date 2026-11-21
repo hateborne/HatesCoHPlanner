@@ -13,6 +13,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "e2e": "playwright test",
+    "e2e:built": "playwright test --config playwright.built.config.ts",
     "research": "vitest run --config research/vitest.config.ts"
   },
   "dependencies": {

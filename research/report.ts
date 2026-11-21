@@ -31,7 +31,6 @@ export interface Run {
   flagged: number; // builds with at least one issue
   sparse: number; // builds too empty to count
   duplicates: number; // builds dropped as copies of another
-  farm: number; // builds tagged as farm builds, kept out of the values
   tags: Tally; // builds per file-name tag
   midsDb: Tally; // builds per Mids database year
   facts: BuildFacts[]; // the builds counted
@@ -136,7 +135,6 @@ export function reportText(gd: GameData, run: Run): string {
         ['Imported without a picked power that could not be placed (counted without it)', run.lostPower],
         ['Too empty to count (under 12 powers or 20 enhancements)', run.sparse],
         ['Copies of another build (left out)', run.duplicates],
-        ['Farm builds (left out of the values)', run.farm],
         ['**Builds counted**', `**${run.facts.length}**`],
       ],
     ),

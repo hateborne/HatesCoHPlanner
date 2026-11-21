@@ -272,21 +272,21 @@ export const useFinder = create<FinderStore>((set, get) => {
       if (!gd || !build) return;
       const known = get().stats;
       if (known) {
-        set({ problem: finderProblem(gd, build, known) });
+        set({ problem: finderProblem(gd, known) });
         return;
       }
       if (get().loading) return;
       const s = serverById(server);
       // another server's builds are told so without a download
       if (!s || gd.server !== DEFAULT_SERVER) {
-        set({ problem: finderProblem(gd, build, null) });
+        set({ problem: finderProblem(gd, null) });
         return;
       }
       set({ loading: true, problem: null });
       loadFinderStats(dataRoot(s, import.meta.env.BASE_URL))
         .then((stats) => {
           const now = useStore.getState();
-          set({ stats, loading: false, problem: now.gd && now.build ? finderProblem(now.gd, now.build, stats) : null });
+          set({ stats, loading: false, problem: now.gd ? finderProblem(now.gd, stats) : null });
         })
         .catch((e: unknown) => {
           console.warn('set finder: statistics did not load', e);

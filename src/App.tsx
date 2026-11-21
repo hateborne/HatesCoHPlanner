@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from
 import { useShallow } from 'zustand/react/shallow';
 import { defaultServer, serverById } from './data/servers.ts';
 import { skinOf } from './engine/build.ts';
-import { closeSetFinder, useFinderOpen } from './state/finderOpen.ts';
+import { closeSetFinder, setFinderUp, useFinderOpen } from './state/finderOpen.ts';
 import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
@@ -50,6 +50,12 @@ function FinderPane({ skin }: { skin: Skin }) {
     return () => {
       live = false;
     };
+  }, [Pane]);
+  // the overview keeps its own long-press tooltip until this pane covers it
+  useEffect(() => {
+    if (!Pane) return;
+    setFinderUp(/*up=*/ true);
+    return () => setFinderUp(/*up=*/ false);
   }, [Pane]);
   return Pane ? <Pane skin={skin} /> : null;
 }

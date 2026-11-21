@@ -23,6 +23,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - The enhancement picker's Sets and Special lists fold into groups you can open and close; Special enhancements are grouped as Hydra, Titan, Hamidon, D-Sync, Synthetic Hamidon, Talisman and Other.
 - The enhancement picker can put every piece in as high as your build's level allows, and raise them when the build levels further.
 - Ctrl+Click (or Select several on phones) picks several enhancements at once and fills the power's empty slots in one go, with their total shown after enhancement diversification.
+- Set Finder, for Homecoming builds: choose what matters to you and it ranks the enhancement sets your build could slot, shows what each swap gains and loses, and makes a shopping list of the recipes and salvage.
 
 ### Improved
 

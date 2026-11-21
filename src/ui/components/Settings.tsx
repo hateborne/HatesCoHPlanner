@@ -4,7 +4,6 @@ import { DEFAULT_SERVER } from '../../data/servers.ts';
 import { openSetFinder } from '../../state/finderOpen.ts';
 import { continueTarget, respecUnfinished, stepsOf, TIP_MODES, useStore, type TipMode } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
-import { SET_FINDER } from '../flags.ts';
 import { fitScale, FONTS, S, snap } from '../skin/metrics.ts';
 import { pressKeys } from '../press.ts';
 import type { Skin } from '../skin/skin.ts';
@@ -193,7 +192,7 @@ function PhoneMenu({ skin }: { skin: Skin }) {
     );
     y += ROW_H + ROW_GAP;
   }
-  if (SET_FINDER && overview && build && gd && gd.server === DEFAULT_SERVER) {
+  if (overview && build && gd && gd.server === DEFAULT_SERVER) {
     rows.push(
       <Pill key="finder" x={PANE.pad} y={y} w={inner} h={ROW_H} fontSize={PILL_FONT} title="Rank the sets this build could slot" onClick={() => {
           setOpen(false);

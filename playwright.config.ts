@@ -4,8 +4,8 @@
 import { defineConfig } from '@playwright/test';
 
 // its own port, so a dev server already running on 5173 is left alone
-const PORT = 5180;
-const URL = `http://localhost:${PORT}/HatesCoHPlanner/`;
+export const PORT = 5180;
+export const URL = `http://localhost:${PORT}/HatesCoHPlanner/`;
 
 export default defineConfig({
   testDir: 'e2e',
