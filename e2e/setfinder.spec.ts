@@ -9,8 +9,8 @@
  * does. The shopping list stays in the browser until it is cleared.
  *
  * A pane whose code can't be downloaded closes with a notice, and opens on the next try; while
- * the code is on its way a line says so, and Escape gives the wait up (a failure after that says
- * nothing). A Thunderspy build gets no finder: no button on its overview and no row in its phone
+ * the code is on its way a line says so, and Escape (on the phone, a tap on the line) gives the
+ * wait up (a failure after that says nothing). A Thunderspy build gets no finder: no button on its overview and no row in its phone
  * menu.
  */
 import { readFileSync } from 'node:fs';
@@ -299,7 +299,7 @@ test('a set finder that cannot be downloaded says so, and opens on the next try'
     await me.press(tip);
     await expect(tip).toHaveCount(0);
   } else await me.press(me.id('finder:open'));
-  // the wait is said on screen (it takes no clicks: the long press above went through it)
+  // the wait is said on screen, and the overview around it works as before (the long press above)
   await expect(me.id('finder:wait')).toBeVisible();
   refuse();
   await expect(me.id('finder:wait')).toHaveCount(0);
@@ -330,7 +330,9 @@ test('the wait for the set finder can be given up, and a failure after that says
     await me.press(page.getByTitle(MENU_ROW_TITLE));
   } else await me.press(me.id('finder:open'));
   await expect(me.id('finder:wait')).toBeVisible();
-  await page.keyboard.press('Escape');
+  // a phone has no Escape: there the box itself is tapped
+  if (me.phone) await me.press(me.id('finder:wait'));
+  else await page.keyboard.press('Escape');
   await expect(me.id('finder:wait')).toHaveCount(0);
   // the download fails once nobody waits for it: no notice
   refuse();

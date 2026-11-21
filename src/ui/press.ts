@@ -73,9 +73,10 @@ export function longPress(onLong?: (pt: { x: number; y: number }) => void) {
         y: pt.y,
         timer: window.setTimeout(() => {
           press = null;
+          // the release makes no click either way: it would land on whatever is under the finger now
+          fired = true;
           // the element left the page while the finger rested (a list drawn again): nothing to tell about
           if (el && !el.isConnected) return;
-          fired = true;
           navigator.vibrate?.(12);
           onLong(pt);
         }, LONG_MS),

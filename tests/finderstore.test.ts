@@ -16,7 +16,7 @@ import { BuildRules } from '../src/engine/rules.ts';
 import { importMidsText } from '../src/io/mids.ts';
 import { decodeShare } from '../src/io/share.ts';
 import { readShopping, SHOPPING_KEY, writeShopping } from '../src/io/shopping.ts';
-import { shopItems, shoppingChangedElsewhere, swapId, useFinder } from '../src/state/finder.ts';
+import { GIVE_UP_MS, shopItems, shoppingChangedElsewhere, swapId, useFinder } from '../src/state/finder.ts';
 import { openSetFinder, useFinderOpen } from '../src/state/finderOpen.ts';
 import { useStore } from '../src/state/store.ts';
 import { loadData, loadMidsMapFile, pid } from './helpers/data.ts';
@@ -94,6 +94,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/**
+ * A request that gets no answer, as a stalled download's does: it fails only when it is given up
+ * (its signal), like a browser's own.
+ *
+ * @param init The fetch settings it was made with.
+ * @param given Called when the request is given up.
+ * @return A promise that never fulfils, and rejects once the request is given up.
+ */
+function noAnswer(init: RequestInit | undefined, given: () => void): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    init?.signal?.addEventListener('abort', () => {
+      given();
+      reject(new DOMException('given up', 'AbortError'));
+    });
+  });
+}
+
 /** Prepare the finder and run one search for recharge. */
 async function searched(): Promise<void> {
   useFinder.getState().prepare();
@@ -170,10 +187,12 @@ describe('finder store', () => {
 
   it('gives a statistics download that stalled up when the pane opens again, and asks afresh', async () => {
     // the first ask never gets an answer; the next one does
-    vi.stubGlobal('fetch', (url: string) => {
+    let givenUp = 0;
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
       fetched.push(url);
-      return fetched.length === 1 ? new Promise(() => undefined) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(statsText) as unknown });
+      return fetched.length === 1 ? noAnswer(init, () => givenUp++) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(statsText) as unknown });
     });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const clock = vi.spyOn(performance, 'now');
     try {
       const started = performance.now();
@@ -182,16 +201,53 @@ describe('finder store', () => {
       // opened again at once: the download is only slow so far, and is left alone
       useFinder.getState().prepare();
       expect(fetched).toHaveLength(1);
-      // opened again after nothing arrived for a while
+      expect(givenUp).toBe(0);
+      // opened again after nothing arrived for a while: the old request is given up, a new one made
       clock.mockImplementation(() => started + 60_000);
       useFinder.getState().prepare();
       expect(fetched).toHaveLength(2);
+      expect(givenUp).toBe(1);
       clock.mockRestore();
       await until(() => !!useFinder.getState().stats);
+      // the failure that giving the old one up made says nothing: not on screen, not in the console
+      await new Promise((r) => setTimeout(r, 20));
       expect(useFinder.getState()).toMatchObject({ loading: false, problem: null });
+      expect(warn).not.toHaveBeenCalled();
     } finally {
       clock.mockRestore();
+      warn.mockRestore();
     }
+  });
+
+  it('says so when the statistics stay stalled while the pane is open, and asks again on the next opening', async () => {
+    let givenUp = 0;
+    let down = true;
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+      fetched.push(url);
+      return down ? noAnswer(init, () => givenUp++) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(statsText) as unknown });
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    try {
+      useFinder.getState().prepare();
+      await vi.advanceTimersByTimeAsync(GIVE_UP_MS - 1000);
+      // asked for again alongside meanwhile, and still waited for
+      expect(fetched.length).toBeGreaterThan(1);
+      expect(useFinder.getState()).toMatchObject({ loading: true, problem: null });
+      expect(givenUp).toBe(0);
+      await vi.advanceTimersByTimeAsync(2000);
+      // nothing came for long enough: every request is given up, and the pane says what to do
+      expect(givenUp).toBe(fetched.length);
+      expect(useFinder.getState().loading).toBe(false);
+      expect(useFinder.getState().problem).toMatch(/couldn't load its build statistics/);
+    } finally {
+      vi.useRealTimers();
+      warn.mockRestore();
+    }
+    down = false;
+    useFinder.getState().prepare();
+    await until(() => !!useFinder.getState().stats);
+    expect(useFinder.getState()).toMatchObject({ loading: false, problem: null });
   });
 
   it('searches in slices and reports its progress', async () => {
@@ -361,6 +417,15 @@ describe('finder store', () => {
     useFinder.getState().keep(into);
     useFinder.getState().drop(into.key);
     expect(useFinder.getState()).toMatchObject({ kept: [out], note: null });
+    // only what the game refuses goes, whatever order the swaps were kept in: a second pair of the
+    // same kind, the swap that puts the piece in kept before the one that takes it out
+    const out2 = swap('Dominator_Assault.Dark_Assault.Gloom', 'Winters_Bite', 0, { boost: pid(gd, 'Boosts.Attuned_Winters_Bite_A.Attuned_Winters_Bite_A') });
+    const into2 = swap('Dominator_Assault.Dark_Assault.Dark_Blast', 'Apocalypse', 0, { boost: pid(gd, 'Boosts.Crafted_Apocalypse_F.Crafted_Apocalypse_F'), ioLevel: 49 });
+    expect(swapsLegal(gd, build, [into, out, out2, into2])).toBe(true);
+    useFinder.setState({ kept: [into, out, out2, into2], note: null });
+    useFinder.getState().drop(out2.key);
+    expect(useFinder.getState().kept).toEqual([into, out]);
+    expect(useFinder.getState().note).toMatch(/^Apocalypse into Dark Blast only fitted with the swap you let go, so it was let go too\.$/);
     // kept swaps that do not fit together (however they came to be kept) are never written into the build
     let asked = 0;
     useStore.setState({
@@ -555,10 +620,12 @@ describe('finder store: shopping list', () => {
   });
 
   it('gives a recipe download that stalled up when the list opens again, and asks afresh', async () => {
-    vi.stubGlobal('fetch', (url: string) => {
+    let givenUp = 0;
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
       fetched.push(url);
-      return fetched.length === 1 ? new Promise(() => undefined) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(recipesText) as unknown });
+      return fetched.length === 1 ? noAnswer(init, () => givenUp++) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(recipesText) as unknown });
     });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const clock = vi.spyOn(performance, 'now');
     try {
       const started = performance.now();
@@ -567,15 +634,46 @@ describe('finder store: shopping list', () => {
       // opened again at once: left alone
       useFinder.getState().openShopping();
       expect(fetched).toHaveLength(1);
+      expect(givenUp).toBe(0);
+      // opened again after nothing arrived for a while: the old request is given up, a new one made
       clock.mockImplementation(() => started + 60_000);
       useFinder.getState().openShopping();
       expect(fetched).toHaveLength(2);
+      expect(givenUp).toBe(1);
       clock.mockRestore();
       await until(() => !!useFinder.getState().recipes);
+      // the failure that giving the old one up made says nothing
+      await new Promise((r) => setTimeout(r, 20));
       expect(useFinder.getState()).toMatchObject({ recipesLoading: false, recipesMissing: false, recipesFailed: null });
+      expect(warn).not.toHaveBeenCalled();
     } finally {
       clock.mockRestore();
+      warn.mockRestore();
     }
+  });
+
+  it('lists the pieces as enhancements when the recipes stay stalled while the list is open, and asks again on the next opening', async () => {
+    let down = true;
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+      fetched.push(url);
+      return down ? noAnswer(init, () => undefined) : Promise.resolve({ ok: true, status: 200, json: async () => JSON.parse(recipesText) as unknown });
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    try {
+      useFinder.getState().openShopping();
+      await vi.advanceTimersByTimeAsync(GIVE_UP_MS - 1000);
+      expect(useFinder.getState()).toMatchObject({ recipesLoading: true, recipesFailed: null });
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(useFinder.getState()).toMatchObject({ recipes: null, recipesLoading: false, recipesFailed: gd.core.manifest.dataVersion });
+    } finally {
+      vi.useRealTimers();
+      warn.mockRestore();
+    }
+    down = false;
+    useFinder.getState().openShopping();
+    await until(() => !!useFinder.getState().recipes);
+    expect(useFinder.getState().recipesFailed).toBeNull();
   });
 
   it('marks the right piece with a saved list and two kept swaps on show', async () => {

@@ -32,9 +32,14 @@ let finderPane: ComponentType<{ skin: Skin }> | null = null;
 // shows nothing in between
 const FINDER_WAIT_MS = 400;
 
+// where the wait's box is drawn: over the overview, under its tooltips (a phone's long-press
+// tooltip is at 66, PhoneTip.tsx) and under every pop-up
+const FINDER_WAIT_Z = 60;
+
 /**
- * What stands in for the set finder's pane while its code downloads: after a moment, a line that
- * says so. It takes no clicks, so the overview under it works as before; Escape gives the wait up.
+ * What stands in for the set finder's pane while its code downloads: after a moment, a box that
+ * says so. The overview around it works as before. Escape gives the wait up; a phone has no
+ * Escape, so there a tap on the box does, and the box says so. On the desktop it takes no clicks.
  */
 function FinderWait({ skin }: { skin: Skin }) {
   const stage = useStage();
@@ -44,17 +49,28 @@ function FinderWait({ skin }: { skin: Skin }) {
     return () => clearTimeout(t);
   }, []);
   useEscape(closeSetFinder);
-  if (!late) return null;
+  const { phone } = stage;
   const w = Math.min(460, stage.w - 24);
-  const h = 76;
+  const h = phone ? 104 : 76;
   const x = Math.round((stage.w - w) / 2);
   const y = Math.round((stage.h - h) / 2);
   return (
-    <div className="abs" style={{ left: 0, top: 0, width: 0, height: 0, pointerEvents: 'none', zIndex: 100 }}>
-      <MenuFrame x={x} y={y} w={w} h={h} r25 style={{ background: skin.panel }} skin={skin} />
-      <div className="abs body-text" data-testid="finder:wait" role="status" style={{ left: x, top: y, width: w, height: h, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cfe8ff', fontSize: 20 }}>
-        Loading the Set Finder...
-      </div>
+    // the status box is on the page from the start, empty, so that its words are announced when they arrive
+    <div className="abs" role="status" style={{ left: 0, top: 0, width: 0, height: 0, pointerEvents: 'none', zIndex: FINDER_WAIT_Z }}>
+      {late ? (
+        <>
+          <MenuFrame x={x} y={y} w={w} h={h} r25 style={{ background: skin.panel }} skin={skin} />
+          <div
+            className="abs body-text"
+            data-testid="finder:wait"
+            onClick={phone ? closeSetFinder : undefined}
+            style={{ left: x, top: y, width: w, height: h, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cfe8ff', fontSize: 20, pointerEvents: phone ? 'auto' : 'none' }}
+          >
+            <div>Loading the Set Finder...</div>
+            {phone ? <div style={{ fontSize: 16, color: '#8fa1b8' }}>Tap here to stop waiting.</div> : null}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

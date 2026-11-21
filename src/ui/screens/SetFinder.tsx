@@ -398,7 +398,7 @@ const ResultRow = memo(function ResultRow({ gd, swap, kept, selected, phone, bus
         style={{ flexShrink: 0, width: phone ? 28 : 20, height: phone ? 28 : 20, margin: 0 }}
       />
       {/* the keyboard's way to the row: Enter on it shows the swap, as a click anywhere on the row does (its name stands in for its text, so it says the warnings too) */}
-      <div {...pressKeys(show, undefined, `${name}${warned ? `, ${warned}` : ''}: show its gains and losses`)} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+      <div {...pressKeys(show, undefined, `${name}${warned ? `, ${warned}` : ''}: show its gains and losses`)} data-row={id} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
         <SwapLine gd={gd} swap={swap} phone={phone} />
         {swap.warnings.length ? (
           <div title={swap.warnings.map((w) => warningText(gd, w)).join('\n')} style={{ marginLeft: 'auto', flexShrink: 0, color: WARN, fontSize: phone ? 17 : 14 }}>
@@ -426,8 +426,16 @@ function toggleKept(s: RankedSwap, isKept: boolean): void {
   else finder.keep(s);
   if (useFinder.getState().kept === before) return;
   useHover.setState({ swap: null });
-  // the box was drawn anew in the other list: without this the keyboard would start from the top of the page
-  if (box) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-keep="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }));
+  if (!box) return;
+  // the box was drawn anew in the other list: without this the keyboard would start from the top
+  // of the page. A box let go is off while the list is ranked again, and the row may not come
+  // back at all: then the row's name takes the keyboard's place, or the lists themselves
+  requestAnimationFrame(() => {
+    const at = CSS.escape(id);
+    const again = document.querySelector<HTMLInputElement>(`[data-keep="${at}"]`);
+    const to = again && !again.disabled ? again : (document.querySelector<HTMLElement>(`[data-row="${at}"]`) ?? document.querySelector<HTMLElement>('[data-finder-lists]'));
+    to?.focus({ preventScroll: true });
+  });
 }
 
 /**
@@ -501,8 +509,9 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
   const outOfDate =
     !result || busy ? null : formChanged ? 'The search has changed since this list was made.' : searchedKept !== kept ? 'Your kept swaps have changed since this list was made.' : null;
   return (
-    // the pointer left the lists: no swap is pointed at any more (see ResultRow)
-    <div onMouseLeave={phone ? undefined : () => useHover.setState((h) => (h.swap ? { swap: null } : h))}>
+    // the pointer left the lists: no swap is pointed at any more (see ResultRow). The lists can
+    // take the keyboard's place when a row that had it is gone (toggleKept)
+    <div data-finder-lists tabIndex={-1} style={{ outline: 'none' }} onMouseLeave={phone ? undefined : () => useHover.setState((h) => (h.swap ? { swap: null } : h))}>
       <Note />
       {kept.length ? (
         <div data-testid="finder:kept" style={{ marginBottom: 10 }}>
@@ -796,13 +805,11 @@ export default function SetFinder({ skin }: { skin: Skin }) {
           href={link}
           target="_blank"
           rel="noopener noreferrer"
-          // the changed build is being opened: its pieces go on the shopping list. A middle click
-          // opens it too, and so can the link's own menu (a right click, a long press) or dragging
-          // it to the tab bar: the page is not told what was chosen there, so those count as opening
+          // the changed build is being opened: its pieces go on the shopping list (a middle click
+          // opens it too). The link has no menu of its own here: the stage keeps the right click
+          // and a phone's long press for the planner (Stage.tsx)
           onClick={openedNewBuild}
           onAuxClick={(e) => (e.button === 1 ? openedNewBuild() : undefined)}
-          onContextMenu={openedNewBuild}
-          onDragStart={openedNewBuild}
           title="Leaves this build as it is and opens the changed one in a new tab"
           style={{ position: 'static', width, padding: short ? 0 : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', boxSizing: 'border-box' }}
         >

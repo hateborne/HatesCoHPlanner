@@ -6,7 +6,7 @@
 import type { GameData } from '../../data/gamedata.ts';
 import type { BoostSet, Effect, Power } from '../../data/types.ts';
 import type { SlottedEnh } from '../build.ts';
-import { boostMods, ioLevelRange, levelsAbove, setRarity, shortName, type RarityKind } from '../enhance.ts';
+import { boostMods, ioLevelRange, levelsAbove, lowerShortName, setRarity, type RarityKind } from '../enhance.ts';
 import { isPieceGlobal } from '../setbonus.ts';
 import type { BonusVecs } from './bonusVec.ts';
 import { depthRange, type Depth, type FinderQuery, type SetTag } from './query.ts';
@@ -134,7 +134,7 @@ function someEffect(effs: Effect[] | undefined, test: (e: Effect) => boolean): b
  */
 export function pieceKind(gd: GameData, boost: Power): PieceKind {
   const ref = gd.boostSetOf.get(boost.id);
-  const name = shortName(boost).toLowerCase();
+  const name = lowerShortName(boost);
   if (ref?.set.bon.some((b) => isPieceGlobal(b) && (b.req ?? []).some((t) => t.toLowerCase() === name))) return 'global';
   const enhancing = new Set(boostMods(boost));
   const isChance = (e: Effect) => e.ppm !== undefined || (e.ch !== undefined && e.ch < 1);
@@ -180,7 +180,7 @@ export function mainOptions(gd: GameData, set: BoostSet, vecs: BonusVecs, main: 
     if (main.depth !== 'any') continue;
     const named = new Set((b.req ?? []).map((t) => t.toLowerCase()));
     set.slots.forEach((versions, letter) => {
-      if (versions.some((id) => named.has(shortName(gd.power(id)).toLowerCase()))) out.push({ min: 1, letter, bonus });
+      if (versions.some((id) => named.has(lowerShortName(gd.power(id))))) out.push({ min: 1, letter, bonus });
     });
   }
   return out;

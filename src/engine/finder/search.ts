@@ -35,6 +35,9 @@ export const GLOBAL_KEEP = 0.5;
 export const COST_STEP = 0.05;
 // swaps a search returns unless told otherwise
 export const DEFAULT_LIMIT = 50;
+// the share of a search's progress that working through the powers takes; the rest is the last
+// check of the ranked list against the game's rules (longer when kept swaps make it refuse many)
+export const POWERS_SHARE = 0.9;
 
 /** A swap with its rank. */
 export interface RankedSwap extends Swap {
@@ -85,7 +88,8 @@ export function finderProblem(gd: GameData, stats: FinderStats | null): string |
 }
 
 /**
- * Whether the game would take every piece of a set of swaps on the build with all of them in.
+ * The swaps of a set that the game would not take on the build with all of them in: a piece of
+ * theirs is refused there, or the power they were made for is not the one the build has.
  *
  * Swaps are each found legal against the build as it stood, but two of them can still clash (the
  * same unique piece into two powers), and one that replaces another can free or crowd a piece a
@@ -95,15 +99,45 @@ export function finderProblem(gd: GameData, stats: FinderStats | null): string |
  * @param build The build as the planner holds it.
  * @param swaps The swaps, one per power.
  * @param rules The build's rules, when the caller has them already.
+ * @return The refused swaps, in the order given (none: the game takes them all).
+ */
+export function refusedSwaps<S extends Swap>(gd: GameData, build: Build, swaps: readonly S[], rules: BuildRules = new BuildRules(gd, build)): S[] {
+  const r = rules.reslotted(applySwaps(build, swaps));
+  const entries = new Map(r.entries().map((x) => [x.key, x]));
+  return swaps.filter((s) => {
+    const entry = entries.get(s.key);
+    return !entry || entry.power.id !== s.power || s.pieces.some((p) => r.enhRefusal(entry, p.slot, p.enh) !== null);
+  });
+}
+
+/**
+ * Whether the game would take every piece of a set of swaps on the build with all of them in
+ * (refusedSwaps).
+ *
+ * @param gd Game data.
+ * @param build The build as the planner holds it.
+ * @param swaps The swaps, one per power.
+ * @param rules The build's rules, when the caller has them already.
  * @return True when no piece of any of them is refused.
  */
 export function swapsLegal(gd: GameData, build: Build, swaps: readonly Swap[], rules: BuildRules = new BuildRules(gd, build)): boolean {
-  const r = rules.reslotted(applySwaps(build, swaps));
-  const entries = new Map(r.entries().map((x) => [x.key, x]));
-  return swaps.every((s) => {
-    const entry = entries.get(s.key);
-    return !!entry && entry.power.id === s.power && s.pieces.every((p) => r.enhRefusal(entry, p.slot, p.enh) === null);
-  });
+  return refusedSwaps(gd, build, swaps, rules).length === 0;
+}
+
+/**
+ * Put an item into a ranked list at its place among the items still to come.
+ *
+ * @param list The list, best first by `byRank` from `after` on; changed in place.
+ * @param after Index of the item being worked on: the new one goes somewhere past it.
+ * @param item The item to put in.
+ * @param byRank Compares two items: under zero when the first ranks before the second.
+ * @return The index it went in at: past every later item that ranks before it or level with it.
+ */
+export function insertRanked<T>(list: T[], after: number, item: T, byRank: (a: T, b: T) => number): number {
+  let at = after + 1;
+  while (at < list.length && byRank(list[at]!, item) <= 0) at++;
+  list.splice(at, 0, item);
+  return at;
 }
 
 /** A piece a swap may place. */
@@ -141,9 +175,10 @@ interface Found {
  *    and return the top of the list with its warnings.
  *
  * @param input The search's inputs.
- * @return A generator: it yields the share of the work done (0..1) once the build is read, after
- *   each set of each power and after each swap checked at the end, so a screen can spread the work
- *   over frames (no step between two yields is long), and returns the result.
+ * @return A generator: it yields the share of the work done (0..1, never going back) once the
+ *   build is read, after each set of each power (up to POWERS_SHARE) and after each swap checked at
+ *   the end (the rest), so a screen can spread the work over frames (no step between two yields is
+ *   long), and returns the result.
  */
 export function* searchSwaps(input: FinderInput): Generator<number, FinderResult, void> {
   const { gd, stats, build, query: q } = input;
@@ -342,10 +377,10 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
       for (let i = 0; i < sets.length; i++) {
         const f = bestOf(e, from, usable, order, now, sets[i]!);
         if (f) found.push(f);
-        if (i < sets.length - 1) yield (n + (i + 1) / sets.length) / entries.length;
+        if (i < sets.length - 1) yield (POWERS_SHARE * (n + (i + 1) / sets.length)) / entries.length;
       }
     }
-    yield (n + 1) / entries.length;
+    yield (POWERS_SHARE * (n + 1)) / entries.length;
   }
 
   const byRank = (a: Found, b: Found): number =>
@@ -375,12 +410,12 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
       // refused with this many pieces: the pair's next best count takes its place in the ranking
       const [next, ...rest] = f.others;
       if (rest.length) next!.others = rest;
-      let at = n + 1;
-      while (at < found.length && byRank(found[at]!, next!) <= 0) at++;
-      found.splice(at, 0, next!);
+      insertRanked(found, n, next!, byRank);
     }
-    yield 1;
+    // (the list only grows by what a refusal puts back, one for one checked: the share never falls)
+    yield POWERS_SHARE + ((1 - POWERS_SHARE) * (n + 1)) / found.length;
   }
+  yield 1;
   return { swaps, considered, stale };
 }
 

@@ -185,8 +185,9 @@ export class Scorer {
         const s0 = from.strength.get(a) ?? 0;
         const s1 = to.strength.get(a) ?? 0;
         gain += s1 - s0;
-        // (a strength of -100% or under has no multiplier left to lose a share of)
-        if (1 + s0 > 1e-9) lost = Math.max(lost, 1 - (1 + s1) / (1 + s0));
+        // (a strength of -100% or under has no multiplier left to lose a share of, and no more
+        // than all of one can go)
+        if (1 + s0 > 1e-9) lost = Math.max(lost, Math.min(1, 1 - (1 + s1) / (1 + s0)));
       }
       return { gain: gain / attrs.length, lost };
     };

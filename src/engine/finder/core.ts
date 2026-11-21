@@ -193,27 +193,22 @@ export class FinderBase {
 
     const wasted: BonusRef[] = [];
     const counted = new Map<number, number>();
-    // per bonus power, whichever way its copies are earned (as a set bonus or as a piece's own
-    // global): the rule of five counts the power's copies together
-    const earned = new Map<number, { ref: BonusRef; was: number; now: number }>();
-    for (const [side, bonuses] of [
-      ['was', from.bonuses],
-      ['now', to.bonuses],
-    ] as const) {
-      for (const b of bonuses.values()) {
-        let m = earned.get(b.ref.power.id);
-        if (!m) earned.set(b.ref.power.id, (m = { ref: b.ref, was: 0, now: 0 }));
-        m[side] += b.copies;
-        if (side === 'now') m.ref = b.ref;
-      }
-    }
-    for (const { ref, was, now } of earned.values()) {
-      const total = this.copies.get(ref.power.id) ?? 0;
-      const next = total - was + now;
+    // The rule of five counts a bonus power's copies together, whichever way they are earned (as
+    // a set bonus or as a piece's own global). Each way is taken in turn, its change counted on
+    // top of the other's, and gives or takes its own lines. (No power in the data is earned both
+    // ways today.)
+    const copies = new Map<number, number>(); // bonus power id -> its copies with the changes so far
+    for (const key of new Set([...from.bonuses.keys(), ...to.bonuses.keys()])) {
+      const was = from.bonuses.get(key);
+      const now = to.bonuses.get(key);
+      const ref = (now ?? was)!.ref;
+      const total = copies.get(ref.power.id) ?? this.copies.get(ref.power.id) ?? 0;
+      const next = total - (was?.copies ?? 0) + (now?.copies ?? 0);
+      copies.set(ref.power.id, next);
       const more = Math.min(next, RULE_OF_FIVE) - Math.min(total, RULE_OF_FIVE);
       addLines(lines, this.vecs.of(ref.power, ref.global), more);
       if (more) counted.set(ref.power.id, (counted.get(ref.power.id) ?? 0) + more);
-      if (now > was && next > RULE_OF_FIVE) wasted.push(ref);
+      if ((now?.copies ?? 0) > (was?.copies ?? 0) && next > RULE_OF_FIVE) wasted.push(ref);
     }
 
     const moved = lines.get('endrdx') ?? 0;

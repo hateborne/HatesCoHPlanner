@@ -40,6 +40,8 @@ const MAX_RECIPES = 20000;
 const MAX_RARITY = 4;
 // an icon's name as public/assets holds it (it becomes part of an address)
 const ICON_NAME = /^[a-z0-9_]*$/;
+// what tells the site's own page from any other (index.html holds it; a test keeps the two in step)
+export const OWN_PAGE_MARK = 'id="not-started"';
 
 /**
  * Check that a downloaded recipe file has the shape the shopping list reads.
@@ -76,29 +78,34 @@ export function checkRecipes(raw: unknown): RecipeData | null {
 /**
  * Download one game version's recipes.
  *
- * A web page for an answer means two things. A dev server answers any address with its own page,
- * so there it is a version without recipes. The site answers 404 for a file it lacks, so there a
- * page is someone else's (a network's sign-in page): a failed download, to be asked for again,
- * never "this version has no recipes" for the life of the tab.
+ * A web page for an answer means one of two things. A host that answers any address with the
+ * site's own page (a dev server, a local preview) gives it for a file it lacks: a version without
+ * recipes, as a 404 is on the site. Any other page is someone else's (a network's sign-in page):
+ * a failed download, to be asked for again, never "this version has no recipes" for the life of
+ * the tab.
  *
  * @param root The server's data folder as the site serves it (dataRoot), with its closing slash.
  * @param version The game version's id.
  * @param watch The watch on the download: a file that gets no answer is asked for again alongside
  *   (ask), and a download that stalls can be given up through it.
- * @param dev Whether a dev server serves the page (it answers any address with its own page).
  * @return The recipes; null when the site has none for that version (an approximate version: its
  *   client files are gone).
  * @raise Error when the download fails, or the file is not that version's recipe file.
  */
-export async function loadRecipes(root: string, version: string, watch: Watch = new Watch(), dev: boolean = import.meta.env.DEV): Promise<RecipeData | null> {
+export async function loadRecipes(root: string, version: string, watch: Watch = new Watch()): Promise<RecipeData | null> {
   const url = `${root}${RECIPES_FOLDER}/${encodeURIComponent(version)}.json`;
   const answer = await ask(url, watch, { cache: 'no-cache' });
-  const page = answer.ok && /^text\/html/i.test(answer.headers?.get('content-type') ?? '');
-  if (answer.status === 404 || page) {
+  if (answer.status === 404) {
     // nothing of it is read: the download is over
     watch.end(url);
-    if (page && !dev) throw new Error(`the recipes of ${version} did not load (a web page came back)`);
     return null;
+  }
+  if (answer.ok && /^text\/html/i.test(answer.headers?.get('content-type') ?? '')) {
+    // (read in one go, where the watch can't hear it)
+    watch.unheard(url);
+    const page = await answer.text().finally(() => watch.end(url));
+    if (page.includes(OWN_PAGE_MARK)) return null;
+    throw new Error(`the recipes of ${version} did not load (a web page that is not the site's came back)`);
   }
   const r = heard(answer, watch, url);
   if (!r.ok) throw new Error(`the recipes of ${version} did not load (HTTP ${r.status})`);

@@ -15,10 +15,10 @@ import { slottedNumbers } from '../src/engine/finder/powerNumbers.ts';
 import { queryProblem, type FinderQuery } from '../src/engine/finder/query.ts';
 import { isSelfHeal, rolesOf } from '../src/engine/finder/roles.ts';
 import { needsFor, Scorer } from '../src/engine/finder/score.ts';
-import { finderProblem, findSwaps, searchSwaps, swapsLegal } from '../src/engine/finder/search.ts';
+import { finderProblem, findSwaps, insertRanked, POWERS_SHARE, refusedSwaps, searchSwaps, swapsLegal } from '../src/engine/finder/search.ts';
 import { powerInfo, segText } from '../src/engine/powerinfo.ts';
 import { BuildRules, type BuildEntry } from '../src/engine/rules.ts';
-import { computeTotals } from '../src/engine/totals.ts';
+import { computeTotals, totalsState } from '../src/engine/totals.ts';
 import { importMbd, importMidsText, type Mbd } from '../src/io/mids.ts';
 import { loadData, loadMidsMapFile, pid, sid } from './helpers/data.ts';
 
@@ -365,6 +365,9 @@ describe('finder: search', () => {
     // far more often than the build has powers, starting before any power is done
     expect(steps[0]).toBe(0);
     expect(steps.length).toBeGreaterThan(3 * new BuildRules(gd, b).entries().length);
+    // the last check of the ranked list has its own share of the progress, past the powers'
+    expect(steps.some((s) => s > POWERS_SHARE && s < 1)).toBe(true);
+    expect(steps.filter((s) => s <= POWERS_SHARE).length).toBeGreaterThan(3 * new BuildRules(gd, b).entries().length);
     // about 0.2 s on a desktop; the limit only guards against a change that makes it many times slower
     expect(took).toBeLessThan(5000);
   }, 60000);
@@ -532,6 +535,38 @@ describe('finder: swaps into a build', () => {
     expect(setEnhs(b, [{ key: 'pick:9999', slot: 0, enh: first.pieces[0]!.enh, freeLevel: 0 }])).toBe(b);
     expect(setEnhs(b, [{ key: 'grant:987654321', slot: 5, enh: first.pieces[0]!.enh, freeLevel: 0 }])).toBe(b);
     expect(JSON.stringify(b)).toBe(before);
+    // a miss beside a hit: the hit is placed, and the miss leaves no state of its own in the new build
+    const hit = { key: first.key, slot: first.pieces[0]!.slot, enh: first.pieces[0]!.enh, freeLevel: first.freeLevel };
+    const mixed = setEnhs(b, [hit, { key: 'grant:987654321', slot: 5, enh: first.pieces[0]!.enh, freeLevel: 0 }, { key: 'pick:9999', slot: 0, enh: first.pieces[0]!.enh, freeLevel: 0 }]);
+    expect(mixed).toEqual(setEnhs(b, [hit]));
+    expect(mixed).not.toBe(b);
+    expect(Object.keys(mixed.granted)).toEqual(Object.keys(b.granted));
+  });
+
+  it('puts a refused pair\'s next piece count back at its place in the ranking', () => {
+    const byRank = (a: { score: number; name: string }, b: { score: number; name: string }) => b.score - a.score || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const item = (score: number, name: string) => ({ score, name });
+    const list = [item(9, 'a'), item(7, 'b'), item(5, 'c'), item(5, 'd'), item(2, 'e')];
+    // past what ranks before it, past its equals, before what ranks after it
+    expect(insertRanked(list, 0, item(5, 'cc'), byRank)).toBe(3);
+    expect(list.map((x) => x.name)).toEqual(['a', 'b', 'c', 'cc', 'd', 'e']);
+    // never at or before the item being worked on, even when it would rank before it
+    expect(insertRanked(list, 2, item(8, 'x'), byRank)).toBe(3);
+    expect(list.map((x) => x.name)).toEqual(['a', 'b', 'c', 'x', 'cc', 'd', 'e']);
+    // last when nothing ranks after it, and into an empty tail
+    expect(insertRanked(list, 3, item(1, 'z'), byRank)).toBe(list.length - 1);
+    const one = [item(4, 'only')];
+    expect(insertRanked(one, 0, item(3, 'next'), byRank)).toBe(1);
+    expect(one.map((x) => x.name)).toEqual(['only', 'next']);
+  });
+
+  it('takes a totals state only for the level it was made for', async () => {
+    const b = await dominator();
+    const rules = new BuildRules(gd, b);
+    const at50 = computeTotals(gd, rules, b, 49);
+    expect(computeTotals(gd, rules, b, 49, totalsState(gd, rules, b, 49))).toEqual(at50);
+    // one made for another level is passed over, not mixed in
+    expect(computeTotals(gd, rules, b, 49, totalsState(gd, rules, b, 19))).toEqual(at50);
   });
 
   it('never searches on from a kept swap whose pieces the game data lacks', async () => {
@@ -562,6 +597,31 @@ describe('finder: swaps together', () => {
     // a swap written for another power is refused, not applied blind
     expect(swapsLegal(gd, b, [{ ...shield, power: -1 }])).toBe(false);
     expect(swapsLegal(gd, b, [])).toBe(true);
+    // which of them the game refuses: both hold the one unique piece, so both
+    expect(refusedSwaps(gd, b, [shield, flames])).toEqual([shield, flames]);
+    expect(refusedSwaps(gd, b, [shield])).toEqual([]);
+  });
+
+  it('names the swaps the game refuses, whatever order they come in', async () => {
+    const b = await dominator();
+    const rules = new BuildRules(gd, b);
+    const swap = (name: string, set: string, slot: number, enh: { boost: number; ioLevel?: number }): Swap => {
+      const e = rules.entries().find((x) => x.power.n === name)!;
+      return { key: e.key, power: e.power.id, freeLevel: e.level, set: gd.boostSets.find((s) => s.n === set)!.id, count: 1, pieces: [{ slot, enh }], before: slotIds(e.slots) };
+    };
+    // two unique pieces the build holds, each taken out by one swap and put into another power by a second
+    const out = swap('Dominator_Control.Symphony_Control.Aria_of_Stasis', 'Annihilation', 0, { boost: boost('Crafted_Annihilation_A'), ioLevel: 49 });
+    const into = swap('Dominator_Control.Symphony_Control.Hymn_of_Dissonance', 'Superior_Dominating_Grasp', 3, { boost: boost('Superior_Attuned_Superior_Dominating_Grasp_E') });
+    const out2 = swap('Dominator_Assault.Dark_Assault.Gloom', 'Winters_Bite', 0, { boost: boost('Attuned_Winters_Bite_A') });
+    const into2 = swap('Dominator_Assault.Dark_Assault.Dark_Blast', 'Apocalypse', 0, { boost: boost('Crafted_Apocalypse_F'), ioLevel: 49 });
+    expect(refusedSwaps(gd, b, [into, out, out2, into2])).toEqual([]);
+    expect(refusedSwaps(gd, b, [into2, out2, out, into])).toEqual([]);
+    // without the swap that took its piece out, only the one that put it in is refused: never a
+    // swap that stands on another one still there, wherever it sits in the list
+    expect(refusedSwaps(gd, b, [into, out, into2])).toEqual([into2]);
+    expect(refusedSwaps(gd, b, [into2, into, out])).toEqual([into2]);
+    expect(refusedSwaps(gd, b, [into, out2, into2])).toEqual([into]);
+    expect(refusedSwaps(gd, b, [into, into2])).toEqual([into, into2]);
   });
 });
 

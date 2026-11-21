@@ -712,7 +712,8 @@ export function lineBook(): LineBook {
  * @param rules Rules view of the build.
  * @param b The build (for per-power toggles).
  * @param level 0-based level to compute at (default 49, or the exemplar level).
- * @param state The totals state of that build at that level, when the caller has it already (totalsState).
+ * @param state The totals state of that build at that level, when the caller has it already
+ *   (totalsState); one made for another level is passed over.
  * @return The totals.
  */
 export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49, state?: TotalsState): Totals {
@@ -722,7 +723,7 @@ export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level =
   const damageName = (i: number) => damageNameOf(gd, i);
   const defenseName = (i: number) => defenseNameOf(gd, i);
 
-  const st = state ?? totalsState(gd, rules, b, level);
+  const st = state && state.level === level ? state : totalsState(gd, rules, b, level);
   const { ctx, entries, isOn } = st;
 
   const apply = (p: Power, m: Mod, strength: Map<number, number> | null, srcName: string) => {

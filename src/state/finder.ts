@@ -12,8 +12,9 @@ import { STALLED_MS, Watch } from '../data/watch.ts';
 import type { Build } from '../engine/build.ts';
 import { applySwaps, type Swap } from '../engine/finder/pending.ts';
 import type { FinderQuery } from '../engine/finder/query.ts';
-import { finderProblem, searchSwaps, swapsLegal, type FinderResult, type RankedSwap } from '../engine/finder/search.ts';
+import { finderProblem, refusedSwaps, searchSwaps, swapsLegal, type FinderResult, type RankedSwap } from '../engine/finder/search.ts';
 import { swapItems, type ShopItem } from '../engine/finder/shopping.ts';
+import { BuildRules } from '../engine/rules.ts';
 import { shareLink } from '../io/share.ts';
 import { MAX_SHOP_ITEMS, readShopping, SHOPPING_KEY, writeShopping } from '../io/shopping.ts';
 import { closeSetFinder } from './finderOpen.ts';
@@ -21,6 +22,33 @@ import { useStore } from './store.ts';
 
 // how long one slice of a search may run before the page gets its turn again (ms)
 const SLICE_MS = 12;
+
+// How long a download may have nothing arrive before it is given up while the pane stays open. By
+// then it has been asked for twice more alongside (ask), and a line that says it failed, with what
+// to do, beats "Loading" for as long as the pane is up.
+export const GIVE_UP_MS = 3 * STALLED_MS;
+
+/**
+ * Give a watched download up once nothing of it has arrived for GIVE_UP_MS: its request then
+ * fails, and whoever asked says so as for any failed download.
+ *
+ * @param watch The watch on the download.
+ * @return Call it when the download is over (or was replaced): the watching stops.
+ */
+function giveUpWhenStalled(watch: Watch): () => void {
+  let timer: ReturnType<typeof setTimeout>;
+  const look = (): void => {
+    const wait = watch.quietIn(GIVE_UP_MS);
+    if (wait <= 0) {
+      watch.cancel();
+      return;
+    }
+    // (a download that can't be heard is never quiet: looked at again later)
+    timer = setTimeout(look, Math.min(wait, GIVE_UP_MS) + 50);
+  };
+  timer = setTimeout(look, GIVE_UP_MS);
+  return () => clearTimeout(timer);
+}
 
 // what waits for the page's next turn (afterTurn), and the channel that brings it round
 const turns: (() => void)[] = [];
@@ -30,14 +58,15 @@ let turnPort: MessagePort | null = null;
  * Run something once the page has had its turn (input, drawing), as soon as it has.
  *
  * A timer of zero is not that: browsers hold a timer set from inside a timer back to 4 ms after a
- * few rounds, and to a second or more in a tab that is not showing, so a search cut into slices
- * spent as long waiting as working. A message to oneself comes round as soon as the page is free.
- * Without a window (tests) a timer does.
+ * few rounds, so a search cut into slices spent as long waiting as working. A message to oneself
+ * comes round as soon as the page is free. A tab that is not showing keeps to timers, which the
+ * browser slows there on purpose: nobody is waiting for the list. Without a window (tests) a
+ * timer does too.
  *
  * @param fn What to run.
  */
 function afterTurn(fn: () => void): void {
-  if (typeof window === 'undefined' || typeof MessageChannel !== 'function') {
+  if (typeof window === 'undefined' || typeof MessageChannel !== 'function' || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) {
     setTimeout(fn, 0);
     return;
   }
@@ -140,10 +169,11 @@ let searchRun = 0;
 let linkRun = 0;
 let statsRun = 0;
 let recipesRun = 0;
-// the statistics download under way, and the data folder it was asked for
-let statsAsk: { root: string; made: StatsAsk } | null = null;
-// the watch on the recipe download under way
+// the statistics download under way, the data folder it was asked for, and what stops the watching of it
+let statsAsk: { root: string; made: StatsAsk; stop: () => void } | null = null;
+// the watch on the recipe download under way, and what stops the watching of it
 let recipesWatch: Watch | null = null;
+let recipesStop: (() => void) | null = null;
 // the search the running slices are working on (null: none runs)
 let running: FinderQuery | null = null;
 
@@ -258,8 +288,13 @@ export const useFinder = create<FinderStore>((set, get) => {
         const ids = new Set([...left, ...result.swaps].map(swapId));
         set({ result, searched: query, searchedKept: left, progress: null, kept: left, selected: ids.has(get().selected ?? '') ? get().selected : null });
         if (left.length !== kept.length) {
-          relink();
-          pruneOwned();
+          // (the list is in: whatever goes wrong from here on is not the search's failure)
+          try {
+            relink();
+            pruneOwned();
+          } catch (e) {
+            console.warn('set finder: the kept swaps were not tidied after the search', e);
+          }
         }
       } catch (e) {
         // never leave the pane saying "Searching": say it stopped, details in the console
@@ -320,6 +355,7 @@ export const useFinder = create<FinderStore>((set, get) => {
         if (!statsAsk || !statsAsk.made.watch.quiet(STALLED_MS)) return;
         // (its number moves on first, so the failure that giving it up makes says nothing)
         statsRun++;
+        statsAsk.stop();
         statsAsk.made.watch.cancel();
         releaseFinderStats(statsAsk.root, statsAsk.made);
         statsAsk = null;
@@ -335,10 +371,12 @@ export const useFinder = create<FinderStore>((set, get) => {
       const root = dataRoot(s, import.meta.env.BASE_URL);
       // the page asked for them alongside the pane's code (App.tsx): the same download is joined
       const made = askFinderStats(root);
-      statsAsk = { root, made };
+      const stop = giveUpWhenStalled(made.watch);
+      statsAsk = { root, made, stop };
       set({ loading: true, problem: null });
       made.stats
         .then((stats) => {
+          stop();
           if (run !== statsRun) return;
           statsAsk = null;
           releaseFinderStats(root, made);
@@ -346,6 +384,7 @@ export const useFinder = create<FinderStore>((set, get) => {
           set({ stats, loading: false, problem: now.gd ? finderProblem(now.gd, stats) : null });
         })
         .catch((e: unknown) => {
+          stop();
           // (one given up for a fresh one says nothing: the fresh one will)
           if (run !== statsRun) return;
           statsAsk = null;
@@ -391,17 +430,18 @@ export const useFinder = create<FinderStore>((set, get) => {
       const { gd, build } = useStore.getState();
       let kept = get().kept.filter((k) => k.key !== key);
       let note: string | null = null;
-      if (gd && build && kept.length && !swapsLegal(gd, build, kept)) {
+      if (gd && build && kept.length) {
         // a kept swap can stand on another (that one took a unique piece out of the power this one
-        // puts it in): without it the game would refuse this one, so it goes too, and is named
-        const stay: RankedSwap[] = [];
+        // puts it in): without it the game would refuse this one, so it goes too, and is named.
+        // Only the swaps the game refuses go, whatever order they were kept in, and what they
+        // leave behind is looked at again, until the game takes all that is left
         const gone: string[] = [];
-        for (const k of kept) {
-          if (swapsLegal(gd, build, [...stay, k])) stay.push(k);
-          else gone.push(`${gd.boostSetById.get(k.set)?.dn ?? 'A set'} into ${gd.powerById.get(k.power)?.dn ?? 'a power'}`);
+        const rules = new BuildRules(gd, build);
+        for (let refused = refusedSwaps(gd, build, kept, rules); refused.length; refused = refusedSwaps(gd, build, kept, rules)) {
+          for (const k of refused) gone.push(`${gd.boostSetById.get(k.set)?.dn ?? 'A set'} into ${gd.powerById.get(k.power)?.dn ?? 'a power'}`);
+          kept = kept.filter((k) => !refused.includes(k));
         }
-        kept = stay;
-        note = `${gone.join(', ')} only fitted with the swap you let go, so ${gone.length === 1 ? 'it was' : 'they were'} let go too.`;
+        if (gone.length) note = `${gone.join(', ')} only fitted with the swap you let go, so ${gone.length === 1 ? 'it was' : 'they were'} let go too.`;
       }
       set({ kept, note });
       pruneOwned();
@@ -453,20 +493,25 @@ export const useFinder = create<FinderStore>((set, get) => {
         // nothing has arrived for a while. A download that stalled is given up here, on the
         // list's next opening, and asked for afresh
         if (!get().recipesLoading || !recipesWatch || !recipesWatch.quiet(STALLED_MS)) return;
+        recipesStop?.();
         recipesWatch.cancel();
       }
       const run = ++recipesRun;
       const watch = new Watch();
+      const stop = giveUpWhenStalled(watch);
       recipesWatch = watch;
+      recipesStop = stop;
       set({ recipes: null, recipesFor: version, recipesLoading: true, recipesMissing: false, recipesFailed: null });
       loadRecipes(dataRoot(s, import.meta.env.BASE_URL), version, watch)
         .then((recipes) => {
+          stop();
           if (run !== recipesRun) return;
           recipesWatch = null;
           // none for this version (an approximate one): not asked for again, the list names enhancements only
           set({ recipes, recipesLoading: false, recipesMissing: !recipes });
         })
         .catch((e: unknown) => {
+          stop();
           // (one given up for a fresh one says nothing: the fresh one will)
           if (run !== recipesRun) return;
           recipesWatch = null;

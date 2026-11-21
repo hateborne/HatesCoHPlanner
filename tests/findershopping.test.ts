@@ -6,7 +6,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkRecipes, loadRecipes, RECIPES_FOLDER, type RecipeData } from '../src/data/recipes.ts';
+import { checkRecipes, loadRecipes, OWN_PAGE_MARK, RECIPES_FOLDER, type RecipeData } from '../src/data/recipes.ts';
 import { ioLevelRange } from '../src/engine/enhance.ts';
 import type { Swap } from '../src/engine/finder/pending.ts';
 import { AUCTION_SEARCH_MAX, auctionLines, recipeOf, searchWord, shoppingList, swapItems, type ShopItem } from '../src/engine/finder/shopping.ts';
@@ -104,19 +104,24 @@ describe('recipe file', () => {
       expect(asked).toEqual([`/x/data/${RECIPES_FOLDER}/i28p4.json`]);
       // the site has none for that version
       expect(await loadRecipes('/x/data/', 'none')).toBeNull();
-      // a dev server answers a file it does not have with its own page
-      vi.stubGlobal('fetch', async () => ({
+      // a dev server (or a local preview) answers a file it does not have with the site's own page
+      const page = (html: string) => async () => ({
         ok: true,
         status: 200,
         headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null) },
+        text: async () => html,
         json: async () => {
           throw new SyntaxError('not JSON');
         },
-      }));
+      });
+      const own = readFileSync(join(process.cwd(), 'index.html'), 'utf-8');
+      expect(own).toContain(OWN_PAGE_MARK);
+      vi.stubGlobal('fetch', page(own));
       expect(await loadRecipes('/x/data/', 'i28p4')).toBeNull();
-      // the site answers 404 for a file it lacks: a page there is someone else's (a network's
-      // sign-in page), a failed download and never "this version has no recipes"
-      await expect(loadRecipes('/x/data/', 'i28p4', undefined, /*dev=*/ false)).rejects.toThrow(/did not load/);
+      // any other page is someone else's (a network's sign-in page): a failed download, never
+      // "this version has no recipes"
+      vi.stubGlobal('fetch', page('<html><body><form>Sign in to this network</form></body></html>'));
+      await expect(loadRecipes('/x/data/', 'i28p4')).rejects.toThrow(/did not load/);
       vi.stubGlobal('fetch', async (url: string) => {
         asked.push(url);
         if (url.includes('other')) return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => raw() };

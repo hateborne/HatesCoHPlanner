@@ -527,9 +527,11 @@ screens are described under "Set finder (screens)" below. The parts:
   still counts. The counts of a power and set are ranked and the best one stands for the pair,
   the list is sorted, and what the game would refuse (`enhRefusal`) on the build with every kept
   swap and the new one in is dropped; the pair's next best count then takes its place in the
-  ranking. `searchSwaps` is a generator that yields once the build is read, after each set of
-  each power and after each swap checked at the end, so a screen can spread the work and no step
-  between two yields is long (about 10 ms for reading the build, a millisecond or two after).
+  ranking (`insertRanked`). `searchSwaps` is a generator that yields once the build is read,
+  after each set of each power and after each swap checked at the end, so a screen can spread the
+  work and no step between two yields is long (about 10 ms for reading the build, a millisecond
+  or two after). What it yields is the share of the work done, never going back: the powers take
+  it to `POWERS_SHARE` (0.9), the last check of the ranked list the rest.
 - **Kept swaps** (`pending.ts`): a list beside the build, one per power; the build the planner
   holds is never changed by a search. A search given kept swaps ranks against the build with them
   in; a power that has one is searched from its own slots, so a new swap replaces the kept one.
@@ -551,8 +553,10 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   (`FinderPane`) then downloads the pane and the finder's engine as their own chunk, so neither
   is in the page's first download, and asks for the build statistics alongside (`askFinderStats`;
   the finder's state joins that download). While the code is on its way a line says so after a
-  moment (`FinderWait`: it takes no clicks, so the overview under it works as before) and Escape
-  gives the wait up. A failed download closes the pane with a notice, and the next
+  moment (`FinderWait`: a box drawn over the overview and under its tooltips; the overview around
+  it works as before) and Escape gives the wait up. A phone has no Escape: there a tap on the box
+  does, and the box says so; on the desktop the box takes no clicks. A failed download closes the
+  pane with a notice, and the next
   opening tries again; one that fails after the player gave the wait up says nothing. The notice
   says to check the connection and, if that is not it, to reload
   the page: a page left open across a deploy asks for the old release's file, which is gone.
@@ -563,10 +567,14 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   holds it, the last result, the kept swaps, and a share link to the build with them in. The
   statistics and the recipes download under a watch like the page's other files ("Loading" above:
   a file that gets no answer is asked for again alongside), and one that has stalled is given up
-  and asked for afresh the next time the pane, or the shopping list, opens. A search
+  and asked for afresh the next time the pane, or the shopping list, opens. While the pane or the
+  list stays open, a download that has had nothing arrive for `GIVE_UP_MS` (15 s) is given up and
+  told like any failed one (the pane says to open it again; the list names every piece as an
+  enhancement), so "Loading" never stands for good. A search
   runs the engine's generator in slices of about 12 ms, each on the page's next turn (`afterTurn`:
-  a message the page sends itself, since browsers hold chained timers back to 4 ms, and far longer
-  in a tab that is not showing), so the page keeps responding,
+  a message the page sends itself, since browsers hold chained timers back to 4 ms; a tab that is
+  not showing keeps to timers, which the browser slows there on purpose), so the page keeps
+  responding,
   and a newer search makes an older one give up; so does closing the pane. Keeping or letting go
   of a swap ranks the list again (`rerank`), for the search the list was made with, or the one
   being worked on while a search runs; with no list yet, nothing is ranked. The form may have
@@ -576,7 +584,9 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   runs the list on screen is the old one, so nothing in it can be kept, and a swap is only kept
   when the game would take every kept swap together (`swapsLegal`). Letting a swap go lets go of
   the kept swaps the game would refuse without it as well (one put a unique piece where the other
-  had taken it out), and the note names them; a refusal, a search that
+  had taken it out), and the note names them: only the swaps the game refuses go
+  (`refusedSwaps`), whatever order they were kept in, and what is left is looked at again until
+  the game takes it all. A refusal, a search that
   failed (details in the console; the pane never stays "Searching"), or a link that could not be
   written shows as a red line in the pane (`note`). Any change to the build (an edit, another
   build, the swaps applied) clears the results and the kept swaps: they belonged to the build as
@@ -590,7 +600,9 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   row is in `hover.ts` (`swap`, desktop only), so only the gains and losses pane redraws; it is
   cleared when the pointer leaves the lists (not each row: between two rows the pane keeps the
   last one), when a list is ranked again, and when a box is ticked, as the row moves to the other
-  list with no mouseleave (the keyboard's place goes with the box). A row is drawn again only
+  list with no mouseleave (the keyboard's place goes with the box; a box let go is off while the
+  list is ranked again, so there the row's name takes it, or the lists when the row is gone). A
+  row is drawn again only
   when what it shows changes, and the pane's parts each read what they draw from, so a click on
   one row or a change to the form does not draw the lists again. The search's progress
   redraws only its own label. With nothing pointed at, the pane shows the kept swaps together
@@ -624,10 +636,10 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   new tab, once (`settled`), so a swap let go leaves nothing behind. The list is never part of a
   build, a saved build or a link, and stays until "Clear list" (which asks first; the kept swaps'
   pieces then show again as not stored yet). Opening the changed build means a click or a middle
-  click on "Open as new build", the link's own menu (a right click, or a long press where the
-  browser reports one) or dragging the link: the page is not told what was chosen in the menu,
-  so bringing it up counts as opening. A browser that reports no long press on a link (Safari on
-  an iPhone) adds nothing to the list that way.
+  click on "Open as new build". The link has no menu of its own in the planner: the stage keeps
+  the right click, and a phone's long press, for itself (`Stage.tsx`). A link dragged to the
+  browser's tab bar opens the build without adding to the list: the page can't tell that from a
+  drag that is dropped nowhere.
   - Tabs share the stored list. A change made in another tab is shown at once (the `storage`
     event, `shoppingChangedElsewhere`), and marking a piece reads the stored list first: what
     another tab added is kept, and when the list is no longer the one shown, nothing is marked and
@@ -646,9 +658,9 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
     piece no recipe makes (attuned, winter and archetype sets) is listed as an enhancement to buy.
     A version the site has no recipe file for (an approximate one) lists every piece that way and
     is not asked for again; after a download that failed, the next opening asks again. A web page
-    for an answer is "no recipe file" on a dev server only (it answers any address with its own
-    page); on the site, which answers 404 for a file it lacks, it is a failed download (a
-    network's sign-in page). A recipe's
+    for an answer is "no recipe file" when it is the site's own (`OWN_PAGE_MARK`: a dev server or a
+    local preview answers any address with it); any other page is a failed download (a network's
+    sign-in page). The site itself answers 404 for a file it lacks. A recipe's
     row shows its set's round icon alone, an enhancement's row the framed piece.
   - Desktop only: the auction house lines (`auctionLines`) join names with commas into lines of at
     most 128 characters, the search box's limit; the search lists every item whose name holds one
@@ -831,8 +843,9 @@ has no such column, nor one whose enhancements change no number.
   desktop the keyboard's place must follow a ticked box into the Kept list. A second
   test holds back the pane's code and then refuses it: meanwhile the phone's overview still shows
   a long press's tooltip and the line that says the finder is loading shows, then the notice
-  shows, and the next opening works. A third gives the wait up with Escape: the download then
-  fails with no notice, and the next opening works. A fourth opens a
+  shows, and the next opening works. A third gives the wait up (Escape on the desktop, a tap on
+  the box on the phone): the download then fails with no notice, and the next opening works. A
+  fourth opens a
   Thunderspy build: no finder button and no row in the phone menu.
   `phonepicker.spec.ts` (phone only) long presses a slotted power (its info shows the slotted
   bonuses), then in the enhancement picker reaches the last category in the scrolling row, long presses a
