@@ -1,17 +1,28 @@
 # Checks every pull request into main must pass before it can merge (see the main branch ruleset).
 # Actions are pinned to release commit SHAs; the comment names the release.
+#
+# The checks are main's: `pull_request_target` runs this file as main has it, never a pull request's
+# copy, so a branch can't change or drop the checks its own merge is held to. An edit to this file
+# takes effect once it is merged. Each job checks out the pull request's own commit and tests that.
+# That code is not trusted, so nothing here may give it more than this: a read-only token (the
+# permissions below, credentials never kept), no secrets, and no cache (a cache saved here would
+# land in main's scope, where a pull request's code could leave something for main's runs).
 name: CI
 
 on:
+  pull_request_target:
+    branches: [main]
+  # @TODO Remove in the pull request after the one that adds pull_request_target. Main's copy has no
+  # pull_request_target until then, so this one trigger runs the checks on that first pull request.
+  # While it is here, a pull request's own copy of this file runs too.
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -22,11 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: npm
       # no install scripts: a compromised dependency can't run code at install time (esbuild,
       # the only package with one, works without it)
       - run: npm ci --ignore-scripts
@@ -42,6 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -61,6 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -75,7 +88,7 @@ jobs:
       # share links and saved builds store these ids: none may change or disappear
       - name: Stable IDs are only appended to
         env:
-          BASE: ${{ github.base_ref || 'main' }}
+          BASE: ${{ github.base_ref }}
         run: |
           git fetch --no-tags --depth=1 origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
           python pipeline/check_ids.py "origin/${BASE}"
@@ -100,6 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - name: Machine settings are not tracked
         run: |

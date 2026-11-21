@@ -7,10 +7,10 @@
  * and conditions are the workflow's, and are not tested here.
  */
 import { describe, expect, it } from 'vitest';
-import { deployReport, DOMAIN, type NeededJob, PAGES, renderReport } from '../scripts/deploy-report.mjs';
+import { CHANGES, deployReport, DOMAIN, type NeededJob, PAGES, renderReport } from '../scripts/deploy-report.mjs';
 
 /** The jobs of pages.yml that the report reads, in order. */
-const JOBS = ['prepare', 'release', 'build-pages', 'build-domain', 'deploy-pages', 'publish-domain', 'check-domain'];
+const JOBS = ['prepare', 'release', 'stamp-changelog', 'build-pages', 'build-domain', 'deploy-pages', 'publish-domain', 'check-domain'];
 /** A new version, deployed to both targets: tagged, and its site file still to attach. */
 const NEW = { version: '1.2.0', fresh: 'true', pages: 'true', domain: 'needed', attempt: '1' };
 /** The same version again: no tag to make. */
@@ -34,6 +34,31 @@ const NO_DOMAIN = { 'build-domain': 'skipped', 'publish-domain': 'skipped', 'che
 const states = (needs: Record<string, NeededJob> | null, target?: 'both' | 'pages' | 'domain') => deployReport(needs, target).targets.map((t) => t.state);
 
 describe('deployReport', () => {
+  it("reports the changelog's stamp on its own, failing the run but neither site", () => {
+    const stamped = (outcome: string) => ({ ...run(), 'stamp-changelog': { result: 'success', outputs: { outcome } } });
+    expect(deployReport(stamped('stamped')).changelog).toEqual({ state: 'done', text: "Stamped: v1.2.0's lines are under their own heading on main." });
+    expect(deployReport(stamped('already')).changelog.state).toBe('done');
+    expect(deployReport(stamped('empty')).changelog.text).toMatch(/shipped no changelog lines/);
+    for (const result of ['failure', 'cancelled']) {
+      const r = deployReport(run({ 'stamp-changelog': result }));
+      expect(r.ok).toBe(false);
+      expect(r.changelog.state).toBe('failed');
+      expect(r.targets.map((t) => t.state)).toEqual(['live', 'live']);
+      expect(r.todo.join(' ')).toMatch(/Re-run failed jobs/);
+      const { summary, errors } = renderReport(r);
+      expect(summary).toContain(`| ${CHANGES} | FAILED |`);
+      expect(errors).toEqual([`::error title=${CHANGES}::${r.changelog.text}`]);
+    }
+    // the same in a run for one target alone
+    expect(deployReport(run({ 'stamp-changelog': 'failure', ...NO_DOMAIN }, { ...NEW, domain: 'off' }), 'pages').changelog.state).toBe('failed');
+    // no new version: nothing to stamp, and the run is fine
+    const again = deployReport(run({ release: 'skipped', 'stamp-changelog': 'skipped' }, { ...AGAIN, domain: 'has-file' }));
+    expect(again.changelog).toEqual({ state: 'skipped', text: 'Nothing to stamp: no new version.' });
+    expect(again.ok).toBe(true);
+    // no tag made: the tag's failure is what the report blames
+    expect(deployReport(run({ release: 'failure', 'stamp-changelog': 'skipped' })).changelog.text).toBe('Not stamped: no release was made.');
+  });
+
   it('reports both targets live when every stage passed', () => {
     const r = deployReport(run());
     expect(r.ok).toBe(true);

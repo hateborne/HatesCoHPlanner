@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 export const PAGES = 'GitHub Pages';
 export const DOMAIN = "The site's own domain";
+export const CHANGES = 'Changelog on main';
 
 const STAYS = 'It stays on the version it had.';
 // only the failed target's jobs run again; the first job does not, so the version it picked stands
@@ -22,10 +23,12 @@ const ASK_AGAIN = 'Choose "Re-run all jobs" to have the release read again.';
 const LOOK_AGAIN = 'Choose "Re-run failed jobs" to have the domain looked at again.';
 const NEW_DEPLOY = 'Start a new deploy: it brings both sites to the newest version.';
 const ATTACH_AGAIN = 'Delete planner-site.tar.gz from the release on GitHub, then run the deploy for the domain (target=domain): it builds and attaches the file again.';
+const STAMP_AGAIN =
+  'Choose "Re-run failed jobs": stamping is safe to try again (a changelog that has its version heading already is left as it is). If it keeps failing, see docs/releases.md, "Setting up the changelog push".';
 
-const MARK = { live: 'Live', unchanged: 'Unchanged', skipped: 'Left out', failed: 'FAILED', refused: 'NOT DONE', unconfirmed: 'NOT CONFIRMED', unchecked: 'NOT CHECKED' };
+const MARK = { live: 'Live', done: 'Done', unchanged: 'Unchanged', skipped: 'Left out', failed: 'FAILED', refused: 'NOT DONE', unconfirmed: 'NOT CONFIRMED', unchecked: 'NOT CHECKED' };
 // the states that are as they should be; any other is an error on the run
-const FINE = ['live', 'unchanged', 'skipped'];
+const FINE = ['live', 'done', 'unchanged', 'skipped'];
 
 export function deployReport(needs, target = 'both') {
   const result = (job) => needs?.[job]?.result ?? 'skipped';
@@ -34,7 +37,28 @@ export function deployReport(needs, target = 'both') {
   const out = needs?.prepare?.outputs ?? {};
   const version = out.version ? `v${out.version}` : 'the new version';
   const todo = [];
-  const done = (targets) => ({ ok: targets.every((t) => FINE.includes(t.state)), version, targets, todo: [...new Set(todo)] });
+
+  // The changelog's stamp on main (stage 2b): only after a new version's tag, whatever the targets.
+  let changelog;
+  const stamped = needs?.['stamp-changelog']?.outputs?.outcome;
+  if (result('release') !== 'success') changelog = { state: 'skipped', text: out.fresh === 'true' ? 'Not stamped: no release was made.' : 'Nothing to stamp: no new version.' };
+  else if (bad('stamp-changelog')) {
+    todo.push(STAMP_AGAIN);
+    changelog = { state: 'failed', text: `CHANGELOG.md on main was not stamped for ${version}: its lines are still under Unreleased.` };
+  } else if (result('stamp-changelog') !== 'success') {
+    todo.push(STAMP_AGAIN);
+    changelog = { state: 'failed', text: `CHANGELOG.md on main was not stamped for ${version}.` };
+  } else if (stamped === 'empty') changelog = { state: 'done', text: `Nothing to stamp: ${version} shipped no changelog lines.` };
+  else if (stamped === 'already') changelog = { state: 'done', text: `Stamped already: CHANGELOG.md on main has ${version}'s heading.` };
+  else changelog = { state: 'done', text: `Stamped: ${version}'s lines are under their own heading on main.` };
+
+  const done = (targets) => ({
+    ok: targets.every((t) => FINE.includes(t.state)) && FINE.includes(changelog.state),
+    version,
+    targets,
+    changelog,
+    todo: [...new Set(todo)],
+  });
 
   // A run started for one target alone leaves the other out (pages.yml's `target` input). After a
   // new version that site is a version behind, which is said here, as nothing else will say it.
@@ -121,10 +145,11 @@ export function renderReport(report) {
     '| Target | Result | |',
     '|---|---|---|',
     ...report.targets.map((t) => `| ${t.name} | ${MARK[t.state]} | ${t.text} |`),
+    `| ${CHANGES} | ${MARK[report.changelog.state]} | ${report.changelog.text} |`,
     ...(report.todo.length ? ['', '### What to do', '', ...report.todo.map((t) => `- ${t}`)] : []),
     '',
   ].join('\n');
-  const errors = report.targets.filter((t) => !FINE.includes(t.state)).map((t) => `::error title=${t.name}::${t.text}`);
+  const errors = [...report.targets, { name: CHANGES, ...report.changelog }].filter((t) => !FINE.includes(t.state)).map((t) => `::error title=${t.name}::${t.text}`);
   return { summary, errors };
 }
 

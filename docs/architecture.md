@@ -153,8 +153,8 @@ hosting/                     the site's own domain (docs/hosting.md): Caddyfile,
                              and its systemd service and timer
 docs/game-rules.md           pick, auto-grant and slot rules ported from the engine source
 docs/exemplar-rules.md       exemplar rules (pending the owner's review)
-.github/workflows/           ci.yml (pull request checks), pages.yml (tag a release and deploy main,
-                             started by hand)
+.github/workflows/           ci.yml (pull request checks, always main's copy), pages.yml (tag a
+                             release and deploy main, started by hand)
 ```
 
 ## Servers and versions
