@@ -6,12 +6,17 @@ import type { BoostSet, Power } from '../../data/types.ts';
 import type { SlottedEnh } from '../../engine/build.ts';
 import { capLevel } from '../../engine/actions.ts';
 import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, ioLevelRange, isLegacyDuplicate, pieceName, powerStrength, strengthLines, type EnhKind } from '../../engine/enhance.ts';
+import { placements, type Placement } from '../../engine/placing.ts';
 import type { BuildEntry } from '../../engine/rules.ts';
+import { setBonusLines, type SetBonusLine } from '../../engine/setbonus.ts';
 import { CheckBar, SwitchBox } from '../components/CheckBar.tsx';
 import { FadingText, MenuFrame, SetTitle, gameText } from '../components/Chrome.tsx';
-import { PHONE_TAB_ROW, phoneTabRows, PhoneTabs } from '../components/Phone.tsx';
+import { PHONE_TAB_ROW, PhoneTabStrip } from '../components/Phone.tsx';
+import { PhoneSetTipLayer } from '../components/PhoneTip.tsx';
+import { SetTipLayer, usePointer } from '../components/PowerTip.tsx';
 import { useStage } from '../components/Stage.tsx';
-import { pressKeys } from '../press.ts';
+import { useHover } from '../hover.ts';
+import { longPress, pressKeys, touchPress } from '../press.ts';
 import { useStore } from '../../state/store.ts';
 import { fitScale, FONTS } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
@@ -90,15 +95,14 @@ function tabOf(k: EnhKind): Tab | null {
 }
 
 /** A piece to put in one of the power's slots when Place is pressed (undefined: empty the slot). */
-export interface Placement {
-  slot: number; // index into the entry's slots
-  enh: SlottedEnh | undefined;
-}
+export type { Placement };
 
 interface Props {
   gd: GameData;
   skin: Skin;
   entry: BuildEntry;
+  entries: BuildEntry[]; // the build's entries (BuildRules.entries()): a set's bonuses are counted across them (rule of five)
+  bonusLevel: number; // 0-based level the totals count set bonuses at
   slot: number;
   originIndex: number;
   atId: number;
@@ -145,12 +149,16 @@ function CapLabel() {
  *
  * Planner extras: "Max Slot/Build Level" at the top right (a browser setting) puts every
  * piece in at the highest level the build can use and greys the level box. Ctrl+Click (phones: a
- * tap while Select several is ticked) picks several pieces at once, up to the clicked slot plus the
+ * tap while Select several is ticked, which a long press on a piece ticks) picks several pieces at once, up to the clicked slot plus the
  * power's empty slots; Place fills those slots left to right in the list's order, so no piece already
  * slotted elsewhere in the power is replaced. Several pieces share the level, attuned and booster
- * controls, and the details show their total after ED above each piece's own values.
+ * controls, and the details show their total after ED above each piece's own values. A set's name
+ * shows the set's bonuses when hovered (phones: long pressed).
+ *
+ * Phones: the categories are one row that scrolls sideways, the set names sit in a frame of
+ * their own, and the details leave out the piece's icon and name (its row is lit in the list).
  */
-export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, refusal, lastLevel, onPlace, checkPlace, onClose }: Props) {
+export function EnhancementPicker({ gd, skin, entry, entries, bonusLevel, slot, originIndex, atId, refusal, lastLevel, onPlace, checkPlace, onClose }: Props) {
   const { atCap, setAtCap } = useStore(useShallow((s) => ({ atCap: s.enhAtCap, setAtCap: s.setEnhAtCap })));
   const current = entry.slots[slot]?.enh;
   // the piece already in this slot always shows, whatever the build now says about it
@@ -323,17 +331,14 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     const alt = attuned && !b.bup ? altOf(b) : undefined;
     setPicks([...picks, make(alt !== undefined ? gd.power(alt) : b, like)]);
   };
+  /** @return Where Place would put the chosen pieces: each with its slot (none while nothing is chosen). */
+  const placing = (): Placement[] => placements(picks, { slot, targets, current, order: (id) => order.get(id) ?? Infinity, row: rowOf });
   const place = () => {
     if (!picks.length) return;
     // remember a level only when it was chosen (a pre-order piece's fixed level 1 doesn't count)
     const chosen = picks.find((p) => rangeOf(gd.power(p.boost)))?.ioLevel;
     writeLast({ tab, set: tab === 'Sets' ? setId : undefined, ioLevel: chosen ?? last?.ioLevel });
-    const ordered = [...picks].sort((a, b) => (order.get(a.boost) ?? Infinity) - (order.get(b.boost) ?? Infinity));
-    // the clicked slot's own piece, still chosen, stays in its slot; the others fill the rest in order
-    const own = current ? ordered.find((p) => rowOf(p.boost) === rowOf(current.boost)) : undefined;
-    const rest = ordered.filter((p) => p !== own);
-    const free = own ? targets.filter((t) => t !== slot) : targets;
-    const placed = multi ? [...(own ? [{ slot, enh: own }] : []), ...rest.map((enh, i) => ({ slot: free[i]!, enh }))] : [{ slot, enh: sel }];
+    const placed = placing();
     // several pieces: each judged in its own slot with the others in (the list was checked for the clicked slot only)
     const why = multi ? (checkPlace?.(placed) ?? null) : null;
     if (why) {
@@ -387,6 +392,28 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     setLvlDraft(null);
   };
   useEscape(onClose);
+  const mouse = usePointer();
+  // no set tooltip left behind when the picker closes, or when its row goes without the pointer
+  // leaving it (a tab changed or a group closed from the keyboard)
+  useEffect(() => () => useHover.setState({ setTip: null, press: null }), []);
+  useEffect(() => {
+    if (useHover.getState().setTip) useHover.setState({ setTip: null });
+  }, [tab, closed]);
+  /**
+   * @return A set's bonuses as they stand for this power with the chosen pieces placed where Place
+   *   puts them: earned already, newly earned, or not earned (as the totals count them).
+   */
+  const bonusesOf = (s: BoostSet): SetBonusLine[] => {
+    const after = entry.slots.map((x) => ({ ...x }));
+    for (const p of placing()) if (after[p.slot]) after[p.slot] = { level: after[p.slot]!.level, ...(p.enh ? { enh: p.enh } : {}) };
+    return setBonusLines(gd, entries, entry.key, s, after, bonusLevel);
+  };
+  /** Show a set's bonuses beside the pointer (null: the pointer left its name). */
+  const hoverSet = (s: BoostSet | null) => {
+    // a tap on a touch screen counts as a hover and never leaves: no box for it
+    if (phone || (s && touchPress())) return;
+    useHover.setState({ setTip: s ? { set: s, lines: bonusesOf(s), x: mouse.current.x, y: mouse.current.y } : null });
+  };
 
   /** @return A piece's name in the details: its set's name dropped when the set is the one shown. */
   const shortOf = (b: Power) => {
@@ -421,6 +448,15 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
             key={b.id}
             data-testid={`boost:${b.id}`}
             onClick={(ev) => choose(b, several || ev.ctrlKey || ev.metaKey)}
+            // phones: a long press starts Select several with this piece in (one already chosen stays);
+            // with a single slot to fill there is nothing to add to, so it just chooses the piece
+            {...(phone
+              ? longPress(() => {
+                  if (targets.length < 2) return choose(b, /*add=*/ false);
+                  setSeveral(true);
+                  if (!on) choose(b, /*add=*/ true);
+                })
+              : {})}
             {...pressKeys(() => choose(b, several), undefined, own || b.dn)}
             onKeyDown={(ev) => {
               // Enter or Space picks it; with Ctrl (or Cmd) it adds it, as Ctrl+Click does
@@ -471,13 +507,13 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
     );
   };
 
-  // Desktop: list beside details. Phone: the whole screen, tabs in rows, the list above the details.
+  // Desktop: list beside details. Phone: the whole screen, the tabs in one scrolling row, the list above the details.
   const tabList = TABS.filter((t) => byTab.has(t));
   const phoneG = () => {
     const W = stage.w;
     const bottom = stage.h - 36; // clear of the not-affiliated line
     const tabsY = 116; // under the title row and its two switches (the level switch, Select several)
-    const listY = tabsY + (phoneTabRows(tabList.length) - 1) * PHONE_TAB_ROW + PHONE_TAB_ROW / 2 + 8;
+    const listY = tabsY + PHONE_TAB_ROW / 2 + 8;
     const btnY = bottom - 14 - 56;
     const room = btnY - 8 - listY;
     const listH = Math.round(room * 0.55);
@@ -499,6 +535,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
   const titleW = fw - (phone ? 24 : 60) - SWITCH_W;
   const titleSize = phone ? Math.min(24, fitScale(FONTS.title_12, titleText, titleW) * FONTS.title_12.size) : 34;
   const capSw = phone ? 34 : 24; // the top switches: the overview's (48 / 30), scaled down
+  const setsH = Math.round(lh * 0.45); // phones: the most the set names' box takes of the list
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -518,7 +555,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
           ) : null}
         </div>
         {phone ? (
-          <PhoneTabs skin={skin} labels={tabList} active={tabList.indexOf(tab)} onChange={(i) => setTab(tabList[i]!)} y={ty} x={16} width={fw - 20} clickSounds={['powerselect2']} />
+          <PhoneTabStrip skin={skin} labels={tabList} active={tabList.indexOf(tab)} onChange={(i) => setTab(tabList[i]!)} y={ty} x={16} width={fw - 20} clickSounds={['powerselect2']} />
         ) : (
           tabList.map((t, i) => <CheckBar key={t} testId={`tab:${t}`} skin={skin} x={tx0 + i * tstep} y={ty} wd={twd} scale={1} text={t} state={t === tab ? 'selected' : 'standard'} down={t === tab} onClick={() => setTab(t)} />)
         )}
@@ -526,7 +563,8 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
           {tab === 'Sets' ? (
             // the set names and the chosen set's pieces scroll separately
             <div style={{ display: 'flex', gap: 16, flexDirection: phone ? 'column' : 'row', height: '100%' }}>
-              <div className="scroll-y" style={phone ? { maxHeight: Math.round(lh * 0.45), flexShrink: 0 } : { width: 430, height: '100%' }}>
+              {/* phones: the set names in a rounded box of their own (as tall as its list, up to setsH), apart from the tabs above and the pieces below */}
+              <div className="scroll-y" data-testid="picker:sets" style={phone ? { maxHeight: setsH, boxSizing: 'border-box', padding: '2px 6px 6px', flexShrink: 0, background: 'rgba(0,0,0,0.533)', border: `2px solid ${skin.menuBorder}`, borderRadius: 14 } : { width: 430, height: '100%' }}>
                 {setGroups.map(([grp, list]) => (
                   <div key={grp}>
                     {groupHead(`Sets:${grp}`, grp, list.reduce((t, s) => t + (chosenIn.get(s.id) ?? 0), 0))}
@@ -539,6 +577,10 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
                             key={s.id}
                             data-testid={`pickerset:${s.id}`}
                             onClick={() => setSetId(s.id)}
+                            // its bonuses: beside the pointer, or (phones) in a box a long press opens
+                            onMouseEnter={() => hoverSet(s)}
+                            onMouseLeave={() => hoverSet(null)}
+                            {...(phone ? longPress((pt) => useHover.setState({ press: { kind: 'set', set: s, lines: bonusesOf(s), ...pt } })) : {})}
                             {...pressKeys(() => setSetId(s.id), undefined, s.dn)}
                             className="body-text"
                             // a set holding chosen pieces is lit (the shown set more brightly) and counts them
@@ -572,11 +614,16 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
         <div className="abs body-text scroll-y" style={{ left: ix, top: iy, width: iw, height: dh - (phone ? 20 : 30), fontSize: phone ? 19 : 16, color: '#cfe8ff' }}>
           {selBoost && sel ? (
             <>
-              <EnhIcon gd={gd} b={selBoost} size={phone ? 64 : 80} />
-              <TitleText style={{ fontSize: 20, whiteSpace: 'normal' }}>
-                {multi ? (oneSet ? `${oneSet.dn}:` : 'Multiple Selections') : selBoost.dn}
-              </TitleText>
-              {oneSet ? <div style={{ color: '#ffd200', fontSize: phone ? 16 : 14 }}>(Multiple Selections)</div> : null}
+              {/* phones: no icon or name here (the chosen rows are lit in the list above) */}
+              {phone ? null : (
+                <>
+                  <EnhIcon gd={gd} b={selBoost} size={80} />
+                  <TitleText style={{ fontSize: 20, whiteSpace: 'normal' }}>
+                    {multi ? (oneSet ? `${oneSet.dn}:` : 'Multiple Selections') : selBoost.dn}
+                  </TitleText>
+                  {oneSet ? <div style={{ color: '#ffd200', fontSize: 14 }}>(Multiple Selections)</div> : null}
+                </>
+              )}
               {/* the choices for the enhancement(s) on one row: level (or relative level), attuned, boosters */}
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 18, rowGap: 6, margin: '8px 0' }}>
                 {levelRange ? (
@@ -727,6 +774,7 @@ export function EnhancementPicker({ gd, skin, entry, slot, originIndex, atId, re
             </button>
           ))}
         </div>
+        {phone ? <PhoneSetTipLayer gd={gd} skin={skin} /> : <SetTipLayer gd={gd} skin={skin} />}
       </div>
     </div>
   );

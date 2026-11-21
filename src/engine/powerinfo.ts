@@ -27,12 +27,14 @@ export interface Seg {
 export interface InfoRow {
   label: string;
   value: Seg[];
+  bonus?: number; // the strength of the power's own enhancements behind the value (0.587 = +58.7%), when they change it
 }
 
 /** One effect sentence with its italic notes (requirements, "Ignores buffs and enhancements", ...). */
 export interface InfoEffect {
   line: Seg[];
   notes: Seg[][];
+  bonus?: number; // the strength of the power's own enhancements behind its value, when they change it
 }
 
 /** A number of a power without its enhancements and with them. */
@@ -138,8 +140,6 @@ const TXT = {
   rechargeTime: 'Recharge Time:',
   damagePerAct: 'Damage Per Activation Time:',
   damagePerCast: 'Damage Per Cast Cycle:',
-  damageIncludes: 'Damage Includes:',
-  otherBonuses: 'other bonuses',
   enduranceCost: 'Endurance Cost:',
   accuracy: 'Accuracy:',
   interruptTime: 'Interrupt Time:',
@@ -616,6 +616,7 @@ function attribValueMarkup(
   boosted: number,
   showBoth: boolean,
   pchMag: string | null,
+  seen?: (enhV: number, baseV: number) => void,
 ): string {
   let fMag = magIn;
   const allowStr = !m.fl?.includes('IgnoreStrength');
@@ -625,6 +626,11 @@ function attribValueMarkup(
   const isDefense = offset >= (O['DefenseType00'] ?? 104) && offset <= (O['Defense'] ?? 184);
   const b1 = 1 + boosted;
   let s: string;
+  /** "enh (base)", told to `seen` (whether the enhancements move the value). */
+  const two = (fmt: (n: number) => string, enhV: number, baseV: number, suffix: string): string => {
+    seen?.(enhV, baseV);
+    return `${fmt(enhV)}${suffix} (${fmt(baseV)}${suffix})`;
+  };
 
   if (offset === 28 || offset === O['HitPoints'] || offset === O['Regeneration']) {
     s = '<color #58e849>';
@@ -650,7 +656,7 @@ function attribValueMarkup(
       return `${s}${f2(fMag)}<color #aaaaaa> `;
     }
   } else if (offset >= (O['PerceptionRadius'] ?? 228)) {
-    if (both) return `<color #ffffff>${sf2(fMag * 100 * b1)}% (${sf2(fMag * 100)}%)<color #aaaaaa> `;
+    if (both) return `<color #ffffff>${two(sf2, fMag * 100 * b1, fMag * 100, '%')}<color #aaaaaa> `;
     return `<color #ffffff>${sf2(fMag * 100 * (showBoth && !!boosted && allowStr && m.t === 'Magnitude' ? b1 : 1))}%<color #aaaaaa> `;
   } else {
     s = '<color #ffffff>';
@@ -664,14 +670,14 @@ function attribValueMarkup(
     case 'Cur':
     case 'Str':
       return both
-        ? `${s}${sf2(fMag * 100 * b1)}% (${sf2(fMag * 100)}%)<color #aaaaaa> `
+        ? `${s}${two(sf2, fMag * 100 * b1, fMag * 100, '%')}<color #aaaaaa> `
         : `${s}${sf2(fMag * 100)}%<color #aaaaaa> `;
     case 'Res':
       return both
-        ? `${s}${f2(fMag * b1 * 100)}% (${f2(fMag * 100)}%)<color #aaaaaa> `
+        ? `${s}${two(f2, fMag * b1 * 100, fMag * 100, '%')}<color #aaaaaa> `
         : `${s}${f2(fMag * 100)}%<color #aaaaaa> `;
     default:
-      return both ? `${s}${f2(fMag * b1)} (${f2(fMag)})<color #aaaaaa> ` : `${s}${f2(fMag)}<color #aaaaaa> `;
+      return both ? `${s}${two(f2, fMag * b1, fMag, '')}<color #aaaaaa> ` : `${s}${f2(fMag)}<color #aaaaaa> `;
   }
 }
 
@@ -940,14 +946,11 @@ export function powerInfo(
    * @param dur Its duration in seconds (0: applied once).
    * @return The expected number of times it lands.
    */
-  // the raised tag modes that counted in this power's damage (for the "Damage Includes" row)
-  const raisedTags = new Set<string>();
   const expectedHits = (t: Tmpl, dur: number): number => {
     const tag = t.modeTag;
     const switched = tag !== null && !!boost?.switchTags.some((x) => tag.includes(x));
     const raised = switched && boost!.tags.some((x) => tag!.includes(x));
     if (switched && !raised) return 0;
-    if (raised) for (const x of boost!.tags) if (tag!.includes(x)) raisedTags.add(x);
     const chance = dur ? t.tick : raised ? t.shown : t.chance;
     if (!dur) return chance;
     const ticks = tickCount(dur, t.m.per);
@@ -1252,8 +1255,13 @@ export function powerInfo(
     cast,
   };
 
+  /**
+   * @return A stat's bonus: its own enhancements' strength, when enhanced values show and they move it.
+   */
+  const bonusOf = (strength: number, enhV: number, baseV: number): number | undefined => (showBoth && strength && enhV !== baseV ? strength : undefined);
+
   const stats: InfoRow[] = [];
-  const row = (label: string, markup: string): InfoRow => ({ label, value: parseMarkup(markup) });
+  const row = (label: string, markup: string, bonus?: number): InfoRow => (bonus === undefined ? { label, value: parseMarkup(markup) } : { label, value: parseMarkup(markup), bonus });
   /** "enh (base)" when they differ and enhanced values are shown, else the base. */
   const pair = (enhV: number, baseV: number, fmt: (n: number) => string, suffix = ''): string =>
     showBoth && enhV !== baseV ? `${fmt(enhV)}${suffix} (${fmt(baseV)}${suffix})` : `${fmt(showBoth ? enhV : baseV)}${suffix}`;
@@ -1262,7 +1270,8 @@ export function powerInfo(
   // enhanced one: "boosted (base)"
   const dmgShown = boost ? dmgBoosted : dmgTotal;
   if (dmgBase) {
-    stats.push(row(TXT.totalDamage, `<color #ff4b4b>${pair(dmgShown, dmgBase, f2)}`));
+    // its bonus is read back from the damage: parts of it (a pet's) may take no enhancement
+    stats.push(row(TXT.totalDamage, `<color #ff4b4b>${pair(dmgShown, dmgBase, f2)}`, bonusOf(dmgTotal / dmgBase - 1, dmgTotal, dmgBase)));
   }
   const timed = power.type !== 'Auto';
   if (timed && dmgBase && cast) {
@@ -1275,31 +1284,20 @@ export function powerInfo(
     const dpcEnh = dmgShown / (cast + enhRech);
     stats.push(row(TXT.damagePerCast, `<color #ff4b4b>${pair(dpcEnh, dpc, f2)}`));
   }
-  // one row naming what the damage above counts beyond the power's own enhancements: the clicks
-  // switched on, the tag modes raised, and whatever else adds damage strength
-  if (boost && dmgBase) {
-    const grew = f2(dmgBoosted) !== f2(dmgTotal);
-    const what = [
-      ...(grew ? boost.names : []),
-      ...[...raisedTags].map((x) => boost.tagNames.get(x) ?? '').filter((n) => n && !(grew && boost.names.includes(n))),
-      ...(grew && boost.other ? [TXT.otherBonuses] : []),
-    ];
-    if (what.length) stats.push({ label: TXT.damageIncludes, value: [{ text: what.join(', '), color: '#ffffff' }] });
-  }
   if (timed) {
     stats.push(row(TXT.activationTime, `<color #ffffff>${prettyDuration(cast)}`));
-    stats.push(row(TXT.rechargeTime, `<color #ffffff>${pair(enhRech, baseRech, prettyDuration)}`));
+    stats.push(row(TXT.rechargeTime, `<color #ffffff>${pair(enhRech, baseRech, prettyDuration)}`, bonusOf(rechBoost, enhRech, baseRech)));
     if (baseEnd) {
       if (power.type === 'Toggle') {
         const ap = power.ap || 1;
-        stats.push(row(TXT.enduranceCost, `<color #45bdff>${pair(enhEnd / ap, baseEnd / ap, f2, '/s')}`));
+        stats.push(row(TXT.enduranceCost, `<color #45bdff>${pair(enhEnd / ap, baseEnd / ap, f2, '/s')}`, bonusOf(eff(O['EnduranceDiscount']), enhEnd, baseEnd)));
       } else {
-        stats.push(row(TXT.enduranceCost, `<color #45bdff>${pair(enhEnd, baseEnd, f2)}`));
+        stats.push(row(TXT.enduranceCost, `<color #45bdff>${pair(enhEnd, baseEnd, f2)}`, bonusOf(eff(O['EnduranceDiscount']), enhEnd, baseEnd)));
       }
     }
   }
-  if (baseAcc) stats.push(row(TXT.accuracy, `<color #ffed61>${pair(enhAcc, baseAcc, f2, 'X')}`));
-  if (baseInt) stats.push(row(TXT.interruptTime, `<color #ffffff>${pair(enhInt, baseInt, prettyDuration)}`));
+  if (baseAcc) stats.push(row(TXT.accuracy, `<color #ffed61>${pair(enhAcc, baseAcc, f2, 'X')}`, bonusOf(eff(O['Accuracy']), enhAcc, baseAcc)));
+  if (baseInt) stats.push(row(TXT.interruptTime, `<color #ffffff>${pair(enhInt, baseInt, prettyDuration)}`, bonusOf(eff(O['InterruptTime']), enhInt, baseInt)));
   const ref = gd.setOfPower.get(power.id);
   const av = ref?.set.av[ref.index] ?? 0;
   if (av > 0) stats.push(row(TXT.availableLevel, `<color #ffffff>${av + 1}`));
@@ -1310,7 +1308,7 @@ export function powerInfo(
   target.push(row(TXT.targetType, `<color #ffffff>${TARGET_TYPE[power.tgt] ?? 'Unknown'}`));
   if (power.rng) {
     const enhRng = power.rng * (1 + eff(O['Range']));
-    target.push(row(TXT.powerRange, `<color #ffffff>${pair(enhRng, power.rng, f2, ' ft.')}`));
+    target.push(row(TXT.powerRange, `<color #ffffff>${pair(enhRng, power.rng, f2, ' ft.')}`, bonusOf(eff(O['Range']), enhRng, power.rng)));
   }
   const area = power.area;
   // the client's EffectArea row (power_AddTargetInfo): Character, Cone, Sphere, Location and Chain;
@@ -1515,7 +1513,11 @@ export function powerInfo(
         else pchMag = 'Special '; // trailing space like the two client strings above
       }
 
-      const value = attribValueMarkup(O, eType, m, offset, fMag, boosted, both, pchMag);
+      // whether the line prints an enhanced value apart from its base
+      let moved = false;
+      const value = attribValueMarkup(O, eType, m, offset, fMag, boosted, both, pchMag, (enhV, baseV) => {
+        if (enhV !== baseV) moved = true;
+      });
 
       let pchTail = '';
       if (iTicks > 1) {
@@ -1526,12 +1528,15 @@ export function powerInfo(
           pchTail =
             TXT.forDurationBoosted.replace('{boostedDuration}', prettyDuration(shownDur * (1 + boosted))) +
             `(${prettyDuration(shownDur)})<color #aaaaaa>`;
+          if (boosted) moved = true;
         } else pchTail = TXT.forDuration.replace('{duration}', prettyDuration(shownDur));
       }
       const pchTarget = m.tg === 'Caster' ? TXT.onSelf : TXT.onTarget;
       const pchDelay = t.delay ? TXT.afterDelay.replace('{sec}', prettyDuration(t.delay)) : '';
 
       const line = parseMarkup(pchChance + pchTicks + pchChance2 + value + pchType + pchTail + pchTarget + pchDelay);
+      // the power's own enhancements behind the value: a damage line's `boosted` counts the build's boosts too
+      const own = dmgLine ? eff(offset) : boosted;
       // the sentence starts in the default (white) color unless the markup says otherwise
       const notes: Seg[][] = [];
       const note = (txt: string) => notes.push([{ text: txt, color: NOTE_COLOR, italic: true }]);
@@ -1543,7 +1548,7 @@ export function powerInfo(
       const flagNotes = !runAs?.noFlagNotes;
       if (flagNotes && m.fl?.includes('IgnoreStrength')) note(gd.info?.text.IgnoresBuffsAndEnhancements ?? TXT.ignoresBuffs);
       if (flagNotes && m.fl?.includes('IgnoreResistance')) note(gd.info?.text.Unresistable ?? TXT.unresistable);
-      out.push({ line, notes });
+      out.push(moved && own ? { line, notes, bonus: own } : { line, notes });
     }
   };
 

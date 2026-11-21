@@ -571,9 +571,8 @@ planner counts the build's damage boosts too (`damageBoost` in `src/engine/boost
   carries either as the creation's `mods` (Burn's patch, Rain of Fire, Blizzard, Ice Storm: yes;
   Caltrops: no). Such a pet takes the build's damage strength, under its creator's cap (a pet
   class's own cap isn't exported); a pet without it stays at its enhanced value.
-- One row, "Damage Includes:", names what the damage counts beyond the power's own enhancements:
-  the clicks switched on that add strength, Fiery Embrace when its groups counted, and "other
-  bonuses" for the rest (set bonuses, toggles, autos). It is left out when nothing is counted.
+- No row names what the damage counts beyond the power's own enhancements (the owner's choice:
+  a player knows which powers they switched on).
 - Fiery Embrace (Brute, Scrapper, Tanker and others' versions) gives no strength: its
   GlobalChanceMod raises the FieryEmbrace tag, which the export doesn't name, so the link is a
   table in `boost.ts` (a power named `*.Fiery_Embrace` that carries a GlobalChanceMod). While it

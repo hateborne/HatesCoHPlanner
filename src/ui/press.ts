@@ -6,7 +6,7 @@ import type { KeyboardEvent, PointerEvent } from 'react';
  */
 
 // how long a finger must rest on an element before it counts as a long press, and how far it may drift
-const LONG_MS = 450;
+export const LONG_MS = 450;
 const DRIFT_PX = 10;
 
 // the pointer type of the last press anywhere (Android turns a long touch into a contextmenu event)
@@ -27,6 +27,8 @@ if (typeof window !== 'undefined') {
     },
     true,
   );
+  // a long press that turned into a drag (the browser cancels it): no click follows, nothing to swallow
+  window.addEventListener('pointercancel', () => (fired = false), true);
   window.addEventListener(
     'click',
     (e) => {
