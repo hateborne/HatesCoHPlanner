@@ -299,6 +299,7 @@ jobs:
               echo "::error::Stamping changed more than CHANGELOG.md, so nothing is pushed."
               exit 1
             fi
+            git add CHANGELOG.md
             git commit --quiet -m "Stamp the changelog for v${VERSION}" -m "Moves the lines v${VERSION} shipped from Unreleased to their own heading (the deploy's stamp-changelog job)."
             if git push --quiet origin HEAD:refs/heads/main; then
               echo "outcome=stamped" >> "${GITHUB_OUTPUT}"

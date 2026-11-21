@@ -5,6 +5,8 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ## Unreleased
 
+## v1.3.0 - November 21, 2026
+
 ### New
 
 - The detailed power tooltip (on phones, a power's long-press info) now shows a power's slotted bonuses: the total its enhancements add stands at the right of each number they change, such as Accuracy or Recharge Time.
