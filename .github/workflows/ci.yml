@@ -12,11 +12,6 @@ name: CI
 on:
   pull_request_target:
     branches: [main]
-  # @TODO Remove in the pull request after the one that adds pull_request_target. Main's copy has no
-  # pull_request_target until then, so this one trigger runs the checks on that first pull request.
-  # While it is here, a pull request's own copy of this file runs too.
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
