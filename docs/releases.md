@@ -50,7 +50,10 @@ The deploy publishes to two targets, GitHub Pages and the site's own domain (`do
 Its stages are the jobs of `.github/workflows/pages.yml`:
 
 1. **Check and pick the version** (`prepare`): the tests, the type check and the version.
-2. **Tag the release** (`release`), as soon as those checks have passed.
+2. **Tag the release** (`release`), as soon as those checks have passed. Right after it,
+   **Stamp the changelog** (`stamp-changelog`) moves the release's lines under its version's
+   heading on main ("The changelog", below). It runs whichever targets the run is for, and no
+   build waits for it.
 3. **Build**, one job per target, side by side (`build-pages`, `build-domain`).
 4. **Publish**, one job per target: `deploy-pages` puts its build live on GitHub Pages, and
    `publish-domain` attaches the domain's site file to the release.
@@ -59,7 +62,8 @@ Its stages are the jobs of `.github/workflows/pages.yml`:
 6. **Report** (`report`, `scripts/deploy-report.mjs`): the run's summary page says what each
    target got.
 
-Stages 1 and 2 are what both targets share: a failure there stops the deploy for both. From stage
+Stages 1 and 2 are what both targets share: a failure there stops the deploy for both (but for the
+changelog stamp, which holds nothing back). From stage
 3 on each target has jobs of its own, and none of them needs any of the other's.
 
 - **One target fails:** its site stays on the version it had, the other goes live, and the run is
@@ -139,12 +143,55 @@ main's tip with the newest version's commit, file by file (`affectsSite` in
   was done. No file or function names, pull request numbers, engine or client terms, or names of
   people. Related changes share a line (four power-info pull requests became one).
 - The deploy puts the new lines at the top of the release's notes (`scripts/release-notes.mjs`,
-  run by the `build` job; `tests/releasenotes.test.ts`). New means: in `## Unreleased` now, and
-  nowhere in the previous release's copy of the file. So nothing has to be renamed or committed at
-  deploy time, and a line is never announced twice. A deploy with no new lines publishes the pull
-  request list alone, and so does one whose changelog step fails (the run flags it; the deploy goes
-  on, and the release's notes can be edited afterwards with `gh release edit`).
-- After a deploy, the first pull request to add a line also moves the released lines under their
-  own heading, `## vX.Y.Z - Month D, YYYY` (the tag and its date), below a fresh `## Unreleased`.
-  Forgetting this only leaves the file untidy; the next release's notes are the same either way.
+  run by the `prepare` job; `tests/releasenotes.test.ts`). New means: in `## Unreleased` now, and
+  nowhere in the previous release's copy of the file, so a line is never announced twice. A deploy
+  with no new lines publishes the pull request list alone, and so does one whose changelog step
+  fails (the run flags it; the deploy goes on, and the release's notes can be edited afterwards
+  with `gh release edit`).
+- Once the version is tagged, the deploy's `stamp-changelog` job moves the lines it shipped under
+  their own heading, `## vX.Y.Z - Month D, YYYY` (the release's date, New York time), below a fresh
+  `## Unreleased`, in one commit pushed straight to main (`scripts/changelog-stamp.mjs`;
+  `tests/changelogstamp.test.ts`). No pull request is needed for it. It runs for a new version
+  only, whether the run is for both targets or one, and does nothing for a run that reuses a
+  version.
+  - Only the lines the released commit had under `## Unreleased` move. Lines merged after the deploy
+    started stay there for the next release.
+  - A version that has its heading already is left as it is, so the job is safe to run again
+    ("Re-run failed jobs"). A release that shipped no lines gets no heading.
+  - If it fails, both sites still go live; the run is marked failed and its report says the
+    changelog was not stamped. The next release's notes are right either way, since they compare
+    with the previous release's copy.
+  - The stamp commit changes `CHANGELOG.md` only, which is not part of the site, so it never makes
+    a new version by itself.
 - A line reworded after its release counts as new, so leave released lines as they are.
+
+### Setting up the changelog push
+
+`main` takes changes through pull requests only, so the stamp is pushed with a deploy key that
+main's rules let through, and nothing else holds that key. The owner sets this up once, on GitHub
+(an agent never changes settings, rulesets or secrets):
+
+1. Make a key pair with no passphrase: `ssh-keygen -t ed25519 -N "" -C release-deploy -f stamp`.
+2. Settings -> Deploy keys -> Add deploy key: the public half (`stamp.pub`), titled
+   `release-deploy`, with **Allow write access** ticked.
+3. Settings -> Environments -> New environment `release`. Deployment branches and tags:
+   **Selected branches and tags**, with `main` only. Add the environment secret
+   `RELEASE_DEPLOY_KEY`: the private half (`stamp`). Then delete both files from your machine.
+4. Settings -> Rules -> Rulesets:
+   - **main: pull requests, owner approval**: add **Deploy keys** to the bypass list, set to
+     **Always allow**.
+   - **main: checks pass, history kept** also forbids force pushes and deleting main, which the
+     key must never get past. So move its required status checks into a new ruleset of their own
+     (target: the default branch; the same four checks, "Require branches to be up to date"
+     ticked) with **Deploy keys** on its bypass list (**Always allow**), and leave the history
+     ruleset with no bypass at all.
+
+What guards the push:
+
+- The key is the only one that may skip the pull request and the checks. It is kept in an
+  environment that only runs from main, so a workflow run from any other branch can't read it.
+- The job refuses to run from another branch, refuses a stamp that changes any file but
+  `CHANGELOG.md`, and never forces: if main moves while it works, it starts again from the new tip
+  (three tries).
+- Force pushes and deleting main stay forbidden for everyone, the key included.
+- Its commit is made in the name of `github-actions[bot]`, so it is easy to pick out in main's history.

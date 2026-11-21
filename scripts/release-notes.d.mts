@@ -10,10 +10,10 @@ export declare const UPCOMING: string;
  * The players' lines a release announces: the changelog's upcoming section, without the lines the
  * release before it already had.
  *
- * Nothing renames the upcoming section when a deploy runs (main only changes through pull
- * requests), so its lines are compared with the previous release's copy of the file instead: a line
- * that copy holds anywhere was announced then and is left out, whether or not it has since been
- * moved under its version's heading. Lines are counted, so one that repeats an earlier release's
+ * The notes are read before the deploy moves the released lines under their version's heading
+ * (scripts/changelog-stamp.mjs), and a stamp can fail or come late, so its lines are compared with
+ * the previous release's copy of the file: a line that copy holds anywhere was announced then and is
+ * left out, whether or not it has since been moved under its version's heading. Lines are counted, so one that repeats an earlier release's
  * word for word ("Small fixes.") is new when the file holds it once more than that copy did. A
  * group left with no lines is left out too. A line reworded after its release counts as new.
  *
