@@ -7,6 +7,9 @@
  * finder uses it for every version of its server (finderProblem).
  */
 
+import { heard } from './packed.ts';
+import { ask, Watch } from './watch.ts';
+
 /** Folder beside a server's version folders holding the build statistics (finder/stats.json). */
 export const FINDER_FOLDER = 'finder';
 
@@ -53,14 +56,28 @@ export interface FinderStats {
 /**
  * Check that a downloaded statistics file has the shape the finder reads.
  *
+ * Every number a search or the form reads is checked, not the top of the file alone: a group or a
+ * need that is not what it should be would stop every search, or take the pane down with it. A
+ * stat's unit and a need's typical amount are amounts, never under zero (a negative unit would
+ * turn a gain into a loss).
+ *
  * @param raw The parsed JSON.
  * @return The statistics, or null when it is not a statistics file this version of the app reads.
  */
 export function checkFinderStats(raw: unknown): FinderStats | null {
   const s = raw as Partial<FinderStats> | null;
-  const isObject = (v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v);
-  if (!s || s.v !== 1 || typeof s.dataVersion !== 'string' || typeof s.minGroup !== 'number') return null;
-  if (!isObject(s.groups) || !isObject(s.groups?.['all']?.stats) || !isObject(s.needs)) return null;
+  const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const amount = (v: unknown): boolean => num(v) && v >= 0;
+  const each = (v: unknown, ok: (x: unknown) => boolean): boolean => isObject(v) && Object.values(v).every(ok);
+  if (!s || s.v !== 1 || typeof s.dataVersion !== 'string' || !amount(s.minGroup) || !amount(s.builds)) return null;
+  const stat = (v: unknown): boolean => isObject(v) && amount(v.share) && num(v.lift) && amount(v.unit) && num(v.total) && num(v.bonus);
+  const group = (v: unknown): boolean => isObject(v) && amount(v.n) && each(v.stats, stat);
+  if (!each(s.groups, group) || !isObject(s.groups?.['all'])) return null;
+  const need = (v: unknown): boolean => isObject(v) && amount(v.share) && amount(v.typical);
+  if (!each(s.needs, (v) => each(v, need))) return null;
+  const setUse = (v: unknown): boolean => isObject(v) && amount(v.builds) && Array.isArray(v.pieces) && v.pieces.every(amount) && each(v.at, amount);
+  if (!each(s.sets, setUse) || !each(s.pieces, amount)) return null;
   return s as FinderStats;
 }
 
@@ -68,13 +85,56 @@ export function checkFinderStats(raw: unknown): FinderStats | null {
  * Download the build statistics.
  *
  * @param root The server's data folder as the site serves it (dataRoot), with its closing slash.
+ * @param watch The watch on the download: a file that gets no answer is asked for again alongside
+ *   (ask), and a download that stalls can be given up through it.
  * @return The statistics.
  * @raise Error when the file is missing or is not a statistics file.
  */
-export async function loadFinderStats(root: string): Promise<FinderStats> {
-  const r = await fetch(`${root}${FINDER_FOLDER}/stats.json`, { cache: 'no-cache' });
+export async function loadFinderStats(root: string, watch: Watch = new Watch()): Promise<FinderStats> {
+  const url = `${root}${FINDER_FOLDER}/stats.json`;
+  const r = heard(await ask(url, watch, { cache: 'no-cache' }), watch, url);
   if (!r.ok) throw new Error(`the build statistics are missing (HTTP ${r.status})`);
   const stats = checkFinderStats(await r.json());
   if (!stats) throw new Error('the build statistics are not in a form this version reads');
   return stats;
+}
+
+/** A download of the statistics, under way or done. */
+export interface StatsAsk {
+  watch: Watch; // the watch on it: tells whether it has stalled, and gives it up
+  stats: Promise<FinderStats>; // the statistics, once in
+}
+
+// the statistics asked for and not yet handed to the finder, by data folder
+const asked = new Map<string, StatsAsk>();
+
+/**
+ * Ask for the build statistics, or join the download already under way.
+ *
+ * The page asks when the set finder's pane is opened, alongside the pane's own code (App.tsx), so
+ * the two download together; the finder's state then joins the same download (prepare).
+ *
+ * @param root The server's data folder as the site serves it (dataRoot), with its closing slash.
+ * @return The download. One that fails is forgotten: the next call asks afresh.
+ */
+export function askFinderStats(root: string): StatsAsk {
+  const known = asked.get(root);
+  if (known) return known;
+  const watch = new Watch();
+  const made: StatsAsk = { watch, stats: loadFinderStats(root, watch) };
+  asked.set(root, made);
+  made.stats.catch(() => {
+    if (asked.get(root) === made) asked.delete(root);
+  });
+  return made;
+}
+
+/**
+ * Forget a download of the statistics: the finder holds them now, or it gave the download up.
+ *
+ * @param root The data folder it was asked for.
+ * @param made The download; another one asked for since is left alone.
+ */
+export function releaseFinderStats(root: string, made: StatsAsk): void {
+  if (asked.get(root) === made) asked.delete(root);
 }

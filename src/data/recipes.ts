@@ -1,9 +1,13 @@
 /**
  * One game version's recipes (<server data>/recipes/<version>.json), kept beside the version's
  * folder. Made by `python -m pipeline.recipes` from the client's baserecipes.bin and salvage.bin
- * (docs/pipeline.md). Only the set finder's shopping list reads it: no link, saved build or
- * loader does, and a build opens the same whether the file is there or not.
+ * (docs/pipeline.md). Only the set finder reads it (its shopping list, and a budget search for
+ * the salvage a piece's recipe takes): no link, saved build or loader does, and a build opens the
+ * same whether the file is there or not.
  */
+
+import { heard } from './packed.ts';
+import { ask, Watch } from './watch.ts';
 
 /** Folder beside a server's version folders holding each version's recipes (recipes/<version>.json). */
 export const RECIPES_FOLDER = 'recipes';
@@ -37,9 +41,11 @@ const MAX_RECIPES = 20000;
 const MAX_RARITY = 4;
 // an icon's name as public/assets holds it (it becomes part of an address)
 const ICON_NAME = /^[a-z0-9_]*$/;
+// what tells the site's own page from any other (index.html holds it; a test keeps the two in step)
+export const OWN_PAGE_MARK = 'id="not-started"';
 
 /**
- * Check that a downloaded recipe file has the shape the shopping list reads.
+ * Check that a downloaded recipe file has the shape the set finder reads.
  *
  * Every salvage index is checked against the salvage list, so the reader never looks one up
  * that is not there; rarities are ones the list has colours for, and icon names are plain names.
@@ -73,15 +79,36 @@ export function checkRecipes(raw: unknown): RecipeData | null {
 /**
  * Download one game version's recipes.
  *
+ * A web page for an answer means one of two things. A host that answers any address with the
+ * site's own page (a dev server, a local preview) gives it for a file it lacks: a version without
+ * recipes, as a 404 is on the site. Any other page is someone else's (a network's sign-in page):
+ * a failed download, to be asked for again, never "this version has no recipes" for the life of
+ * the tab.
+ *
  * @param root The server's data folder as the site serves it (dataRoot), with its closing slash.
  * @param version The game version's id.
+ * @param watch The watch on the download: a file that gets no answer is asked for again alongside
+ *   (ask), and a download that stalls can be given up through it.
  * @return The recipes; null when the site has none for that version (an approximate version: its
- *   client files are gone). The site answers 404 then; a dev server answers with its own page.
+ *   client files are gone).
  * @raise Error when the download fails, or the file is not that version's recipe file.
  */
-export async function loadRecipes(root: string, version: string): Promise<RecipeData | null> {
-  const r = await fetch(`${root}${RECIPES_FOLDER}/${encodeURIComponent(version)}.json`, { cache: 'no-cache' });
-  if (r.status === 404 || (r.ok && /^text\/html/i.test(r.headers?.get('content-type') ?? ''))) return null;
+export async function loadRecipes(root: string, version: string, watch: Watch = new Watch()): Promise<RecipeData | null> {
+  const url = `${root}${RECIPES_FOLDER}/${encodeURIComponent(version)}.json`;
+  const answer = await ask(url, watch, { cache: 'no-cache' });
+  if (answer.status === 404) {
+    // nothing of it is read: the download is over
+    watch.end(url);
+    return null;
+  }
+  if (answer.ok && /^text\/html/i.test(answer.headers?.get('content-type') ?? '')) {
+    // (read in one go, where the watch can't hear it)
+    watch.unheard(url);
+    const page = await answer.text().finally(() => watch.end(url));
+    if (page.includes(OWN_PAGE_MARK)) return null;
+    throw new Error(`the recipes of ${version} did not load (a web page that is not the site's came back)`);
+  }
+  const r = heard(answer, watch, url);
   if (!r.ok) throw new Error(`the recipes of ${version} did not load (HTTP ${r.status})`);
   const data = checkRecipes(await r.json());
   if (!data || data.dataVersion !== version) throw new Error('the recipe file is not in a form this version reads');

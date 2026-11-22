@@ -8,8 +8,10 @@
  * on the shopping list's bar and rings it shows their hint, and it never also does what a tap
  * does. The shopping list stays in the browser until it is cleared.
  *
- * A pane whose code can't be downloaded closes with a notice, and opens on the next try.
- * A Thunderspy build gets no finder: no button on its overview and no row in its phone menu.
+ * A pane whose code can't be downloaded closes with a notice, and opens on the next try; while
+ * the code is on its way a line says so, and Escape (on the phone, a tap on the line) gives the
+ * wait up (a failure after that says nothing). A Thunderspy build gets no finder: no button on its overview and no row in its phone
+ * menu.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -150,11 +152,45 @@ test('a set is found, kept, listed for shopping and applied', async ({ page, con
   await me.id('finder:importance:0').selectOption('high');
   await expect(me.id('finder:invalid')).toHaveCount(0);
   await expect(search).toBeEnabled();
+  const first = page.locator('[data-testid^="finder:swap:"]').first();
+  // a budget search downloads the recipes first (the page's policy must let it), then lists swaps
+  // ticking Budget unticks the other set options and turns all but Seasonal off
+  const budget = me.id('finder:budget');
+  const others = ['finder:tag:pvp', 'finder:tag:purple', 'finder:tag:archetype', 'finder:attuned'].map((id) => me.id(id));
+  const seasonal = me.id('finder:tag:seasonal');
+  for (const box of [...others, seasonal]) {
+    await me.press(box);
+    await expect(box).toBeChecked();
+  }
+  // (the recipes are asked for as soon as Budget is ticked, so they are on their way before Search is pressed)
+  const recipesAsked = page.waitForResponse((r) => r.url().includes('/recipes/'));
+  await me.press(budget);
+  await expect(budget).toBeChecked();
+  for (const box of others) {
+    await expect(box).not.toBeChecked();
+    await expect(box).toBeDisabled();
+  }
+  await expect(seasonal).not.toBeChecked();
+  await expect(seasonal).toBeEnabled();
+  await me.press(search);
+  expect((await recipesAsked).ok()).toBe(true);
+  await expect(first).toBeVisible({ timeout: 120_000 });
+  await expect(me.id('finder:note')).toHaveCount(0);
+  await tab('Search');
+  await me.press(budget);
+  await expect(budget).not.toBeChecked();
+  for (const box of others) {
+    await expect(box).toBeEnabled();
+    await expect(box).not.toBeChecked();
+  }
+  await expect(me.id('finder:outofdate')).toHaveCount(me.phone ? 0 : 1); // the phone shows it on its list
   await me.press(search); // a phone moves to its Results tab
 
+  // the budget list stays on screen, its keep boxes off, until the new list is whole
+  await expect(page.locator('[data-testid^="finder:keep:"]').first()).toBeEnabled({ timeout: 120_000 });
+  await expect(me.id('finder:outofdate')).toHaveCount(0);
   // the first result: its gains and losses show, then it is kept
-  const first = page.locator('[data-testid^="finder:swap:"]').first();
-  await expect(first).toBeVisible({ timeout: 120_000 });
+  await expect(first).toBeVisible();
   const rowId = (await first.getAttribute('data-testid'))!;
   const swap = rowSwap(rowId);
   const set = gd.boostSetById.get(swap.set)!;
@@ -183,6 +219,8 @@ test('a set is found, kept, listed for shopping and applied', async ({ page, con
   await expect(me.id('finder:losses')).toBeVisible();
   await me.press(me.id(rowId.replace('finder:swap:', 'finder:keep:')));
   await expect(me.id('finder:kept').getByTestId(rowId)).toBeVisible();
+  // the box went to the Kept list with its row: the keyboard's place goes with it
+  if (!me.phone) await expect(me.id('finder:kept').getByTestId(rowId.replace('finder:swap:', 'finder:keep:'))).toBeFocused();
   // the list is ranked again around the kept swap: wait it out
   await tab('Search');
   await expect(search).toBeEnabled({ timeout: 120_000 });
@@ -295,12 +333,47 @@ test('a set finder that cannot be downloaded says so, and opens on the next try'
     await me.press(tip);
     await expect(tip).toHaveCount(0);
   } else await me.press(me.id('finder:open'));
+  // the wait is said on screen, and the overview around it works as before (the long press above)
+  await expect(me.id('finder:wait')).toBeVisible();
   refuse();
+  await expect(me.id('finder:wait')).toHaveCount(0);
   // the notice (the desktop also holds an unseen copy of it, to measure it)
   await expect(page.getByText("The set finder couldn't load").last()).toBeVisible();
   await expect(me.id('finder:close')).toHaveCount(0);
   await expect(tip).toHaveCount(0);
   // the next opening asks for the code again
+  await page.unroute(/SetFinder/);
+  await openFinder(me);
+});
+
+test('the wait for the set finder can be given up, and a failure after that says nothing', async ({ page }, info) => {
+  const me = new Player(page, info.project.name === 'phone');
+  await page.goto('./Homecoming/');
+  await me.importBuild(readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', FILE), 'utf-8'));
+  let refuse!: () => void;
+  const held = new Promise<void>((done) => (refuse = done));
+  let refused!: () => void;
+  const over = new Promise<void>((done) => (refused = done));
+  await page.route(/SetFinder/, async (route) => {
+    await held;
+    await route.abort();
+    refused();
+  });
+  if (me.phone) {
+    await me.press(me.button('Menu'));
+    await me.press(page.getByTitle(MENU_ROW_TITLE));
+  } else await me.press(me.id('finder:open'));
+  await expect(me.id('finder:wait')).toBeVisible();
+  // a phone has no Escape: there the box itself is tapped
+  if (me.phone) await me.press(me.id('finder:wait'));
+  else await page.keyboard.press('Escape');
+  await expect(me.id('finder:wait')).toHaveCount(0);
+  // the download fails once nobody waits for it: no notice
+  refuse();
+  await over;
+  await page.waitForTimeout(500);
+  await expect(page.getByText("The set finder couldn't load")).toHaveCount(0);
+  // and the next opening works
   await page.unroute(/SetFinder/);
   await openFinder(me);
 });

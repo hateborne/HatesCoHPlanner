@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import { boostPog, enhLevelLabel, setRarity, type SetRarity } from '../../engine/enhance.ts';
@@ -64,7 +64,7 @@ export function useShoppingList(gd: GameData): { list: ShoppingList; recipes: Re
  * marks that one. An owned piece is greyed out. Phones have no hover text: a long press names a
  * piece and says what a tap does.
  */
-function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }) {
+const SetBar = memo(function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }) {
   const setOwned = useFinder((s) => s.setOwned);
   const all = group.pieces.every((p) => p.item.owned);
   const scale = phone ? 1.3 : 1.2;
@@ -121,6 +121,26 @@ function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; g
       })}
     </div>
   );
+}, sameBar);
+
+/**
+ * Whether a set's bar would draw the same: the list is put together anew on every change, so its
+ * groups are new objects each time, and a mark on one piece would otherwise draw every bar (up to
+ * 600 rings) again.
+ *
+ * @param a The bar's last props.
+ * @param b Its next props.
+ * @return True when nothing it draws from differs.
+ */
+function sameBar(a: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }, b: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }): boolean {
+  if (a.gd !== b.gd || a.skin !== b.skin || a.phone !== b.phone || a.width !== b.width) return false;
+  const x = a.group;
+  const y = b.group;
+  if (x.set !== y.set || x.pieces.length !== y.pieces.length) return false;
+  return x.pieces.every((p, i) => {
+    const q = y.pieces[i]!;
+    return p.index === q.index && p.boost === q.boost && p.item.owned === q.item.owned && p.item.level === q.item.level;
+  });
 }
 
 /** The sets on the list, one bar each. */
@@ -230,7 +250,7 @@ export function ShopNeeds({ gd, list, phone, recipes }: { gd: GameData; list: Sh
       <div>
         <div style={{ ...small, margin: '6px 0 2px' }}>{title}</div>
         {items.map((l, i) => (
-          <SearchLine key={l} line={l} testId={`shop:line:${id}:${i}`} />
+          <SearchLine key={`${i}:${l}`} line={l} testId={`shop:line:${id}:${i}`} />
         ))}
       </div>
     ) : null;

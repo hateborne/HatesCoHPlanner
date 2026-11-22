@@ -10,12 +10,13 @@
  */
 import type { GameData } from '../../data/gamedata.ts';
 import type { FinderStats } from '../../data/finderStats.ts';
+import type { RecipeData } from '../../data/recipes.ts';
 import { DEFAULT_SERVER } from '../../data/servers.ts';
 import type { BoostSet, Power } from '../../data/types.ts';
 import type { Build, Slot, SlottedEnh } from '../build.ts';
 import { canSlot } from '../enhance.ts';
 import { BuildRules, type BuildEntry } from '../rules.ts';
-import { costOf, enhFor, mainOptions, pieceFor, pieceKind, setWanted, superiorOf, type MainOption, type PieceKind } from './candidates.ts';
+import { dearSalvage, enhFor, mainOptions, pieceFor, pieceKind, setWanted, superiorOf, type MainOption, type PieceKind } from './candidates.ts';
 import { FinderBase, type EntryState } from './core.ts';
 import { setsOfPower } from './eligible.ts';
 import { weightsFor } from './goals.ts';
@@ -30,11 +31,16 @@ import { warningsOf, type Warning } from './warnings.ts';
 export const PROC_VALUE = 1.5;
 // extra reluctance to take out a unique piece's global, on top of what the totals lose
 export const GLOBAL_KEEP = 0.5;
-// what one step of a set's cost rank takes off a swap's score: enough to order two swaps worth
-// about the same, never enough to hide a better one
-export const COST_STEP = 0.05;
+// a budget search: what each dear salvage past a swap's allowance takes off its score
+// UNCONFIRMED default, in typical bonuses
+export const BUDGET_STEP = 0.5;
+// a budget search: a swap that leaves its power this many pieces of the set or more has one dear salvage let off
+export const BUDGET_FULL_SET = 4;
 // swaps a search returns unless told otherwise
 export const DEFAULT_LIMIT = 50;
+// the share of a search's progress that working through the powers takes; the rest is the last
+// check of the ranked list against the game's rules (longer when kept swaps make it refuse many)
+export const POWERS_SHARE = 0.9;
 
 /** A swap with its rank. */
 export interface RankedSwap extends Swap {
@@ -59,6 +65,7 @@ export interface FinderInput {
   build: Build; // the build as the planner holds it
   kept?: readonly Swap[]; // swaps kept so far: the search ranks against the build with them in
   query: FinderQuery; // what to look for
+  recipes?: RecipeData | null; // the game version's recipes, read by a budget search only (absent: salvage is guessed from each set's rarity)
   limit?: number; // most swaps to return (default DEFAULT_LIMIT)
 }
 
@@ -85,7 +92,23 @@ export function finderProblem(gd: GameData, stats: FinderStats | null): string |
 }
 
 /**
- * Whether the game would take every piece of a set of swaps on the build with all of them in.
+ * What a budget search takes off a swap's score for the dear salvage its new pieces need.
+ *
+ * The owner's rule: none is cheapest; one for a full set (BUDGET_FULL_SET pieces or more) is as
+ * good; one for fewer pieces, and each one more, must be earned by what the swap adds. Pieces the
+ * power holds already are paid for: they count toward the full set and need nothing.
+ *
+ * @param dear Dear salvage the swap's new pieces need between them.
+ * @param count Pieces of the set the power holds once the swap is in.
+ * @return The charge, in typical bonuses.
+ */
+export function budgetCharge(dear: number, count: number): number {
+  return BUDGET_STEP * Math.max(0, dear - (count >= BUDGET_FULL_SET ? 1 : 0));
+}
+
+/**
+ * The swaps of a set that the game would not take on the build with all of them in: a piece of
+ * theirs is refused there, or the power they were made for is not the one the build has.
  *
  * Swaps are each found legal against the build as it stood, but two of them can still clash (the
  * same unique piece into two powers), and one that replaces another can free or crowd a piece a
@@ -95,15 +118,45 @@ export function finderProblem(gd: GameData, stats: FinderStats | null): string |
  * @param build The build as the planner holds it.
  * @param swaps The swaps, one per power.
  * @param rules The build's rules, when the caller has them already.
+ * @return The refused swaps, in the order given (none: the game takes them all).
+ */
+export function refusedSwaps<S extends Swap>(gd: GameData, build: Build, swaps: readonly S[], rules: BuildRules = new BuildRules(gd, build)): S[] {
+  const r = rules.reslotted(applySwaps(build, swaps));
+  const entries = new Map(r.entries().map((x) => [x.key, x]));
+  return swaps.filter((s) => {
+    const entry = entries.get(s.key);
+    return !entry || entry.power.id !== s.power || s.pieces.some((p) => r.enhRefusal(entry, p.slot, p.enh) !== null);
+  });
+}
+
+/**
+ * Whether the game would take every piece of a set of swaps on the build with all of them in
+ * (refusedSwaps).
+ *
+ * @param gd Game data.
+ * @param build The build as the planner holds it.
+ * @param swaps The swaps, one per power.
+ * @param rules The build's rules, when the caller has them already.
  * @return True when no piece of any of them is refused.
  */
 export function swapsLegal(gd: GameData, build: Build, swaps: readonly Swap[], rules: BuildRules = new BuildRules(gd, build)): boolean {
-  const r = rules.reslotted(applySwaps(build, swaps));
-  const entries = new Map(r.entries().map((x) => [x.key, x]));
-  return swaps.every((s) => {
-    const entry = entries.get(s.key);
-    return !!entry && entry.power.id === s.power && s.pieces.every((p) => r.enhRefusal(entry, p.slot, p.enh) === null);
-  });
+  return refusedSwaps(gd, build, swaps, rules).length === 0;
+}
+
+/**
+ * Put an item into a ranked list at its place among the items still to come.
+ *
+ * @param list The list, best first by `byRank` from `after` on; changed in place.
+ * @param after Index of the item being worked on: the new one goes somewhere past it.
+ * @param item The item to put in.
+ * @param byRank Compares two items: under zero when the first ranks before the second.
+ * @return The index it went in at: past every later item that ranks before it or level with it.
+ */
+export function insertRanked<T>(list: T[], after: number, item: T, byRank: (a: T, b: T) => number): number {
+  let at = after + 1;
+  while (at < list.length && byRank(list[at]!, item) <= 0) at++;
+  list.splice(at, 0, item);
+  return at;
 }
 
 /** A piece a swap may place. */
@@ -111,6 +164,7 @@ interface Offer {
   letter: number; // the piece's index in its set
   enh: SlottedEnh; // how it goes in: its version and level
   kind: PieceKind; // plain, a unique piece's global, or a proc
+  dear: number; // dear salvage getting it takes (a budget search; else 0)
 }
 
 /** The best swap of one set into one power. */
@@ -122,7 +176,8 @@ interface Found {
   displaced: Slot[]; // the slots it empties first, as they were
   before: (number | null)[]; // the power's slots as the swap found them
   scored: Scored; // its score and what that was made from
-  score: number; // the score less what the displaced pieces and the set's cost take off
+  score: number; // the score less what the displaced pieces take off and, in a budget search, the salvage charge
+  others?: Found[]; // the same set into the same power with other piece counts, best first
 }
 
 /**
@@ -134,13 +189,18 @@ interface Found {
  *    replaces the kept one).
  * 3. For each set the power takes and the search lets in: order the set's legal pieces by what
  *    each does for the power, then try every piece count the search allows, the new pieces going
- *    into the slots that cost least. Keep the best count.
+ *    into the slots that cost least. Keep the best count. What a set costs plays no part unless
+ *    the search is a budget one: then each piece's dear salvage counts against it (budgetCharge),
+ *    and PvP, purple and archetype sets and attuned pieces are left out.
  * 4. Rank everything found, drop what the game would refuse on the build with every kept swap and
- *    the new one in, and return the top of the list with its warnings.
+ *    the new one in (the next best piece count of that set for that power then takes its turn),
+ *    and return the top of the list with its warnings.
  *
  * @param input The search's inputs.
- * @return A generator: it yields the share of the powers done (0..1) after each power, so a
- *   screen can spread the work over frames, and returns the result.
+ * @return A generator: it yields the share of the work done (0..1, never going back) once the
+ *   build is read, after each set of each power (up to POWERS_SHARE) and after each swap checked at
+ *   the end (the rest), so a screen can spread the work over frames (no step between two yields is
+ *   long), and returns the result.
  */
 export function* searchSwaps(input: FinderInput): Generator<number, FinderResult, void> {
   const { gd, stats, build, query: q } = input;
@@ -152,7 +212,8 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
   // a kept swap counts only for the power and the slots it was made for
   const fits = (k: Swap): boolean => {
     const entry = ownEntries.get(k.key);
-    return !!entry && entry.power.id === k.power && !isStale(k, entry.slots);
+    // (and for this game data: every piece it places is one the data has)
+    return !!entry && entry.power.id === k.power && !isStale(k, entry.slots) && k.pieces.every((p) => gd.powerById.has(p.enh.boost));
   };
   const kept = (input.kept ?? []).filter(fits);
   const stale = (input.kept ?? []).filter((k) => !fits(k)).map((k) => k.key);
@@ -161,10 +222,15 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
   const rules = kept.length ? ownRules.reslotted(pending) : ownRules;
   const base = new FinderBase(gd, rules, pending);
   const weights = weightsFor(gd, stats, base.at.n, q);
-  const scorer = new Scorer(base, weights, needsFor(stats.needs, [base.at.n, gd.powerset(build.primary).n, gd.powerset(build.secondary).n]));
+  // (a power set the data lacks has no needs: nothing here may stop the search)
+  const names = [base.at.n, gd.setById.get(build.primary)?.n, gd.setById.get(build.secondary)?.n].filter((n): n is string => !!n);
+  const scorer = new Scorer(base, weights, needsFor(stats.needs, names));
   const origin = gd.core.origins.findIndex((o) => o.id === build.origin);
   const [lo, hi] = depthRange(q.main?.depth);
-  const attuned = !!q.attuned;
+  const budget = !!q.budget;
+  // attuned pieces are bought whole: a budget search places crafted ones
+  const attuned = !!q.attuned && !budget;
+  const recipes = input.recipes ?? null;
 
   const kinds = new Map<number, PieceKind>();
   const kindOf = (boost: Power): PieceKind => {
@@ -229,7 +295,7 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
   };
 
   /** @return The offers in the order a swap places them: what does most for the power first, procs last. */
-  const orderOffers = (e: BuildEntry, from: Slot[], free: number[], offers: Offer[], most: number, now: EntryState, prefer: Set<number>): Offer[] => {
+  const orderOffers = (e: BuildEntry, from: Slot[], free: number[], offers: Offer[], most: number, now: EntryState, prefer: Set<number>, held: number): Offer[] => {
     const bare = from.slice();
     for (const i of free) bare[i] = emptied(from[i]!);
     const chosen: Offer[] = [];
@@ -242,6 +308,9 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
         [...chosen, o].forEach((c, j) => (trial[free[j]!] = { level: from[free[j]!]!.level, enh: c.enh }));
         let sc = scorer.score(e, now, base.state(e, trial)).score;
         if (o.kind === 'proc') sc -= 1000;
+        // a budget search places a piece that needs dear salvage only when it adds more than the
+        // swap would pay for it with this piece in: nothing for the one a full set has let off
+        if (budget) sc -= budgetCharge(chosen.reduce((n, c) => n + c.dear, 0) + o.dear, held + chosen.length + 1);
         if (prefer.has(o.letter)) sc += 1000;
         if (sc > bestScore) {
           bestScore = sc;
@@ -273,16 +342,16 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
       const enh = enhFor(gd, boost, base.last);
       // no slot is named: the piece may not already be in the power, nor a unique piece in the build
       if (tester.slotRefusal(probe, -1, boost, enh.ioLevel) !== null) continue;
-      offers.push({ letter, enh, kind: kindOf(boost) });
+      offers.push({ letter, enh, kind: kindOf(boost), dear: budget ? dearSalvage(gd, recipes, set, enh) : 0 });
     }
     const held = new Set(have.values());
     const free = order.filter((i) => !held.has(i));
     const most = Math.min(offers.length, free.length, hi - have.size);
     if (most < 1) return undefined;
     const prefer = new Set(mainsOf(set).map((o) => o.letter).filter((l): l is number => l !== undefined));
-    const ranked = orderOffers(e, from, free, offers, most, now, prefer);
+    const ranked = orderOffers(e, from, free, offers, most, now, prefer, have.size);
 
-    let best: Found | undefined;
+    const all: Found[] = [];
     for (let k = 1; k <= most; k++) {
       const count = have.size + k;
       if (count < lo || count > hi) continue;
@@ -310,12 +379,20 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
         const earns = (o: MainOption) => (o.letter !== undefined ? chosen.some((c) => c.letter === o.letter) : have.size < o.min && count >= o.min);
         if (!mainsOf(set).some((o) => earns(o) && o.bonus.some((id) => (scored.counted.get(id) ?? 0) > 0))) continue;
       }
-      const score = scored.score - displaced.reduce((n, s) => n + keepValue(s), 0) - COST_STEP * costOf(set);
-      if (!best || score > best.score) best = { entry: e, set, count, pieces, displaced, before: slotIds(from), scored, score };
+      const charge = budget ? budgetCharge(chosen.reduce((n, o) => n + o.dear, 0), count) : 0;
+      const score = scored.score - displaced.reduce((n, s) => n + keepValue(s), 0) - charge;
+      // (a score that is no number would scramble the ranking: such a count is not offered)
+      if (Number.isFinite(score)) all.push({ entry: e, set, count, pieces, displaced, before: slotIds(from), scored, score });
     }
+    if (!all.length) return undefined;
+    // best first; of two counts worth the same, the smaller (the order they were tried in)
+    all.sort((a, b) => b.score - a.score || a.count - b.count);
+    const [best, ...others] = all;
+    if (others.length) best!.others = others;
     return best;
   };
 
+  yield 0;
   const entries = base.st.entries.filter((e) => e.level <= base.last && rules.slottable(e.power));
   const found: Found[] = [];
   for (let n = 0; n < entries.length; n++) {
@@ -326,35 +403,49 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
     if (sets.length) {
       const now = base.state(e, e.slots);
       const order = removalOrder(e, from, usable, now);
-      for (const set of sets) {
-        const f = bestOf(e, from, usable, order, now, set);
+      for (let i = 0; i < sets.length; i++) {
+        const f = bestOf(e, from, usable, order, now, sets[i]!);
         if (f) found.push(f);
+        if (i < sets.length - 1) yield (POWERS_SHARE * (n + (i + 1) / sets.length)) / entries.length;
       }
     }
-    yield (n + 1) / entries.length;
+    yield (POWERS_SHARE * (n + 1)) / entries.length;
   }
 
-  found.sort((a, b) => b.score - a.score || (a.set.n < b.set.n ? -1 : a.set.n > b.set.n ? 1 : 0) || (a.entry.key < b.entry.key ? -1 : 1));
+  const byRank = (a: Found, b: Found): number =>
+    b.score - a.score || (a.set.n < b.set.n ? -1 : a.set.n > b.set.n ? 1 : 0) || (a.entry.key < b.entry.key ? -1 : a.entry.key > b.entry.key ? 1 : 0);
+  found.sort(byRank);
+  const considered = found.length;
   // the game must take every piece of every kept swap and of the new one on the finished build: a
   // swap that replaces a kept one can free or crowd a unique piece another kept swap relies on
   const legal = (swap: Swap): boolean => swapsLegal(gd, build, [...kept.filter((k) => k.key !== swap.key), swap], ownRules);
   const swaps: RankedSwap[] = [];
   const limit = input.limit ?? DEFAULT_LIMIT;
-  for (const f of found) {
+  for (let n = 0; n < found.length; n++) {
+    const f = found[n]!;
     if (swaps.length >= limit) break;
     // without a wanted bonus, only swaps that leave the build better off by the search's own measure
     if (!q.main && f.score <= 0) break;
     const swap: Swap = { key: f.entry.key, power: f.entry.power.id, freeLevel: f.entry.level, set: f.set.id, count: f.count, pieces: f.pieces, before: f.before };
-    if (!legal(swap)) continue;
-    swaps.push({
-      ...swap,
-      score: f.score,
-      lines: [...f.scored.lines],
-      warnings: warningsOf(gd, f.scored, f.displaced),
-      displaced: f.displaced.map((s) => s.enh!.boost),
-    });
+    if (legal(swap)) {
+      swaps.push({
+        ...swap,
+        score: f.score,
+        lines: [...f.scored.lines],
+        warnings: warningsOf(gd, f.scored, f.displaced),
+        displaced: f.displaced.map((s) => s.enh!.boost),
+      });
+    } else if (f.others?.length) {
+      // refused with this many pieces: the pair's next best count takes its place in the ranking
+      const [next, ...rest] = f.others;
+      if (rest.length) next!.others = rest;
+      insertRanked(found, n, next!, byRank);
+    }
+    // (the list only grows by what a refusal puts back, one for one checked: the share never falls)
+    yield POWERS_SHARE + ((1 - POWERS_SHARE) * (n + 1)) / found.length;
   }
-  return { swaps, considered: found.length, stale };
+  yield 1;
+  return { swaps, considered, stale };
 }
 
 /**

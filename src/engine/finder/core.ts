@@ -16,7 +16,7 @@ import type { Build, Slot } from '../build.ts';
 import { powerStrength } from '../enhance.ts';
 import type { BuildEntry, BuildRules } from '../rules.ts';
 import { earnedBonuses, RULE_OF_FIVE } from '../setbonus.ts';
-import { computeTotals, lineCap, runningLines, totalsState, workingPieces, type Totals, type TotalsState } from '../totals.ts';
+import { computeTotals, lineCap, runningLines, totalsMemo, totalsState, workingPieces, type Totals, type TotalsState } from '../totals.ts';
 import { addLines, BonusVecs, type Vec } from './bonusVec.ts';
 
 // Defense past this buys nothing against an enemy of the character's level: its base chance to hit
@@ -33,6 +33,7 @@ export interface BonusRef {
 /** One power read with one slotting. */
 export interface EntryState {
   slots: Slot[]; // the slotting it was read with
+  working: number[]; // ids of its pieces whose own effects can count (workingPieces), for a power that runs
   strength: Map<number, number>; // enhancement strength by attribute, after ED
   lines: Vec; // what the power adds to the totals lines while it runs (empty for a power that doesn't)
   bonuses: Map<string, { ref: BonusRef; copies: number }>; // the bonuses its slots earn, by bonus power and kind
@@ -69,6 +70,7 @@ export class FinderBase {
   // enhancement id -> indexes (ascending) of the running powers holding it as a working piece
   private readonly holders = new Map<number, number[]>();
   private readonly hpRoom: number; // hit points set bonuses and powers can add before the cap
+  private readonly caps = new Map<string, number | undefined>(); // line key -> its cap, kept after the first look
 
   /**
    * Read a build: its totals, which powers run, and what each holds.
@@ -85,8 +87,10 @@ export class FinderBase {
     this.at = rules.at;
     this.last = rules.lastLevel();
     this.level = this.last;
-    this.totals = computeTotals(gd, rules, build, this.level);
     this.st = totalsState(gd, rules, build, this.level);
+    this.totals = computeTotals(gd, rules, build, this.level, this.st);
+    // from here on the same powers are read over and over with other slots
+    this.st.memo = totalsMemo();
     this.vecs = new BonusVecs(gd, this.at, this.level, this.st.ctx);
     for (const bn of this.totals.bonuses) this.copies.set(bn.power.id, (this.copies.get(bn.power.id) ?? 0) + 1);
     this.endDiscount = gd.attribByName.get('EnduranceDiscount') ?? 368;
@@ -105,7 +109,7 @@ export class FinderBase {
       const p = e.power;
       if (p.type !== 'Toggle' || !p.end || !p.ap || !this.st.isOn(e)) continue;
       const usable = e.slots.filter((s) => s.level <= this.level).map((s) => s.enh);
-      const discount = powerStrength(gd, this.at, p, usable, this.level).post.get(this.endDiscount) ?? 0;
+      const discount = powerStrength(gd, this.at, p, usable, this.level, this.st.memo?.strength).post.get(this.endDiscount) ?? 0;
       this.toggles.set(e.key, { perSec: p.end / p.ap, discount });
     }
     this.hpRoom = GameData.attrAt(this.at.maxMax, 'HitPoints', this.level) - this.totals.hpBase;
@@ -121,16 +125,18 @@ export class FinderBase {
   state(e: BuildEntry, slots: Slot[]): EntryState {
     const lines: Vec = new Map();
     let strength: Map<number, number>;
+    let working: number[] = [];
     const at = this.place.get(e.key);
     if (at !== undefined) {
+      working = workingPieces(this.gd, this.st, slots);
       // a piece an earlier running power holds gives its own effects there, not here
-      const earlier = workingPieces(this.gd, this.st, slots).filter((id) => (this.holders.get(id)?.[0] ?? at) < at);
+      const earlier = working.filter((id) => (this.holders.get(id)?.[0] ?? at) < at);
       const run = runningLines(this.gd, this.at, this.st, { power: e.power, slots }, earlier);
       addLines(lines, run.lines);
       strength = run.strength;
     } else {
       const usable = slots.filter((s) => s.level <= this.level).map((s) => s.enh);
-      strength = powerStrength(this.gd, this.at, e.power, usable, this.level).post;
+      strength = powerStrength(this.gd, this.at, e.power, usable, this.level, this.st.memo?.strength).post;
     }
     const bonuses: EntryState['bonuses'] = new Map();
     for (const bn of earnedBonuses(this.gd, [{ ...e, slots }], this.level)) {
@@ -139,7 +145,7 @@ export class FinderBase {
       if (cur) cur.copies++;
       else bonuses.set(key, { ref: { power: bn.power, global: bn.global, set: bn.set }, copies: 1 });
     }
-    return { slots, strength, lines, bonuses, discount: strength.get(this.endDiscount) ?? 0 };
+    return { slots, working, strength, lines, bonuses, discount: strength.get(this.endDiscount) ?? 0 };
   }
 
   /**
@@ -167,9 +173,9 @@ export class FinderBase {
 
     const at = this.place.get(e.key);
     if (at !== undefined) {
-      const was = new Set(workingPieces(this.gd, this.st, from.slots));
-      const now = new Set(workingPieces(this.gd, this.st, to.slots));
-      for (const id of new Set([...was, ...now])) {
+      const was = new Set(from.working);
+      const now = new Set(to.working);
+      for (const id of new Set([...from.working, ...to.working])) {
         if (was.has(id) === now.has(id)) continue;
         const held = this.holders.get(id) ?? [];
         if (held.some((i) => i < at)) continue;
@@ -187,12 +193,18 @@ export class FinderBase {
 
     const wasted: BonusRef[] = [];
     const counted = new Map<number, number>();
+    // The rule of five counts a bonus power's copies together, whichever way they are earned (as
+    // a set bonus or as a piece's own global). Each way is taken in turn, its change counted on
+    // top of the other's, and gives or takes its own lines. (No power in the data is earned both
+    // ways today.)
+    const copies = new Map<number, number>(); // bonus power id -> its copies with the changes so far
     for (const key of new Set([...from.bonuses.keys(), ...to.bonuses.keys()])) {
       const was = from.bonuses.get(key);
       const now = to.bonuses.get(key);
       const ref = (now ?? was)!.ref;
-      const total = this.copies.get(ref.power.id) ?? 0;
+      const total = copies.get(ref.power.id) ?? this.copies.get(ref.power.id) ?? 0;
       const next = total - (was?.copies ?? 0) + (now?.copies ?? 0);
+      copies.set(ref.power.id, next);
       const more = Math.min(next, RULE_OF_FIVE) - Math.min(total, RULE_OF_FIVE);
       addLines(lines, this.vecs.of(ref.power, ref.global), more);
       if (more) counted.set(ref.power.id, (counted.get(ref.power.id) ?? 0) + more);
@@ -228,9 +240,10 @@ export class FinderBase {
    * @return The cap in the line's unit, or undefined for a line without one.
    */
   cap(key: string): number | undefined {
-    if (key.startsWith('def.')) return DEFENSE_SOFT_CAP;
-    if (key === 'hp') return this.hpRoom;
-    return lineCap(this.at, key, this.level);
+    if (this.caps.has(key)) return this.caps.get(key);
+    const cap = key.startsWith('def.') ? DEFENSE_SOFT_CAP : key === 'hp' ? this.hpRoom : lineCap(this.at, key, this.level);
+    this.caps.set(key, cap);
+    return cap;
   }
 
   /**

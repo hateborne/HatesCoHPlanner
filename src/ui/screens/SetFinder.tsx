@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Build } from '../../engine/build.ts';
@@ -10,6 +10,7 @@ import { GOALS, MAX_EXTRA, MAX_GOALS, queryProblem, type Depth, type GoalId, typ
 import type { RankedSwap } from '../../engine/finder/search.ts';
 import { bonusChoices, bySet, fitQuery, setGroupsOf, type StatSection } from '../../engine/finder/view.ts';
 import { BuildRules } from '../../engine/rules.ts';
+import { computeTotals, type Totals } from '../../engine/totals.ts';
 import { swapId, useFinder } from '../../state/finder.ts';
 import { closeSetFinder as close } from '../../state/finderOpen.ts';
 import { useStore } from '../../state/store.ts';
@@ -26,7 +27,8 @@ import { pressText, useFreshHover, useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
 import type { Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
-import { ShopNeeds, ShopSets, useShoppingList } from './FinderShopping.tsx';
+import { ShopNeeds, ShopSets, useShoppingList, type RecipesState } from './FinderShopping.tsx';
+import type { ShoppingList } from '../../engine/finder/shopping.ts';
 
 const IMPORTANCES: { id: Importance; name: string }[] = [
   { id: 'low', name: 'Low' },
@@ -147,7 +149,7 @@ function SwapLine({ gd, swap, phone }: { gd: GameData; swap: Swap; phone: boolea
           const b = gd.powerById.get(p.enh.boost);
           return b ? (
             <div key={p.slot} title={b.dn} style={{ flexShrink: 0 }}>
-              <EnhIcon gd={gd} b={b} size={phone ? 34 : 28} />
+              <EnhIcon gd={gd} b={b} size={phone ? 34 : 28} lazy />
             </div>
           ) : null;
         })}
@@ -160,10 +162,14 @@ function SwapLine({ gd, swap, phone }: { gd: GameData; swap: Swap; phone: boolea
  * A box the player ticks: a native check box with its label, sized for a finger on phones. Its
  * hint is its hover text; on phones a long press shows it.
  */
-function Tick({ label, checked, onChange, testId, title, phone }: { label: string; checked: boolean; onChange: (on: boolean) => void; testId: string; title?: string; phone: boolean }) {
+function Tick({ label, checked, onChange, testId, title, phone, disabled }: { label: string; checked: boolean; onChange: (on: boolean) => void; testId: string; title?: string; phone: boolean; disabled?: boolean }) {
   return (
-    <label title={title} {...longPress(phone && title ? pressText(title) : undefined)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: phone ? 44 : 28, cursor: 'pointer', marginRight: 16 }}>
-      <input type="checkbox" data-testid={testId} checked={checked} onChange={(e) => onChange(e.target.checked)} style={phone ? { width: 28, height: 28, margin: 0 } : { width: 18, height: 18, margin: 0 }} />
+    <label
+      title={title}
+      {...longPress(phone && title ? pressText(title) : undefined)}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: phone ? 44 : 28, cursor: disabled ? 'default' : 'pointer', marginRight: 16, opacity: disabled ? 0.45 : 1 }}
+    >
+      <input type="checkbox" data-testid={testId} checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} style={phone ? { width: 28, height: 28, margin: 0 } : { width: 18, height: 18, margin: 0 }} />
       {label}
     </label>
   );
@@ -281,11 +287,13 @@ function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: S
             title={t.title}
             phone={phone}
             checked={query.tags.includes(t.id)}
+            disabled={!!query.budget && t.id !== 'seasonal'}
             onChange={(on) => setQuery({ tags: on ? [...query.tags, t.id] : query.tags.filter((x) => x !== t.id) })}
           />
         ))}
       </div>
-      <Tick testId="finder:attuned" label="Attuned pieces" title="Place attuned pieces instead of crafted ones at the highest level that works" phone={phone} checked={!!query.attuned} onChange={(on) => setQuery({ attuned: on })} />
+      <Tick testId="finder:attuned" label="Attuned pieces" title="Place attuned pieces instead of crafted ones at the highest level that works" phone={phone} checked={!!query.attuned} disabled={!!query.budget} onChange={(on) => setQuery({ attuned: on })} />
+      <Tick testId="finder:budget" label="Budget" title="Rank swaps lower for the rarest salvage their recipes need" phone={phone} checked={!!query.budget} onChange={(on) => setQuery(on ? { budget: true, tags: [], attuned: false } : { budget: false })} />
 
       {head('Set bonus wanted')}
       <div style={row}>
@@ -354,29 +362,30 @@ interface ResultRowProps {
   selected: boolean; // its gains and losses are the ones shown
   phone: boolean; // the phone layout
   busy: boolean; // a search is running: the list is on its way out
-  onKeep: () => void; // keep it, or let it go when kept
-  onSelect: () => void; // show its gains and losses, or stop showing them
+  onKeep: (swap: RankedSwap, kept: boolean) => void; // keep it, or let it go when kept
+  onSelect: (id: string) => void; // show its gains and losses, or stop showing them
 }
 
 /**
  * One swap in a list: the box that keeps it or lets it go, what it places, and its warnings.
  * Clicking the row (or Enter on its text) shows its gains and losses; pointing at it does on desktop.
+ *
+ * Drawn again only when what it is given changes (its handlers are the same ones every time), so
+ * a click on one row doesn't draw the whole list again.
  */
-function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: ResultRowProps) {
+const ResultRow = memo(function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: ResultRowProps) {
   const id = swapId(swap);
   const name = `${gd.boostSetById.get(swap.set)?.dn ?? 'Set'} into ${gd.powerById.get(swap.power)?.dn ?? 'a power'}`;
   const warned = swap.warnings.length ? `${swap.warnings.length} ${swap.warnings.length === 1 ? 'warning' : 'warnings'}` : '';
-  // phones have no pointer to hover with: a tap would leave a hover behind that never clears
-  const hover = phone
-    ? {}
-    : {
-        onMouseEnter: () => useHover.setState({ swap: id }),
-        onMouseLeave: () => useHover.setState((h) => (h.swap === id ? { swap: null } : h)),
-      };
+  const show = () => onSelect(id);
+  // phones have no pointer to hover with: a tap would leave a hover behind that never clears.
+  // The hover is taken off when the pointer leaves the lists (ResultList), not each row: between
+  // two rows the pane keeps showing the last one instead of working out the summary in passing
+  const hover = phone ? {} : { onMouseEnter: () => useHover.setState({ swap: id }) };
   return (
     <div
       data-testid={`finder:swap:${id}`}
-      onClick={onSelect}
+      onClick={show}
       {...hover}
       className="body-text"
       style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: phone ? '8px 8px' : '5px 8px', borderRadius: 10, border: `2px solid ${selected ? '#00d919' : 'transparent'}`, background: selected ? 'rgba(0,217,25,0.15)' : 'transparent' }}
@@ -384,17 +393,18 @@ function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: 
       <input
         type="checkbox"
         data-testid={`finder:keep:${id}`}
+        data-keep={id}
         aria-label={kept ? `Kept: ${name}. Untick to let it go` : `Keep ${name}`}
         title={kept ? 'Kept: untick to let it go' : 'Keep this swap'}
         checked={kept}
         // while the list is being ranked again, what it offers may no longer fit
         disabled={busy && !kept}
         onClick={(e) => e.stopPropagation()}
-        onChange={onKeep}
+        onChange={() => onKeep(swap, kept)}
         style={{ flexShrink: 0, width: phone ? 28 : 20, height: phone ? 28 : 20, margin: 0 }}
       />
       {/* the keyboard's way to the row: Enter on it shows the swap, as a click anywhere on the row does (its name stands in for its text, so it says the warnings too) */}
-      <div {...pressKeys(onSelect, undefined, `${name}${warned ? `, ${warned}` : ''}: show its gains and losses`)} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+      <div {...pressKeys(show, undefined, `${name}${warned ? `, ${warned}` : ''}: show its gains and losses`)} data-row={id} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
         <SwapLine gd={gd} swap={swap} phone={phone} />
         {swap.warnings.length ? (
           <div title={swap.warnings.map((w) => warningText(gd, w)).join('\n')} style={{ marginLeft: 'auto', flexShrink: 0, color: WARN, fontSize: phone ? 17 : 14 }}>
@@ -404,6 +414,44 @@ function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: 
       </div>
     </div>
   );
+});
+
+/**
+ * Tick or untick a swap's box. Its row then moves between the lists with no mouseleave, so the
+ * hover it leaves behind is cleared; a keyboard's place goes with the box to where the row now is.
+ *
+ * @param s The swap.
+ * @param isKept Whether it is kept now (it is then let go).
+ */
+function toggleKept(s: RankedSwap, isKept: boolean): void {
+  const finder = useFinder.getState();
+  const before = finder.kept;
+  const id = swapId(s);
+  const box = document.activeElement instanceof HTMLElement && document.activeElement.dataset.keep === id;
+  if (isKept) finder.drop(s.key);
+  else finder.keep(s);
+  if (useFinder.getState().kept === before) return;
+  useHover.setState({ swap: null });
+  if (!box) return;
+  // the box was drawn anew in the other list: without this the keyboard would start from the top
+  // of the page. A box let go is off while the list is ranked again, and the row may not come
+  // back at all: then the row's name takes the keyboard's place, or the lists themselves
+  requestAnimationFrame(() => {
+    const at = CSS.escape(id);
+    const again = document.querySelector<HTMLInputElement>(`[data-keep="${at}"]`);
+    const to = again && !again.disabled ? again : (document.querySelector<HTMLElement>(`[data-row="${at}"]`) ?? document.querySelector<HTMLElement>('[data-finder-lists]'));
+    to?.focus({ preventScroll: true });
+  });
+}
+
+/**
+ * Show a swap's gains and losses, or stop showing them when they are the ones shown.
+ *
+ * @param id The swap's id.
+ */
+function toggleSelected(id: string): void {
+  const finder = useFinder.getState();
+  finder.select(finder.selected === id ? null : id);
 }
 
 /**
@@ -411,19 +459,18 @@ function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: 
  * best placement and its other placements folded under it.
  */
 function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; hasSlots: boolean }) {
-  const { result, busy, kept, selected, select, keep, drop, problem, loading, query, searched, searchedKept } = useFinder(
+  // only what the lists draw from: of the form, why it can't be searched and whether it changed
+  // since the list was made, not the form itself (changing it must not draw every row again)
+  const { result, busy, kept, selected, problem, loading, unready, formChanged, searchedKept } = useFinder(
     useShallow((s) => ({
       result: s.result,
       busy: s.progress !== null,
       kept: s.kept,
       selected: s.selected,
-      select: s.select,
-      keep: s.keep,
-      drop: s.drop,
       problem: s.problem,
       loading: s.loading,
-      query: s.query,
-      searched: s.searched,
+      unready: s.result ? null : queryProblem(s.query),
+      formChanged: s.searched !== s.query,
       searchedKept: s.searchedKept,
     })),
   );
@@ -431,26 +478,22 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
   const keptIds = useMemo(() => new Set(kept.map(swapId)), [kept]);
   // a kept swap shows under Kept only (a list not ranked again since it was kept still holds it)
   const sets = useMemo(() => bySet((result?.swaps ?? []).filter((s) => !keptIds.has(swapId(s)))), [result, keptIds]);
+  // a list ranked again has other rows under the pointer: the hover on a row of the old one goes
+  useEffect(() => {
+    useHover.setState((h) => (h.swap ? { swap: null } : h));
+  }, [result]);
   if (loading) return <div className="desc-text">Loading the build statistics...</div>;
   if (problem) return <div className="desc-text">{problem}</div>;
 
-  /** Tick or untick a swap's box. Its row then moves between the lists with no mouseleave, so the hover it leaves behind is cleared. */
-  const toggle = (s: RankedSwap, isKept: boolean) => {
-    const before = useFinder.getState().kept;
-    if (isKept) drop(s.key);
-    else keep(s);
-    if (useFinder.getState().kept !== before) useHover.setState({ swap: null });
-  };
   const row = (s: RankedSwap) => {
     const id = swapId(s);
-    const isKept = keptIds.has(id);
-    return <ResultRow key={id} gd={gd} swap={s} kept={isKept} selected={selected === id} phone={phone} busy={busy} onKeep={() => toggle(s, isKept)} onSelect={() => select(selected === id ? null : id)} />;
+    return <ResultRow key={id} gd={gd} swap={s} kept={keptIds.has(id)} selected={selected === id} phone={phone} busy={busy} onKeep={toggleKept} onSelect={toggleSelected} />;
   };
   const fold = (set: number) => setMore(new Set(more.has(set) ? [...more].filter((x) => x !== set) : [...more, set]));
   const small: CSSProperties = { fontSize: phone ? 16 : 13 };
   let results: ReactNode;
   if (!result) {
-    results = <div className="desc-text">{busy ? <SearchLabel idle="" /> : (queryProblem(query) ?? 'Press Search to rank the sets this build could slot.')}</div>;
+    results = <div className="desc-text">{busy ? <SearchLabel idle="" /> : (unready ?? 'Press Search to rank the sets this build could slot.')}</div>;
   } else if (result.problem) {
     results = <div className="desc-text">{result.problem}</div>;
   } else if (!result.swaps.length) {
@@ -470,9 +513,11 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
   }
   // the form changed since the list was ranked, or a ranking after a kept swap changed never finished
   const outOfDate =
-    !result || busy ? null : searched !== query ? 'The search has changed since this list was made.' : searchedKept !== kept ? 'Your kept swaps have changed since this list was made.' : null;
+    !result || busy ? null : formChanged ? 'The search has changed since this list was made.' : searchedKept !== kept ? 'Your kept swaps have changed since this list was made.' : null;
   return (
-    <div>
+    // the pointer left the lists: no swap is pointed at any more (see ResultRow). The lists can
+    // take the keyboard's place when a row that had it is gone (toggleKept)
+    <div data-finder-lists tabIndex={-1} style={{ outline: 'none' }} onMouseLeave={phone ? undefined : () => useHover.setState((h) => (h.swap ? { swap: null } : h))}>
       <Note />
       {kept.length ? (
         <div data-testid="finder:kept" style={{ marginBottom: 10 }}>
@@ -522,19 +567,40 @@ function Detail({ gd, build, rules, phone, summary }: { gd: GameData; build: Bui
     // a hover left over from a list that has since changed falls back to the selection
     return find(hovered) ?? find(selected) ?? null;
   }, [summary, kept, result, hovered, selected]);
+  // the build with the kept swaps in: what every result pointed at is compared with. Its rules
+  // and totals are worked out once (when first asked for), not again for each row the pointer
+  // crosses: they were half of what a comparison cost
+  const keptSide = useMemo(() => {
+    let made: { rules: BuildRules; totals: Totals } | undefined;
+    return () => {
+      if (!made) {
+        const r = kept.length ? rules.reslotted(applySwaps(build, kept)) : rules;
+        made = { rules: r, totals: computeTotals(gd, r, r.b, r.lastLevel()) };
+      }
+      return made;
+    };
+  }, [gd, build, rules, kept]);
   const diff = useMemo(() => {
     if (!shown) return kept.length ? buildDiff(gd, rules, applySwaps(build, kept)) : null;
     const others = kept.filter((k) => k.key !== shown.key);
-    const isKept = kept.some((k) => swapId(k) === swapId(shown));
+    const after = applySwaps(build, [...others, shown]);
     // a kept swap: what it adds to the others; a result: what it would change on top of the kept ones
-    const before = applySwaps(build, isKept ? others : kept);
-    return buildDiff(gd, rules.reslotted(before), applySwaps(build, [...others, shown]));
-  }, [gd, build, rules, kept, shown]);
+    if (kept.some((k) => swapId(k) === swapId(shown))) return buildDiff(gd, rules.reslotted(applySwaps(build, others)), after);
+    const side = keptSide();
+    return buildDiff(gd, side.rules, after, side.totals);
+  }, [gd, build, rules, kept, shown, keptSide]);
+  // another swap's figures start from their top, not from where the last one's were scrolled to
+  const top = useRef<HTMLDivElement>(null);
+  const shownId = shown ? swapId(shown) : null;
+  useEffect(() => {
+    const pane = top.current?.parentElement;
+    if (pane && pane.scrollTop) pane.scrollTop = 0;
+  }, [shownId]);
 
   const text: CSSProperties = { fontSize: phone ? 19 : 16, color: TEXT };
   if (shown) {
     return (
-      <div className="body-text" style={text}>
+      <div ref={top} className="body-text" style={text}>
         <SwapLine gd={gd} swap={shown} phone={phone} />
         {shown.displaced.length ? (
           <div style={{ color: MUTED, marginTop: 6, fontSize: phone ? 16 : 13 }}>Replaces: {shown.displaced.map((id) => gd.powerById.get(id)?.dn ?? 'an enhancement').join(', ')}</div>
@@ -586,11 +652,13 @@ function SearchButton({ width, onSearch }: { width: number | string; onSearch: (
  * the auction house search lines). Desktop shows the two parts side by side, a phone one under
  * the other.
  *
+ * @param props.shop The list and where its recipes stand (useShoppingList), put together once by
+ *   whoever draws the parts.
  * @param props.part Which part to draw.
  * @param props.width The room the sets' bars have (stage px).
  */
-function Shopping({ gd, skin, phone, width, part }: { gd: GameData; skin: Skin; phone: boolean; width: number; part: 'sets' | 'needs' | 'both' }) {
-  const { list, recipes } = useShoppingList(gd);
+function Shopping({ gd, skin, phone, width, part, shop }: { gd: GameData; skin: Skin; phone: boolean; width: number; part: 'sets' | 'needs' | 'both'; shop: { list: ShoppingList; recipes: RecipesState } }) {
+  const { list, recipes } = shop;
   return (
     <>
       {part === 'needs' ? null : <Note />}
@@ -598,6 +666,51 @@ function Shopping({ gd, skin, phone, width, part }: { gd: GameData; skin: Skin; 
       {part === 'both' && list.sets.length ? <div style={{ height: 12 }} /> : null}
       {part === 'sets' ? null : <ShopNeeds gd={gd} list={list} phone={phone} recipes={recipes} />}
     </>
+  );
+}
+
+/** The phone's List tab: the whole shopping list, one part under the other. */
+function PhoneShopping({ gd, skin, width }: { gd: GameData; skin: Skin; width: number }) {
+  const shop = useShoppingList(gd);
+  return <Shopping gd={gd} skin={skin} phone width={width} part="both" shop={shop} />;
+}
+
+/** The desktop's shopping list: the sets on the left, what is still needed on the right, from one list. */
+function DesktopShopping({ gd, skin, sets, needs, y, h }: { gd: GameData; skin: Skin; sets: { x: number; w: number }; needs: { x: number; w: number }; y: number; h: number }) {
+  const shop = useShoppingList(gd);
+  return (
+    <>
+      <MenuFrame x={sets.x} y={y} w={sets.w} h={h} skin={skin} />
+      <div className="abs scroll-y" style={{ left: sets.x + 14, top: y + 12, width: sets.w - 28, height: h - 24 }}>
+        <Shopping gd={gd} skin={skin} phone={false} width={sets.w - 44} part="sets" shop={shop} />
+      </div>
+      <MenuFrame x={needs.x} y={y} w={needs.w} h={h} skin={skin} />
+      <div className="abs scroll-y" style={{ left: needs.x + 18, top: y + 14, width: needs.w - 36, height: h - 28 }}>
+        <Shopping gd={gd} skin={skin} phone={false} width={needs.w - 36} part="needs" shop={shop} />
+      </div>
+    </>
+  );
+}
+
+/** The phone's button under the results: keeps the swap whose gains and losses show, or lets it go when it is kept. */
+function KeepSelectedButton({ width }: { width: number }) {
+  // the swap and whether it is kept, read here so that selecting a row draws this button again, not the whole pane
+  const { chosen, isKept, busy } = useFinder(
+    useShallow((s) => {
+      const chosen = s.selected ? [...s.kept, ...(s.result?.swaps ?? [])].find((x) => swapId(x) === s.selected) : undefined;
+      return { chosen, isKept: !!chosen && s.kept.some((k) => swapId(k) === s.selected), busy: s.progress !== null };
+    }),
+  );
+  return (
+    <button
+      data-testid="finder:keepselected"
+      className="info-button"
+      style={{ position: 'static', width }}
+      disabled={!chosen || (busy && !isKept)}
+      onClick={() => chosen && (isKept ? useFinder.getState().drop(chosen.key) : useFinder.getState().keep(chosen))}
+    >
+      {isKept ? 'Let it go' : 'Keep this swap'}
+    </button>
   );
 }
 
@@ -613,20 +726,16 @@ const LIST_TAB = 3;
  */
 export default function SetFinder({ skin }: { skin: Skin }) {
   const { gd, build } = useStore(useShallow((s) => ({ gd: s.gd, build: s.build })));
-  const { prepare, search, stop, stats, busy, kept, link, apply, selected, result, keep, drop, setQuery, openShopping, clearShopping, openedNewBuild, saved } = useFinder(
+  // (what only one part of the pane draws from, such as the selected swap, is read by that part)
+  const { prepare, search, stop, stats, kept, link, apply, setQuery, openShopping, clearShopping, openedNewBuild, saved } = useFinder(
     useShallow((s) => ({
       prepare: s.prepare,
       search: s.search,
       stop: s.stop,
       stats: s.stats,
-      busy: s.progress !== null,
       kept: s.kept,
       link: s.link,
       apply: s.apply,
-      selected: s.selected,
-      result: s.result,
-      keep: s.keep,
-      drop: s.drop,
       setQuery: s.setQuery,
       openShopping: s.openShopping,
       clearShopping: s.clearShopping,
@@ -646,7 +755,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
     if (listShown) openShopping();
   }, [listShown, openShopping, gd]);
   // Escape closes the pane; from the desktop's shopping list it goes back to the search first
-  useEscape(() => (shopping && !phone ? setShopping(false) : close()));
+  useEscape(() => (shopping && !phone ? showShopping(false) : close()));
   useFreshHover();
   // the statistics, and whether the finder can work on this build at all
   useEffect(() => prepare(), [prepare, gd, build?.dataVersion]);
@@ -662,12 +771,27 @@ export default function SetFinder({ skin }: { skin: Skin }) {
     const fit = fitQuery(q, sections, groups);
     if (fit !== q) setQuery(fit);
   }, [sections, groups, setQuery]);
+  const hasSlots = useMemo(() => !!rules && rules.entries().some((e) => e.slots.length > 0), [rules]);
+  // desktop: the keyboard's place follows the switch between the search and the shopping list
+  // (the button pressed is not drawn on the other side)
+  const shoppingButton = useRef<HTMLButtonElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  const switched = useRef(false);
+  useEffect(() => {
+    if (switched.current) (shopping ? backButton : shoppingButton).current?.focus({ preventScroll: true });
+  }, [shopping]);
+  const showShopping = (on: boolean) => {
+    switched.current = true;
+    setShopping(on);
+  };
+  // desktop: the lists' scrolling pane, wound back when a new search starts
+  const listPane = useRef<HTMLDivElement>(null);
   if (!gd || !build || !rules) return null;
 
-  const hasSlots = rules.entries().some((e) => e.slots.length > 0);
   const runSearch = () => {
     search();
     if (phone) setTab(1);
+    else if (listPane.current) listPane.current.scrollTop = 0;
   };
   const closeButton = (width: number | string): ReactNode => (
     <button data-testid="finder:close" className="info-button" style={{ position: 'static', width }} onClick={close}>
@@ -687,7 +811,9 @@ export default function SetFinder({ skin }: { skin: Skin }) {
           href={link}
           target="_blank"
           rel="noopener noreferrer"
-          // the changed build is being opened: its pieces go on the shopping list (a middle click opens it too)
+          // the changed build is being opened: its pieces go on the shopping list (a middle click
+          // opens it too). The link has no menu of its own here: the stage keeps the right click
+          // and a phone's long press for the planner (Stage.tsx)
           onClick={openedNewBuild}
           onAuxClick={(e) => (e.button === 1 ? openedNewBuild() : undefined)}
           title="Leaves this build as it is and opens the changed one in a new tab"
@@ -718,22 +844,22 @@ export default function SetFinder({ skin }: { skin: Skin }) {
     const btnY = bottom - 14 - 56;
     const room = btnY - 10 - top;
     const listH = tab === 1 ? Math.round(room * 0.52) : room;
-    const chosen = selected ? [...kept, ...(result?.swaps ?? [])].find((s) => swapId(s) === selected) : undefined;
-    const chosenKept = !!chosen && kept.some((k) => swapId(k) === selected);
     const btnW = Math.floor((W - 32 - 2 * 10) / 3);
     return (
-      <div className="overlay" onClick={close}>
-        <div onClick={(e) => e.stopPropagation()}>
+      // (no tap beside the frame closes it here: the frame fills the screen but for a strip under it)
+      <div className="overlay">
+        <div>
           <MenuFrame x={6} y={6} w={W - 12} h={bottom - 6} r25 style={{ background: skin.panel }} skin={skin} />
           <SetTitle x={18} y={18} size={24} width={W - 60} text={FINDER_NAME} skin={skin} />
           <PhoneTabs skin={skin} labels={PHONE_TABS.map((t, i) => (i === 2 && kept.length ? `Kept (${kept.length})` : t))} active={tab} onChange={setTab} y={tabsY} x={16} width={W - 20} clickSounds={['powerselect2']} />
-          <div className="abs scroll-y" style={{ left: 16, top, width: W - 32, height: listH }}>
+          {/* each tab scrolls for itself: one's place is not the next one's */}
+          <div key={tab} className="abs scroll-y" style={{ left: 16, top, width: W - 32, height: listH }}>
             {tab === 0 ? (
               <SearchForm skin={skin} sections={sections} groups={groups} phone />
             ) : tab === 1 ? (
               <ResultList gd={gd} phone hasSlots={hasSlots} />
             ) : tab === LIST_TAB ? (
-              <Shopping gd={gd} skin={skin} phone width={W - 32} part="both" />
+              <PhoneShopping gd={gd} skin={skin} width={W - 32} />
             ) : (
               <Detail gd={gd} build={build} rules={rules} phone summary />
             )}
@@ -754,15 +880,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
               </>
             ) : tab === 1 ? (
               <>
-                <button
-                  data-testid="finder:keepselected"
-                  className="info-button"
-                  style={{ position: 'static', width: btnW * 2 }}
-                  disabled={!chosen || (busy && !chosenKept)}
-                  onClick={() => chosen && (chosenKept ? drop(chosen.key) : keep(chosen))}
-                >
-                  {chosenKept ? 'Let it go' : 'Keep this swap'}
-                </button>
+                <KeepSelectedButton width={btnW * 2} />
                 {closeButton(btnW)}
               </>
             ) : tab === LIST_TAB ? (
@@ -800,16 +918,9 @@ export default function SetFinder({ skin }: { skin: Skin }) {
         <div onClick={(e) => e.stopPropagation()}>
           <MenuFrame x={F.x} y={F.y} w={F.w} h={F.h} r25 style={{ background: skin.panel }} skin={skin} />
           <SetTitle x={F.x + 40} y={F.y + 20} size={34} width={F.w - 80} text={`${FINDER_NAME}: Shopping List`} skin={skin} />
-          <MenuFrame x={sets.x} y={paneY} w={sets.w} h={paneH} skin={skin} />
-          <div className="abs scroll-y" style={{ left: sets.x + 14, top: paneY + 12, width: sets.w - 28, height: paneH - 24 }}>
-            <Shopping gd={gd} skin={skin} phone={false} width={sets.w - 44} part="sets" />
-          </div>
-          <MenuFrame x={needs.x} y={paneY} w={needs.w} h={paneH} skin={skin} />
-          <div className="abs scroll-y" style={{ left: needs.x + 18, top: paneY + 14, width: needs.w - 36, height: paneH - 28 }}>
-            <Shopping gd={gd} skin={skin} phone={false} width={needs.w - 36} part="needs" />
-          </div>
+          <DesktopShopping gd={gd} skin={skin} sets={sets} needs={needs} y={paneY} h={paneH} />
           <div className="abs" style={{ left: sets.x, top: btnY, width: sets.w, display: 'flex', justifyContent: 'flex-start' }}>
-            <button data-testid="shop:back" className="info-button" style={{ position: 'static', width: 240 }} onClick={() => setShopping(false)}>
+            <button ref={backButton} data-testid="shop:back" className="info-button" style={{ position: 'static', width: 240 }} onClick={() => showShopping(false)}>
               Back to the search
             </button>
           </div>
@@ -830,7 +941,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
           <SearchForm skin={skin} sections={sections} groups={groups} phone={false} />
         </div>
         <MenuFrame x={list.x} y={paneY} w={list.w} h={paneH} skin={skin} />
-        <div className="abs scroll-y" style={{ left: list.x + 14, top: paneY + 12, width: list.w - 28, height: paneH - 24 }}>
+        <div ref={listPane} className="abs scroll-y" style={{ left: list.x + 14, top: paneY + 12, width: list.w - 28, height: paneH - 24 }}>
           <ResultList gd={gd} phone={false} hasSlots={hasSlots} />
         </div>
         <MenuFrame x={det.x} y={paneY} w={det.w} h={paneH} skin={skin} />
@@ -841,7 +952,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
           <SearchButton width={220} onSearch={runSearch} />
         </div>
         <div className="abs" style={{ left: list.x, top: btnY, width: det.x + det.w - list.x, display: 'flex', justifyContent: 'flex-end', gap: 14 }}>
-          <button data-testid="finder:shopping" className="info-button" title="What the kept and applied swaps need: recipes, salvage and enhancements" style={{ position: 'static', width: 190 }} onClick={() => setShopping(true)}>
+          <button ref={shoppingButton} data-testid="finder:shopping" className="info-button" title="What the kept and applied swaps need: recipes, salvage and enhancements" style={{ position: 'static', width: 190 }} onClick={() => showShopping(true)}>
             Shopping List
           </button>
           {applyButtons(210)}

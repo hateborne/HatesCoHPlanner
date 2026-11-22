@@ -783,17 +783,21 @@ export function EnhancementPicker({ gd, skin, entry, entries, bonusLevel, slot, 
 /**
  * Enhancement icon as drawEnhancementOriginLevelEx layers it: the left / right origin or
  * invention frame halves, the type disc (pog, 48/64) and the 46/64 icon on top.
+ *
+ * @param props.lazy Fetch its pictures only when it nears the part of a list in view (a long list
+ *   of icons, most of them scrolled out of sight).
  */
-export function EnhIcon({ gd, b, size }: { gd: GameData; b: Power; size: number }) {
+export function EnhIcon({ gd, b, size, lazy }: { gd: GameData; b: Power; size: number; lazy?: boolean }) {
   const inner = (size * 46) / 64;
   const pogSize = (size * 48) / 64;
   const pog = boostPog(gd, b);
+  const loading = lazy ? 'lazy' : undefined;
   return (
     <div style={{ position: 'relative', width: size, height: size, margin: '0 auto' }}>
-      {b.bf?.[0] ? <img src={icon('enh', b.bf[0])} width={size / 2} height={size} alt="" style={{ position: 'absolute', left: 0, top: 0 }} /> : null}
-      {b.bf?.[1] ? <img src={icon('enh', b.bf[1])} width={size / 2} height={size} alt="" style={{ position: 'absolute', left: size / 2, top: 0 }} /> : null}
-      {pog ? <img src={icon('enh', pog)} width={pogSize} height={pogSize} alt="" style={{ position: 'absolute', left: (size - pogSize) / 2, top: (size - pogSize) / 2 }} /> : null}
-      <img src={icon('enh', b.icon)} width={inner} height={inner} alt="" style={{ position: 'absolute', left: (size - inner) / 2, top: (size - inner) / 2 }} />
+      {b.bf?.[0] ? <img src={icon('enh', b.bf[0])} loading={loading} width={size / 2} height={size} alt="" style={{ position: 'absolute', left: 0, top: 0 }} /> : null}
+      {b.bf?.[1] ? <img src={icon('enh', b.bf[1])} loading={loading} width={size / 2} height={size} alt="" style={{ position: 'absolute', left: size / 2, top: 0 }} /> : null}
+      {pog ? <img src={icon('enh', pog)} loading={loading} width={pogSize} height={pogSize} alt="" style={{ position: 'absolute', left: (size - pogSize) / 2, top: (size - pogSize) / 2 }} /> : null}
+      <img src={icon('enh', b.icon)} loading={loading} width={inner} height={inner} alt="" style={{ position: 'absolute', left: (size - inner) / 2, top: (size - inner) / 2 }} />
     </div>
   );
 }

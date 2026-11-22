@@ -4,12 +4,14 @@
  * the bonus the search wants.
  */
 import type { GameData } from '../../data/gamedata.ts';
+import type { RecipeData } from '../../data/recipes.ts';
 import type { BoostSet, Effect, Power } from '../../data/types.ts';
 import type { SlottedEnh } from '../build.ts';
-import { boostMods, ioLevelRange, levelsAbove, setRarity, shortName, type RarityKind } from '../enhance.ts';
+import { boostMods, ioLevelRange, levelsAbove, lowerShortName, setRarity, type RarityKind } from '../enhance.ts';
 import { isPieceGlobal } from '../setbonus.ts';
 import type { BonusVecs } from './bonusVec.ts';
 import { depthRange, type Depth, type FinderQuery, type SetTag } from './query.ts';
+import { recipeOf } from './shopping.ts';
 
 /** What kind of piece an enhancement is, for the finder. */
 export type PieceKind =
@@ -30,22 +32,19 @@ const TAG_OF: Record<RarityKind, SetTag | null> = {
   superiorArchetype: 'archetype',
 };
 
-// how dear a set is, by rarity: uncommon, then rare, then everything else
-// UNCONFIRMED default: only breaks ties between swaps worth about the same
-const COST_OF: Record<RarityKind, number> = {
-  uncommon: 0,
-  rare: 1,
-  veryRare: 2,
-  pvp: 2,
-  winter: 2,
-  superiorWinter: 2,
-  event: 2,
-  archetype: 2,
-  superiorArchetype: 2,
-};
+// the salvage a budget search counts: the dearest of the three invention salvage tiers (Platinum,
+// Hamidon Goo), which the game's data calls rare
+export const DEAR_SALVAGE = 3;
+
+// the tag a budget search still takes: seasonal sets are bought whole, and anyone can earn them
+// (the owner's ruling). PvP, purple and archetype sets are left out of a budget search
+const BUDGET_TAG: SetTag = 'seasonal';
 
 /**
  * Whether a search's tags and categories let a set in.
+ *
+ * A budget search lets in uncommon and rare sets and, when asked for, seasonal ones: its other
+ * tags count for nothing.
  *
  * @param set The set.
  * @param q The search.
@@ -55,19 +54,28 @@ export function setWanted(set: BoostSet, q: FinderQuery): boolean {
   if (q.groups && !q.groups.includes(set.grp)) return false;
   const rarity = setRarity(set);
   const tag = rarity ? TAG_OF[rarity.kind] : null;
-  return tag === null || q.tags.includes(tag);
+  return tag === null || (q.tags.includes(tag) && (!q.budget || tag === BUDGET_TAG));
 }
 
 /**
- * A set's cost rank, for telling two swaps of about the same worth apart: rarity first, then the
- * level its pieces start at.
+ * How many of the dearest salvage getting a piece takes, for a budget search.
  *
- * @param set The set.
- * @return A small number, higher for dearer sets.
+ * A crafted piece's recipe says, at the level it is placed at. With no recipe to read (a game
+ * version without a recipe file, a failed download), a rare set's piece is taken to need one, as
+ * its recipes take about one a piece, and any other none: an uncommon set's recipes mostly take
+ * none, and a seasonal set is bought whole.
+ *
+ * @param gd Game data.
+ * @param recipes The game version's recipes, or null when there are none to read.
+ * @param set The piece's set.
+ * @param enh The piece as it would be slotted.
+ * @return The count.
  */
-export function costOf(set: BoostSet): number {
-  const rarity = setRarity(set);
-  return (rarity ? COST_OF[rarity.kind] : 2) + Math.max(0, set.minL) / 100;
+export function dearSalvage(gd: GameData, recipes: RecipeData | null, set: BoostSet, enh: SlottedEnh): number {
+  const made = recipes ? recipeOf(gd, recipes, { boost: enh.boost, level: enh.ioLevel ?? null, owned: false }) : null;
+  if (made) return made.salvage.filter((i) => recipes!.salvage[i]![1] >= DEAR_SALVAGE).length;
+  // UNCONFIRMED default
+  return setRarity(set)?.kind === 'rare' ? 1 : 0;
 }
 
 /**
@@ -134,7 +142,7 @@ function someEffect(effs: Effect[] | undefined, test: (e: Effect) => boolean): b
  */
 export function pieceKind(gd: GameData, boost: Power): PieceKind {
   const ref = gd.boostSetOf.get(boost.id);
-  const name = shortName(boost).toLowerCase();
+  const name = lowerShortName(boost);
   if (ref?.set.bon.some((b) => isPieceGlobal(b) && (b.req ?? []).some((t) => t.toLowerCase() === name))) return 'global';
   const enhancing = new Set(boostMods(boost));
   const isChance = (e: Effect) => e.ppm !== undefined || (e.ch !== undefined && e.ch < 1);
@@ -180,7 +188,7 @@ export function mainOptions(gd: GameData, set: BoostSet, vecs: BonusVecs, main: 
     if (main.depth !== 'any') continue;
     const named = new Set((b.req ?? []).map((t) => t.toLowerCase()));
     set.slots.forEach((versions, letter) => {
-      if (versions.some((id) => named.has(shortName(gd.power(id)).toLowerCase()))) out.push({ min: 1, letter, bonus });
+      if (versions.some((id) => named.has(lowerShortName(gd.power(id))))) out.push({ min: 1, letter, bonus });
     });
   }
   return out;

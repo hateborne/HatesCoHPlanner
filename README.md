@@ -19,9 +19,10 @@ Live site: https://hateborne.github.io/HatesCoHPlanner/
 - Totals with expandable sources; a totals side tab during the wizard.
 - Set Finder (Homecoming builds): pick what matters (defense, recharge, damage, ...) and it ranks
   the enhancement sets the build's existing slots could take, from statistics of community builds.
-  Each swap shows its net gains and losses; kept swaps go into the build or into a copy in a new
-  tab. A shopping list adds up the recipes and salvage they need; on the desktop it also writes
-  search lines to paste into the auction house.
+  A Budget option ranks swaps lower for the rarest salvage their recipes need and leaves out
+  PvP, purple and archetype sets and attuned pieces. Each swap shows its net gains and losses; kept
+  swaps go into the build or into a copy in a new tab. A shopping list adds up the recipes and
+  salvage they need; on the desktop it also writes search lines to paste into the auction house.
 - Share links (`.../HatesCoHPlanner/Homecoming/#b=...`: the address names the game server; links
   from before servers, with no server in the address, open on Homecoming), builds saved in the
   browser (only there: the planner has no server, and clearing the browser's site data erases them,

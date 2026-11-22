@@ -3,10 +3,11 @@ import { join } from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import type { FinderStats } from '../src/data/finderStats.ts';
-import { truncateAbove } from '../src/engine/actions.ts';
+import { checkRecipes } from '../src/data/recipes.ts';
+import { setEnh, setEnhs, truncateAbove } from '../src/engine/actions.ts';
 import { newBuild, type Build, type Slot } from '../src/engine/build.ts';
 import { setRarity } from '../src/engine/enhance.ts';
-import { pieceKind } from '../src/engine/finder/candidates.ts';
+import { DEAR_SALVAGE, dearSalvage, enhFor, pieceFor, pieceKind } from '../src/engine/finder/candidates.ts';
 import { DEFENSE_SOFT_CAP, FinderBase } from '../src/engine/finder/core.ts';
 import { buildDiff } from '../src/engine/finder/diff.ts';
 import { BASELINE, groupFor, LOSS_WEIGHT, MAIN_WEIGHT, weightsFor } from '../src/engine/finder/goals.ts';
@@ -15,16 +16,17 @@ import { slottedNumbers } from '../src/engine/finder/powerNumbers.ts';
 import { queryProblem, type FinderQuery } from '../src/engine/finder/query.ts';
 import { isSelfHeal, rolesOf } from '../src/engine/finder/roles.ts';
 import { needsFor, Scorer } from '../src/engine/finder/score.ts';
-import { finderProblem, findSwaps, searchSwaps, swapsLegal } from '../src/engine/finder/search.ts';
+import { BUDGET_FULL_SET, BUDGET_STEP, budgetCharge, finderProblem, findSwaps, insertRanked, POWERS_SHARE, refusedSwaps, searchSwaps, swapsLegal, type RankedSwap } from '../src/engine/finder/search.ts';
 import { powerInfo, segText } from '../src/engine/powerinfo.ts';
 import { BuildRules, type BuildEntry } from '../src/engine/rules.ts';
-import { computeTotals } from '../src/engine/totals.ts';
+import { computeTotals, totalsState } from '../src/engine/totals.ts';
 import { importMbd, importMidsText, type Mbd } from '../src/io/mids.ts';
 import { loadData, loadMidsMapFile, pid, sid } from './helpers/data.ts';
 
 const gd = loadData();
 const stats = JSON.parse(readFileSync(join(process.cwd(), 'public', 'data', 'finder', 'stats.json'), 'utf-8')) as FinderStats;
 const map = loadMidsMapFile(gd.core.manifest.dataVersion);
+const recipes = checkRecipes(JSON.parse(readFileSync(join(process.cwd(), 'public', 'data', 'recipes', `${gd.core.manifest.dataVersion}.json`), 'utf-8')))!;
 const fixture = (name: string) => readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', name), 'utf-8');
 const power = (name: string) => gd.power(pid(gd, name));
 // a published Homecoming version older than the one the statistics were made on
@@ -361,6 +363,13 @@ describe('finder: search', () => {
     expect(steps).toEqual([...steps].sort((x, y) => x - y));
     expect(steps[steps.length - 1]).toBe(1);
     expect(step.value.swaps.length).toBeGreaterThan(0);
+    // it stops for breath after each set of each power and once the build is read, not once a power:
+    // far more often than the build has powers, starting before any power is done
+    expect(steps[0]).toBe(0);
+    expect(steps.length).toBeGreaterThan(3 * new BuildRules(gd, b).entries().length);
+    // the last check of the ranked list has its own share of the progress, past the powers'
+    expect(steps.some((s) => s > POWERS_SHARE && s < 1)).toBe(true);
+    expect(steps.filter((s) => s <= POWERS_SHARE).length).toBeGreaterThan(3 * new BuildRules(gd, b).entries().length);
     // about 0.2 s on a desktop; the limit only guards against a change that makes it many times slower
     expect(took).toBeLessThan(5000);
   }, 60000);
@@ -455,6 +464,151 @@ describe('finder: review fixes', () => {
   });
 });
 
+describe('finder: budget searches', () => {
+  /** @return The dear salvage a swap's pieces need between them, read as a budget search reads it. */
+  const dearOf = (s: Swap, from: typeof recipes | null = recipes) => s.pieces.reduce((n, p) => n + dearSalvage(gd, from, setOf(s), p.enh), 0);
+  const idOf = (s: Swap) => `${s.key}|${s.set}|${s.pieces.map((p) => `${p.slot}:${p.enh.boost}:${p.enh.ioLevel ?? ''}`).join(',')}`;
+
+  it('lets one dear salvage off for a full set, and charges for the rest', () => {
+    expect(budgetCharge(0, 2)).toBe(0);
+    expect(budgetCharge(1, BUDGET_FULL_SET)).toBe(0);
+    expect(budgetCharge(1, 6)).toBe(0);
+    expect(budgetCharge(1, BUDGET_FULL_SET - 1)).toBe(BUDGET_STEP);
+    expect(budgetCharge(2, 2)).toBe(2 * BUDGET_STEP);
+    expect(budgetCharge(6, 6)).toBe(5 * BUDGET_STEP);
+  });
+
+  it("reads a crafted piece's dear salvage from its recipe, and goes by the set's rarity without one", () => {
+    const piece = (name: string) => {
+      const p = power(name);
+      return { p, set: gd.boostSetOf.get(p.id)!.set };
+    };
+    // Luck of the Gambler's recharge piece, crafted at 50: what its recipe takes there
+    const gambler = piece('Boosts.Crafted_Luck_of_the_Gambler_F.Crafted_Luck_of_the_Gambler_F');
+    const tier = recipes.recipes[gambler.p.n]!.t.find((t) => t[0] <= 50 && 50 <= t[1])!;
+    const inRecipe = tier[2].filter((i) => recipes.salvage[i]![1] >= DEAR_SALVAGE).length;
+    expect(inRecipe).toBeGreaterThan(0);
+    expect(dearSalvage(gd, recipes, gambler.set, { boost: gambler.p.id, ioLevel: 49 })).toBe(inRecipe);
+    // an uncommon set whose recipes take none
+    const curare = piece('Boosts.Crafted_Essence_of_Curare_A.Crafted_Essence_of_Curare_A');
+    expect(setRarity(curare.set)?.kind).toBe('uncommon');
+    expect(dearSalvage(gd, recipes, curare.set, { boost: curare.p.id, ioLevel: 49 })).toBe(0);
+    // no recipe file to read: a rare set's piece counts one, an uncommon set's none
+    expect(dearSalvage(gd, null, gambler.set, { boost: gambler.p.id, ioLevel: 49 })).toBe(1);
+    expect(dearSalvage(gd, null, curare.set, { boost: curare.p.id, ioLevel: 49 })).toBe(0);
+    // a seasonal set is bought whole: no recipe, no salvage
+    const winter = gd.boostSets.find((s) => setRarity(s)?.kind === 'winter')!;
+    expect(dearSalvage(gd, recipes, winter, { boost: winter.slots[0]![0]! })).toBe(0);
+  });
+
+  it('leaves what a set costs out of a search that is not a budget one', () => {
+    const b = corruptor();
+    const plain = findSwaps({ gd, stats, build: b, query: query({}), limit: 500 }).swaps;
+    const withRecipes = findSwaps({ gd, stats, build: b, query: query({}), recipes, limit: 500 }).swaps;
+    expect(withRecipes).toEqual(plain);
+    // the list holds sets that need dear salvage and sets that need none, ranked by score alone
+    expect(plain.some((s) => dearOf(s) > 0)).toBe(true);
+    expect(plain.some((s) => dearOf(s) === 0)).toBe(true);
+  });
+
+  it('counts dear salvage against a swap in a budget search', () => {
+    const b = corruptor();
+    const plain = findSwaps({ gd, stats, build: b, query: query({}), limit: 500 }).swaps;
+    const cheap = findSwaps({ gd, stats, build: b, query: query({ budget: true }), recipes, limit: 500 }).swaps;
+    expect(cheap.length).toBeGreaterThan(0);
+    const byId = new Map(plain.map((s): [string, RankedSwap] => [idOf(s), s]));
+    let charged = 0;
+    for (const s of cheap) {
+      const same = byId.get(idOf(s));
+      if (!same) continue;
+      // the same pieces in the same slots: the score differs by the charge and nothing else
+      expect(same.score - s.score, setOf(s).n).toBeCloseTo(budgetCharge(dearOf(s), s.count), 9);
+      if (dearOf(s) > 0) charged++;
+    }
+    expect(charged).toBeGreaterThan(0);
+    // a swap must still be worth more than its salvage, and the list as a whole needs less of it
+    for (const s of cheap) expect(s.score).toBeGreaterThan(0);
+    expect(cheap.map((s) => s.score)).toEqual(cheap.map((s) => s.score).sort((x, y) => y - x));
+    const total = (list: RankedSwap[]) => list.reduce((n, s) => n + dearOf(s), 0);
+    expect(total(cheap)).toBeLessThan(total(plain));
+    // a set none of whose pieces needs dear salvage is offered just as before: the same swaps, scores and order
+    const free = (s: Swap) =>
+      setOf(s).slots.every((_, letter) => {
+        const p = pieceFor(gd, setOf(s), letter, /*attuned=*/ false);
+        return !p || dearSalvage(gd, recipes, setOf(s), enhFor(gd, p, 49)) === 0;
+      });
+    const freeOf = (list: RankedSwap[]) => list.filter(free).map((s) => [idOf(s), s.score]);
+    expect(freeOf(plain).length).toBeGreaterThan(0);
+    expect(freeOf(cheap)).toEqual(freeOf(plain));
+    // and a swap that pays for salvage never climbs past one it stood below
+    const rank = new Map(plain.map((s, i): [string, number] => [idOf(s), i]));
+    const paid = cheap.filter((s) => rank.has(idOf(s)) && budgetCharge(dearOf(s), s.count) > 0);
+    for (const s of paid) {
+      const above = cheap.slice(0, cheap.indexOf(s)).filter((x) => rank.has(idOf(x)) && budgetCharge(dearOf(x), x.count) === 0);
+      const wasAbove = plain.slice(0, rank.get(idOf(s))!).filter((x) => budgetCharge(dearOf(x), x.count) === 0 && cheap.some((c) => idOf(c) === idOf(x)));
+      for (const x of wasAbove) expect(above.map(idOf), setOf(s).n).toContain(idOf(x));
+    }
+    // every swap is still one the game takes
+    const rules = new BuildRules(gd, b);
+    for (const s of cheap.slice(0, 10)) expect(swapsLegal(gd, b, [s], rules), setOf(s).n).toBe(true);
+  });
+
+  it("goes by each set's rarity when there is no recipe file to read", () => {
+    const b = corruptor();
+    const plain = findSwaps({ gd, stats, build: b, query: query({}), limit: 500 }).swaps;
+    const guessed = findSwaps({ gd, stats, build: b, query: query({ budget: true }), limit: 500 }).swaps;
+    expect(guessed.length).toBeGreaterThan(0);
+    const byId = new Map(plain.map((s): [string, RankedSwap] => [idOf(s), s]));
+    let rare = 0;
+    for (const s of guessed) {
+      expect(s.score).toBeGreaterThan(0);
+      const same = byId.get(idOf(s));
+      if (!same) continue;
+      // a rare set's pieces count one each, an uncommon set's none
+      const each = setRarity(setOf(s))?.kind === 'rare' ? 1 : 0;
+      expect(same.score - s.score, setOf(s).n).toBeCloseTo(budgetCharge(each * s.pieces.length, s.count), 9);
+      rare += each;
+    }
+    expect(rare).toBeGreaterThan(0);
+    expect(guessed).toEqual(findSwaps({ gd, stats, build: b, query: query({ budget: true }), recipes: null, limit: 500 }).swaps);
+  });
+
+  it('lists every swap that gives a wanted bonus, the dear ones lower', () => {
+    const b = corruptor();
+    const main = { stat: 'rech', depth: 'any' as const };
+    const pair = (s: Swap) => `${s.key}|${s.set}`;
+    const plain = findSwaps({ gd, stats, build: b, query: query({ main }), limit: 500 }).swaps;
+    const cheap = findSwaps({ gd, stats, build: b, query: query({ main, budget: true }), recipes, limit: 500 }).swaps;
+    expect(cheap.length).toBeGreaterThan(0);
+    // the wanted bonus is a filter, and the charge is not: no power and set is dropped for what it costs
+    expect(cheap.map(pair).sort()).toEqual(plain.map(pair).sort());
+    for (const s of cheap) expect(new Map(s.lines).get('rech') ?? 0, setOf(s).n).toBeGreaterThan(0);
+    expect(cheap.map((s) => s.score)).toEqual(cheap.map((s) => s.score).sort((x, y) => y - x));
+    // a swap that pays for salvage is still listed when the charge takes it below zero
+    const byPair = new Map(plain.map((s): [string, RankedSwap] => [pair(s), s]));
+    expect(cheap.some((s) => s.score < byPair.get(pair(s))!.score)).toBe(true);
+  });
+
+  it('leaves PvP, purple and archetype sets and attuned pieces out, and takes seasonal sets when asked', () => {
+    const b = corruptor();
+    const run = (q: Partial<FinderQuery>) => findSwaps({ gd, stats, build: b, query: query(q), recipes, limit: 500 }).swaps;
+    const kinds = (list: RankedSwap[]) => new Set(list.map((s) => setRarity(setOf(s))?.kind));
+    const seasonal = (s: Swap) => ['winter', 'superiorWinter', 'event'].includes(setRarity(setOf(s))?.kind ?? '');
+    // every tag ticked and attuned pieces asked for: a budget search takes the seasonal tag alone
+    const all = run({ budget: true, tags: ALL_TAGS, attuned: true });
+    expect([...kinds(all)].sort()).toEqual([...kinds(run({ budget: true, tags: ['seasonal'] }))].sort());
+    expect(all.some(seasonal)).toBe(true);
+    for (const k of kinds(all)) expect(['uncommon', 'rare', 'winter', 'superiorWinter', 'event']).toContain(k);
+    // pieces go in crafted wherever the set has a crafted version
+    for (const s of all.filter((x) => !seasonal(x))) for (const p of s.pieces) expect(gd.power(p.enh.boost).bup, gd.power(p.enh.boost).n).toBeFalsy();
+    // without the seasonal tag: uncommon and rare sets only, whatever else is ticked
+    expect([...kinds(run({ budget: true, tags: ['pvp', 'purple', 'archetype'] }))].sort()).toEqual(['rare', 'uncommon']);
+    // a seasonal set takes no salvage: it scores as it does in a search that is not a budget one
+    const plain = new Map(run({ tags: ['seasonal'] }).map((s): [string, RankedSwap] => [idOf(s), s]));
+    for (const s of all.filter(seasonal)) expect(plain.get(idOf(s))?.score, setOf(s).n).toBeCloseTo(s.score, 9);
+  });
+});
+
 describe('finder: kept swaps', () => {
   it('holds one swap per power and leaves the build alone', () => {
     const b = corruptor();
@@ -504,6 +658,74 @@ describe('finder: kept swaps', () => {
   }, 60000);
 });
 
+describe('finder: swaps into a build', () => {
+  it('places every piece with one copy of the build, as placing them one at a time would', async () => {
+    const b = await dominator();
+    const before = JSON.stringify(b);
+    const found = findSwaps({ gd, stats, build: b, query: query({ tags: ALL_TAGS }) }).swaps.slice(0, 4);
+    // one per power, as kept swaps are
+    const swaps = found.filter((s, i) => found.findIndex((x) => x.key === s.key) === i);
+    expect(swaps.length).toBeGreaterThan(1);
+    let one = b;
+    for (const s of swaps) for (const p of s.pieces) one = setEnh(one, s.key, p.slot, p.enh, s.freeLevel);
+    const all = applySwaps(b, swaps);
+    expect(all).toEqual(one);
+    expect(all).not.toBe(b);
+    expect(JSON.stringify(b)).toBe(before);
+    // the new build shares nothing with the swaps it was made from
+    const first = swaps[0]!;
+    const placed = new BuildRules(gd, all).entries().find((e) => e.key === first.key)!.slots[first.pieces[0]!.slot]!.enh;
+    expect(placed).toEqual(first.pieces[0]!.enh);
+    expect(placed).not.toBe(first.pieces[0]!.enh);
+    // nothing to place, or nowhere to place it: the build itself comes back, with no state made for the miss
+    expect(applySwaps(b, [])).toBe(b);
+    expect(setEnhs(b, [{ key: 'pick:9999', slot: 0, enh: first.pieces[0]!.enh, freeLevel: 0 }])).toBe(b);
+    expect(setEnhs(b, [{ key: 'grant:987654321', slot: 5, enh: first.pieces[0]!.enh, freeLevel: 0 }])).toBe(b);
+    expect(JSON.stringify(b)).toBe(before);
+    // a miss beside a hit: the hit is placed, and the miss leaves no state of its own in the new build
+    const hit = { key: first.key, slot: first.pieces[0]!.slot, enh: first.pieces[0]!.enh, freeLevel: first.freeLevel };
+    const mixed = setEnhs(b, [hit, { key: 'grant:987654321', slot: 5, enh: first.pieces[0]!.enh, freeLevel: 0 }, { key: 'pick:9999', slot: 0, enh: first.pieces[0]!.enh, freeLevel: 0 }]);
+    expect(mixed).toEqual(setEnhs(b, [hit]));
+    expect(mixed).not.toBe(b);
+    expect(Object.keys(mixed.granted)).toEqual(Object.keys(b.granted));
+  });
+
+  it('puts a refused pair\'s next piece count back at its place in the ranking', () => {
+    const byRank = (a: { score: number; name: string }, b: { score: number; name: string }) => b.score - a.score || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const item = (score: number, name: string) => ({ score, name });
+    const list = [item(9, 'a'), item(7, 'b'), item(5, 'c'), item(5, 'd'), item(2, 'e')];
+    // past what ranks before it, past its equals, before what ranks after it
+    expect(insertRanked(list, 0, item(5, 'cc'), byRank)).toBe(3);
+    expect(list.map((x) => x.name)).toEqual(['a', 'b', 'c', 'cc', 'd', 'e']);
+    // never at or before the item being worked on, even when it would rank before it
+    expect(insertRanked(list, 2, item(8, 'x'), byRank)).toBe(3);
+    expect(list.map((x) => x.name)).toEqual(['a', 'b', 'c', 'x', 'cc', 'd', 'e']);
+    // last when nothing ranks after it, and into an empty tail
+    expect(insertRanked(list, 3, item(1, 'z'), byRank)).toBe(list.length - 1);
+    const one = [item(4, 'only')];
+    expect(insertRanked(one, 0, item(3, 'next'), byRank)).toBe(1);
+    expect(one.map((x) => x.name)).toEqual(['only', 'next']);
+  });
+
+  it('takes a totals state only for the level it was made for', async () => {
+    const b = await dominator();
+    const rules = new BuildRules(gd, b);
+    const at50 = computeTotals(gd, rules, b, 49);
+    expect(computeTotals(gd, rules, b, 49, totalsState(gd, rules, b, 49))).toEqual(at50);
+    // one made for another level is passed over, not mixed in
+    expect(computeTotals(gd, rules, b, 49, totalsState(gd, rules, b, 19))).toEqual(at50);
+  });
+
+  it('never searches on from a kept swap whose pieces the game data lacks', async () => {
+    const b = await dominator();
+    const real = findSwaps({ gd, stats, build: b, query: query({}) }).swaps[0]!;
+    const bad: Swap = { ...real, pieces: real.pieces.map((p) => ({ ...p, enh: { boost: -5 } })) };
+    const res = findSwaps({ gd, stats, build: b, kept: [bad], query: query({}) });
+    expect(res.stale).toEqual([bad.key]);
+    expect(res.swaps.length).toBeGreaterThan(0);
+  });
+});
+
 describe('finder: swaps together', () => {
   it('takes a set of swaps only when the game would take all of them on one build', () => {
     const b = brute();
@@ -522,6 +744,31 @@ describe('finder: swaps together', () => {
     // a swap written for another power is refused, not applied blind
     expect(swapsLegal(gd, b, [{ ...shield, power: -1 }])).toBe(false);
     expect(swapsLegal(gd, b, [])).toBe(true);
+    // which of them the game refuses: both hold the one unique piece, so both
+    expect(refusedSwaps(gd, b, [shield, flames])).toEqual([shield, flames]);
+    expect(refusedSwaps(gd, b, [shield])).toEqual([]);
+  });
+
+  it('names the swaps the game refuses, whatever order they come in', async () => {
+    const b = await dominator();
+    const rules = new BuildRules(gd, b);
+    const swap = (name: string, set: string, slot: number, enh: { boost: number; ioLevel?: number }): Swap => {
+      const e = rules.entries().find((x) => x.power.n === name)!;
+      return { key: e.key, power: e.power.id, freeLevel: e.level, set: gd.boostSets.find((s) => s.n === set)!.id, count: 1, pieces: [{ slot, enh }], before: slotIds(e.slots) };
+    };
+    // two unique pieces the build holds, each taken out by one swap and put into another power by a second
+    const out = swap('Dominator_Control.Symphony_Control.Aria_of_Stasis', 'Annihilation', 0, { boost: boost('Crafted_Annihilation_A'), ioLevel: 49 });
+    const into = swap('Dominator_Control.Symphony_Control.Hymn_of_Dissonance', 'Superior_Dominating_Grasp', 3, { boost: boost('Superior_Attuned_Superior_Dominating_Grasp_E') });
+    const out2 = swap('Dominator_Assault.Dark_Assault.Gloom', 'Winters_Bite', 0, { boost: boost('Attuned_Winters_Bite_A') });
+    const into2 = swap('Dominator_Assault.Dark_Assault.Dark_Blast', 'Apocalypse', 0, { boost: boost('Crafted_Apocalypse_F'), ioLevel: 49 });
+    expect(refusedSwaps(gd, b, [into, out, out2, into2])).toEqual([]);
+    expect(refusedSwaps(gd, b, [into2, out2, out, into])).toEqual([]);
+    // without the swap that took its piece out, only the one that put it in is refused: never a
+    // swap that stands on another one still there, wherever it sits in the list
+    expect(refusedSwaps(gd, b, [into, out, into2])).toEqual([into2]);
+    expect(refusedSwaps(gd, b, [into2, into, out])).toEqual([into2]);
+    expect(refusedSwaps(gd, b, [into, out2, into2])).toEqual([into]);
+    expect(refusedSwaps(gd, b, [into, into2])).toEqual([into, into2]);
   });
 });
 
