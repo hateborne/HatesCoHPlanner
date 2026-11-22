@@ -7,12 +7,17 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ### New
 
+- Set Finder, for Homecoming builds: choose what matters to you and it ranks the enhancement sets your build could slot, shows what each swap gains and loses, and makes a shopping list of the recipes and salvage.
+- Set Finder has a Budget option: tick it and swaps that need the rarest salvage rank lower, and PvP, purple and archetype sets and attuned pieces are left out, so cheaper sets come first.
+
+## v1.3.0 - November 21, 2026
+
+### New
+
 - The detailed power tooltip (on phones, a power's long-press info) now shows a power's slotted bonuses: the total its enhancements add stands at the right of each number they change, such as Accuracy or Recharge Time.
 - Hover over a set's name while placing enhancements (on phones, long press it) to see all of the set's bonuses: the ones the power already earns glow, and the ones the enhancements you have chosen would add glow brighter.
 - On phones, the enhancement categories are now one row you can drag sideways, the set names sit in their own box, and the details no longer repeat the enhancement's icon and name, which leaves more room for the lists.
 - On phones, a long press on an enhancement turns on Select several and picks it.
-- Set Finder, for Homecoming builds: choose what matters to you and it ranks the enhancement sets your build could slot, shows what each swap gains and loses, and makes a shopping list of the recipes and salvage.
-- Set Finder has a Budget option: tick it and swaps that need the rarest salvage rank lower, and PvP, purple and archetype sets and attuned pieces are left out, so cheaper sets come first.
 
 ### Improved
 
