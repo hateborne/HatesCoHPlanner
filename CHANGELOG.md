@@ -12,6 +12,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 - On phones, the enhancement categories are now one row you can drag sideways, the set names sit in their own box, and the details no longer repeat the enhancement's icon and name, which leaves more room for the lists.
 - On phones, a long press on an enhancement turns on Select several and picks it.
 - Set Finder, for Homecoming builds: choose what matters to you and it ranks the enhancement sets your build could slot, shows what each swap gains and loses, and makes a shopping list of the recipes and salvage.
+- Set Finder has a Budget option: tick it and swaps that need the rarest salvage rank lower, and PvP, purple and archetype sets and attuned pieces are left out, so cheaper sets come first.
 
 ### Improved
 

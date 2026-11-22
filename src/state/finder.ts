@@ -22,6 +22,8 @@ import { useStore } from './store.ts';
 
 // how long one slice of a search may run before the page gets its turn again (ms)
 const SLICE_MS = 12;
+// how long a budget search waits for the recipes before it goes by each set's rarity (ms)
+export const RECIPES_WAIT_MS = 10_000;
 
 // How long a download may have nothing arrive before it is given up while the pane stays open. By
 // then it has been asked for twice more alongside (ask), and a line that says it failed, with what
@@ -93,11 +95,11 @@ export interface FinderStore {
   selected: string | null; // id of the swap whose gains and losses show (a tap on phones; a click on desktop)
   link: string | null; // a share link to the build with the kept swaps in, for "open as new build"
   note: string | null; // something that went wrong with the last step, in plain words
-  recipes: RecipeData | null; // the recipes of the build's game version, once downloaded (null: not yet, or it has none)
+  recipes: RecipeData | null; // the recipes of the build's game version, once downloaded for the shopping list or a budget search (null: not yet, or it has none)
   recipesFor: string | null; // the game version `recipes` was asked for
   recipesLoading: boolean; // the recipes are on their way
   recipesMissing: boolean; // the site has no recipes for that game version (not a failed download)
-  recipesFailed: string | null; // the game version whose recipes did not download (asked for again when the list next opens)
+  recipesFailed: string | null; // the game version whose recipes did not download (asked for again when they are next wanted)
   unsavedFor: string | null; // the server whose list the browser refused to store: `shop` is its only copy, for as long as the tab lives
   shop: ShopItem[]; // the shopping list the browser keeps: the pieces of swaps already applied
   shopFor: string | null; // the server whose list `shop` is (enhancement ids are a server's own)
@@ -176,6 +178,8 @@ let recipesWatch: Watch | null = null;
 let recipesStop: (() => void) | null = null;
 // the search the running slices are working on (null: none runs)
 let running: FinderQuery | null = null;
+// the recipe download under way, if any
+let recipesWait: Promise<void> | null = null;
 
 export const useFinder = create<FinderStore>((set, get) => {
   /** Work out the new-build link again (the kept swaps changed). */
@@ -251,20 +255,80 @@ export const useFinder = create<FinderStore>((set, get) => {
   };
 
   /**
+   * Download the recipes of the build's game version, unless they are here, on their way, or the
+   * site has none for it. A download that failed is tried again.
+   *
+   * @param afresh The player asked for them again (the list opened, Search was pressed, Budget
+   *   was ticked): a download on its way that has had nothing arrive for a while is then given up
+   *   and asked for afresh, so one that stalled does not stay stalled for the life of the tab.
+   * @return A promise that settles once the recipes are here or known not to be coming.
+   */
+  const wantRecipes = (afresh = false): Promise<void> => {
+    const { gd } = useStore.getState();
+    const s = gd ? serverById(gd.server) : undefined;
+    if (!gd || !s) return Promise.resolve();
+    const version = gd.core.manifest.dataVersion;
+    if (get().recipesFor === version) {
+      // here, none on the site, or on their way: left alone, unless they are on their way and stalled
+      if (!afresh || !get().recipesLoading || !recipesWatch || !recipesWatch.quiet(STALLED_MS)) return recipesWait ?? Promise.resolve();
+      recipesStop?.();
+      recipesWatch.cancel();
+    }
+    const run = ++recipesRun;
+    const watch = new Watch();
+    const stop = giveUpWhenStalled(watch);
+    recipesWatch = watch;
+    recipesStop = stop;
+    set({ recipes: null, recipesFor: version, recipesLoading: true, recipesMissing: false, recipesFailed: null });
+    const wait = loadRecipes(dataRoot(s, import.meta.env.BASE_URL), version, watch)
+      .then((recipes) => {
+        stop();
+        if (run !== recipesRun) return;
+        recipesWatch = null;
+        // none for this version (an approximate one): not asked for again, the list names enhancements only
+        set({ recipes, recipesLoading: false, recipesMissing: !recipes });
+      })
+      .catch((e: unknown) => {
+        stop();
+        // (one given up for a fresh one says nothing: the fresh one will)
+        if (run !== recipesRun) return;
+        recipesWatch = null;
+        console.warn('set finder: the recipes did not load', e);
+        // asked for again the next time they are wanted
+        set({ recipesFor: null, recipesLoading: false, recipesFailed: version });
+      })
+      .then(() => {
+        if (recipesWait === wait) recipesWait = null;
+      });
+    recipesWait = wait;
+    return wait;
+  };
+
+  /**
    * Rank the swaps for a search, in slices, against the build with the kept swaps in.
    *
    * The list on screen stays as it is until this one is whole: `searched` and `searchedKept` name
    * what a list was made with only once it is shown, so a search given up or failed leaves the
    * old list marked out of date.
    *
+   * A budget search reads the salvage each piece's recipe takes, so a search the player started
+   * waits for the recipes first, for RECIPES_WAIT_MS at most. When they can't be had in that time
+   * it still runs, the salvage guessed from each set's rarity, and says so. Ranking the list again
+   * after a kept swap changed never waits and never asks again: it goes by the recipes as they
+   * stand, so a download that failed or stalled does not hold up every tick of a box.
+   *
    * @param query The search to rank for.
+   * @param retry The player started this search (Search was pressed): wait for the recipes, and
+   *   ask again for ones whose download failed or stalled.
    */
-  const rank = (query: FinderQuery): void => {
+  const rank = (query: FinderQuery, retry = false): void => {
     const { gd, build } = useStore.getState();
     const { stats, kept } = get();
     if (!gd || !build || !stats) return;
     const run = ++searchRun;
-    const steps = searchSwaps({ gd, stats, build, kept, query });
+    const version = gd.core.manifest.dataVersion;
+    let steps: Generator<number, FinderResult, void> | undefined;
+    let guessed = false;
     running = query;
     set({ progress: 0, note: null });
     // the progress shown is in whole percents: the state is only touched when that changes
@@ -273,6 +337,13 @@ export const useFinder = create<FinderStore>((set, get) => {
       if (run !== searchRun) return;
       const until = performance.now() + SLICE_MS;
       try {
+        if (!steps) {
+          const asked = get().recipesFor === version;
+          const recipes = query.budget && asked ? get().recipes : null;
+          // none, though the site may have them: the download failed or is taking too long
+          guessed = !!query.budget && !recipes && !(asked && get().recipesMissing);
+          steps = searchSwaps({ gd, stats, build, kept, query, recipes });
+        }
         let step = steps.next();
         while (!step.done && performance.now() < until) step = steps.next();
         if (!step.done) {
@@ -287,6 +358,7 @@ export const useFinder = create<FinderStore>((set, get) => {
         const left = result.stale.length ? get().kept.filter((k) => !result.stale.includes(k.key)) : get().kept;
         const ids = new Set([...left, ...result.swaps].map(swapId));
         set({ result, searched: query, searchedKept: left, progress: null, kept: left, selected: ids.has(get().selected ?? '') ? get().selected : null });
+        if (guessed) set({ note: "The recipes haven't downloaded, so this budget search went by each set's rarity. Search again to try once more." });
         if (left.length !== kept.length) {
           // (the list is in: whatever goes wrong from here on is not the search's failure)
           try {
@@ -303,7 +375,21 @@ export const useFinder = create<FinderStore>((set, get) => {
         set({ progress: null, note: "The search couldn't finish. Press Search to try again." });
       }
     };
-    afterTurn(slice);
+    // only a budget search the player started waits for the recipes
+    if (!query.budget || !retry) {
+      afterTurn(slice);
+      return;
+    }
+    // the first slice runs once: when the recipes are here or not coming, or the wait runs out
+    let started = false;
+    const start = (): void => {
+      if (started) return;
+      started = true;
+      clearTimeout(timer);
+      slice();
+    };
+    const timer = setTimeout(start, RECIPES_WAIT_MS);
+    void wantRecipes(/*afresh=*/ true).then(start);
   };
 
   /**
@@ -394,11 +480,14 @@ export const useFinder = create<FinderStore>((set, get) => {
     },
 
     setQuery(patch) {
-      set({ query: { ...get().query, ...patch } });
+      const was = get().query;
+      set({ query: { ...was, ...patch } });
+      // Budget was ticked: its search reads the recipes, so they start downloading now, not when Search is pressed
+      if (get().query.budget && !was.budget) void wantRecipes(/*afresh=*/ true);
     },
 
     search() {
-      rank(get().query);
+      rank(get().query, /*retry=*/ true);
     },
 
     stop() {
@@ -485,40 +574,7 @@ export const useFinder = create<FinderStore>((set, get) => {
       if (!gd) return;
       // a list the browser refused to store is kept for its own server only: another server's list replaces it here
       set({ shop: keptShop(), shopFor: gd.server, unsavedFor: get().unsavedFor === gd.server ? gd.server : null });
-      const version = gd.core.manifest.dataVersion;
-      const s = serverById(gd.server);
-      if (!s) return;
-      if (get().recipesFor === version) {
-        // in, none on the site, or on their way: left alone, unless they are on their way and
-        // nothing has arrived for a while. A download that stalled is given up here, on the
-        // list's next opening, and asked for afresh
-        if (!get().recipesLoading || !recipesWatch || !recipesWatch.quiet(STALLED_MS)) return;
-        recipesStop?.();
-        recipesWatch.cancel();
-      }
-      const run = ++recipesRun;
-      const watch = new Watch();
-      const stop = giveUpWhenStalled(watch);
-      recipesWatch = watch;
-      recipesStop = stop;
-      set({ recipes: null, recipesFor: version, recipesLoading: true, recipesMissing: false, recipesFailed: null });
-      loadRecipes(dataRoot(s, import.meta.env.BASE_URL), version, watch)
-        .then((recipes) => {
-          stop();
-          if (run !== recipesRun) return;
-          recipesWatch = null;
-          // none for this version (an approximate one): not asked for again, the list names enhancements only
-          set({ recipes, recipesLoading: false, recipesMissing: !recipes });
-        })
-        .catch((e: unknown) => {
-          stop();
-          // (one given up for a fresh one says nothing: the fresh one will)
-          if (run !== recipesRun) return;
-          recipesWatch = null;
-          console.warn('set finder: the recipes did not load', e);
-          // asked for again the next time the list opens
-          set({ recipesFor: null, recipesLoading: false, recipesFailed: version });
-        });
+      void wantRecipes(/*afresh=*/ true);
     },
 
     setOwned(indexes, owned) {

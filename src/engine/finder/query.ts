@@ -61,6 +61,7 @@ export interface FinderQuery {
   extra: string[]; // up to MAX_EXTRA more bonuses, which only order the results
   groups?: string[]; // set categories to keep to ("Ranged Damage", "Defense Sets"); absent: every category
   attuned?: boolean; // place attuned pieces instead of crafted ones at the highest usable level
+  budget?: boolean; // a budget search: the dearest salvage a swap's pieces need counts against it, and of `tags` only seasonal sets are let in, with no attuned pieces (absent: what a set costs plays no part)
 }
 
 export const MAX_GOALS = 3;

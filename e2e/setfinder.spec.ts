@@ -152,11 +152,45 @@ test('a set is found, kept, listed for shopping and applied', async ({ page, con
   await me.id('finder:importance:0').selectOption('high');
   await expect(me.id('finder:invalid')).toHaveCount(0);
   await expect(search).toBeEnabled();
+  const first = page.locator('[data-testid^="finder:swap:"]').first();
+  // a budget search downloads the recipes first (the page's policy must let it), then lists swaps
+  // ticking Budget unticks the other set options and turns all but Seasonal off
+  const budget = me.id('finder:budget');
+  const others = ['finder:tag:pvp', 'finder:tag:purple', 'finder:tag:archetype', 'finder:attuned'].map((id) => me.id(id));
+  const seasonal = me.id('finder:tag:seasonal');
+  for (const box of [...others, seasonal]) {
+    await me.press(box);
+    await expect(box).toBeChecked();
+  }
+  // (the recipes are asked for as soon as Budget is ticked, so they are on their way before Search is pressed)
+  const recipesAsked = page.waitForResponse((r) => r.url().includes('/recipes/'));
+  await me.press(budget);
+  await expect(budget).toBeChecked();
+  for (const box of others) {
+    await expect(box).not.toBeChecked();
+    await expect(box).toBeDisabled();
+  }
+  await expect(seasonal).not.toBeChecked();
+  await expect(seasonal).toBeEnabled();
+  await me.press(search);
+  expect((await recipesAsked).ok()).toBe(true);
+  await expect(first).toBeVisible({ timeout: 120_000 });
+  await expect(me.id('finder:note')).toHaveCount(0);
+  await tab('Search');
+  await me.press(budget);
+  await expect(budget).not.toBeChecked();
+  for (const box of others) {
+    await expect(box).toBeEnabled();
+    await expect(box).not.toBeChecked();
+  }
+  await expect(me.id('finder:outofdate')).toHaveCount(me.phone ? 0 : 1); // the phone shows it on its list
   await me.press(search); // a phone moves to its Results tab
 
+  // the budget list stays on screen, its keep boxes off, until the new list is whole
+  await expect(page.locator('[data-testid^="finder:keep:"]').first()).toBeEnabled({ timeout: 120_000 });
+  await expect(me.id('finder:outofdate')).toHaveCount(0);
   // the first result: its gains and losses show, then it is kept
-  const first = page.locator('[data-testid^="finder:swap:"]').first();
-  await expect(first).toBeVisible({ timeout: 120_000 });
+  await expect(first).toBeVisible();
   const rowId = (await first.getAttribute('data-testid'))!;
   const swap = rowSwap(rowId);
   const set = gd.boostSetById.get(swap.set)!;

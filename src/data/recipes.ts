@@ -1,8 +1,9 @@
 /**
  * One game version's recipes (<server data>/recipes/<version>.json), kept beside the version's
  * folder. Made by `python -m pipeline.recipes` from the client's baserecipes.bin and salvage.bin
- * (docs/pipeline.md). Only the set finder's shopping list reads it: no link, saved build or
- * loader does, and a build opens the same whether the file is there or not.
+ * (docs/pipeline.md). Only the set finder reads it (its shopping list, and a budget search for
+ * the salvage a piece's recipe takes): no link, saved build or loader does, and a build opens the
+ * same whether the file is there or not.
  */
 
 import { heard } from './packed.ts';
@@ -44,7 +45,7 @@ const ICON_NAME = /^[a-z0-9_]*$/;
 export const OWN_PAGE_MARK = 'id="not-started"';
 
 /**
- * Check that a downloaded recipe file has the shape the shopping list reads.
+ * Check that a downloaded recipe file has the shape the set finder reads.
  *
  * Every salvage index is checked against the salvage list, so the reader never looks one up
  * that is not there; rarities are ones the list has colours for, and icon names are plain names.

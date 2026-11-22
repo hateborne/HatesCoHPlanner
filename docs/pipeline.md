@@ -187,7 +187,7 @@ is not part of the version hash. The planner fetches it only for a build with a 
 pet, and a missing or damaged file only hides the Pets and Minions section. A real pets file is
 regenerated the same way when its format grows, as long as no deploy has published it.
 
-## Recipes and salvage (the set finder's shopping list)
+## Recipes and salvage (the set finder's shopping list and budget searches)
 
 `python -m pipeline.recipes [--game-version V]` writes `public/data/recipes/<version>.json` and
 nothing else in the data folder: for every set enhancement a dropped recipe makes, the recipe's

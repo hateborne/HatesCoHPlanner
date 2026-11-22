@@ -115,7 +115,8 @@ the project)
   it the section doesn't show. `henchmen` is never a version id.
 - A version's recipe file sits beside its folder in the same way (`public/data/recipes/<id>.json`,
   made by `python -m pipeline.recipes` from the very client the version was made from). Only the
-  set finder's shopping list reads it: no link, saved build or loader does. `recipes` and `finder`
+  set finder reads it (its shopping list, and a budget search for the salvage a piece's recipe
+  takes): no link, saved build or loader does. `recipes` and `finder`
   are never version ids either.
 - Game servers (`SERVERS` in `src/data/servers.ts`) keep their `id` (stored in builds) and `path`
   (the address segment) forever. A build or link that names no server is Homecoming's, and

@@ -118,7 +118,8 @@ public/data/henchmen/<version>.json  each version's real pets, beside them (gene
                              Thunderspy's in public/data/thunderspy/henchmen/; the totals' Pets
                              and Minions section and the pet pane read it)
 public/data/recipes/<version>.json  each version's dropped recipes and their salvage, beside the
-                             version folders (generated; the set finder's shopping list reads it)
+                             version folders (generated; the set finder's shopping list and
+                             its budget searches read it)
 public/assets/               icons, UI textures, fonts, sounds (generated, committed)
 public/assets/thunderspy/    Thunderspy's copy of every icon it shows (generated)
 public/servers/              game server logos (placed by hand, WebP; not pipeline output)
@@ -483,7 +484,8 @@ screens are described under "Set finder (screens)" below. The parts:
 - **A search** (`FinderQuery`, `query.ts`): one to three goals with an importance each (Low 0.5,
   Medium 1, High 2, Critical 8), the kinds of sets to add to uncommon and rare ones (PvP,
   seasonal, purple, archetype), an optional wanted bonus (a totals line key) with a depth (2 to 3
-  pieces, 4 to 6, anywhere), up to two additional bonuses, set categories, crafted or attuned.
+  pieces, 4 to 6, anywhere), up to two additional bonuses, set categories, crafted or attuned,
+  and whether it is a budget search.
 - **Units** (`goals.ts`): everything is counted in "typical bonuses". A stat's unit is the size of
   one typical set bonus in it, from the build statistics (`public/data/finder/stats.json`) for the
   build's archetype, or for every build when the archetype has too few. A goal is a bundle of
@@ -532,6 +534,23 @@ screens are described under "Set finder (screens)" below. The parts:
   work and no step between two yields is long (about 10 ms for reading the build, a millisecond
   or two after). What it yields is the share of the work done, never going back: the powers take
   it to `POWERS_SHARE` (0.9), the last check of the ranked list the rest.
+- **Budget searches** (the owner's ruling): what a set costs plays no part in a search unless the
+  player ticks Budget; a search for raw power takes materials as no object. A budget search
+  counts the dearest invention salvage (the top of the three tiers, which the game's data calls
+  rare) that the swap's new pieces need: `dearSalvage` reads each piece's recipe at the level it
+  is placed at, and `budgetCharge` takes `BUDGET_STEP` typical bonuses off the score for each
+  one, after letting one off for a swap that leaves its power a full set (`BUDGET_FULL_SET`, 4
+  pieces of the set or more, the ones it held already included). So no dear salvage is cheapest,
+  one for a set of four or more is as good, and one for two or three pieces (or any more) has to
+  be earned by what the swap adds. A budget search leaves out PvP, purple and archetype sets and
+  attuned pieces, whatever the query holds (`setWanted`, `searchSwaps`); seasonal sets stay in
+  when asked for, as anyone can earn them, and take no salvage. The form says the same: ticking
+  Budget unticks every other set option and turns all of them off but Seasonal. With no recipe
+  to read (a game version without a recipe file, a failed download) a rare set's piece counts
+  one and any other none. The pieces of a set are ordered with the same charge, so a piece that
+  needs dear salvage is placed only when it adds more than the swap would pay for it (nothing
+  for the one a full set has let off). With a wanted bonus every swap that gives it is listed, as
+  in any search, so the charge can take one below zero: it stays, at the bottom.
 - **Kept swaps** (`pending.ts`): a list beside the build, one per power; the build the planner
   holds is never changed by a search. A search given kept swaps ranks against the build with them
   in; a power that has one is searched from its own slots, so a new swap replaces the kept one.
@@ -567,7 +586,8 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   holds it, the last result, the kept swaps, and a share link to the build with them in. The
   statistics and the recipes download under a watch like the page's other files ("Loading" above:
   a file that gets no answer is asked for again alongside), and one that has stalled is given up
-  and asked for afresh the next time the pane, or the shopping list, opens. While the pane or the
+  and asked for afresh the next time the player asks: the pane opens (the statistics), or the
+  shopping list opens, Search is pressed or Budget is ticked (the recipes). While the pane or the
   list stays open, a download that has had nothing arrive for `GIVE_UP_MS` (15 s) is given up and
   told like any failed one (the pane says to open it again; the list names every piece as an
   enhancement), so "Loading" never stands for good. A search
@@ -575,7 +595,13 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   a message the page sends itself, since browsers hold chained timers back to 4 ms; a tab that is
   not showing keeps to timers, which the browser slows there on purpose), so the page keeps
   responding,
-  and a newer search makes an older one give up; so does closing the pane. Keeping or letting go
+  and a newer search makes an older one give up; so does closing the pane. A budget search reads
+  the game version's recipe file (`wantRecipes`, the download the shopping list uses; no other
+  search asks for it): ticking Budget starts the download, and a search the player starts waits
+  for it, for `RECIPES_WAIT_MS` (10 s) at most; when the download fails or
+  takes longer the search still runs, the salvage guessed from each set's rarity, and a red line
+  says so. Only Search asks again for a download that failed or stalled: a list ranked again
+  after a kept swap never waits, and goes by the recipes as they stand. Keeping or letting go
   of a swap ranks the list again (`rerank`), for the search the list was made with, or the one
   being worked on while a search runs; with no list yet, nothing is ranked. The form may have
   changed since, even to one that can't be searched, and only Search takes the form. A list
@@ -653,11 +679,13 @@ like the enhancement picker (the whole screen on phones, with Search / Results /
   - Each set is a bar with its pieces as rings, like a power on the overview. Clicking a ring marks
     that piece owned (greyed out); clicking the bar marks them all, or none when all were.
   - What is still needed comes from the version's recipe file (`src/data/recipes.ts`, downloaded
-    when the list first shows, shape-checked, and used only with its own game version's data): a
+    when the list first shows or a budget search first runs, shape-checked, and used only with
+    its own game version's data): a
     crafted piece needs the dropped recipe of its level and that recipe's salvage, added up; a
     piece no recipe makes (attuned, winter and archetype sets) is listed as an enhancement to buy.
     A version the site has no recipe file for (an approximate one) lists every piece that way and
-    is not asked for again; after a download that failed, the next opening asks again. A web page
+    is not asked for again; after a download that failed, the next opening (or budget search)
+    asks again. A web page
     for an answer is "no recipe file" when it is the site's own (`OWN_PAGE_MARK`: a dev server or a
     local preview answers any address with it); any other page is a failed download (a network's
     sign-in page). The site itself answers 404 for a file it lacks. A recipe's
@@ -831,7 +859,9 @@ has no such column, nor one whose enhancements change no number.
   `tooltipwheel.spec.ts` (desktop only) hovers a tall Advanced tooltip (Hail of Bullets) and turns
   the wheel: the gesture stays on it to its end, a turn after a rest goes to the screen, and Page
   Up / Page Down scroll it.
-  `setfinder.spec.ts` uses the set finder on an imported build: a search for one priority, the
+  `setfinder.spec.ts` uses the set finder on an imported build: a budget search (ticking Budget
+  unticks the other set options and turns all but Seasonal off; the recipes must download, and
+  swaps must be listed), then a search for one priority without it, the
   first swap looked at and kept, the shopping list (a set marked owned; auction house lines on the
   desktop only; the recipes must have loaded), "Open as new build" in a new tab, "Apply to this
   build", then the stored list cleared. The build must hold the pieces the row named, at the

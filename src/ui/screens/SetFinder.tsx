@@ -162,10 +162,14 @@ function SwapLine({ gd, swap, phone }: { gd: GameData; swap: Swap; phone: boolea
  * A box the player ticks: a native check box with its label, sized for a finger on phones. Its
  * hint is its hover text; on phones a long press shows it.
  */
-function Tick({ label, checked, onChange, testId, title, phone }: { label: string; checked: boolean; onChange: (on: boolean) => void; testId: string; title?: string; phone: boolean }) {
+function Tick({ label, checked, onChange, testId, title, phone, disabled }: { label: string; checked: boolean; onChange: (on: boolean) => void; testId: string; title?: string; phone: boolean; disabled?: boolean }) {
   return (
-    <label title={title} {...longPress(phone && title ? pressText(title) : undefined)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: phone ? 44 : 28, cursor: 'pointer', marginRight: 16 }}>
-      <input type="checkbox" data-testid={testId} checked={checked} onChange={(e) => onChange(e.target.checked)} style={phone ? { width: 28, height: 28, margin: 0 } : { width: 18, height: 18, margin: 0 }} />
+    <label
+      title={title}
+      {...longPress(phone && title ? pressText(title) : undefined)}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: phone ? 44 : 28, cursor: disabled ? 'default' : 'pointer', marginRight: 16, opacity: disabled ? 0.45 : 1 }}
+    >
+      <input type="checkbox" data-testid={testId} checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} style={phone ? { width: 28, height: 28, margin: 0 } : { width: 18, height: 18, margin: 0 }} />
       {label}
     </label>
   );
@@ -283,11 +287,13 @@ function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: S
             title={t.title}
             phone={phone}
             checked={query.tags.includes(t.id)}
+            disabled={!!query.budget && t.id !== 'seasonal'}
             onChange={(on) => setQuery({ tags: on ? [...query.tags, t.id] : query.tags.filter((x) => x !== t.id) })}
           />
         ))}
       </div>
-      <Tick testId="finder:attuned" label="Attuned pieces" title="Place attuned pieces instead of crafted ones at the highest level that works" phone={phone} checked={!!query.attuned} onChange={(on) => setQuery({ attuned: on })} />
+      <Tick testId="finder:attuned" label="Attuned pieces" title="Place attuned pieces instead of crafted ones at the highest level that works" phone={phone} checked={!!query.attuned} disabled={!!query.budget} onChange={(on) => setQuery({ attuned: on })} />
+      <Tick testId="finder:budget" label="Budget" title="Rank swaps lower for the rarest salvage their recipes need" phone={phone} checked={!!query.budget} onChange={(on) => setQuery(on ? { budget: true, tags: [], attuned: false } : { budget: false })} />
 
       {head('Set bonus wanted')}
       <div style={row}>
