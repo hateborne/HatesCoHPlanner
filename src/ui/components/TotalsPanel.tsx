@@ -56,8 +56,8 @@ const MARK_W = 20; // the +/- column (a little wider than the + so it never touc
 
 interface RowProps {
   label: string;
-  value: string; // collapsed value
-  openValue?: string; // header value while expanded (default: value)
+  value: ReactNode; // collapsed value (the set finder marks a figure at its cap inside it)
+  openValue?: ReactNode; // header value while expanded (default: value)
   tone?: number; // signed distance from the neutral value; undefined = never colored
   over?: string; // the uncapped value when it is past the cap: shown as "cap (actual)"
   line?: StatLine;
@@ -92,7 +92,7 @@ function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, deta
           {noMark ? null : <span style={{ width: MARK_W, flex: 'none', textAlign: 'center' }}>{has ? (open ? '-' : '+') : ''}</span>}
           <span>{label}</span>
         </span>
-        <span style={{ color: toneColor(tone, plain) }}>
+        <span style={{ color: toneColor(tone, plain), textAlign: 'right' }}>
           {open ? (openValue ?? value) : value}
           {/* chance sources aren't in the value: they're listed under Chance */}
           {chances.length ? ' (*)' : null}

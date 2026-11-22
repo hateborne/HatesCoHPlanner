@@ -13,9 +13,10 @@ import { applySwaps, type Swap } from '../engine/finder/pending.ts';
 import type { FinderQuery } from '../engine/finder/query.ts';
 import { finderProblem, searchSwaps, swapsLegal, type FinderResult, type RankedSwap } from '../engine/finder/search.ts';
 import { swapItems, type ShopItem } from '../engine/finder/shopping.ts';
+import { nextSort, type FinderSort } from '../engine/finder/view.ts';
 import { shareLink } from '../io/share.ts';
 import { MAX_SHOP_ITEMS, readShopping, SHOPPING_KEY, writeShopping } from '../io/shopping.ts';
-import { closeSetFinder } from './finderOpen.ts';
+import { closeSetFinder, useFinderOpen } from './finderOpen.ts';
 import { useStore } from './store.ts';
 
 // how long one slice of a search may run before the page gets its turn again (ms)
@@ -33,6 +34,7 @@ export interface FinderStore {
   progress: number | null; // 0..1 while a search runs
   kept: RankedSwap[]; // the swaps kept so far, one per power
   selected: string | null; // id of the swap whose gains and losses show (a tap on phones; a click on desktop)
+  sort: FinderSort; // the order the lists show in
   link: string | null; // a share link to the build with the kept swaps in, for "open as new build"
   note: string | null; // something that went wrong with the last step, in plain words
   recipes: RecipeData | null; // the recipes of the build's game version, once downloaded (null: not yet, or it has none)
@@ -55,6 +57,8 @@ export interface FinderStore {
   stop(): void;
   /** Show a swap's gains and losses (null: none). */
   select(id: string | null): void;
+  /** Step the lists to their next order (the sort label was clicked). */
+  stepSort(): void;
   /** Keep a swap (it replaces the one its power had) and rank the list again. Refused while a search runs: the list is on its way out. */
   keep(swap: RankedSwap): void;
   /** Let a power's kept swap go and rank the list again. */
@@ -254,6 +258,7 @@ export const useFinder = create<FinderStore>((set, get) => {
     progress: null,
     kept: [],
     selected: null,
+    sort: { by: 'default' },
     link: null,
     note: null,
     recipes: null,
@@ -310,6 +315,10 @@ export const useFinder = create<FinderStore>((set, get) => {
 
     select(id) {
       set({ selected: id });
+    },
+
+    stepSort() {
+      set({ sort: nextSort(get().sort) });
     },
 
     keep(swap) {
@@ -452,6 +461,8 @@ const unsubscribe = useStore.subscribe((s) => {
   linkRun++;
   running = null;
   useFinder.setState({ searched: null, searchedKept: null, result: null, progress: null, kept: [], selected: null, link: null, note: null, shopOwned: {}, settled: [] });
+  // powers being picked on the overview were the old build's
+  if (useFinderOpen.getState().picking || useFinderOpen.getState().picked.length) useFinderOpen.setState({ picking: false, picked: [] });
   if (!s.build) closeSetFinder();
 });
 /**

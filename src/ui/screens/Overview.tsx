@@ -9,7 +9,7 @@ import { setEnh, setExclusive, setOn, setPetOn } from '../../engine/actions.ts';
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
-import { openSetFinder } from '../../state/finderOpen.ts';
+import { openSetFinder, togglePickedPower, useFinderOpen } from '../../state/finderOpen.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar, OnSwitch } from '../components/CheckBar.tsx';
 import { FINDER_NAME, FinderIcon } from '../components/FinderIcon.tsx';
@@ -282,8 +282,8 @@ function OverviewTips({ gd, skin, build, rules, end }: { gd: GameData; skin: Ski
  */
 export function Overview({ skin }: { skin: Skin }) {
   // only the fields drawn here: a store change elsewhere (Shift, a notice) must not redraw the screen
-  const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling, lockFlash } = useStore(
-    useShallow((s) => ({ gd: s.gd, build: s.build, steps: s.steps, editPick: s.editPick, editSlots: s.editSlots, toSetup: s.toSetup, setBuild: s.setBuild, setMenu: s.setMenu, continueLeveling: s.continueLeveling, lockFlash: s.lockFlash })),
+  const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling, lockFlash, flashLocked } = useStore(
+    useShallow((s) => ({ gd: s.gd, build: s.build, steps: s.steps, editPick: s.editPick, editSlots: s.editSlots, toSetup: s.toSetup, setBuild: s.setBuild, setMenu: s.setMenu, continueLeveling: s.continueLeveling, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
   );
   // for the room it takes: the list itself is drawn by PatchNotesBox / PatchNotesBar
   const notes = useStore((s) => s.patchNotes);
@@ -302,6 +302,10 @@ export function Overview({ skin }: { skin: Skin }) {
   // hover redraws only the glow / orb / tooltip that subscribes to it, not this whole screen.
   useFreshHover();
   useEffect(() => clearHover(), [build]); // entries are rebuilt; drop any tooltip holding an old one
+  // the set finder is out of the way while its powers to consider are picked here: a bar's click
+  // picks it, and nothing here changes the build meanwhile (a changed build would drop the finder's
+  // kept swaps and results)
+  const { picking, picked } = useFinderOpen(useShallow((s) => ({ picking: s.picking, picked: s.picked })));
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
@@ -309,7 +313,7 @@ export function Overview({ skin }: { skin: Skin }) {
   // the pets the build makes, at the totals' level (computeTotals' default)
   const pets = usePetCards(gd, rules, build, build ? (build.exemplar ?? build.endLevel ?? 49) : 49);
   // the pet pane's switch: whether a pet power counts in the pets' stats (its default stored as none)
-  const switchPet = (p: Power, on: boolean) => build && setBuild(setPetOn(build, p.n, gd && on === petPowerDefault(gd, p) ? undefined : on));
+  const switchPet = (p: Power, on: boolean) => !picking && build && setBuild(setPetOn(build, p.n, gd && on === petPowerDefault(gd, p) ? undefined : on));
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
   // an older build whose power sets can't go together: its title alternates with INVALID_TITLE
   const pairInvalid = useMemo(() => !!(gd && build && buildPairProblem(gd, build)), [gd, build]);
@@ -383,8 +387,8 @@ export function Overview({ skin }: { skin: Skin }) {
         // phones: a long press shows the power's tooltip (with the rule it breaks, if any)
         const longBar = g.phone ? (pt: { x: number; y: number }) => useHover.setState({ press: { kind: 'power', entry: e, notes: flagged.map((f) => f.message), ...pt } }) : undefined;
         const toggleOn = () => {
-          // the archetype's inherent always runs: its switch stays on
-          if (e.inherent) return;
+          // the archetype's inherent always runs: its switch stays on (and no switch moves while the set finder's powers are picked)
+          if (e.inherent || picking) return;
           let nb = setOn(build, e.key, !on === dflt ? undefined : !on);
           // as in the game, switching on one of toggles that exclude each other switches the rest off
           if (!on) {
@@ -392,6 +396,18 @@ export function Overview({ skin }: { skin: Skin }) {
           }
           setBuild(nb);
         };
+        // the set finder's powers to consider: a power a set can go into is picked by its bar, and lit while picked
+        const pickable = picking && rules.slottable(e.power) && e.level <= rules.lastLevel() && e.slots.some((s) => s.level <= rules.lastLevel());
+        if (picking && picked.some((x) => x.key === e.key && x.power === e.power.id)) {
+          items.push(
+            <div
+              key={`${e.key}:picked`}
+              data-testid={`picked:${e.key}`}
+              className="abs"
+              style={{ left: g.barCX - 19 * S, top: y - 16 * S, width: barW + 17 * S, height: 32 * S, borderRadius: 16 * S, zIndex: 21, pointerEvents: 'none', border: '2px solid #ffd24a', boxShadow: '0 0 10px #ffd24a, inset 0 0 8px rgba(255, 210, 74, 0.6)', boxSizing: 'border-box' }}
+            />,
+          );
+        }
         if (e.source === 'pick') {
           // picked at the hovered orb's level: the bar lit half-white (LockFlash's shape)
           items.push(<OrbLight key={`${e.key}:light`} level={e.level} style={{ left: g.barCX - 19 * S, top: y - 16 * S, width: barW + 17 * S, height: 32 * S, borderRadius: 16 * S, zIndex: 20 }} />);
@@ -409,7 +425,7 @@ export function Overview({ skin }: { skin: Skin }) {
             state={flagged.length ? 'unselectable' : on ? 'selected' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
-            onClick={e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            onClick={picking ? (pickable ? () => togglePickedPower({ key: e.key, power: e.power.id }) : () => flashLocked(e.key, 'Takes No Sets')) : e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
             // a pick flagged in red still opens on a click, so the rule it breaks can be fixed
             fixable
             onLongPress={longBar}
@@ -431,6 +447,7 @@ export function Overview({ skin }: { skin: Skin }) {
               className="abs body-text"
               value={chosen?.id ?? ''}
               title="Which one is running (counted in the totals)"
+              disabled={picking}
               onChange={(ev) => {
                 const v = ev.target.value;
                 play('powerselect2');
@@ -493,14 +510,14 @@ export function Overview({ skin }: { skin: Skin }) {
                         blink: h ? orbLevel : st.blink === orbLevel ? null : st.blink,
                       }))
               }
-              onClick={() => setPicker({ entry: e, slot: i, on: build })}
+              onClick={() => (picking ? undefined : setPicker({ entry: e, slot: i, on: build }))}
               onLongPress={
                 g.phone
                   ? (pt) => useHover.setState({ press: boost ? { kind: 'enh', entry: e, slot: i, ...pt } : { kind: 'text', text: `Empty slot (level ${s.level + 1}).\nTap it to choose an enhancement.`, ...pt } })
                   : undefined
               }
               onRightClick={
-                boost
+                boost && !picking
                   ? () => {
                       play('delete');
                       useHover.setState({ ringTip: null });

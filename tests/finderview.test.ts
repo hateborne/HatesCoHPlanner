@@ -29,11 +29,11 @@ describe('finder: words', () => {
     expect(warningText(gd, { kind: 'crippled', role: 'heal', aspect: 'out', lost: 0.4, only: true })).toBe("This power loses 40% of its healing. It is the build's only self heal.");
     expect(warningText(gd, { kind: 'crippled', role: 'st', aspect: 'acc', lost: 0.251, only: false })).toBe('This power loses 25% of its accuracy.');
     expect(warningText(gd, { kind: 'needDropped', stat: 'mezprot.Knock', before: 8, after: 4, typical: 7 })).toBe(
-      'Knockback (Prot) falls from 8.00 to 4.00; builds like this one usually hold 7.00.',
+      'Knockback (Status Prot) falls from 8.00 to 4.00, below the 7.00 suggested for this build.',
     );
     expect(warningText(gd, { kind: 'globalLost', boost: gambler })).toContain(gd.power(gambler).dn);
-    expect(warningText(gd, { kind: 'procLost', boost: gambler })).toMatch(/no numbers for procs/);
-    expect(warningText(gd, { kind: 'overCap', stat: 'res.02' })).toBe('Fire (Res) is at its cap: part of this gain is lost.');
+    expect(warningText(gd, { kind: 'procLost', boost: gambler })).toMatch(/no numbers for this proc/);
+    expect(warningText(gd, { kind: 'capLost', stat: 'res.02' })).toBe('Fire (Dmg Res) drops below its cap.');
     expect(warningText(gd, { kind: 'overFive', bonus: -1 })).toMatch(/five times/);
   });
 });

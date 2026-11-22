@@ -274,13 +274,13 @@ export function Setup() {
   if (phone) {
     const pg = phoneGeom(stage, false);
     const half = (pg.w - 3 * PHONE_PAD) / 2;
-    // under the title: the name, then the version and Saved / Import, two rows of tabs, the panel
+    // under the title: the name, then the version and Saved / Import, the row of tabs, the panel
     // and the description
     const nameY = pg.line + 10;
     const rowY = nameY + 58;
     const tabsY = rowY + 56 + 8 + PHONE_TAB_ROW / 2;
     const descBox = phoneDesc(pg);
-    const top = tabsY + PHONE_TAB_ROW + PHONE_TAB_ROW / 2 + 4;
+    const top = tabsY + PHONE_TAB_ROW / 2 + 4;
     const P = { x: PHONE_PAD, y: top, w: pg.w - 2 * PHONE_PAD, h: descBox.y - 8 - top };
     const R = 64;
     const BX = 52; // bars' check-box center

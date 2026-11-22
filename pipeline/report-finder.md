@@ -1,6 +1,6 @@
 # Build research report -- data i28p4
 
-Generated 2026-11-17T16:47:10Z (UTC) by `npm run research`. Aggregates only; the builds themselves stay on the machine that ran it.
+Generated 2026-11-22T18:40:10Z (UTC) by `npm run research`. Aggregates only; the builds themselves stay on the machine that ran it.
 
 ## What was read
 
@@ -9,8 +9,8 @@ Generated 2026-11-17T16:47:10Z (UTC) by `npm run research`. Aggregates only; the
 | .mbd files | 3030 |
 | Share codes in text files and saved pages | 74 |
 | Files over the size limit (left out) | 0 |
-| Text files and pages with no share code | 0 |
-| Other files (left alone) | 0 |
+| Text files and pages with no share code | 1 |
+| Other files (left alone) | 84 |
 | Made on another server's Mids database (left out) | 3 |
 | Could not be imported | 0 |
 | Imported | 3101 |
@@ -144,13 +144,13 @@ Share: the mean share of a build's set bonuses spent on the stat, counted in typ
 
 | Stat | Share | Lift | Typical bonus | Median total | Median from set bonuses |
 |---|---|---|---|---|---|
-| Smashing (Def) | 1.4% | 0.80 | 1.6% | 22.5% | 3.3% |
-| Lethal (Def) | 1.4% | 0.80 | 1.6% | 22.6% | 3.3% |
+| Smashing (Def) | 1.4% | 0.80 | 1.6% | 22.3% | 3.3% |
+| Lethal (Def) | 1.4% | 0.80 | 1.6% | 22.4% | 3.3% |
 | Melee (Def) | 1.3% | 0.87 | 2.0% | 22.2% | 5.0% |
-| Energy (Def) | 1.1% | 0.50 | 1.6% | 22.1% | 1.9% |
-| Negative Energy (Def) | 1.1% | 0.50 | 1.6% | 21.7% | 1.9% |
-| Fire (Def) | 0.9% | 0.32 | 1.6% | 18.7% | 0.0% |
-| Cold (Def) | 0.9% | 0.32 | 1.6% | 18.7% | 0.0% |
+| Energy (Def) | 1.1% | 0.50 | 1.6% | 21.5% | 1.9% |
+| Negative Energy (Def) | 1.1% | 0.50 | 1.6% | 20.8% | 1.9% |
+| Fire (Def) | 0.9% | 0.32 | 1.6% | 18.1% | 0.0% |
+| Cold (Def) | 0.9% | 0.32 | 1.6% | 18.1% | 0.0% |
 | Ranged (Def) | 0.8% | 0.43 | 2.5% | 19.5% | 2.5% |
 | Area (Def) | 0.5% | 0.24 | 2.5% | 17.2% | 0.0% |
 | Psionic (Def) | 0.2% | 0.20 | 3.1% | 16.9% | 0.0% |
@@ -160,14 +160,14 @@ Share: the mean share of a build's set bonuses spent on the stat, counted in typ
 
 | Stat | Share | Lift | Typical bonus | Median total | Median from set bonuses |
 |---|---|---|---|---|---|
-| Fire (Res) | 2.2% | 1.24 | 3.0% | 35.0% | 17.3% |
-| Cold (Res) | 2.2% | 1.24 | 3.0% | 32.8% | 17.3% |
-| Smashing (Res) | 1.7% | 1.00 | 2.3% | 57.5% | 9.8% |
-| Lethal (Res) | 1.7% | 1.00 | 2.3% | 57.1% | 9.8% |
-| Energy (Res) | 1.6% | 1.48 | 2.7% | 32.0% | 9.8% |
-| Negative Energy (Res) | 1.6% | 1.48 | 2.7% | 27.4% | 9.8% |
-| Psionic (Res) | 0.4% | 0.24 | 3.8% | 18.9% | 3.0% |
-| Toxic (Res) | 0.4% | 0.24 | 3.8% | 26.1% | 3.0% |
+| Fire (Dmg Res) | 2.2% | 1.24 | 3.0% | 35.0% | 17.3% |
+| Cold (Dmg Res) | 2.2% | 1.24 | 3.0% | 32.8% | 17.3% |
+| Smashing (Dmg Res) | 1.7% | 1.00 | 2.3% | 57.5% | 9.8% |
+| Lethal (Dmg Res) | 1.7% | 1.00 | 2.3% | 57.1% | 9.8% |
+| Energy (Dmg Res) | 1.6% | 1.48 | 2.7% | 32.0% | 9.8% |
+| Negative Energy (Dmg Res) | 1.6% | 1.48 | 2.7% | 27.4% | 9.8% |
+| Psionic (Dmg Res) | 0.4% | 0.24 | 3.8% | 18.9% | 3.0% |
+| Toxic (Dmg Res) | 0.4% | 0.24 | 3.8% | 26.1% | 3.0% |
 
 ### Everything else
 
@@ -180,22 +180,22 @@ Share: the mean share of a build's set bonuses spent on the stat, counted in typ
 | Regeneration | 6.2% | 1.16 | 10.0% | 124.4% | 38.0% |
 | Endurance Reduction | 3.0% | 3.75 | 3.0% | 6.3% | 6.3% |
 | Max Endurance | 2.3% | 0.63 | 1.80 | 3.60 | 2.25 |
-| Confuse (Res) | 1.8% | 0.90 | 5.0% | 86.3% | 65.0% |
-| Hold (Res) | 1.8% | 0.90 | 5.0% | 75.0% | 65.0% |
-| Immobilize (Res) | 1.8% | 0.90 | 5.0% | 116.8% | 65.0% |
-| Sleep (Res) | 1.8% | 0.90 | 5.0% | 127.2% | 65.0% |
-| Stun (Res) | 1.8% | 0.90 | 5.0% | 73.8% | 65.0% |
-| Terrorize (Res) | 1.8% | 0.90 | 5.0% | 86.3% | 65.0% |
-| RechargeTime (Res) | 1.6% | 2.17 | 10.0% | 60.0% | 30.0% |
-| SpeedFlying (Res) | 1.6% | 2.17 | 10.0% | 55.0% | 30.0% |
-| SpeedRunning (Res) | 1.6% | 2.17 | 10.0% | 55.0% | 30.0% |
+| Confuse (Status Res) | 1.8% | 0.90 | 5.0% | 86.3% | 65.0% |
+| Hold (Status Res) | 1.8% | 0.90 | 5.0% | 75.0% | 65.0% |
+| Immobilize (Status Res) | 1.8% | 0.90 | 5.0% | 116.8% | 65.0% |
+| Sleep (Status Res) | 1.8% | 0.90 | 5.0% | 127.2% | 65.0% |
+| Stun (Status Res) | 1.8% | 0.90 | 5.0% | 73.8% | 65.0% |
+| Terrorize (Status Res) | 1.8% | 0.90 | 5.0% | 86.3% | 65.0% |
+| RechargeTime (Debuff Res) | 1.6% | 2.17 | 10.0% | 60.0% | 30.0% |
+| SpeedFlying (Debuff Res) | 1.6% | 2.17 | 10.0% | 55.0% | 30.0% |
+| SpeedRunning (Debuff Res) | 1.6% | 2.17 | 10.0% | 55.0% | 30.0% |
 | Range | 0.9% | 1.72 | 5.9% | 0.0% | 0.0% |
 | Fly Speed | 0.6% | 0.73 | 6.0% | 21.1% | 7.5% |
 | Jump Height | 0.6% | 0.73 | 6.0% | 374.3% | 7.5% |
 | Jump Speed | 0.6% | 0.73 | 6.0% | 133.0% | 7.5% |
 | Run Speed | 0.6% | 0.73 | 6.0% | 57.5% | 7.5% |
-| Knockback (Prot) | 0.4% | 1.09 | 3.00 | 9.00 | 0.00 |
-| Knockup (Prot) | 0.4% | 1.09 | 3.00 | 9.00 | 0.00 |
+| Knockback (Status Prot) | 0.4% | 1.09 | 3.00 | 9.00 | 0.00 |
+| Knockup (Status Prot) | 0.4% | 1.09 | 3.00 | 9.00 | 0.00 |
 
 ## Stat values by archetype
 
@@ -225,56 +225,56 @@ Share of a group's builds whose enhancements (set bonuses, globals or the pieces
 
 | Group | Kind | Stat | Builds adding it | Typical amount |
 |---|---|---|---|---|
-| Defender | Archetype | Knockback (Prot) | 79.8% | 3.00 |
-| Defender | Archetype | Knockup (Prot) | 79.8% | 3.00 |
-| Corruptor | Archetype | Knockback (Prot) | 75.3% | 3.00 |
-| Corruptor | Archetype | Knockup (Prot) | 75.3% | 3.00 |
-| Blaster | Archetype | Knockback (Prot) | 71.4% | 3.00 |
-| Blaster | Archetype | Knockup (Prot) | 71.4% | 3.00 |
-| Controller | Archetype | Knockback (Prot) | 67.3% | 3.00 |
-| Controller | Archetype | Knockup (Prot) | 67.3% | 3.00 |
-| Mastermind | Archetype | Knockback (Prot) | 66.4% | 4.00 |
-| Mastermind | Archetype | Knockup (Prot) | 66.4% | 4.00 |
-| Dominator | Archetype | Knockback (Prot) | 63.4% | 3.00 |
-| Dominator | Archetype | Knockup (Prot) | 63.4% | 3.00 |
-| Fire Blast | Blaster Ranged | Knockback (Prot) | 78.1% | 3.00 |
-| Fire Blast | Blaster Ranged | Knockup (Prot) | 78.1% | 3.00 |
-| Dual Pistols | Blaster Ranged | Knockback (Prot) | 76.0% | 3.00 |
-| Dual Pistols | Blaster Ranged | Knockup (Prot) | 76.0% | 3.00 |
-| Fire Manipulation | Blaster Support | Knockback (Prot) | 75.0% | 3.00 |
-| Fire Manipulation | Blaster Support | Knockup (Prot) | 75.0% | 3.00 |
-| Devices | Blaster Support | Knockback (Prot) | 73.1% | 3.00 |
-| Devices | Blaster Support | Knockup (Prot) | 73.1% | 3.00 |
-| Dark Armor | Brute Defense | Knockback (Prot) | 100.0% | 7.00 |
-| Dark Armor | Brute Defense | Knockup (Prot) | 100.0% | 7.00 |
-| Fiery Aura | Brute Defense | Knockback (Prot) | 85.7% | 7.00 |
-| Fiery Aura | Brute Defense | Knockup (Prot) | 85.7% | 7.00 |
-| Darkness Affinity | Controller Buff | Knockback (Prot) | 68.0% | 4.00 |
-| Darkness Affinity | Controller Buff | Knockup (Prot) | 68.0% | 4.00 |
-| Gravity Control | Controller Control | Knockback (Prot) | 80.0% | 3.00 |
-| Gravity Control | Controller Control | Knockup (Prot) | 80.0% | 3.00 |
-| Illusion Control | Controller Control | Knockback (Prot) | 78.4% | 3.00 |
-| Illusion Control | Controller Control | Knockup (Prot) | 78.4% | 3.00 |
-| Pyrotechnic Control | Controller Control | Knockback (Prot) | 57.7% | 3.00 |
-| Pyrotechnic Control | Controller Control | Knockup (Prot) | 57.7% | 3.00 |
-| Water Blast | Corruptor Ranged | Knockback (Prot) | 85.2% | 3.00 |
-| Water Blast | Corruptor Ranged | Knockup (Prot) | 85.2% | 3.00 |
-| Savage Assault | Dominator Assault | Knockback (Prot) | 60.0% | 3.00 |
-| Savage Assault | Dominator Assault | Knockup (Prot) | 60.0% | 3.00 |
-| Darkness Control | Dominator Control | Knockback (Prot) | 76.0% | 3.00 |
-| Darkness Control | Dominator Control | Knockup (Prot) | 76.0% | 3.00 |
-| Dark Armor | Scrapper Defense | Knockback (Prot) | 96.0% | 9.00 |
-| Dark Armor | Scrapper Defense | Knockup (Prot) | 96.0% | 9.00 |
-| Fiery Aura | Sentinel Defense | Knockback (Prot) | 75.0% | 7.50 |
-| Fiery Aura | Sentinel Defense | Knockup (Prot) | 75.0% | 7.50 |
-| Dark Armor | Sentinel Defense | Knockback (Prot) | 69.2% | 7.50 |
-| Dark Armor | Sentinel Defense | Knockup (Prot) | 69.2% | 7.50 |
-| Dark Armor | Stalker Defense | Knockback (Prot) | 100.0% | 10.0 |
-| Dark Armor | Stalker Defense | Knockup (Prot) | 100.0% | 10.0 |
-| Dark Armor | Tanker Defense | Knockback (Prot) | 100.0% | 7.00 |
-| Dark Armor | Tanker Defense | Knockup (Prot) | 100.0% | 7.00 |
-| Fiery Aura | Tanker Defense | Knockback (Prot) | 86.7% | 7.50 |
-| Fiery Aura | Tanker Defense | Knockup (Prot) | 86.7% | 7.50 |
+| Defender | Archetype | Knockback (Status Prot) | 79.8% | 3.00 |
+| Defender | Archetype | Knockup (Status Prot) | 79.8% | 3.00 |
+| Corruptor | Archetype | Knockback (Status Prot) | 75.3% | 3.00 |
+| Corruptor | Archetype | Knockup (Status Prot) | 75.3% | 3.00 |
+| Blaster | Archetype | Knockback (Status Prot) | 71.4% | 3.00 |
+| Blaster | Archetype | Knockup (Status Prot) | 71.4% | 3.00 |
+| Controller | Archetype | Knockback (Status Prot) | 67.3% | 3.00 |
+| Controller | Archetype | Knockup (Status Prot) | 67.3% | 3.00 |
+| Mastermind | Archetype | Knockback (Status Prot) | 66.4% | 4.00 |
+| Mastermind | Archetype | Knockup (Status Prot) | 66.4% | 4.00 |
+| Dominator | Archetype | Knockback (Status Prot) | 63.4% | 3.00 |
+| Dominator | Archetype | Knockup (Status Prot) | 63.4% | 3.00 |
+| Fire Blast | Blaster Ranged | Knockback (Status Prot) | 78.1% | 3.00 |
+| Fire Blast | Blaster Ranged | Knockup (Status Prot) | 78.1% | 3.00 |
+| Dual Pistols | Blaster Ranged | Knockback (Status Prot) | 76.0% | 3.00 |
+| Dual Pistols | Blaster Ranged | Knockup (Status Prot) | 76.0% | 3.00 |
+| Fire Manipulation | Blaster Support | Knockback (Status Prot) | 75.0% | 3.00 |
+| Fire Manipulation | Blaster Support | Knockup (Status Prot) | 75.0% | 3.00 |
+| Devices | Blaster Support | Knockback (Status Prot) | 73.1% | 3.00 |
+| Devices | Blaster Support | Knockup (Status Prot) | 73.1% | 3.00 |
+| Dark Armor | Brute Defense | Knockback (Status Prot) | 100.0% | 7.00 |
+| Dark Armor | Brute Defense | Knockup (Status Prot) | 100.0% | 7.00 |
+| Fiery Aura | Brute Defense | Knockback (Status Prot) | 85.7% | 7.00 |
+| Fiery Aura | Brute Defense | Knockup (Status Prot) | 85.7% | 7.00 |
+| Darkness Affinity | Controller Buff | Knockback (Status Prot) | 68.0% | 4.00 |
+| Darkness Affinity | Controller Buff | Knockup (Status Prot) | 68.0% | 4.00 |
+| Gravity Control | Controller Control | Knockback (Status Prot) | 80.0% | 3.00 |
+| Gravity Control | Controller Control | Knockup (Status Prot) | 80.0% | 3.00 |
+| Illusion Control | Controller Control | Knockback (Status Prot) | 78.4% | 3.00 |
+| Illusion Control | Controller Control | Knockup (Status Prot) | 78.4% | 3.00 |
+| Pyrotechnic Control | Controller Control | Knockback (Status Prot) | 57.7% | 3.00 |
+| Pyrotechnic Control | Controller Control | Knockup (Status Prot) | 57.7% | 3.00 |
+| Water Blast | Corruptor Ranged | Knockback (Status Prot) | 85.2% | 3.00 |
+| Water Blast | Corruptor Ranged | Knockup (Status Prot) | 85.2% | 3.00 |
+| Savage Assault | Dominator Assault | Knockback (Status Prot) | 60.0% | 3.00 |
+| Savage Assault | Dominator Assault | Knockup (Status Prot) | 60.0% | 3.00 |
+| Darkness Control | Dominator Control | Knockback (Status Prot) | 76.0% | 3.00 |
+| Darkness Control | Dominator Control | Knockup (Status Prot) | 76.0% | 3.00 |
+| Dark Armor | Scrapper Defense | Knockback (Status Prot) | 96.0% | 9.00 |
+| Dark Armor | Scrapper Defense | Knockup (Status Prot) | 96.0% | 9.00 |
+| Fiery Aura | Sentinel Defense | Knockback (Status Prot) | 75.0% | 7.50 |
+| Fiery Aura | Sentinel Defense | Knockup (Status Prot) | 75.0% | 7.50 |
+| Dark Armor | Sentinel Defense | Knockback (Status Prot) | 69.2% | 7.50 |
+| Dark Armor | Sentinel Defense | Knockup (Status Prot) | 69.2% | 7.50 |
+| Dark Armor | Stalker Defense | Knockback (Status Prot) | 100.0% | 10.0 |
+| Dark Armor | Stalker Defense | Knockup (Status Prot) | 100.0% | 10.0 |
+| Dark Armor | Tanker Defense | Knockback (Status Prot) | 100.0% | 7.00 |
+| Dark Armor | Tanker Defense | Knockup (Status Prot) | 100.0% | 7.00 |
+| Fiery Aura | Tanker Defense | Knockback (Status Prot) | 86.7% | 7.50 |
+| Fiery Aura | Tanker Defense | Knockup (Status Prot) | 86.7% | 7.50 |
 
 ## Sets
 

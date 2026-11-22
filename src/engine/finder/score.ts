@@ -27,6 +27,9 @@ export const CRIPPLE_PENALTY = 10;
 // what a need is worth from nothing to its typical amount, in typical bonuses
 // UNCONFIRMED default
 export const NEED_WEIGHT = 6;
+// the knockback protection a build that needs any is held to: two knockback protection pieces
+// (4 each). The owner's choice: the statistics' medians come out as fractions (7.5) no bonus gives
+export const KNOCKBACK_NEED = 8;
 // the least a power counts among the powers of its role, as a share of an even split: a power
 // whose output the planner can't put a number on still matters
 export const SHARE_FLOOR_OF_EVEN = 0.25;
@@ -50,10 +53,11 @@ export interface NeedMove {
 /** A change to one power's slots, scored. */
 export interface Scored {
   score: number; // in typical bonuses; higher is better
+  asked: number; // the part of the score from what the search names: its priorities and bonuses (no BASELINE, no mark-downs)
   lines: Vec; // the totals lines' changes, before caps
   wasted: BonusRef[]; // bonuses lost to the rule of five
   counted: Map<number, number>; // bonus power id -> change in the copies of it that count
-  capped: string[]; // stats whose gain a cap cuts
+  capLost: string[]; // stats that were at their cap (defense: the soft cap) and fall under it
   crippled: Crippled[]; // what the change guts
   needs: NeedMove[]; // needs the change takes under their typical amount, or lowers while under it
 }
@@ -137,14 +141,17 @@ export class Scorer {
     const { base, weights } = this;
     const { lines, wasted, counted } = base.delta(e, from, to);
     let score = 0;
+    let asked = 0;
 
-    const capped: string[] = [];
+    const capLost: string[] = [];
     for (const [key, change] of lines) {
       const real = base.cappedChange(key, change);
-      if (change > 0 && real < change - 1e-9) capped.push(key);
+      const cap = base.cap(key);
+      if (cap !== undefined && base.value(key) >= cap - 1e-9 && base.value(key) + change < cap - 1e-9) capLost.push(key);
       const w = (real < 0 ? weights.statLoss : weights.stat).get(key);
       const unit = weights.unit.get(key);
       if (w && unit) score += (w * real) / unit;
+      if (unit) asked += ((weights.asked.get(key) ?? 0) * real) / unit;
     }
 
     const roles = this.rolesOf(e);
@@ -171,6 +178,7 @@ export class Scorer {
       const ch: Channel = `${role}.${aspect}`;
       const w = (gain < 0 ? weights.channelLoss : weights.channel).get(ch) ?? 0;
       score += (w * gain * this.shareOf(e, role)) / weights.channelUnit[ch];
+      asked += ((weights.askedChannel.get(ch) ?? 0) * gain * this.shareOf(e, role)) / weights.channelUnit[ch];
       if (guard && lost >= 1 - CRIPPLE_RATIO && !crippled.some((c) => c.aspect === aspect && aspect !== 'out')) {
         crippled.push({ role, aspect, lost, only: this.counts[role] === 1 });
         score -= CRIPPLE_PENALTY * lost;
@@ -195,7 +203,7 @@ export class Scorer {
       score += (NEED_WEIGHT * (held(after) - held(before))) / typical;
       if (after < before && after < typical) needs.push({ stat, before, after, typical });
     }
-    return { score, lines, wasted, counted, capped, crippled, needs };
+    return { score, asked, lines, wasted, counted, capLost, crippled, needs };
   }
 }
 
@@ -204,14 +212,18 @@ export class Scorer {
  *
  * @param needs The statistics' needs, by archetype or power set internal name.
  * @param names The build's archetype, primary and secondary internal names.
- * @return Stat key -> the largest typical amount any of them asks for. Knockup protection is left
- *   to knockback's entry: the same enhancements give both.
+ * @return Stat key -> the largest typical amount any of them asks for. Knockback protection, where
+ *   the statistics name it at all, is held to KNOCKBACK_NEED whatever amount they give. Knockup
+ *   protection is left to knockback's entry: the same enhancements give both.
  */
 export function needsFor(needs: Record<string, Record<string, { typical: number }>>, names: string[]): Map<string, number> {
   const out = new Map<string, number>();
   for (const name of names) {
     for (const [stat, need] of Object.entries(needs[name] ?? {})) out.set(stat, Math.max(out.get(stat) ?? 0, need.typical));
   }
-  if (out.has('mezprot.Knock')) out.delete('mezprot.Knockup');
+  if (out.has('mezprot.Knock')) {
+    out.set('mezprot.Knock', KNOCKBACK_NEED);
+    out.delete('mezprot.Knockup');
+  }
   return out;
 }

@@ -308,7 +308,9 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
     return best;
   };
 
-  const entries = base.st.entries.filter((e) => e.level <= base.last && rules.slottable(e.power));
+  // the powers a swap may go into: every one with slots, or only those the search names
+  const named = q.powers ? new Set(q.powers.map((x) => `${x.key}|${x.power}`)) : null;
+  const entries = base.st.entries.filter((e) => e.level <= base.last && rules.slottable(e.power) && (!named || named.has(`${e.key}|${e.power.id}`)));
   const found: Found[] = [];
   for (let n = 0; n < entries.length; n++) {
     const e = entries[n]!;
@@ -336,6 +338,8 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
     if (swaps.length >= limit) break;
     // without a wanted bonus, only swaps that leave the build better off by the search's own measure
     if (!q.main && f.score <= 0) break;
+    // and better off in what the search names: what it did not name only orders the list
+    if (!q.main && f.scored.asked <= 1e-9) continue;
     const swap: Swap = { key: f.entry.key, power: f.entry.power.id, freeLevel: f.entry.level, set: f.set.id, count: f.count, pieces: f.pieces, before: f.before };
     if (!legal(swap)) continue;
     swaps.push({
