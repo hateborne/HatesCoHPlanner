@@ -418,20 +418,63 @@ export function removeSlotAtLevel(b: Build, key: string, level: number): Build {
 }
 
 /**
+ * Place (or clear) an enhancement in a slot of a build the caller owns (a copy), in place.
+ *
+ * @param nb The build to change.
+ * @param key The entry's key.
+ * @param slotIndex The slot's index in the entry.
+ * @param enh The enhancement, or undefined to empty the slot.
+ * @param freeLevel Level of the entry's free slot (needed when the slot list doesn't exist yet).
+ * @return False when the entry or the slot is not there: the build is left as it was.
+ */
+function placeEnh(nb: Build, key: string, slotIndex: number, enh: SlottedEnh | undefined, freeLevel: number): boolean {
+  const [kind, raw] = key.split(':');
+  // slotsFor makes a granted power's state on demand: taken out again when nothing is placed
+  const made = kind === 'grant' && !(Number(raw) in nb.granted);
+  const ref = slotsFor(nb, key);
+  const slots = ref ? (ref.slots.length ? [...ref.slots] : [{ level: freeLevel }]) : undefined;
+  const s = slots?.[slotIndex];
+  if (!ref || !slots || !s) {
+    if (made) delete nb.granted[Number(raw)];
+    return false;
+  }
+  slots[slotIndex] = enh ? { level: s.level, enh } : { level: s.level };
+  ref.set(slots);
+  return true;
+}
+
+/**
  * Place (or clear) an enhancement in a slot.
  *
  * @param freeLevel Level of the entry's free slot (needed when the slot list doesn't exist yet).
  */
 export function setEnh(b: Build, key: string, slotIndex: number, enh: SlottedEnh | undefined, freeLevel: number): Build {
   const nb = cloneBuild(b);
-  const ref = slotsFor(nb, key);
-  if (!ref) return b;
-  const slots = ref.slots.length ? [...ref.slots] : [{ level: freeLevel }];
-  const s = slots[slotIndex];
-  if (!s) return b;
-  slots[slotIndex] = enh ? { level: s.level, enh } : { level: s.level };
-  ref.set(slots);
-  return nb;
+  return placeEnh(nb, key, slotIndex, enh, freeLevel) ? nb : b;
+}
+
+/** One enhancement to place with setEnhs. */
+export interface EnhChange {
+  key: string; // the entry's key
+  slot: number; // the slot's index in the entry
+  enh: SlottedEnh | undefined; // the enhancement, or undefined to empty the slot
+  freeLevel: number; // level of the entry's free slot
+}
+
+/**
+ * Place several enhancements, as setEnh would one after another, with one copy of the build.
+ *
+ * @param b The build (left as it is).
+ * @param changes What goes where, in order; one whose entry or slot is not there is passed over.
+ * @return The new build, or `b` itself when nothing was placed.
+ */
+export function setEnhs(b: Build, changes: readonly EnhChange[]): Build {
+  if (!changes.length) return b;
+  const nb = cloneBuild(b);
+  let placed = false;
+  // each piece is copied, so the build shares nothing with the list it was made from
+  for (const c of changes) placed = placeEnh(nb, c.key, c.slot, c.enh ? { ...c.enh } : undefined, c.freeLevel) || placed;
+  return placed ? nb : b;
 }
 
 /** Switch a power's totals contribution on or off (undefined restores the default). */

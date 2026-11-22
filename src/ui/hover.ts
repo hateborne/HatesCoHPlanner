@@ -55,6 +55,16 @@ export function useFreshHover(): void {
 }
 
 /**
+ * Phones: a long-press handler that shows a help text (for longPress and the chrome's onLongPress).
+ *
+ * @param text The text to show; a line break starts a new line.
+ * @return The handler, given the press point in window px.
+ */
+export function pressText(text: string): (pt: { x: number; y: number }) => void {
+  return (pt) => useHover.setState({ press: { kind: 'text', text, ...pt } });
+}
+
+/**
  * Describe a power while it is hovered (null: the pointer left it). Stable, so it never re-renders a list.
  *
  * @param p The power, or null.

@@ -8,7 +8,7 @@ import type { Slot } from './build.ts';
 import type { BuildEntry } from './rules.ts';
 import { nobody, withSlotted } from './context.ts';
 import { evalRequires } from './requires.ts';
-import { effectiveness, shortName } from './enhance.ts';
+import { effectiveness, lowerShortName } from './enhance.ts';
 
 export const RULE_OF_FIVE = 5;
 
@@ -63,7 +63,7 @@ export function earnedBonuses(gd: GameData, entries: BuildEntry[], level = 49): 
     for (const s of e.slots) {
       if (!s.enh || s.level > level) continue;
       const boost = gd.power(s.enh.boost);
-      names.push(shortName(boost).toLowerCase());
+      names.push(lowerShortName(boost));
       const ref = gd.boostSetOf.get(boost.id);
       if (!ref) continue;
       if (!boost.bac && effectiveness(gd, boost, s.enh, level) <= 0) continue;
@@ -81,7 +81,7 @@ export function earnedBonuses(gd: GameData, entries: BuildEntry[], level = 49): 
         const global = isPieceGlobal(b);
         // the piece a global's requirement names (its crafted or attuned version)
         const named = new Set((b.req ?? []).map((t) => t.toLowerCase()));
-        const piece = global ? pieces.find((x) => named.has(shortName(x).toLowerCase())) : undefined;
+        const piece = global ? pieces.find((x) => named.has(lowerShortName(x))) : undefined;
         for (const pid of b.auto) {
           const p = gd.powerById.get(pid);
           if (!p) continue;

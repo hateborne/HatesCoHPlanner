@@ -115,7 +115,8 @@ the project)
   it the section doesn't show. `henchmen` is never a version id.
 - A version's recipe file sits beside its folder in the same way (`public/data/recipes/<id>.json`,
   made by `python -m pipeline.recipes` from the very client the version was made from). Only the
-  set finder's shopping list reads it: no link, saved build or loader does. `recipes` and `finder`
+  set finder reads it (its shopping list, and a budget search for the salvage a piece's recipe
+  takes): no link, saved build or loader does. `recipes` and `finder`
   are never version ids either.
 - Game servers (`SERVERS` in `src/data/servers.ts`) keep their `id` (stored in builds) and `path`
   (the address segment) forever. A build or link that names no server is Homecoming's, and
@@ -257,6 +258,7 @@ npm run lint         # ESLint
 npm run typecheck    # tsc -b
 npm test             # vitest
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
+npm run e2e:built    # the same tests on a production build (the page's security policy, split code)
 npm run build        # type check + production build into dist/
 npm run research     # the build research (owner's machine; needs HCP_BUILD_CORPUS, else skipped)
 python -m pipeline.run --help
@@ -266,6 +268,7 @@ python -m pipeline.pets --game-version i28p3     # a published version's pseudo-
 python -m pipeline.info --game-version i28p3     # its power-info extras file (its own client, after pets)
 python -m pipeline.henchmen --game-version i28p3 # its real pets file (its own client)
 python -m pipeline.recipes                       # a published version's recipes and salvage (its own client)
+python -m pipeline.assets.export_assets          # UI textures its lists name that public/assets lacks
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -351,7 +354,8 @@ it, and the full list of what counts: `docs/releases.md`.
   tests. Old links must keep decoding.
 - Browser tests (`e2e/`, `npm run e2e`) recreate forum builds from `tests/fixtures/builds/`
   through the screens (desktop clicks, phone taps) and compare the result with the import. Run
-  them after changing the screens or the level-up flow (specs: `docs/architecture.md`).
+  them after changing the screens, the level-up flow or the set finder (specs:
+  `docs/architecture.md`).
 
 **Commits and pull requests**
 - Commit messages: a short imperative summary line, a blank line, then bullets on what changed

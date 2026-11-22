@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import { boostPog, enhLevelLabel, setRarity, type SetRarity } from '../../engine/enhance.ts';
@@ -8,6 +8,7 @@ import { CheckBar } from '../components/CheckBar.tsx';
 import { SlotRing } from '../components/Chrome.tsx';
 import { TitleText } from '../components/GameText.tsx';
 import { rarityStyle } from '../components/PowerTip.tsx';
+import { pressText } from '../hover.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
 
@@ -60,9 +61,10 @@ export function useShoppingList(gd: GameData): { list: ShoppingList; recipes: Re
 /**
  * One set on the list, drawn like a power on the build overview: a bar with the set's name, then
  * its pieces. Clicking the bar marks every piece owned (or none, when all are); clicking a piece
- * marks that one. An owned piece is greyed out.
+ * marks that one. An owned piece is greyed out. Phones have no hover text: a long press names a
+ * piece and says what a tap does.
  */
-function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }) {
+const SetBar = memo(function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }) {
   const setOwned = useFinder((s) => s.setOwned);
   const all = group.pieces.every((p) => p.item.owned);
   const scale = phone ? 1.3 : 1.2;
@@ -74,6 +76,9 @@ function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; g
   const ringsX = phone ? 4 : barX + barW + 26;
   const ringsY = phone ? barH : (barH - step) / 2;
   const perRow = Math.max(1, Math.floor((width - ringsX) / step));
+  // what a hint calls a press of the bar or of a piece
+  const press = phone ? 'tap' : 'click';
+  const barHint = all ? `You have all of these: ${press} to mark them as still needed` : `${phone ? 'Tap' : 'Click'} to mark every piece as owned`;
   const rows = Math.ceil(group.pieces.length / perRow);
   const height = (phone ? barH + rows * step : Math.max(barH, ringsY + rows * step)) + 8;
   return (
@@ -88,29 +93,54 @@ function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; g
         text={group.set.dn}
         state="standard"
         down={all}
-        title={all ? 'You have all of these: click to mark them as still needed' : 'Click to mark every piece as owned'}
+        title={barHint}
+        onLongPress={phone ? pressText(barHint) : undefined}
         onClick={() => setOwned(group.pieces.map((p) => p.index), /*owned=*/ !all)}
       />
-      {group.pieces.map((p, i) => (
-        // a box of no size around the ring, to grey out an owned piece without moving it
-        <div key={p.index} className="abs" style={{ left: 0, top: 0, width: 0, height: 0, opacity: p.item.owned ? 0.35 : 1, filter: p.item.owned ? 'grayscale(1)' : undefined }}>
-          <SlotRing
-            testId={`shop:piece:${p.index}`}
-            skin={skin}
-            x={ringsX + (i % perRow) * step + step / 2}
-            y={ringsY + Math.floor(i / perRow) * step + step / 2}
-            size={ring}
-            enhIcon={icon('enh', p.boost.icon)}
-            frames={p.boost.bf}
-            pog={boostPog(gd, p.boost)}
-            level={enhLevelLabel(gd, p.boost, { boost: p.boost.id, ioLevel: p.item.level ?? undefined }, LAST_LEVEL)}
-            title={`${p.boost.dn}${p.item.owned ? ' (owned: click to mark it as still needed)' : ' (click to mark it as owned)'}`}
-            onClick={() => setOwned([p.index], /*owned=*/ !p.item.owned)}
-          />
-        </div>
-      ))}
+      {group.pieces.map((p, i) => {
+        const hint = `${p.boost.dn} (${p.item.owned ? `owned: ${press} to mark it as still needed` : `${press} to mark it as owned`})`;
+        return (
+          // a box of no size around the ring, to grey out an owned piece without moving it
+          <div key={p.index} className="abs" style={{ left: 0, top: 0, width: 0, height: 0, opacity: p.item.owned ? 0.35 : 1, filter: p.item.owned ? 'grayscale(1)' : undefined }}>
+            <SlotRing
+              testId={`shop:piece:${p.index}`}
+              skin={skin}
+              x={ringsX + (i % perRow) * step + step / 2}
+              y={ringsY + Math.floor(i / perRow) * step + step / 2}
+              size={ring}
+              enhIcon={icon('enh', p.boost.icon)}
+              frames={p.boost.bf}
+              pog={boostPog(gd, p.boost)}
+              level={enhLevelLabel(gd, p.boost, { boost: p.boost.id, ioLevel: p.item.level ?? undefined }, LAST_LEVEL)}
+              title={hint}
+              onLongPress={phone ? pressText(hint) : undefined}
+              onClick={() => setOwned([p.index], /*owned=*/ !p.item.owned)}
+            />
+          </div>
+        );
+      })}
     </div>
   );
+}, sameBar);
+
+/**
+ * Whether a set's bar would draw the same: the list is put together anew on every change, so its
+ * groups are new objects each time, and a mark on one piece would otherwise draw every bar (up to
+ * 600 rings) again.
+ *
+ * @param a The bar's last props.
+ * @param b Its next props.
+ * @return True when nothing it draws from differs.
+ */
+function sameBar(a: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }, b: { gd: GameData; skin: Skin; group: ShopSet; phone: boolean; width: number }): boolean {
+  if (a.gd !== b.gd || a.skin !== b.skin || a.phone !== b.phone || a.width !== b.width) return false;
+  const x = a.group;
+  const y = b.group;
+  if (x.set !== y.set || x.pieces.length !== y.pieces.length) return false;
+  return x.pieces.every((p, i) => {
+    const q = y.pieces[i]!;
+    return p.index === q.index && p.boost === q.boost && p.item.owned === q.item.owned && p.item.level === q.item.level;
+  });
 }
 
 /** The sets on the list, one bar each. */
@@ -220,7 +250,7 @@ export function ShopNeeds({ gd, list, phone, recipes }: { gd: GameData; list: Sh
       <div>
         <div style={{ ...small, margin: '6px 0 2px' }}>{title}</div>
         {items.map((l, i) => (
-          <SearchLine key={l} line={l} testId={`shop:line:${id}:${i}`} />
+          <SearchLine key={`${i}:${l}`} line={l} testId={`shop:line:${id}:${i}`} />
         ))}
       </div>
     ) : null;

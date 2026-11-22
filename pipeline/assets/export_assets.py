@@ -8,6 +8,9 @@ Layout:
   public/assets/<server>/icons/<kind>/<lower name>.png   another server's icons (plan_icon_overlay)
   public/assets/<server>/manifest.json   {icons: {kind: [names...]}}
 
+`python -m pipeline.assets.export_assets` adds only the UI textures the lists below name that
+public/assets does not have yet (add_missing_ui): for a texture a new screen needs between patches.
+
 The shared assets come from Homecoming's default version. Another server (Thunderspy) keeps its own
 copy of every icon it shows: the shared file itself where its art is the same (Git stores identical
 files once), its own texture where the art differs or Homecoming lacks it. Its data names them
@@ -17,6 +20,7 @@ as the shared icons do (write_icon_overlay's add_only keeps it for an older vers
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -33,8 +37,10 @@ UI_PREFIXES = ("gui/creation/common/", "gui/creation/enhancements/", "gui/creati
                "gui/hud/common/select_buttons/genericbutton_", "gui/hud/common/frame/frame_flat_3px/",
                "gui/hud/common/frame/frame_gen_backgrounds_3px/frame_3px_10r_background_")
 # Single UI textures, matched exactly (a prefix would also take their unused "..a" variants):
-# the sparks electric_display (uiFx.c) draws on a newly added enhancement slot.
-UI_FILES = frozenset(f"gui/hud/common/special_effects/enhnc_spark0{i}" for i in (1, 2, 3))
+# the sparks electric_display (uiFx.c) draws on a newly added enhancement slot, and the invention
+# tutorial's badge, the owner's pick for the set finder's button.
+UI_FILES = frozenset(f"gui/hud/common/special_effects/enhnc_spark0{i}" for i in (1, 2, 3)) | {
+    "gui/icons/badges/badge_invention_tutorial"}
 FONT_FILES = ["REDCIRCL.ttf", "Paragon City Italic.ttf", "mont_demibold.TTF", "mont_hvbold.TTF"]
 FONT_DIR = config.FONTS_DIR  # vendored in the repo (pipeline/inputs/fonts); these never change
 # Front-end sounds the level-up screens play (sndPlay in uiLevelPower.c / uiLevelSpec.c /
@@ -411,6 +417,40 @@ def add_missing_icons(data_root) -> dict:
     return {"counts": {k: len(v) for k, v in added.items()}, "missing": missing, "added": added}
 
 
+def add_missing_ui() -> list[str]:
+    """Add only the UI textures UI_PREFIXES and UI_FILES name that public/assets does not have yet.
+
+    A whole run for the default version exports them too (run), with everything else. This is for
+    a texture a new screen needs between patches: it writes no other file and never overwrites
+    one, so art already published stays as it is.
+
+    @return The paths added, as the manifest lists them.
+    @raise SystemExit When public/assets/manifest.json is unreadable.
+    """
+    ix = TextureIndex()
+    mpath = config.ASSETS_OUT / "manifest.json"
+    try:
+        manifest = json.loads(mpath.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"error: public/assets/manifest.json is unreadable ({e}); export the default "
+                         "version's assets first")
+    have = set(manifest.get("ui", []))
+    added = []
+    for rel, src in sorted(ix.by_rel.items()):
+        if not (rel.startswith(UI_PREFIXES) or rel in UI_FILES):
+            continue
+        stem = f"ui/{rel[len('gui/'):]}"
+        if any(f"{stem}{ext}" in have or (config.ASSETS_OUT / f"{stem}{ext}").exists() for ext in (".png", ".webp")):
+            continue
+        img = decode(src.read())
+        added.append(_write(img, stem, webp=img.width * img.height >= 256 * 256))
+    if added:
+        manifest["ui"] = sorted(have | set(added))
+        config.atomic_write(mpath, json.dumps(manifest, separators=(",", ":")))
+        write_skin_variants(manifest["ui"])
+    return added
+
+
 def keep_older_icons(manifest: dict, data_root) -> None:
     """Keep listing the icons other version folders need that this run's data does not.
 
@@ -490,3 +530,19 @@ def run(data_root) -> dict:
     return {"counts": {k: len(v) for k, v in manifest["icons"].items()} | {
         "ui": len(manifest["ui"]), "fonts": len(manifest["fonts"]),
         "sounds": len(manifest["sounds"])}, "missing": missing}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.parse_args()
+    config.select_server(config.HOMECOMING.id)
+    config.preflight()
+    added = add_missing_ui()
+    print(f"UI textures added: {len(added)}")
+    for a in added:
+        print(f"  {a}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

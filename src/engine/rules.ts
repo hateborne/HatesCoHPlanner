@@ -7,7 +7,7 @@ import { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Archetype, Power, Powerset } from '../data/types.ts';
 import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
-import { canSlot, ioLevelRange, levelsAbove, shortName } from './enhance.ts';
+import { canSlot, ioLevelRange, levelsAbove, lowerShortName } from './enhance.ts';
 import { aimedAt, nobody, withProps, withSlotted } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { countAtLevel, countForLevel } from './schedule.ts';
@@ -826,7 +826,7 @@ export class BuildRules {
       for (const s of e.slots) {
         const b = s.enh && s.level <= last ? this.gd.powerById.get(s.enh.boost) : undefined;
         if (!b) continue;
-        const k = shortName(b).toLowerCase();
+        const k = lowerShortName(b);
         counts.set(k, (counts.get(k) ?? 0) + 1);
       }
     }
@@ -866,8 +866,8 @@ export class BuildRules {
     const { counts, ctx: base } = this.slotted();
     const last = this.lastLevel();
     const cur = e.slots[slot];
-    const curName = cur?.enh && cur.level <= last && e.level <= last ? shortName(gd.power(cur.enh.boost)).toLowerCase() : '';
-    const inPower = others.map((o) => shortName(o).toLowerCase());
+    const curName = cur?.enh && cur.level <= last && e.level <= last ? lowerShortName(gd.power(cur.enh.boost)) : '';
+    const inPower = others.map((o) => lowerShortName(o));
     const ctx = withSlotted(base, {
       all: (n) => {
         const k = n.toLowerCase();
@@ -882,7 +882,7 @@ export class BuildRules {
     if (evalRequires(boost.slr, alone)) {
       const named = new Set(boost.slr.map((t) => t.toLowerCase()));
       const where = this.entries().find((o) =>
-        o.slots.some((s, i) => (o.key !== e.key || i !== slot) && !!s.enh && named.has(shortName(gd.power(s.enh.boost)).toLowerCase())),
+        o.slots.some((s, i) => (o.key !== e.key || i !== slot) && !!s.enh && named.has(lowerShortName(gd.power(s.enh.boost)))),
       );
       return where ? `Unique, also slotted in ${where.power.dn}` : 'Unique piece';
     }

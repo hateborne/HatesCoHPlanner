@@ -19,9 +19,10 @@ const MARGIN = 12;
 const close = () => useHover.setState({ press: null });
 
 /**
- * Phones: the tooltip a long press opened on the build overview (useHover.press), in place of
- * the desktop's hover tooltips. It sits above or below the finger, whichever has more room,
- * scrolls when it is long, and closes on a tap anywhere (or Escape).
+ * Phones: the tooltip a long press opened (useHover.press), in place of the desktop's hover
+ * tooltips. It sits above or below the finger, whichever has more room, scrolls when it is long,
+ * and closes on a tap anywhere (or Escape). A screen mounts one; a pane drawn over that screen
+ * (the set finder) mounts its own, since the screen's would be under it.
  *
  * @param props.at The build's archetype (the detailed numbers and enhancement values).
  * @param props.level 0-based level the numbers are shown at (the build's last level).

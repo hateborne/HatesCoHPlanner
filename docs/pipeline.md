@@ -101,6 +101,11 @@ writes `pipeline/report-<id>.md` instead of `report.md`, and its asset export on
 run anything from the old install itself: copy the files, read the copy. To tell which patch an old
 client is, match it against the patch timeline (`docs/patch-history.md`).
 
+A UI texture a new screen needs between patches is added to `UI_PREFIXES` or `UI_FILES`
+(`pipeline/assets/export_assets.py`), then `python -m pipeline.assets.export_assets` writes the
+ones `public/assets` lacks from the Homecoming client and lists them in the manifest. It writes
+nothing else and never overwrites a file; the next whole run exports them with everything else.
+
 **Thunderspy** (`--server thunderspy`) reads its own client (`COH_CLIENT_THUNDERSPY`, or
 `servers.thunderspy.client` in `pipeline/paths.local.json`): `Thunderspy.exe`, every bin in
 `tspy/bin.pigg`, base art in `piggs/`, its own art in `tspy/*.pigg`. Run
@@ -182,7 +187,7 @@ is not part of the version hash. The planner fetches it only for a build with a 
 pet, and a missing or damaged file only hides the Pets and Minions section. A real pets file is
 regenerated the same way when its format grows, as long as no deploy has published it.
 
-## Recipes and salvage (the set finder's shopping list)
+## Recipes and salvage (the set finder's shopping list and budget searches)
 
 `python -m pipeline.recipes [--game-version V]` writes `public/data/recipes/<version>.json` and
 nothing else in the data folder: for every set enhancement a dropped recipe makes, the recipe's
@@ -222,9 +227,10 @@ What it reads: `.mbd` files, and Mids share codes (`|MBD;`, `|MxDz;`) inside `.m
 and saved `.html` pages. Every build goes through the planner's own importer (`parseMidsText`,
 `importParsed`) against the default game version, then `checkBuild`, so the run doubles as an import
 check over thousands of real builds. Builds made on another server's Mids database, builds too
-empty to count, copies of another build and builds whose file name marks a farm build are left out
-of the values. A build that lost a picked power on import (one the default version does not have
-under that name) is counted without it, at its full level.
+empty to count and copies of another build are left out of the values. Farm builds count like any
+other (the owner's ruling: they are builds people play); the report says how many a file name
+marks. A build that lost a picked power on import (one the default version does not have under
+that name) is counted without it, at its full level.
 
 What it writes (both committed through a pull request, never edited by hand):
 
@@ -237,6 +243,15 @@ What it writes (both committed through a pull request, never edited by hand):
 
 Nothing about the builds themselves leaves the machine: no file names, build names or paths, only
 counts and medians. An import fault the report turns up is fixed in its own pull request.
+
+The one file serves every Homecoming game version (`finderProblem`, `src/engine/finder/search.ts`):
+it is keyed by internal names, so a new patch does not switch the finder off and nothing has to be
+run for it to keep working. A search reads only each archetype's stat values and the needs of the
+archetype and its two power sets from it; the sets themselves come from the build's own game data,
+so a new set is offered at once. Run the research again after a patch that adds or reworks
+archetypes or power sets, or changes what builds slot, so their values and needs are measured: an
+archetype the file never saw gets the all-builds values, and a power set it never saw has no needs.
+`dataVersion` in the file only records the version the builds were read against.
 
 How a stat is valued. A stat's unit is the median size of one set bonus in it, over every set bonus
 in the game data (`offerFor`). A bonus of typical size counts 1 in all, shared between the families

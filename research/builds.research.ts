@@ -62,7 +62,6 @@ describe('build research', () => {
       flagged: 0,
       sparse: 0,
       duplicates: 0,
-      farm: 0,
       tags: new Map(),
       midsDb: new Map(),
     };
@@ -116,13 +115,8 @@ describe('build research', () => {
         continue;
       }
       seen.add(f.signature);
+      // every tag counts, farm builds too: the owner's ruling (they are builds people play)
       for (const tag of item.tags) bump(run.tags, tag);
-      // UNCONFIRMED default (owner has not ruled): farm builds chase fire resistance and damage in
-      // a way normal play does not, so they are kept out of the general values
-      if (item.tags.includes('farm')) {
-        run.farm++;
-        continue;
-      }
       facts.push(f);
     }
     if (!facts.length) throw new Error('no builds could be counted: check what HCP_BUILD_CORPUS names');

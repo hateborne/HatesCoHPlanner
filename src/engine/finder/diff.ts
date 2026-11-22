@@ -88,12 +88,14 @@ function sameSlots(a: readonly Slot[], b: readonly Slot[]): boolean {
  * @param gd Game data.
  * @param rules Rules of the build as it is.
  * @param after The build with other enhancements in its slots (same powers, same slots).
+ * @param before The totals of the build as it is, at its last level, when the caller has them
+ *   already (a screen comparing one build with many: half the work of each comparison).
  * @return The gains and losses.
  */
-export function buildDiff(gd: GameData, rules: BuildRules, after: Build): BuildDiff {
+export function buildDiff(gd: GameData, rules: BuildRules, after: Build, before?: Totals): BuildDiff {
   const afterRules = rules.reslotted(after);
   const level = rules.lastLevel();
-  const t0 = computeTotals(gd, rules, rules.b, level);
+  const t0 = before ?? computeTotals(gd, rules, rules.b, level);
   const t1 = computeTotals(gd, afterRules, after, level);
 
   const rows: DiffRow[] = [];
@@ -105,10 +107,10 @@ export function buildDiff(gd: GameData, rules: BuildRules, after: Build): BuildD
     rows.push({ key, label, before: of(t0), after: of(t1), lowerIsBetter: !!derived?.lowerIsBetter });
   }
 
-  const before = new Map(rules.entries().map((e) => [e.key, e]));
+  const entries = new Map(rules.entries().map((e) => [e.key, e]));
   const powers: PowerDiff[] = [];
   for (const e of afterRules.entries()) {
-    const was = before.get(e.key);
+    const was = entries.get(e.key);
     if (!was || sameSlots(was.slots, e.slots)) continue;
     const a = slottedNumbers(gd, rules.at, e.power, was.slots, t0.level, t0.lines.get('rech')?.capped ?? 0);
     const b = slottedNumbers(gd, rules.at, e.power, e.slots, t1.level, t1.lines.get('rech')?.capped ?? 0);
