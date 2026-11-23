@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_SERVER } from '../../data/servers.ts';
-import { openSetFinder } from '../../state/finderOpen.ts';
+import { openSetFinder, useFinderOpen } from '../../state/finderOpen.ts';
 import { continueTarget, respecUnfinished, stepsOf, TIP_MODES, useStore, type TipMode } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { SET_FINDER } from '../flags.ts';
@@ -143,7 +143,11 @@ function PhoneMenu({ skin }: { skin: Skin }) {
   );
   const [open, setOpen] = useState(false);
   const [support, setSupport] = useState(false);
+  // while the set finder's powers are picked on the overview nothing may change the build or leave
+  // the screen (Overview.tsx, PickGuard): the menu stays shut
+  const picking = useFinderOpen((s) => s.picking);
   const toggle = () => {
+    if (picking) return;
     // a refusal toast still showing would cover the pane's first row
     if (!open) dismissNotice();
     setOpen(!open);

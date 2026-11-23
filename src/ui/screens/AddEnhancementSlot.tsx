@@ -125,7 +125,7 @@ function desktopPanel(i: number): PanelGeom {
 
 /** The single phone panel: the same row structure scaled by S, with finger-sized rings. */
 function phonePanel(pg: PhoneGeom): PanelGeom {
-  const P = phoneFrame(pg, 3, PHONE_COUNTER_H + 8 + PHONE_INFO_H + 8);
+  const P = phoneFrame(pg, PHONE_COUNTER_H + 8 + PHONE_INFO_H + 8);
   return {
     frame: P,
     view: { left: P.x + 2, top: P.y + 6, width: P.w - 4, height: P.h - 12 },

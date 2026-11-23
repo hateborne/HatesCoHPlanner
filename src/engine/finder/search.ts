@@ -126,7 +126,8 @@ interface Found {
  *    replaces the kept one).
  * 3. For each set the power takes and the search lets in: order the set's legal pieces by what
  *    each does for the power, then try every piece count the search allows, the new pieces going
- *    into the slots that cost least. Keep the best count.
+ *    into the slots that cost least. Keep the best count: the best of those that gain what the
+ *    search names, when any does.
  * 4. Rank everything found, drop what the game would refuse on the build with every kept swap and
  *    the new one in, and return the top of the list with its warnings.
  *
@@ -275,6 +276,9 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
     const ranked = orderOffers(e, from, free, offers, most, now, prefer);
 
     let best: Found | undefined;
+    // whether `best` is a gain in what the search names: such a count is kept over one that is not,
+    // whatever their scores, since the list drops a swap that gains nothing asked for
+    let bestAsked = false;
     for (let k = 1; k <= most; k++) {
       const count = have.size + k;
       if (count < lo || count > hi) continue;
@@ -303,13 +307,18 @@ export function* searchSwaps(input: FinderInput): Generator<number, FinderResult
         if (!mainsOf(set).some((o) => earns(o) && o.bonus.some((id) => (scored.counted.get(id) ?? 0) > 0))) continue;
       }
       const score = scored.score - displaced.reduce((n, s) => n + keepValue(s), 0) - COST_STEP * costOf(set);
-      if (!best || score > best.score) best = { entry: e, set, count, pieces, displaced, before: slotIds(from), scored, score };
+      const asked = !!q.main || scored.asked > 1e-9;
+      if (!best || (asked && !bestAsked) || (asked === bestAsked && score > best.score)) {
+        best = { entry: e, set, count, pieces, displaced, before: slotIds(from), scored, score };
+        bestAsked = asked;
+      }
     }
     return best;
   };
 
-  // the powers a swap may go into: every one with slots, or only those the search names
-  const named = q.powers ? new Set(q.powers.map((x) => `${x.key}|${x.power}`)) : null;
+  // the powers a swap may go into: every one with slots, or only those the search names (an empty
+  // list names none, so it is every power)
+  const named = q.powers?.length ? new Set(q.powers.map((x) => `${x.key}|${x.power}`)) : null;
   const entries = base.st.entries.filter((e) => e.level <= base.last && rules.slottable(e.power) && (!named || named.has(`${e.key}|${e.power.id}`)));
   const found: Found[] = [];
   for (let n = 0; n < entries.length; n++) {

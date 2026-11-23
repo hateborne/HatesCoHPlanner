@@ -187,6 +187,13 @@ export default defineConfig({
     // the interface sounds' names, for fetching them when Sound is on (src/ui/sound.ts)
     __HCP_UI_SOUNDS__: JSON.stringify(uiSounds()),
   },
+  // The dev server answers for any file of the checkout by its path, and with --host (the
+  // vite-dev-lan launch entry, for testing on a phone) every device on the network can ask. So it
+  // refuses what must never leave the machine: this machine's paths, the owner's reference
+  // screenshots, anything named *.local. The list replaces Vite's own, so that is repeated first.
+  server: {
+    fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/IGNORE/**', '*.local', '*.local.*'] },
+  },
   // brotli-wasm locates its .wasm relative to its own module; pre-bundling breaks that in dev.
   optimizeDeps: { exclude: ['brotli-wasm'] },
   test: {

@@ -343,7 +343,9 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
 - The set finder's rate (`procFigures`) is that chance times how often the power is used when it
   is used every time it is ready: a click once every cast time plus recharge time (global
   recharge counted), a toggle or an auto power once every 10 seconds. It is per target hit. The
-  damage is the proc's own at the character's level, before the target's resistance.
+  damage is the proc's own at the character's level, before the target's resistance. A click
+  with no recharge and no cast time in the data is taken to cycle every 0.5 seconds (`MIN_CYCLE`):
+  the planner's own floor so the rate stays finite, not a game rule.
 
 ## Pseudo-pet damage (power info)
 

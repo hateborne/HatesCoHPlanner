@@ -596,14 +596,18 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   Available (red until a power is picked, then green) with Done beside it: over the Origin /
   Alignment and Continue Leveling buttons on desktop, in the place of New Build and Save / Share
   on phones. On the overview a click on the bar of a power a set can go into picks it or lets it
-  go (a gold ring marks it); any other bar is refused (`flashLocked`, "Takes No Sets"). Nothing
-  on the overview changes the build meanwhile: the slot rings, the on/off switches, the
-  exclusive toggles' boxes and the pet pane's switches do nothing, since a changed build drops
-  the finder's kept swaps and results. Done or Escape brings the pane back with the picked
+  go (a gold ring marks it); any other bar is refused (`flashLocked`, "Takes No Sets", with that
+  refusal's sound alone). Nothing else on the overview answers meanwhile (`PickGuard` in
+  `Overview.tsx`: a click, a right click, Enter or Space reaches only the power bars and the
+  phone's row of tabs), since a changed build drops the finder's kept swaps and results and
+  another screen would leave the picking behind: the level orbs, the title's rename, New Build,
+  Save / Share, Origin / Alignment, the slot rings, the on/off switches, the exclusive toggles'
+  boxes and the pet pane's switches do nothing, and the phone's menu stays shut (`Settings.tsx`).
+  Scrolling, hover texts and long presses stay.
+  The build's name stops short of the box (`pickBox`, `finderPick.ts`). Done or Escape brings the pane back with the picked
   powers as the search's `powers` (none picked: every power again); the box then reads "N powers
   selected" with a line under it saying only those are searched, and picking a set type or every
-  set type clears them. Closing the pane ends the picking, and so does any change to the build
-  (the phone's menu can still change the origin).
+  set type clears them. Closing the pane ends the picking, and so does any change to the build.
 - **Lists.** The kept swaps come first, each with its box ticked (untick to let it go), then the
   results: each set shows its best placement, the others folded under it. A row is the set, its
   piece count, its levels and "into <power>" on one line, with the pieces' icons under it. The label at the top
@@ -626,7 +630,13 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   at its cap glows amber (`atCap`, `wasAtCap`), or purple at defense's soft cap (`softCap`), and a stat past its cap is written as the
   character sheet writes it, "cap (actual)": into the cap `old -> cap (new)`, staying past it
   `cap (old -> new)`, out of it `cap (old) -> new`. Damage bonuses marked unused fold into one
-  greyed "Unused Damage" row that opens on a click. What a swap takes out is said in short
+  greyed "Unused Damage" row that opens on a click (closed again for the next swap shown). A
+  damage type is used when one of the build's powers deals it (`damageTypesDealt`, `dealt.ts`):
+  its own effects, the powers it executes or redirects to (a Titan Weapons attack, a snipe's
+  quick form), and its pets, pseudo-pets and real ones; inherent powers and procs don't count.
+  A pet's powers are in the pets files, which the app never waits for: until they are at hand
+  nothing is called unused, the pane asks for the real pets file when a build needs it
+  (`requestHenchmen`) and reads again when a file arrives. What a swap takes out is said in short
   (`replacedLines`, `labels.ts`): a whole set as its count ("Crushing Impact: 6/6"), two or more
   pieces of a set by their short names on a line of their own ("Power Transfer: EndMod,
   Dmg/Rech"), everything else on one last line ("IO: Rech, Lockdown: Acc/Rech"). A proc's row has a tooltip saying which figure is
@@ -791,7 +801,10 @@ has no such column, nor one whose enhancements change no number.
   Its stage is 667 wide and shaped like the window, at least 1067 tall (`src/ui/stageLayout.ts`):
   1.5x the size of the original 1000-wide phone canvas, so the game's bars are about 33px on a
   phone. Phone screens lay out from
-  `src/ui/components/Phone.tsx` (`phoneGeom`, `phonePanel`, `phoneDesc`, `PhoneTabs`).
+  `src/ui/components/Phone.tsx` (`phoneGeom`, `phonePanel`, `phoneDesc`, `PhoneTabs`). Tabs are
+  always one row: up to three share it, more (the overview's four, the set finder's, New Build's)
+  slide sideways as the enhancement picker's categories do (`PhoneTabStrip`), each tab as wide as
+  three and a third fit, so the cut-off one shows there is more.
 - A touch screen held sideways and shorter than 500px shows a "turn your phone upright" message.
 - Phones have no hover: a long press (`longPress` in `src/ui/press.ts`) shows the tooltip
   instead. Clickable chrome takes `pressKeys` for keyboard access.

@@ -124,6 +124,7 @@ export function PhoneTabStrip({
   const ref = useRef<HTMLDivElement>(null);
   const s = 1.3;
   const bulb = 22 * s + 4; // the check box's center from the cell's left edge
+  // three tabs and a third of the next: the cut-off tab says the row slides
   const cell = Math.round(width / 3.3);
   const shown = useRef(false); // it has been drawn once: later changes glide
   useEffect(() => {
@@ -148,7 +149,8 @@ export function PhoneTabStrip({
           const off = !!disabled?.[i];
           return (
             <CheckBar
-              key={l}
+              // by place: a tab whose label changes ("Kept (2)" to "Kept (3)") stays the same tab
+              key={i}
               skin={skin}
               x={i * cell + bulb}
               y={PHONE_TAB_ROW / 2}
@@ -173,22 +175,16 @@ export function PhoneTabStrip({
   );
 }
 
-/** @return How many rows `n` tabs take on a phone: always one (more than three slide sideways, PhoneTabs). */
-export function phoneTabRows(n: number): number {
-  return n > 0 ? 1 : 0;
-}
-
 /**
- * The phone's one panel: under `tabs` tabs and above a block `below` px tall that sits on top of
- * Back / Next (the description box, a counter).
+ * The phone's one panel: under the row of tabs (always one row: PhoneTabs) and above a block
+ * `below` px tall that sits on top of Back / Next (the description box, a counter).
  *
  * @param g Phone bands.
- * @param tabs How many tabs the screen shows.
  * @param below Height of what sits between the panel and Back / Next.
  * @return The panel's frame.
  */
-export function phonePanel(g: PhoneGeom, tabs: number, below: number): Rect {
-  const top = g.tabsY + (phoneTabRows(tabs) - 1) * PHONE_TAB_ROW + PHONE_TAB_ROW / 2 + 4;
+export function phonePanel(g: PhoneGeom, below: number): Rect {
+  const top = g.tabsY + PHONE_TAB_ROW / 2 + 4;
   return { x: PHONE_PAD, y: top, w: g.w - 2 * PHONE_PAD, h: g.navTop - 8 - below - top };
 }
 
@@ -216,8 +212,33 @@ export function phoneDesc(g: PhoneGeom, above = 0): Rect {
  * @param props.width Width of the row (default: the stage less both margins).
  * @param props.disabled Tabs shown grey and not tappable (nothing to choose there yet).
  * @param props.flash A tab that blinks green twice as it appears (it just became available).
+ * @param props.testId The sliding row's data-testid (default "tabs"; a pane over a screen with tabs of its own names another).
  */
-export function PhoneTabs({ skin, labels, active, onChange, y, x = PHONE_PAD, width, disabled, flash, clickSounds = ['n_select'] }: { skin: Skin; labels: string[]; active: number; onChange: (i: number) => void; y?: number; x?: number; width?: number; disabled?: boolean[]; flash?: number; clickSounds?: string[] }) {
+export function PhoneTabs({
+  skin,
+  labels,
+  active,
+  onChange,
+  y,
+  x = PHONE_PAD,
+  width,
+  disabled,
+  flash,
+  clickSounds = ['n_select'],
+  testId = 'tabs',
+}: {
+  skin: Skin;
+  labels: string[];
+  active: number;
+  onChange: (i: number) => void;
+  y?: number;
+  x?: number;
+  width?: number;
+  disabled?: boolean[];
+  flash?: number;
+  clickSounds?: string[];
+  testId?: string;
+}) {
   const stage = useStage();
   const y0 = y ?? phoneGeom(stage).tabsY;
   const wd = width ?? stage.w - 2 * PHONE_PAD;
@@ -226,7 +247,7 @@ export function PhoneTabs({ skin, labels, active, onChange, y, x = PHONE_PAD, wi
   const s = 1.3;
   const bulb = 22 * s + 4; // the check box's center from the cell's left edge
   const at = (i: number) => ({ cx: x + i * cell + bulb, cy: y0, wd: cell - bulb - 8 });
-  if (labels.length > 3) return <PhoneTabStrip skin={skin} labels={labels} active={active} onChange={onChange} y={y0} x={x} width={wd} disabled={disabled} flash={flash} clickSounds={clickSounds} testId="tabs" />;
+  if (labels.length > 3) return <PhoneTabStrip skin={skin} labels={labels} active={active} onChange={onChange} y={y0} x={x} width={wd} disabled={disabled} flash={flash} clickSounds={clickSounds} testId={testId} />;
   return (
     <>
       {labels.map((l, i) => {

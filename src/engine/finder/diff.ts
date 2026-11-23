@@ -117,15 +117,16 @@ function sameSlots(a: readonly Slot[], b: readonly Slot[]): boolean {
  * @param gd Game data.
  * @param rules Rules of the build as it is.
  * @param after The build with other enhancements in its slots (same powers, same slots).
+ * @param dealt The damage types the build's powers deal (damageTypesDealt), when the caller has
+ *   them already: they are the same for every re-slotting of one build.
  * @return The gains and losses.
  */
-export function buildDiff(gd: GameData, rules: BuildRules, after: Build): BuildDiff {
+export function buildDiff(gd: GameData, rules: BuildRules, after: Build, dealt: ReadonlySet<number> | null = damageTypesDealt(gd, rules)): BuildDiff {
   const afterRules = rules.reslotted(after);
   const level = rules.lastLevel();
   const t0 = computeTotals(gd, rules, rules.b, level);
   const t1 = computeTotals(gd, afterRules, after, level);
 
-  const dealt = damageTypesDealt(gd, rules);
   const rows: DiffRow[] = [];
   for (const key of new Set([...t0.lines.keys(), ...t1.lines.keys()])) {
     if (key === 'def.base' || key.startsWith('max.')) continue;
@@ -159,7 +160,12 @@ export function buildDiff(gd: GameData, rules: BuildRules, after: Build): BuildD
   const before = new Map(rules.entries().map((e) => [e.key, e]));
   const rech0 = t0.lines.get('rech')?.capped ?? 0;
   const rech1 = t1.lines.get('rech')?.capped ?? 0;
-  const holdsProc = (slots: readonly Slot[]) => slots.some((s) => !!s.enh && isDamageProc(gd, gd.power(s.enh.boost)));
+  const holdsProc = (slots: readonly Slot[]) =>
+    slots.some((s) => {
+      // an enhancement the data doesn't know holds no proc
+      const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+      return !!boost && isDamageProc(gd, boost);
+    });
   const powers: PowerDiff[] = [];
   for (const e of afterRules.entries()) {
     const was = before.get(e.key);

@@ -65,6 +65,7 @@ interface RowProps {
   detail?: ReactNode; // expanded content in place of the source list
   cap?: boolean;
   noMark?: boolean; // no +/- column: a list where nothing expands (the enhancement picker)
+  wrapRight?: boolean; // a value too long for its line wraps against the right edge (the set finder's "cap (actual)" figures)
 }
 
 /**
@@ -75,7 +76,7 @@ export function TotalsRow(props: RowProps) {
   return <Row {...props} />;
 }
 
-function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, detail, cap, noMark }: RowProps) {
+function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, detail, cap, noMark, wrapRight }: RowProps) {
   const [open, setOpen] = useState(false);
   const chances = line?.chances ?? [];
   const has = !!detail || (!!line && (line.sources.length > 0 || chances.length > 0));
@@ -92,7 +93,7 @@ function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, deta
           {noMark ? null : <span style={{ width: MARK_W, flex: 'none', textAlign: 'center' }}>{has ? (open ? '-' : '+') : ''}</span>}
           <span>{label}</span>
         </span>
-        <span style={{ color: toneColor(tone, plain), textAlign: 'right' }}>
+        <span style={{ color: toneColor(tone, plain), textAlign: wrapRight ? 'right' : undefined }}>
           {open ? (openValue ?? value) : value}
           {/* chance sources aren't in the value: they're listed under Chance */}
           {chances.length ? ' (*)' : null}

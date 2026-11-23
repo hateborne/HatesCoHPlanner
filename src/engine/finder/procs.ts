@@ -14,7 +14,9 @@ const CHANCE_FLOOR_PER_PPM = 0.015;
 const CHANCE_CEILING = 0.9;
 // a boost's own ActivatePeriod where the data has none: every enhancement's is 10 seconds
 const BOOST_PERIOD = 10;
-// the shortest cycle a click power is taken to have (a power with no recharge and no cast time)
+// the shortest cycle a click power is taken to have, in seconds: a power with no recharge and no
+// cast time in the data would otherwise be used without end. The planner's own floor, not the
+// game's (docs/game-rules.md, "Procs per minute")
 const MIN_CYCLE = 0.5;
 
 /**

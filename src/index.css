@@ -609,6 +609,10 @@ button {
 .switch-hover:hover {
   filter: brightness(1.35);
 }
+/* ...but not while the set finder's powers are picked on the overview (PickGuard): no switch works then */
+.pick-guard .switch-hover {
+  pointer-events: none;
+}
 
 .switch-box:has(> input:focus-visible) {
   outline: 2px solid var(--menu-border);

@@ -20,7 +20,7 @@ import { BuildRules } from '../src/engine/rules.ts';
 import { closeSetFinder, openSetFinder, startPickingPowers, stopPickingPowers, togglePickedPower, useFinderOpen } from '../src/state/finderOpen.ts';
 import { computeTotals } from '../src/engine/totals.ts';
 import { importMidsText } from '../src/io/mids.ts';
-import { loadData, loadMidsMapFile, pid, sid } from './helpers/data.ts';
+import { loadData, loadMidsMapFile, pid, sid, withHenchmen } from './helpers/data.ts';
 
 const gd = loadData();
 const stats = JSON.parse(readFileSync(join(process.cwd(), 'public', 'data', 'finder', 'stats.json'), 'utf-8')) as FinderStats;
@@ -119,7 +119,18 @@ describe('finder: labels of the gains and losses', () => {
     expect(statLabel(gd, 'res.02')).toBe('Fire (Dmg Res)');
     expect(statLabel(gd, 'mezres.Held')).toBe('Hold (Status Res)');
     expect(statLabel(gd, 'mezprot.Knock')).toBe('Knockback (Status Prot)');
-    expect(statLabel(gd, 'resx.RechargeTime')).toMatch(/ \(Debuff Res\)$/);
+    // a debuff resistance is named in words, never by the attribute's internal name
+    expect(statLabel(gd, 'resx.RechargeTime')).toBe('Recharge (Debuff Res)');
+    expect(statLabel(gd, 'resx.SpeedRunning')).toBe('Run Speed (Debuff Res)');
+    expect(statLabel(gd, 'resx.PerceptionRadius')).toBe('Perception (Debuff Res)');
+    expect(statLabel(gd, 'resx.JumpHeight')).toBe('Jump Height (Debuff Res)');
+    expect(statLabel(gd, 'resx.Endurance')).toBe('Endurance (Debuff Res)');
+    // every debuff resistance the statistics know reads as words
+    const keys = new Set(Object.values(stats.needs).flatMap((n) => Object.keys(n)));
+    for (const key of JSON.stringify(stats).match(/resx\.[A-Za-z0-9]+/g) ?? []) keys.add(key);
+    const debuffs = [...keys].filter((k) => k.startsWith('resx.'));
+    expect(debuffs.length).toBeGreaterThan(5);
+    for (const key of debuffs) expect(statLabel(gd, key), key).toMatch(/^[A-Z][A-Za-z]*( [A-Z][A-Za-z]*)* \(Debuff Res\)$/);
   });
 });
 
@@ -252,18 +263,62 @@ describe('finder: damage types a build deals', () => {
       return attack([...d.gains, ...d.losses]).length > 0;
     })!;
     expect(swap).toBeDefined();
-    const mine = damageTypesDealt(gd, rules);
+    // the build's pets are all in the pets file, so there is an answer
+    const mine = damageTypesDealt(gd, rules)!;
+    expect(mine).not.toBeNull();
     const d = buildDiff(gd, rules, applySwap(b, swap));
     const rows = attack([...d.gains, ...d.losses]);
-    if (mine) {
-      // a Symphony / Dark Dominator deals no fire damage: that bonus is set aside, a type it deals is not
-      for (const r of rows) expect(!!r.unused, r.key).toBe(!mine.has(Number(r.key.slice(4))));
-      expect(mine.has(type('Fire'))).toBe(false);
-      expect(rows.some((r) => r.unused)).toBe(true);
-      expect(rows.some((r) => !r.unused)).toBe(true);
-    } else {
-      for (const r of rows) expect(r.unused, r.key).toBeUndefined();
-    }
+    // a Symphony / Dark Dominator deals no fire damage: that bonus is set aside, a type it deals is not
+    for (const r of rows) expect(!!r.unused, r.key).toBe(!mine.has(Number(r.key.slice(4))));
+    expect(mine.has(type('Fire'))).toBe(false);
+    expect(rows.some((r) => r.unused)).toBe(true);
+    expect(rows.some((r) => !r.unused)).toBe(true);
+    // the types handed in (the screen reads them once) give the same rows
+    expect(buildDiff(gd, rules, applySwap(b, swap), mine)).toEqual(d);
+    // with no answer nothing is called unused
+    const blind = buildDiff(gd, rules, applySwap(b, swap), null);
+    for (const r of attack([...blind.gains, ...blind.losses])) expect(r.unused, r.key).toBeUndefined();
+  });
+
+  /** @return A bare build of an archetype with these powers, one empty slot each. */
+  const bare = (at: string, primary: string, secondary: string, powers: string[]): Build => {
+    const b = newBuild({
+      dataVersion: gd.core.manifest.dataVersion,
+      at: gd.archetypeByName.get(at)!.id,
+      origin: gd.core.origins[0]!.id,
+      alignment: 'Hero',
+      primary: sid(gd, primary),
+      secondary: sid(gd, secondary),
+      pickCount: gd.core.schedule.power.length,
+    });
+    powers.forEach((name, i) => {
+      const level = gd.core.schedule.power[i]!;
+      b.picks[i] = { power: pid(gd, name), level, slots: [{ level }] };
+    });
+    return b;
+  };
+
+  it('follows a power to the ones it redirects to', () => {
+    // a Titan Weapons attack is a redirect: its damage is in the slow and the quick power it stands for
+    const blow = power('Tanker_Melee.Titan_Weapons.Crushing_Blow');
+    expect(blow.redir?.length).toBeGreaterThan(0);
+    const b = bare('class_tanker', 'Tanker_Defense.Fiery_Aura', 'Tanker_Melee.Titan_Weapons', ['Tanker_Melee.Titan_Weapons.Crushing_Blow']);
+    const dealt = damageTypesDealt(gd, new BuildRules(gd, b));
+    // (the attacks also hold the fire damage Fiery Embrace adds, which counts as dealt)
+    expect(dealt?.has(type('Smashing'))).toBe(true);
+    expect(dealt?.has(type('Cold'))).toBe(false);
+  });
+
+  it("reads a real pet's attacks once the real pets file is there, and gives no answer before", () => {
+    const b = bare('class_mastermind', 'Mastermind_Summon.Robotics', 'Mastermind_Buff.Force_Field', ['Mastermind_Summon.Robotics.Battle_Drones']);
+    // the file is fetched only for a build that needs it: until it comes, the drones' lasers can't be read
+    const before = Object.create(gd, { henchmen: { value: null } }) as typeof gd;
+    expect(damageTypesDealt(before, new BuildRules(before, b))).toBeNull();
+    const full = withHenchmen(gd);
+    const dealt = damageTypesDealt(full, new BuildRules(full, b));
+    expect(dealt).not.toBeNull();
+    expect(dealt!.has(type('Energy'))).toBe(true);
+    expect(dealt!.has(type('Fire'))).toBe(false);
   });
 });
 
@@ -308,8 +363,21 @@ describe('finder: procs', () => {
     const at = gd.archetypeByName.get('class_tanker')!;
     const figures = procFigures(gd, at, scorch.power, scorch.slots, 49, slottedNumbers(gd, at, scorch.power, scorch.slots, 49, 0));
     expect(figures).toHaveLength(1);
-    expect(figures[0]!.perMin).toBeGreaterThan(0);
+    // by hand. Scorch recharges in 3 s and takes 1 s (no recharge slotted): the chance is
+    // 3.5 x (3 + 1) / 60 = 0.2333, it is used 60 / (3 + 1) = 15 times a minute, so the proc
+    // fires 3.5 times a minute: a single-target click used on cooldown gets its PPM
+    expect([scorch.power.rech, scorch.power.cast]).toEqual([3, 1]);
+    expect(procChance(3.5, scorch.power, zinger, 3)).toBeCloseTo(0.2333, 4);
+    expect(figures[0]!.perMin).toBeCloseTo(3.5, 9);
     expect(figures[0]!.damage).toBeGreaterThan(figures[0]!.perMin);
+    // a proc that heals or gives endurance is no damage proc: it has no row, and losing it still warns
+    for (const short of ['Crafted_Panacea_F', 'Crafted_Entropic_Chaos_E', 'Crafted_Performance_Shifter_F']) {
+      const piece = gd.power(boost(short));
+      expect(isDamageProc(gd, piece), short).toBe(false);
+      expect(procFigures(gd, at, scorch.power, [{ level: 0, enh: { boost: piece.id, ioLevel: 49 } }], 49, slottedNumbers(gd, at, scorch.power, scorch.slots, 49, 0))).toEqual([]);
+    }
+    const quiet = { needs: [], crippled: [], wasted: [], capLost: [] } as unknown as Scored;
+    expect(warningsOf(gd, quiet, [{ level: 0, enh: { boost: boost('Crafted_Performance_Shifter_F'), ioLevel: 49 } }]).map((w) => w.kind)).toEqual(['procLost']);
 
     // the proc swapped for a damage IO
     const picks = b.picks.map((p) => (p && p.power === scorch.power.id ? { ...p, slots: p.slots.map((s, i) => (i === 2 ? { level: s.level, enh: { boost: boost('Crafted_Damage'), ioLevel: 49 } } : s)) } : p));
@@ -375,6 +443,9 @@ describe('finder: powers to consider', () => {
     expect(new Set(only.map((s) => s.key))).toEqual(new Set([entry.key]));
     // the same key naming another power (another build's) matches nothing
     expect(findSwaps({ gd, stats, build: b, query: query({ powers: [{ key: entry.key, power: -1 }] }) }).swaps).toEqual([]);
+    // a list naming no power is every power, never an empty search
+    const none = findSwaps({ gd, stats, build: b, query: query({ goals: [{ goal: 'endurance', importance: 'high' }], powers: [] }), limit: 500 }).swaps;
+    expect(none).toEqual(all);
   });
 
   it('lists the powers a set could go into, and drops picked ones another build lacks', async () => {
@@ -442,6 +513,9 @@ describe('finder: what a swap replaces, in short', () => {
     expect(two.map((l) => l.split(':')[0])).toEqual(['Crushing Impact', 'Obliteration']);
     // an id the data lacks is still said
     expect(replacedLines(gd, [-1])).toEqual(['an enhancement']);
+    // a Hamidon piece has a short kind; a special piece with none is named in full, never by an internal kind
+    expect(replacedLines(gd, ids(['Hamidon_Damage_Accuracy']))).toEqual(['HO: Acc/Dam']);
+    expect(replacedLines(gd, ids(['DSync_Damage_Accuracy', 'Generic_Clockwork_Efficiency']))).toEqual(['D-Sync Empowerment (Acc/Dam), Clockwork Efficiency: Damage/Recharge/Chance for Energy Damage']);
     expect(replacedLines(gd, [])).toEqual([]);
   });
 });

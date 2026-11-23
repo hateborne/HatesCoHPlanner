@@ -32,12 +32,23 @@ const SINGLE: Record<string, string> = {
   perc: 'Perception',
 };
 
+// what a debuff resistance resists, as the totals pane names it
+const DEBUFF: Record<string, string> = {
+  RechargeTime: 'Recharge',
+  SpeedRunning: 'Run Speed',
+  SpeedFlying: 'Fly Speed',
+  SpeedJumping: 'Jump Speed',
+  JumpHeight: 'Jump Height',
+  PerceptionRadius: 'Perception',
+  ToHit: 'ToHit',
+};
+
 /**
  * A stat key in words.
  *
  * @param gd Game data (damage and defense type names).
  * @param key The totals line key.
- * @return "Smashing (Dmg Res)", "Ranged (Def)", "Knockback (Status Prot)", "Slow (Debuff Res)", "Recharge".
+ * @return "Smashing (Dmg Res)", "Ranged (Def)", "Knockback (Status Prot)", "Run Speed (Debuff Res)", "Recharge".
  */
 export function statLabel(gd: GameData, key: string): string {
   const [fam, rest = ''] = key.split('.');
@@ -54,7 +65,8 @@ export function statLabel(gd: GameData, key: string): string {
     case 'mezres':
       return `${MEZ[rest] ?? rest} (Status Res)`;
     case 'resx':
-      return `${rest} (Debuff Res)`;
+      // an attribute with no name here is its own name in words ("DefenseType03" stays as it is)
+      return `${DEBUFF[rest] ?? rest.replace(/([a-z])([A-Z])/g, '$1 $2')} (Debuff Res)`;
     case 'max':
       return `${SINGLE[rest] ?? rest} cap`;
     default:
@@ -140,7 +152,8 @@ const SHORT: Record<string, string> = {
   Disorient: 'Stun',
 };
 
-// what stands for the kind of an enhancement that belongs to no set
+// what stands for the kind of an enhancement that belongs to no set; a kind with no short form
+// (event and special pieces) is named by the piece alone
 const KIND: Record<string, string> = { Invention: 'IO', Origin: 'SO', Training: 'TO', Hamidon: 'HO' };
 
 /**
@@ -206,7 +219,10 @@ export function replacedLines(gd: GameData, ids: readonly number[]): string[] {
     const b = gd.powerById.get(id);
     const ref = b ? gd.boostSetOf.get(id) : undefined;
     if (!b) last.push('an enhancement');
-    else if (!ref) last.push(`${KIND[enhKind(gd, b)] ?? enhKind(gd, b)}: ${shortPiece(plainName(b))}`);
+    else if (!ref) {
+      const kind = KIND[enhKind(gd, b)];
+      last.push(kind ? `${kind}: ${shortPiece(plainName(b))}` : b.dn);
+    }
     else if (bySet.get(ref.set.id)!.pieces.length === 1) last.push(`${ref.set.dn}: ${shortPiece(pieceName(b, ref.set.dn))}`);
   }
   return [...whole, ...part, ...(last.length ? [last.join(', ')] : [])];

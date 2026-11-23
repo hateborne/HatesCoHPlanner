@@ -14,7 +14,11 @@ Conventions that sessions here have tended to miss. They apply on top of AGENTS.
 
 ## Local testing
 - Test in a desktop Chromium browser. Check the phone layout with DevTools device emulation
-  (iPhone and Pixel presets); a real phone on the LAN usually can't reach the dev server.
+  (iPhone and Pixel presets).
+- A real phone on the LAN reaches the dev server only through `vite-dev-lan` (`--host`, the same
+  port, so it runs instead of `vite-dev`) at the PC's network address. While it runs, any device
+  on the network can load the checkout's files (the dev server refuses `IGNORE/` and `*.local`
+  files: `vite.config.ts`), so start it only when asked and stop it when the phone test is done.
 - To open the local instance, stop any other dev server first (port 5173 is strict), run
   `vite-dev` (`.claude/launch.json`) from the checkout or worktree of the branch under test,
   and give the link http://localhost:5173/HatesCoHPlanner/Homecoming/ (plus `#b=` if relevant).

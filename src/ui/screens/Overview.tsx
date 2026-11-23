@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../../data/servers.ts';
@@ -32,6 +32,7 @@ import { S, snap, SX, SY, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
+import { pickBox } from './finderPick.ts';
 import { useEscape } from '../escape.ts';
 import { clearHover, useFreshHover, useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
@@ -76,6 +77,36 @@ const NOTES_BAR = 56;
 const OA_W = vx(150);
 // desktop: the build's name ends this far short of the Origin / Alignment button
 const TITLE_GAP = 12;
+
+// what still answers while the set finder's powers are picked: the power bars, and a phone's row of
+// tabs (to reach every bar)
+const PICK_OK = '[data-testid^="bar:"], [data-testid="tabs"]';
+
+/**
+ * Holds the overview still while the set finder's powers to consider are picked on it.
+ *
+ * A changed build would drop the finder's kept swaps and results, and another screen would leave
+ * the picking behind: so no click, right click or key press reaches anything but the power bars
+ * (which pick) and the phone's tabs. Scrolling, hover texts and long presses change nothing and
+ * stay. It is always drawn, a box that takes no room, so the screen under it is never rebuilt as
+ * the picking starts and ends.
+ *
+ * @param props.on Whether powers are being picked.
+ */
+function PickGuard({ on, children }: { on: boolean; children: ReactNode }) {
+  const stop = (e: SyntheticEvent) => {
+    if (!on || (e.target as Element).closest(PICK_OK)) return;
+    e.stopPropagation();
+    e.preventDefault();
+  };
+  // Enter and Space press what a click would (pressKeys); Tab and Escape pass
+  const keys = (e: KeyboardEvent) => (e.key === 'Enter' || e.key === ' ' ? stop(e) : undefined);
+  return (
+    <div className={on ? 'pick-guard' : undefined} style={{ display: 'contents' }} onClickCapture={stop} onContextMenuCapture={stop} onKeyDownCapture={keys}>
+      {children}
+    </div>
+  );
+}
 // the build name's longest length (New Build's field; checkBuild cuts imports to it)
 const NAME_MAX = 40;
 
@@ -426,6 +457,8 @@ export function Overview({ skin }: { skin: Skin }) {
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
             onClick={picking ? (pickable ? () => togglePickedPower({ key: e.key, power: e.power.id }) : () => flashLocked(e.key, 'Takes No Sets')) : e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            // a refused bar has the refusal's own sound (flashLocked), not the click's as well
+            clickSounds={picking && !pickable ? [] : undefined}
             // a pick flagged in red still opens on a click, so the rule it breaks can be fixed
             fixable
             onLongPress={longBar}
@@ -698,9 +731,9 @@ export function Overview({ skin }: { skin: Skin }) {
     // the level log replaces the orb strip and Continue sits in the menu, so the panel runs down
     // to Back / Next
     const pg = phoneGeom(stage, false);
-    const P = phonePanel(pg, 4, notes ? NOTES_BAR : 0);
+    const P = phonePanel(pg, notes ? NOTES_BAR : 0);
     return (
-      <>
+      <PickGuard on={picking}>
         <TitleBar skin={skin} text={title} reserve={LOG_RESERVE} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
         <LevelLog gd={gd} skin={skin} build={build} shown={shown} entries={entries} />
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} y={pg.tabsY} />
@@ -721,14 +754,16 @@ export function Overview({ skin }: { skin: Skin }) {
         {picker_}
         <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
         <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} rules={rules} />
-      </>
+      </PickGuard>
     );
   }
 
+  // the name stops just short of the Origin / Alignment button (two half-size lines past it), or of
+  // the set finder's box over it while its powers are picked
+  const titleEnd = Math.min(oaCenter(stage.w / 2, OA_W) - OA_W / 2, picking ? pickBox(stage).x : Infinity) - TITLE_GAP;
   return (
-    <>
-      {/* the name stops just short of the Origin / Alignment button (two half-size lines past it) */}
-      <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
+    <PickGuard on={picking}>
+      <TitleBar skin={skin} text={title} limit={titleEnd} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
       <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
       {/* the set finder's button, right of the origin and archetype (Homecoming builds; see flags.ts) */}
       {SET_FINDER && gd.server === DEFAULT_SERVER ? (
@@ -762,6 +797,6 @@ export function Overview({ skin }: { skin: Skin }) {
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker_}
-    </>
+    </PickGuard>
   );
 }

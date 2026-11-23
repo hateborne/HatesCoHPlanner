@@ -67,7 +67,7 @@ export interface FinderQuery {
   goals: GoalPick[]; // up to MAX_GOALS rows, each goal once; rows without a goal are not searched for (chosenGoals)
   tags: SetTag[]; // kinds of sets beyond uncommon and rare
   main?: { stat: string; depth: Depth }; // a bonus every result must add (a totals line key: 'rech', 'def.03')
-  extra: string[]; // up to MAX_EXTRA more bonuses, which only order the results
+  extra: string[]; // up to MAX_EXTRA more bonuses the search names: they weigh in the ranking, and a gain in one is a gain in what was asked for (Weights.asked)
   groups?: string[]; // set categories to keep to ("Ranged Damage", "Defense Sets"); absent: every category
   powers?: PowerPick[]; // the powers to keep to; absent: every power
   attuned?: boolean; // place attuned pieces instead of crafted ones at the highest usable level

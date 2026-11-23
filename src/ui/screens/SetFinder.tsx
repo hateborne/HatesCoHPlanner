@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Build } from '../../engine/build.ts';
 import { setLevelRange, setRarity } from '../../engine/enhance.ts';
+import { damageTypesDealt } from '../../engine/finder/dealt.ts';
 import { buildDiff, type BuildDiff, type DiffRow } from '../../engine/finder/diff.ts';
 import { replacedLines, statAmount, statLabel, warningText } from '../../engine/finder/labels.ts';
 import { applySwaps, type Swap } from '../../engine/finder/pending.ts';
@@ -18,7 +19,7 @@ import { CheckBar } from '../components/CheckBar.tsx';
 import { FlatFrame, InfoButton, MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { FINDER_NAME } from '../components/FinderIcon.tsx';
 import { GameText, TitleText } from '../components/GameText.tsx';
-import { PHONE_TAB_ROW, phoneGeom, PhoneTabs } from '../components/Phone.tsx';
+import { PHONE_TAB_ROW, PhoneTabs } from '../components/Phone.tsx';
 import { rarityStyle } from '../components/PowerTip.tsx';
 import { Sprite } from '../components/Sprite.tsx';
 import { useStage } from '../components/Stage.tsx';
@@ -26,9 +27,10 @@ import { MPH, TotalsRow } from '../components/TotalsPanel.tsx';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { pressKeys } from '../press.ts';
-import { S, vx, vy } from '../skin/metrics.ts';
+import { S } from '../skin/metrics.ts';
 import { icon, ui, type Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
+import { pickBox } from './finderPick.ts';
 import { ShopNeeds, ShopSets, useShoppingList } from './FinderShopping.tsx';
 
 const IMPORTANCES: { id: Importance; name: string }[] = [
@@ -159,6 +161,7 @@ function DiffRows({ gd, rows, gain, power }: { gd: GameData; rows: DiffRow[]; ga
         value={<RowValue r={r} power={power} />}
         tone={gain ? 1 : -1}
         noMark
+        wrapRight
       />
     </div>
   );
@@ -266,10 +269,12 @@ function SwapLine({ gd, swap, phone }: { gd: GameData; swap: Swap; phone: boolea
         <span style={{ color: MUTED, fontSize: phone ? 15 : 13 }}>
           ({lo + 1}-{hi + 1})
         </span>{' '}
-        {/* the power stands out as the set does: its icon, then its name as large, in white; "into" stays small */}
+        {/* the power stands out as the set does: its icon, then its name as large, in white; "into" stays small.
+            The icon is the planner's own size, not a client one: as tall as the line's text (17px desktop, 20px phone) and its leading */}
         <span style={{ whiteSpace: 'nowrap' }}>
           <span style={{ color: MUTED, fontSize: phone ? 15 : 13 }}>into</span>{' '}
-          {power ? <img src={icon('powers', power.icon || 'power_missing')} alt="" draggable={false} style={{ width: phone ? 26 : 22, height: phone ? 26 : 22, verticalAlign: 'middle', marginRight: 4, position: 'relative', top: -1 }} /> : null}
+          {/* an icon file that is not there leaves its room empty, never a broken picture */}
+          {power ? <img src={icon('powers', power.icon || 'power_missing')} alt="" draggable={false} onError={(e) => (e.currentTarget.style.visibility = 'hidden')} style={{ width: phone ? 26 : 22, height: phone ? 26 : 22, verticalAlign: 'middle', marginRight: 4, position: 'relative', top: -1 }} /> : null}
           <span style={{ color: '#fff', fontWeight: 700 }}>{power?.dn ?? 'a power'}</span>
         </span>
       </div>
@@ -708,14 +713,25 @@ function Detail({ gd, build, rules, skin, phone, summary, width }: { gd: GameDat
     // a hover left over from a list that has since changed falls back to the selection
     return find(hovered) ?? find(selected) ?? null;
   }, [summary, kept, result, hovered, selected]);
+  // the damage types the build deals are the same whatever its slots hold: read once, and again
+  // when a pets file arrives (a pet's damage is in files the app never waits for)
+  const petsReady = useSyncExternalStore(gd.subscribePets, () => gd.petsSettled);
+  const henchmen = useSyncExternalStore(gd.subscribeHenchmen, () => gd.henchmen);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the pets files are read through gd: their arrival is what makes this stale
+  const dealt = useMemo(() => damageTypesDealt(gd, rules), [gd, rules, petsReady, henchmen]);
+  // no answer yet: a pet's powers are not at hand, so the real pets file is asked for (once; the
+  // totals' Pets and Minions section asks the same way)
+  useEffect(() => {
+    if (petsReady && dealt === null) gd.requestHenchmen();
+  }, [gd, petsReady, dealt]);
   const diff = useMemo(() => {
-    if (!shown) return kept.length ? buildDiff(gd, rules, applySwaps(build, kept)) : null;
+    if (!shown) return kept.length ? buildDiff(gd, rules, applySwaps(build, kept), dealt) : null;
     const others = kept.filter((k) => k.key !== shown.key);
     const isKept = kept.some((k) => swapId(k) === swapId(shown));
     // a kept swap: what it adds to the others; a result: what it would change on top of the kept ones
     const before = applySwaps(build, isKept ? others : kept);
-    return buildDiff(gd, rules.reslotted(before), applySwaps(build, [...others, shown]));
-  }, [gd, build, rules, kept, shown]);
+    return buildDiff(gd, rules.reslotted(before), applySwaps(build, [...others, shown]), dealt);
+  }, [gd, build, rules, kept, shown, dealt]);
 
   const text: CSSProperties = { fontSize: phone ? 19 : 16, color: TEXT };
   if (shown) {
@@ -740,7 +756,8 @@ function Detail({ gd, build, rules, skin, phone, summary, width }: { gd: GameDat
             {warningText(gd, w)}
           </div>
         ))}
-        {diff ? <Diff gd={gd} diff={diff} skin={skin} phone={phone} width={width} /> : null}
+        {/* keyed by the swap: a fold opened for one starts closed for the next */}
+        {diff ? <Diff key={swapId(shown)} gd={gd} diff={diff} skin={skin} phone={phone} width={width} /> : null}
       </div>
     );
   }
@@ -797,30 +814,29 @@ function Shopping({ gd, skin, phone, width, part }: { gd: GameData; skin: Skin; 
 
 /**
  * What shows in the pane's place while the player clicks the powers to consider on the overview:
- * a box where the slot screen has "Slots Available" (red until a power is picked, then green),
- * and Done beside it, which brings the pane back.
+ * a box (pickBox; red until a power is picked, then green), and Done beside it, which brings the
+ * pane back.
  */
 function PickPowers({ skin, onDone }: { skin: Skin; onDone: () => void }) {
   const stage = useStage();
   const n = useFinderOpen((s) => s.picked.length);
   const color = n > 0 ? '#00ff00' : '#ff0000';
-  // desktop: SlotsAvailable's height (Chrome.tsx), wider for the longer line, over the Origin / Alignment
-  // and Continue Leveling buttons at the top (wider than the two together), where it covers no power; phones: the slot screen's counter box, in the
-  // place of New Build and Save / Share (which it covers while the powers are picked)
-  const pg = phoneGeom(stage);
-  const doneW = stage.phone ? 100 : vx(70);
-  const gap = stage.phone ? 10 : 16;
-  const box = stage.phone ? { x: 16, y: pg.nextY - 26, w: stage.w - 32 - gap - doneW, h: 52 } : { x: stage.w / 2 - (vx(280) + gap + doneW) / 2, y: vy(13), w: vx(280), h: vy(30) };
-  const done = { x: box.x + box.w + gap, w: doneW };
+  const box = pickBox(stage);
   return (
     <div data-testid="finder:picking" className="abs" style={{ left: 0, top: 0, zIndex: 60 }}>
       {stage.phone ? <div className="abs" style={{ left: 0, top: box.y - 10, width: stage.w, height: box.h + 20, background: '#000' }} /> : null}
       <FlatFrame x={box.x} y={box.y} w={box.w} h={box.h} sc={S} border={color} back="#000" />
       <GameText font="game_12" scale={S} x={box.x + box.w / 2} y={box.y + box.h / 2} centerY align="center" colors={[color, color]} text="Select Powers to Consider" z={2} />
       {/* InfoButton is centered on its point */}
-      <InfoButton skin={skin} x={done.x + done.w / 2} y={box.y + box.h / 2} w={done.w} h={box.h} text="Done" onClick={onDone} />
+      <InfoButton skin={skin} x={box.doneX + box.doneW / 2} y={box.y + box.h / 2} w={box.doneW} h={box.h} text="Done" onClick={onDone} />
     </div>
   );
+}
+
+/** Hear the browser's storage change (another tab wrote), for useSyncExternalStore. */
+function onStorage(listener: () => void): () => void {
+  window.addEventListener('storage', listener);
+  return () => window.removeEventListener('storage', listener);
 }
 
 const PHONE_TABS = ['Search', 'Results', 'Kept', 'List'];
@@ -889,7 +905,10 @@ export default function SetFinder({ skin }: { skin: Skin }) {
   const pickable = useMemo(() => (rules ? pickablePowers(rules.entries(), (p) => rules.slottable(p), rules.lastLevel()) : []), [rules]);
   // the shopping list has something to show: a kept swap's pieces, or what the browser keeps from
   // swaps applied before (read again when the kept swaps or the list shown change)
-  const canShop = useMemo(() => kept.length > 0 || saved > 0 || (!!gd && readShopping(gd.server).length > 0), [gd, kept, saved]);
+  // and when another tab of the planner saves its list, which the browser tells with a storage event)
+  const server = gd?.server;
+  const stored = useSyncExternalStore(onStorage, () => (server ? readShopping(server).length : 0));
+  const canShop = kept.length > 0 || saved > 0 || stored > 0;
   // a form kept from another build drops what this build's lists can't show
   useEffect(() => {
     if (!sections.length) return;
@@ -962,7 +981,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
         <div onClick={(e) => e.stopPropagation()}>
           <MenuFrame x={6} y={6} w={W - 12} h={bottom - 6} r25 style={{ background: skin.panel }} skin={skin} />
           <SetTitle x={18} y={18} size={24} width={W - 60} text={FINDER_NAME} skin={skin} />
-          <PhoneTabs skin={skin} labels={PHONE_TABS.map((t, i) => (i === 2 && kept.length ? `Kept (${kept.length})` : t))} active={tab} onChange={setTab} y={tabsY} x={16} width={W - 20} clickSounds={['powerselect2']} disabled={PHONE_TABS.map((_, i) => i === LIST_TAB && !canShop && tab !== LIST_TAB)} />
+          <PhoneTabs skin={skin} labels={PHONE_TABS.map((t, i) => (i === 2 && kept.length ? `Kept (${kept.length})` : t))} active={tab} onChange={setTab} y={tabsY} x={16} width={W - 20} clickSounds={['powerselect2']} disabled={PHONE_TABS.map((_, i) => i === LIST_TAB && !canShop && tab !== LIST_TAB)} testId="finder:tabs" />
           <div className="abs scroll-y" style={{ left: 16, top, width: W - 32, height: listH }}>
             {tab === 0 ? (
               <SearchForm skin={skin} sections={sections} groups={groups} phone />
