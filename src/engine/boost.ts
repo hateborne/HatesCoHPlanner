@@ -25,8 +25,8 @@ export interface DamageBoost {
 const TAG_RAISERS: readonly (readonly [string, string])[] = [['.fiery_embrace', 'fieryembrace']];
 const SWITCH_TAGS = TAG_RAISERS.map(([, tag]) => tag);
 
-// damageBoost's answers per rules view and level: every tooltip of a build asks for the same one
-const cache = new WeakMap<BuildRules, Map<number, DamageBoost>>();
+// damageBoost's answers per rules view, level and combat state: every tooltip of a build asks for the same one
+const cache = new WeakMap<BuildRules, Map<string, DamageBoost>>();
 
 /**
  * The damage boosts of a build at a level, from the powers its totals count.
@@ -38,20 +38,22 @@ const cache = new WeakMap<BuildRules, Map<number, DamageBoost>>();
  * @param gd Game data.
  * @param rules Rules view of the build.
  * @param level 0-based level the boosts are worked out at.
+ * @param outOfCombat Count the out-of-combat bonuses, as the totals' switch has it (default in combat).
  * @return The boosts.
  */
-export function damageBoost(gd: GameData, rules: BuildRules, level: number): DamageBoost {
+export function damageBoost(gd: GameData, rules: BuildRules, level: number, outOfCombat = false): DamageBoost {
   let byLevel = cache.get(rules);
   if (!byLevel) cache.set(rules, (byLevel = new Map()));
-  let boost = byLevel.get(level);
-  if (!boost) byLevel.set(level, (boost = workOut(gd, rules, level)));
+  const key = `${level}:${outOfCombat}`;
+  let boost = byLevel.get(key);
+  if (!boost) byLevel.set(key, (boost = workOut(gd, rules, level, outOfCombat)));
   return boost;
 }
 
 /** damageBoost, worked out afresh. */
-function workOut(gd: GameData, rules: BuildRules, level: number): DamageBoost {
+function workOut(gd: GameData, rules: BuildRules, level: number, outOfCombat: boolean): DamageBoost {
   const at = rules.at;
-  const totals = computeTotals(gd, rules, rules.b, level);
+  const totals = computeTotals(gd, rules, rules.b, level, outOfCombat);
   const str = new Map<number, number>();
   const cap = new Map<number, number>();
   for (let i = 0; i < gd.core.attribNames.Damage.length; i++) {
@@ -62,7 +64,7 @@ function workOut(gd: GameData, rules: BuildRules, level: number): DamageBoost {
     cap.set(off, (lineCap(at, `dmg.${nn}`, level) ?? 4) + 1);
   }
 
-  const st = totalsState(gd, rules, rules.b, level);
+  const st = totalsState(gd, rules, rules.b, level, outOfCombat);
   const chanceMod = gd.attribByName.get('GlobalChanceMod') ?? 484;
   const setMode = gd.attribByName.get('SetMode') ?? 473;
   const modeNames = gd.core.attribNames.Mode ?? [];

@@ -36,6 +36,7 @@ import { useEscape } from '../escape.ts';
 import { clearHover, useFreshHover, useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
 import { POPUP_LAYER } from '../floating.ts';
+import { useCombat } from '../../state/combat.ts';
 
 const COLS = [
   { x: 33, w: 480, column: 0 },
@@ -305,7 +306,8 @@ export function Overview({ skin }: { skin: Skin }) {
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
-  const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
+  const outOfCombat = useCombat((s) => s.outOfCombat);
+  const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build, undefined, outOfCombat) : null), [gd, build, rules, outOfCombat]);
   // the pets the build makes, at the totals' level (computeTotals' default)
   const pets = usePetCards(gd, rules, build, build ? (build.exemplar ?? build.endLevel ?? 49) : 49);
   // the pet pane's switch: whether a pet power counts in the pets' stats (its default stored as none)
@@ -694,7 +696,7 @@ export function Overview({ skin }: { skin: Skin }) {
           <GameScroll skin={skin} left={P.x + 16} top={P.y + 14} width={P.w - 32} height={P.h - 28} barX={P.x + P.w}>
             {/* a little larger text than the desktop panel; its spacing keeps it readable */}
             <div style={{ zoom: TOTALS_ZOOM }}>
-              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} pets={pets} />
+              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} pets={pets} skin={skin} />
             </div>
           </GameScroll>
         )}
@@ -738,7 +740,7 @@ export function Overview({ skin }: { skin: Skin }) {
       {/* a patch move's changes sit above the totals until dismissed */}
       <PatchNotesBox skin={skin} x={1521} y={TOP + 16} w={420} />
       <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
-        <TotalsPanel gd={gd} t={totals} width={420} pets={pets} />
+        <TotalsPanel gd={gd} t={totals} width={420} pets={pets} skin={skin} />
       </GameScroll>
       <OverviewTips gd={gd} skin={skin} build={build} rules={rules} end={end} />
       <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />

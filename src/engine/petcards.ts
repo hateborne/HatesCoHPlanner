@@ -184,15 +184,16 @@ const classOf = (at: Archetype, v: Variant): string => (v.pseudo ? at.n : (v.kin
 
 /**
  * A pet's requirement context: its class for `arch` tests, its creator's for `source.owner>`, the
- * modes its powers set.
+ * modes its powers set, and its creator's combat state (a pet fights when its creator does).
  *
  * @param cls The pet's class.
  * @param at The creator's archetype.
  * @param level 0-based level.
  * @param modes The modes its always-on powers set (Upgraded.modes).
+ * @param combat The creator's context, whose combat state (inCombatState) the pet takes.
  * @return The context.
  */
-function petCtxOf(cls: string, at: Archetype, level: number, modes: ReadonlySet<string>): EvalContext {
+function petCtxOf(cls: string, at: Archetype, level: number, modes: ReadonlySet<string>, combat: EvalContext): EvalContext {
   const isClass = (name: string) => name.startsWith('arch') || name.startsWith('rank') || name === 'class';
   const pet = nobody((name) => (isClass(name) ? cls : name === 'level' ? level + 1 : 0));
   // until a card aims it (petStats: at the pet itself, or at another), its powers land on a foe
@@ -200,7 +201,7 @@ function petCtxOf(cls: string, at: Archetype, level: number, modes: ReadonlySet<
     const n = name.toLowerCase();
     return modes.has(n) || (n.startsWith('k') && modes.has(n.slice(1)));
   });
-  return withOwner(run, (name) => (isClass(name) ? at.n : 0));
+  return { ...withOwner(run, (name) => (isClass(name) ? at.n : 0)), sinceEvent: combat.sinceEvent, suppressed: combat.suppressed };
 }
 
 /**
@@ -210,9 +211,10 @@ function petCtxOf(cls: string, at: Archetype, level: number, modes: ReadonlySet<
  * @param at The creator's archetype.
  * @param level 0-based level.
  * @param variants Every kind of pet each of the build's powers makes.
+ * @param combat The creator's context (its combat state).
  * @return One per kind, its counts summed over the powers that make it.
  */
-function fieldOf(at: Archetype, level: number, variants: readonly Variant[]): FieldPet[] {
+function fieldOf(at: Archetype, level: number, variants: readonly Variant[], combat: EvalContext): FieldPet[] {
   const out = new Map<string, FieldPet>();
   for (const v of variants) {
     if (v.source.dur || v.source.on || v.source.count <= 0) continue;
@@ -222,7 +224,7 @@ function fieldOf(at: Archetype, level: number, variants: readonly Variant[]): Fi
       continue;
     }
     const cls = classOf(at, v);
-    out.set(v.key, { key: v.key, name: v.kind.dn || v.e.power.dn, cls, count: v.source.count, powers: [...v.powers.powers.values()], strength: v.strength, ctx: petCtxOf(cls, at, level, v.powers.modes) });
+    out.set(v.key, { key: v.key, name: v.kind.dn || v.e.power.dn, cls, count: v.source.count, powers: [...v.powers.powers.values()], strength: v.strength, ctx: petCtxOf(cls, at, level, v.powers.modes, combat) });
   }
   return [...out.values()];
 }
@@ -238,13 +240,14 @@ function fieldOf(at: Archetype, level: number, variants: readonly Variant[]): Fi
  * @param rules Rules view of the build.
  * @param b The build.
  * @param level 0-based level (the totals' level).
+ * @param outOfCombat Count the out-of-combat bonuses, as the totals' switch has it (default in combat).
  * @return The rows.
  */
-export function petEntries(gd: GameData, rules: BuildRules, b: Build, level: number): PetEntry[] {
+export function petEntries(gd: GameData, rules: BuildRules, b: Build, level: number, outOfCombat = false): PetEntry[] {
   const file = gd.henchmen;
   if (!file) return [];
   const at = rules.at;
-  const st = totalsState(gd, rules, b, level);
+  const st = totalsState(gd, rules, b, level, outOfCombat);
   // the creator's combat level decides which of a summon's pets spawn (`combatlevel source>`); a
   // pet's target is a critter, and a test of which one (Soul Extraction's fallen henchman) is taken
   // as met: the row says which it must be
@@ -271,7 +274,7 @@ export function petEntries(gd: GameData, rules: BuildRules, b: Build, level: num
       at,
       level,
       build: b,
-      field: fieldOf(at, level, [...rows.values()].flatMap((r) => r.variants)),
+      field: fieldOf(at, level, [...rows.values()].flatMap((r) => r.variants), st.ctx),
       owner: st.entries
         .filter((e) => st.isOn(e))
         .map((e): OwnerPower => ({ power: e.power, strength: powerStrength(gd, at, e.power, e.slots.filter((x) => x.level <= level).map((x) => x.enh), level).post })),
@@ -542,7 +545,7 @@ function card(gd: GameData, file: HenchmenFile, at: Archetype, v: Variant, level
   const run: RunAs = { cls, creator: at.n };
   const name = v.kind.dn || v.e.power.dn;
   const own = [...v.powers.powers.values()];
-  const stats = petStats(input, { key: v.key, name, cls, count: v.source.count, powers: own, strength: v.strength, ctx: petCtxOf(cls, at, level, v.powers.modes), vd: v.kind.vd, grp: v.kind.grp });
+  const stats = petStats(input, { key: v.key, name, cls, count: v.source.count, powers: own, strength: v.strength, ctx: petCtxOf(cls, at, level, v.powers.modes, input.ownerCtx), vd: v.kind.vd, grp: v.kind.grp });
 
   // attacks and other powers, as the power info lists them for the pet
   const attacks: PetAttack[] = [];

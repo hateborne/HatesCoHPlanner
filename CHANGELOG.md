@@ -5,6 +5,10 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ## Unreleased
 
+### Changed
+
+- The totals now show your character in combat, where powers such as Hide, Stealth, Evasive Maneuvers and the travel powers lose the bonuses a fight stops (stealth that only a mission object's click breaks, like Cloak of Darkness, still counts); turn on the new Out of Combat switch at the top of the totals to see the full bonuses.
+
 ## v1.3.0 - November 21, 2026
 
 ### New

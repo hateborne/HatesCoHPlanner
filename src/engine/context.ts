@@ -8,6 +8,8 @@
  * context made from it by hand went on saying so for a pet (Grant Cover's defense never reached a
  * Mu Striker). `aimedAt` therefore takes the whole target, and keeps nothing of the old one.
  */
+import type { GameData } from '../data/gamedata.ts';
+import { combatHooks, travelAttribs, type CombatState } from './combat.ts';
 import type { EvalContext } from './requires.ts';
 
 /** Who a power lands on, as a requirement can ask about it. Always given whole (aimedAt). */
@@ -90,4 +92,17 @@ export function withModes(ctx: EvalContext, inMode: (name: string) => boolean): 
  */
 export function withOwner(ctx: EvalContext, ownerProp: (name: string) => string | number): EvalContext {
   return { ...ctx, ownerProp };
+}
+
+/**
+ * A context in a combat state: the time since each power event and the suppressions that stop a
+ * mod, in combat or out of it (combatHooks), with the event numbers of the data's own version.
+ *
+ * @param ctx The context.
+ * @param gd Game data (its server, version and attributes).
+ * @param state In combat, out of it, or travelling (CombatState).
+ * @return The same context in that state.
+ */
+export function inCombatState(ctx: EvalContext, gd: GameData, state: CombatState): EvalContext {
+  return { ...ctx, ...combatHooks(gd.server, gd.core.manifest.dataVersion, state, travelAttribs(gd.attribByName)) };
 }

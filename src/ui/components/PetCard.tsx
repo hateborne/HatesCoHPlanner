@@ -22,6 +22,7 @@ import { InfoBlocks, Segs, useInfoFiles } from './PowerInfoView.tsx';
 import { Floating, TIP, TIP_PX } from './PowerTip.tsx';
 import { useStage } from './Stage.tsx';
 import { TotalsPanel, type SectionMemory } from './TotalsPanel.tsx';
+import { useCombat } from '../../state/combat.ts';
 
 const NONE: readonly PetEntry[] = [];
 const noSubscribe = () => () => undefined;
@@ -43,18 +44,20 @@ const PANE_SECTIONS: SectionMemory = { key: 'hcp.petpane.sections', dflt: { base
  * @param rules Rules view of the build (none: no rows).
  * @param build The build.
  * @param level 0-based level (the totals' level).
- * @return The rows (none while the file is missing or the build makes no pet).
+ * @return The rows (none while the file is missing or the build makes no pet), in the totals'
+ *   combat state (the Out of Combat switch).
  */
 export function usePetCards(gd: GameData | null | undefined, rules: BuildRules | null, build: Build | null | undefined, level: number): readonly PetEntry[] {
   const file = useSyncExternalStore(gd?.subscribeHenchmen ?? noSubscribe, () => gd?.henchmen ?? null);
   const petsReady = useSyncExternalStore(gd?.subscribePets ?? noSubscribe, () => !!gd?.petsSettled);
+  const outOfCombat = useCombat((s) => s.outOfCombat);
   const wants = useMemo(() => petsReady && !!gd && !!rules && makesPets(gd, rules.entries()), [gd, rules, petsReady]);
   // asked again as the build changes: a fetch the network failed is retried then (a no-op otherwise)
   useEffect(() => {
     if (gd && wants) gd.requestHenchmen();
   }, [gd, wants, rules]);
   // a build that makes no pet has no rows, even with the file there from an earlier build
-  return useMemo(() => (file && wants && gd && rules && build ? petEntries(gd, rules, build, level) : NONE), [file, wants, gd, rules, build, level]);
+  return useMemo(() => (file && wants && gd && rules && build ? petEntries(gd, rules, build, level, outOfCombat) : NONE), [file, wants, gd, rules, build, level, outOfCombat]);
 }
 
 /** Which pet's pane is open: its row's key (PetEntry.key), or null, and where its row is (stage px). */

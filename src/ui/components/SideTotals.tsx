@@ -13,6 +13,7 @@ import { TotalsPanel } from './TotalsPanel.tsx';
 import { phoneGeom } from './Phone.tsx';
 import { useStage } from './Stage.tsx';
 import { pressKeys } from '../press.ts';
+import { useCombat } from '../../state/combat.ts';
 
 // phones: the tab over the panel's right edge, in stage px
 const PHONE_TAB = { w: 40, h: 150 };
@@ -39,7 +40,8 @@ export function SideTotals({ skin }: { skin: Skin }) {
     const lvl = stepsOf(steps, level)[level.step]?.level ?? 49;
     return { b, lvl, rules: new BuildRules(gd, b) };
   }, [open, gd, steps, level]);
-  const totals = useMemo(() => (preview && gd ? computeTotals(gd, preview.rules, preview.b, preview.lvl) : null), [preview, gd]);
+  const outOfCombat = useCombat((s) => s.outOfCombat);
+  const totals = useMemo(() => (preview && gd ? computeTotals(gd, preview.rules, preview.b, preview.lvl, outOfCombat) : null), [preview, gd, outOfCombat]);
   const pets = usePetCards(gd, preview?.rules ?? null, preview?.b ?? null, preview?.lvl ?? 49);
   if (!gd) return null;
   const toggle = () => setOpen(!open);
@@ -64,7 +66,7 @@ export function SideTotals({ skin }: { skin: Skin }) {
             {/* phones: a little larger text than the desktop pane; its spacing keeps it readable */}
             <div style={{ zoom: stage.phone ? 1.15 : 1 }}>
               <TitleText style={{ fontSize: 20 }}>AT LEVEL {totals.level + 1}</TitleText>
-              <TotalsPanel gd={gd} t={totals} width={(pane.w - 50) / (stage.phone ? 1.15 : 1)} pets={pets} />
+              <TotalsPanel gd={gd} t={totals} width={(pane.w - 50) / (stage.phone ? 1.15 : 1)} pets={pets} skin={skin} />
             </div>
           </div>
         </div>

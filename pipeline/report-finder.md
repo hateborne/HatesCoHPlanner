@@ -1,6 +1,6 @@
 # Build research report -- data i28p4
 
-Generated 2026-11-17T16:47:10Z (UTC) by `npm run research`. Aggregates only; the builds themselves stay on the machine that ran it.
+Generated 2026-11-23T19:50:21Z (UTC) by `npm run research`. Aggregates only; the builds themselves stay on the machine that ran it.
 
 ## What was read
 
@@ -9,8 +9,8 @@ Generated 2026-11-17T16:47:10Z (UTC) by `npm run research`. Aggregates only; the
 | .mbd files | 3030 |
 | Share codes in text files and saved pages | 74 |
 | Files over the size limit (left out) | 0 |
-| Text files and pages with no share code | 0 |
-| Other files (left alone) | 0 |
+| Text files and pages with no share code | 1 |
+| Other files (left alone) | 84 |
 | Made on another server's Mids database (left out) | 3 |
 | Could not be imported | 0 |
 | Imported | 3101 |
@@ -144,16 +144,16 @@ Share: the mean share of a build's set bonuses spent on the stat, counted in typ
 
 | Stat | Share | Lift | Typical bonus | Median total | Median from set bonuses |
 |---|---|---|---|---|---|
-| Smashing (Def) | 1.4% | 0.80 | 1.6% | 22.5% | 3.3% |
-| Lethal (Def) | 1.4% | 0.80 | 1.6% | 22.6% | 3.3% |
-| Melee (Def) | 1.3% | 0.87 | 2.0% | 22.2% | 5.0% |
-| Energy (Def) | 1.1% | 0.50 | 1.6% | 22.1% | 1.9% |
-| Negative Energy (Def) | 1.1% | 0.50 | 1.6% | 21.7% | 1.9% |
-| Fire (Def) | 0.9% | 0.32 | 1.6% | 18.7% | 0.0% |
-| Cold (Def) | 0.9% | 0.32 | 1.6% | 18.7% | 0.0% |
-| Ranged (Def) | 0.8% | 0.43 | 2.5% | 19.5% | 2.5% |
-| Area (Def) | 0.5% | 0.24 | 2.5% | 17.2% | 0.0% |
-| Psionic (Def) | 0.2% | 0.20 | 3.1% | 16.9% | 0.0% |
+| Smashing (Def) | 1.4% | 0.80 | 1.6% | 21.3% | 3.3% |
+| Lethal (Def) | 1.4% | 0.80 | 1.6% | 21.3% | 3.3% |
+| Melee (Def) | 1.3% | 0.87 | 2.0% | 21.5% | 5.0% |
+| Energy (Def) | 1.1% | 0.50 | 1.6% | 20.3% | 1.9% |
+| Negative Energy (Def) | 1.1% | 0.50 | 1.6% | 20.0% | 1.9% |
+| Fire (Def) | 0.9% | 0.32 | 1.6% | 17.3% | 0.0% |
+| Cold (Def) | 0.9% | 0.32 | 1.6% | 17.3% | 0.0% |
+| Ranged (Def) | 0.8% | 0.43 | 2.5% | 18.7% | 2.5% |
+| Area (Def) | 0.5% | 0.24 | 2.5% | 17.1% | 0.0% |
+| Psionic (Def) | 0.2% | 0.20 | 3.1% | 16.3% | 0.0% |
 | Toxic (Def) | 0.0% | 0.00 | 0.0% | 16.2% | 0.0% |
 
 ### Damage resistance, type by type

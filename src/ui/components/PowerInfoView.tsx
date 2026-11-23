@@ -5,6 +5,7 @@ import { damageBoost } from '../../engine/boost.ts';
 import { powerStrength } from '../../engine/enhance.ts';
 import { INFO_LABEL_COLOR, powerInfo, type InfoRow, type PowerInfo, type Seg } from '../../engine/powerinfo.ts';
 import type { BuildEntry, BuildRules } from '../../engine/rules.ts';
+import { useCombat } from '../../state/combat.ts';
 import { TIP_PX } from './PowerTip.tsx';
 
 /** Colored runs; a "\n" run breaks the line as the client's <br> does. */
@@ -69,11 +70,12 @@ const Divider = () => <div style={{ borderTop: '1px solid #5a6aa8', margin: `${T
  * @param props.entry The hovered power with its slots (their enhancements give the enhanced values).
  * @param props.level 0-based character level the values are shown at.
  * @param props.rules Rules view of the build the power is in: its damage boosts (damageBoost) are
- *   counted in the damage shown.
+ *   counted in the damage shown, in the totals' combat state (the Out of Combat switch).
  */
 export function AdvancedInfo({ gd, at, entry, level, rules }: { gd: GameData; at: Archetype; entry: BuildEntry; level: number; rules: BuildRules }) {
   const files = useInfoFiles(gd);
-  const boost = useMemo(() => damageBoost(gd, rules, level), [gd, rules, level]);
+  const outOfCombat = useCombat((s) => s.outOfCombat);
+  const boost = useMemo(() => damageBoost(gd, rules, level, outOfCombat), [gd, rules, level, outOfCombat]);
   const info = useMemo(() => {
     void files; // read through gd: recomputed when the pets or info file arrives
     const enhs = entry.slots.filter((s) => s.level <= level).map((s) => s.enh);

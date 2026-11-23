@@ -118,7 +118,7 @@ const standing = (m: Mod) => m.app !== 'OnDeactivate' && m.app !== 'OnExpire';
 /**
  * Walk the standing mods of effect groups that always land on a target: no chance below 1, no
  * PPM, not a missed roll's, requirements met, and only the main target's or only the others'
- * groups as the target is.
+ * groups as the target is. A mod a fight suppresses is left out in combat (the context's state).
  *
  * @param effs The groups.
  * @param ctx Requirement context (the caster's, its target the pet).
@@ -132,7 +132,7 @@ function walkLanding(effs: Effect[] | undefined, ctx: EvalContext, main: boolean
     if (e.fl?.includes(main ? 'SecondaryTargetsOnly' : 'MainTargetOnly')) continue;
     if (!evalRequires(e.req, ctx)) continue;
     // a mod's own delayed requirement is tested as it lands (Supremacy's low-level henchmen, its leash)
-    for (const m of e.m ?? []) if (standing(m) && evalRequires(m.dreq, ctx)) fn(m);
+    for (const m of e.m ?? []) if (standing(m) && !(m.sup && ctx.suppressed?.(m.sup, m.a)) && evalRequires(m.dreq, ctx)) fn(m);
     walkLanding(e.sub, ctx, main, fn);
   }
 }
