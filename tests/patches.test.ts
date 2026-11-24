@@ -94,6 +94,17 @@ describe('game patches', () => {
     expect(midsMadeOn(infinitum)).toEqual({ patch: 'i28p3' });
     expect(midsMadeOn(undefined)).toBeUndefined();
   });
+
+  it("reads the game version on the comment's last line of a planner export Mids saved again", () => {
+    const saved = { ...infinitum, BuiltWith: { App: 'MidsReborn', DatabaseVersion: '2026.10.8.3' } };
+    const comment = "Hate's CoH Planner build: https://hateborne.github.io/HatesCoHPlanner/Homecoming/#b=x";
+    expect(midsMadeOn({ ...saved, Comment: `${comment}\ni28p3` })).toEqual({ patch: 'i28p3', version: 'i28p3' });
+    expect(midsMadeOn({ ...saved, Comment: `${comment}\r\ni28p3\r\n` })).toEqual({ patch: 'i28p3', version: 'i28p3' });
+    expect(importTarget(loadVersionIndex(), midsMadeOn({ ...saved, Comment: `${comment}\ni28p3` }))).toMatchObject({ version: { id: 'i28p3' }, move: false });
+    // only alone on the last line
+    expect(midsMadeOn({ ...saved, Comment: 'made on i28p3' })).toBeUndefined();
+    expect(midsMadeOn({ ...saved, Comment: `${comment}\ni28p3\nmy notes` })).toBeUndefined();
+  });
 });
 
 describe('Issue 28, Page 3 data (the December 16, 2025 client)', () => {

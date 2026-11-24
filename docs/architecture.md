@@ -377,6 +377,46 @@ MidsReborn names 9 epic pools its own way (`Epic.Ice_Mastery_DefCorr` is the gam
 `MIDS_EPIC_POOLS` (`src/io/mids.ts`) maps them both ways; `tests/importproblems.test.ts` checks
 every target exists and that the archetypes each name is for can take it.
 
+**Names between Mids and the game.** Mids names some powers its own way, and Homecoming has moved
+names around inside a set (its Stalker Shield Defense power named Deflection is the one players see
+as Battle Agility). `mids-map.json` matches each Mids power by the name players see within its set,
+else by its own name (`pipeline/mids_map.py`, `match_powers`): `names` reads a Mids name ("" for a
+Mids power the game lacks), `exportNames` gives the Mids name an export writes ("" where Mids has
+none), and `powers` gives the legacy `|MxDz;` indexes, each power's export name first. `renames`
+stays the CrypticPowerNames table it always was.
+
+**The planner's own exports.** Mids export is best effort, and the menu says so with every
+export. The `.mbd` and `|MBD;` exports put the build's share link in the build comment, which Mids
+shows and keeps when it saves the file, and the game version alone on the comment's last line
+(`i28p4`), which `midsMadeOn` reads to open a file Mids saved again (Mids writes its own
+`BuiltWith`) on the version it was made on. On import (`importParsed`), `linkedBuild` decodes the
+first link after the planner's label that is for the file's game version and passes `checkBuild`
+(a link a player pasted in is not read), and `importMbd` compares the file with what the planner
+would export for that build, matching picks by their Mids name and level, so an entry Mids leaves
+out moves nothing. Every power entry and slot the file still holds as exported comes back exactly
+from the link: attuned pieces, base slot levels, powers without slots of their own and the
+powers' on/off switches (MidsReborn 3.8 turns every StatInclude on when it saves, and writes an
+SO's unused IoLevel as 1, so neither counts as a change). The comment's lines end in CR LF, which
+Mids' comment box shows as line breaks. Picks Mids
+has no record of come back where their place is still free. The respec and level settings come
+from the link only while every pick is the link's. Whatever was changed in Mids is read from the
+file. A link is never followed. A file whose link is missing, damaged, for another game version or
+for other power sets is read from its Mids fields alone. Exports made before the link
+(they name the planner in `BuiltWith.App` and have no link) wrote the game's power names, and are
+read through `renames` alone, as they always were. A `|MxDz;` code has no comment and is read as
+Mids means it.
+
+**Pieces and powers Mids lacks.** Mids has no attuned version of ordinary sets, no superior
+purples, Synthetic Hamidon enhancements or Yin's talismans: the export writes the nearest piece (the
+crafted piece at the top of the set's range, the Hamidon enhancement, the Single Origin piece of the
+type) and one warning per set or kind; a piece with nothing near it (the pre-order pieces) leaves
+the Mids slot empty. Two-origin pieces go as DOs, and a Mids DO comes back as the first two-origin
+piece of its type the build's origin can use. A power or power set Mids has no record of is named
+in a warning. Set pieces Mids keeps under another internal name (its Shrapnel is the game's
+Artillery) are matched by their full name both ways (`Translator.boostByLongName`).
+`tests/midsmap.test.ts` sends every power and enhancement a player can pick through the map and
+lists what Mids lacks; `pipeline/report-mids-<version>.md` says where Mids reads otherwise.
+
 **Text from outside** (a link's build name or game version, a file's names) is never repeated as
 it came: build names go through `cleanName` (plain text, at most 40 characters), names from imported
 files and a pasted link's unknown server name (`unknownServer`) through `readable`, and a missing game
