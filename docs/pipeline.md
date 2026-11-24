@@ -80,7 +80,15 @@ The run then exports icons, UI textures, fonts and sounds to `public/assets/` an
   `--frames-from` differs from the folder's `framesFrom` (a forgotten flag would strip every
   enhancement's frames).
 - It keeps an existing folder's `mids-map.json` unless given `--refresh-mids-map` (old Mids codes
-  depend on it, and it isn't part of the version hash).
+  depend on it, and it isn't part of the version hash). To rebuild only a published version's
+  map (a matching fix, a new Mids database), run `python -m pipeline.mids_map --game-version <id>`:
+  it reads that folder's own `powers.json`, `boosts.json`, `core.json` and `powersets.json` and the
+  configured MidsReborn data, writes nothing but the folder's `mids-map.json` and
+  `pipeline/report-mids-<id>.md`, and needs no client. The map matches each Mids power by the name
+  players see within the same player power set, else by its own name (CrypticPowerNames and the
+  epic pools); the report lists the pairs matched by shown name for the owner to check, and what
+  Mids lacks or slots differently. `tests/midsmap.test.ts` then sends every power and enhancement
+  through the map.
 - It refuses version ids other than lower-case letters, digits, `-` and `_`.
 - It saves `ids.json` first, and refuses a damaged one (an id used twice, a mixed-case key).
 - It refuses to shrink the asset set, and writes images atomically under names it checks.
