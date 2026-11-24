@@ -18,8 +18,8 @@ test('the Out of Combat switch: off on every visit, never in the link or the sav
   const sw = await me.reveal('totals:outofcombat', ['Totals']);
   await expect(sw).not.toBeChecked();
 
-  // the totals panel's text, which holds the run speed Super Speed adds only out of combat
-  const panel = page.locator('.body-text').filter({ has: sw });
+  // the totals panel's text (Base, open by default), which holds the stealth Stealth adds only out of combat
+  const panel = page.locator('.body-text').filter({ hasText: 'Max HP' }).first();
   const inCombat = await panel.innerText();
   const url = page.url();
   const saved = await page.evaluate((k) => localStorage.getItem(k), STORAGE_KEY);
@@ -34,5 +34,5 @@ test('the Out of Combat switch: off on every visit, never in the link or the sav
   await opened();
   const again = await me.reveal('totals:outofcombat', ['Totals']);
   await expect(again).not.toBeChecked();
-  await expect.poll(() => page.locator('.body-text').filter({ has: again }).innerText()).toBe(inCombat);
+  await expect.poll(() => page.locator('.body-text').filter({ hasText: 'Max HP' }).first().innerText()).toBe(inCombat);
 });

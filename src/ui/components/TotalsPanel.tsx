@@ -190,20 +190,25 @@ const HEAD_PX = 20; // a section heading's title text
 const LINE = 1.3; // the panel's line height
 const HEAD_LINE = HEAD_PX * LINE; // a section heading's line
 const COMBAT_SW = HEAD_PX + 2; // the Out of Combat switch: the heading's text plus the switch's outline
+export const COMBAT_ROW = HEAD_LINE; // the Out of Combat switch's line, above the scrolling totals
 
 /**
  * The Out of Combat switch: off (in combat), the totals leave out what a fight stops (Hide's and
- * Stealth's extra defense, a travel power's speed); on, they count it. At the panel's right edge,
- * centred on the first heading's line (whose top margin collapses through the panel's top), and it
- * stays at the top of the scrolled view (sticky, on the panel's colour) as the rows scroll under it.
+ * Stealth's extra defense, a travel power's speed); on, they count it. Drawn on the stage at the
+ * top right of the totals' box, above their scrolling area (which starts `COMBAT_ROW * scale`
+ * lower), so it never scrolls and no row passes under it.
  *
  * @param props.skin The current skin.
+ * @param props.left The stage x of its line's left end.
+ * @param props.top The stage y of its line's top.
+ * @param props.width Its line's width; the switch sits at the right end.
+ * @param props.scale The totals' text zoom (the phone's larger text), 1 by default.
  */
-function CombatSwitch({ skin }: { skin: Skin }) {
+export function CombatSwitch({ skin, left, top, width, scale = 1 }: { skin: Skin; left: number; top: number; width: number; scale?: number }) {
   const on = useCombat((s) => s.outOfCombat);
   return (
-    <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 2 }}>
-      <label style={{ position: 'absolute', right: 0, top: 0, height: HEAD_LINE, display: 'inline-flex', alignItems: 'center', gap: 8, paddingLeft: 8, cursor: 'pointer', color: PLAIN, background: skin.panel }}>
+    <div className="abs" style={{ left, top, width, height: COMBAT_ROW * scale, display: 'flex', justifyContent: 'flex-end', zIndex: 2 }}>
+      <label className="body-text" style={{ zoom: scale, height: COMBAT_ROW, display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 16, cursor: 'pointer', color: PLAIN }}>
         Out of Combat <SwitchBox skin={skin} on={on} size={COMBAT_SW} onChange={toggleOutOfCombat} testId="totals:outofcombat" />
       </label>
     </div>
@@ -241,8 +246,6 @@ export interface SectionMemory {
  * @param props.nonZero Show only the rows whose value isn't zero, and no section left empty (a
  *   pet's stats).
  * @param props.memory Where the section state is remembered (default: the build's totals').
- * @param props.skin The current skin: given, the panel shows the Out of Combat switch at its top
- *   right, beside the first heading (a build's totals; a pet's stats have none).
  */
 export const TotalsPanel = memo(function TotalsPanel({
   gd,
@@ -252,7 +255,6 @@ export const TotalsPanel = memo(function TotalsPanel({
   lead,
   nonZero,
   memory,
-  skin,
 }: {
   gd: GameData;
   t: Totals;
@@ -261,7 +263,6 @@ export const TotalsPanel = memo(function TotalsPanel({
   lead?: LeadSection;
   nonZero?: boolean;
   memory?: SectionMemory;
-  skin?: Skin;
 }) {
   const mem = memory ?? { key: OPEN_KEY, dflt: OPEN_DEFAULT };
   const [openSec, setOpenSec] = useState(() => readOpen(mem.key, mem.dflt));
@@ -328,7 +329,6 @@ export const TotalsPanel = memo(function TotalsPanel({
 
   return (
     <div className="body-text" style={{ width, fontSize: 16, lineHeight: LINE, position: 'relative' }}>
-      {skin ? <CombatSwitch skin={skin} /> : null}
       {lead ? section(lead.id, lead.title, lead.body) : null}
       {section('base', 'Base', () => [
         row(t.hpMax, { label: 'Max HP', value: hp, openValue: `${hp} (${pct(t.hpMax / t.hpBase)})`, tone: t.hpMax - t.hpBase, over: hpOver, line: L('hp'), cap: !!hpOver }),

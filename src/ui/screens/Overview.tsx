@@ -27,7 +27,7 @@ import { PetPaneLayer, usePetCards } from '../components/PetCard.tsx';
 import { petPowerDefault } from '../../engine/petstats.ts';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
-import { TotalsPanel } from '../components/TotalsPanel.tsx';
+import { COMBAT_ROW, CombatSwitch, TotalsPanel } from '../components/TotalsPanel.tsx';
 import { S, snap, SX, SY, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
@@ -693,12 +693,15 @@ export function Overview({ skin }: { skin: Skin }) {
         {tab < 3 ? (
           renderPanel({ left: P.x + 2, top: P.y + 6, width: P.w - 4, height: P.h - 12 }, { x: P.x + P.w, top: P.y + 18, height: P.h - 36 }, geom(P.w - 4, S, true), groups(COLS[tab]!.column), tab)
         ) : (
-          <GameScroll skin={skin} left={P.x + 16} top={P.y + 14} width={P.w - 32} height={P.h - 28} barX={P.x + P.w}>
-            {/* a little larger text than the desktop panel; its spacing keeps it readable */}
-            <div style={{ zoom: TOTALS_ZOOM }}>
-              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} pets={pets} skin={skin} />
-            </div>
-          </GameScroll>
+          <>
+            <CombatSwitch skin={skin} left={P.x + 16} top={P.y + 10} width={P.w - 50} scale={TOTALS_ZOOM} />
+            <GameScroll skin={skin} left={P.x + 16} top={P.y + 10 + COMBAT_ROW * TOTALS_ZOOM} width={P.w - 32} height={P.h - 24 - COMBAT_ROW * TOTALS_ZOOM} barX={P.x + P.w}>
+              {/* a little larger text than the desktop panel; its spacing keeps it readable */}
+              <div style={{ zoom: TOTALS_ZOOM }}>
+                <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} pets={pets} />
+              </div>
+            </GameScroll>
+          </>
         )}
         <PatchNotesBar skin={skin} y={pg.navTop - 8 - NOTES_BAR / 2} />
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
@@ -739,8 +742,10 @@ export function Overview({ skin }: { skin: Skin }) {
       <MenuFrame x={1503} y={TOP} w={464} h={H} skin={skin} />
       {/* a patch move's changes sit above the totals until dismissed */}
       <PatchNotesBox skin={skin} x={1521} y={TOP + 16} w={420} />
-      <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
-        <TotalsPanel gd={gd} t={totals} width={420} pets={pets} skin={skin} />
+      {/* the Out of Combat switch at the box's top right (under any patch notes), the totals below it */}
+      <CombatSwitch skin={skin} left={1515} top={TOP + 12 + notesH} width={420} />
+      <GameScroll skin={skin} left={1515} top={TOP + 12 + notesH + COMBAT_ROW} width={444} height={H - 30 - notesH - COMBAT_ROW} barX={1503 + 464}>
+        <TotalsPanel gd={gd} t={totals} width={420} pets={pets} />
       </GameScroll>
       <OverviewTips gd={gd} skin={skin} build={build} rules={rules} end={end} />
       <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />

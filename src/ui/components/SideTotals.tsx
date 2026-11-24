@@ -9,7 +9,7 @@ import { TitleText } from './GameText.tsx';
 import { PetPaneLayer, usePetCards } from './PetCard.tsx';
 import { skinOf } from '../../engine/build.ts';
 import { SKINS } from '../skin/skin.ts';
-import { TotalsPanel } from './TotalsPanel.tsx';
+import { COMBAT_ROW, CombatSwitch, TotalsPanel } from './TotalsPanel.tsx';
 import { phoneGeom } from './Phone.tsx';
 import { useStage } from './Stage.tsx';
 import { pressKeys } from '../press.ts';
@@ -46,6 +46,7 @@ export function SideTotals({ skin }: { skin: Skin }) {
   if (!gd) return null;
   const toggle = () => setOpen(!open);
   const line = phoneGeom(stage).line;
+  const zoom = stage.phone ? 1.15 : 1;
   const tab = stage.phone ? { ...PHONE_TAB, top: Math.round(stage.h * 0.3) } : DESKTOP_TAB;
   const pane = stage.phone ? { top: line + 6, w: stage.w - PHONE_TAB.w - 6, h: stage.h - line - 6 - 110 } : { top: 90, w: 470, h: 930 };
   return (
@@ -62,11 +63,12 @@ export function SideTotals({ skin }: { skin: Skin }) {
       {open && totals ? (
         <div className="abs" style={{ right: tab.w, top: pane.top, width: pane.w, height: pane.h, zIndex: 60 }}>
           <MenuFrame x={0} y={0} w={pane.w} h={pane.h} skin={skin} style={{ background: skin.panel }} />
-          <div className="abs scroll-y" style={{ left: 18, top: 12, width: pane.w - 30, height: pane.h - 24 }}>
+          <CombatSwitch skin={skin} left={18} top={8} width={pane.w - 50} scale={zoom} />
+          <div className="abs scroll-y" style={{ left: 18, top: 8 + COMBAT_ROW * zoom, width: pane.w - 30, height: pane.h - 20 - COMBAT_ROW * zoom }}>
             {/* phones: a little larger text than the desktop pane; its spacing keeps it readable */}
-            <div style={{ zoom: stage.phone ? 1.15 : 1 }}>
+            <div style={{ zoom }}>
               <TitleText style={{ fontSize: 20 }}>AT LEVEL {totals.level + 1}</TitleText>
-              <TotalsPanel gd={gd} t={totals} width={(pane.w - 50) / (stage.phone ? 1.15 : 1)} pets={pets} skin={skin} />
+              <TotalsPanel gd={gd} t={totals} width={(pane.w - 50) / zoom} pets={pets} />
             </div>
           </div>
         </div>
