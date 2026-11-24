@@ -7,13 +7,15 @@
 import type { GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverByMidsDb, SERVERS, type GameServer } from '../data/servers.ts';
 import { toAlignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
-import { enhKind, shortName } from '../engine/enhance.ts';
+import { enhKind, ioLevelRange, shortName } from '../engine/enhance.ts';
 import { BuildRules, isArchetypeInherent } from '../engine/rules.ts';
 import { defaultOn, defaultsOf, exclusiveGroups, isPetUpgrade } from '../engine/totals.ts';
+import { checkBuild } from '../engine/validate.ts';
 import { ByteReader, ByteWriter, concatBytes, EndOfData, fromBase64, streamBytes, toBase64, TooLarge } from './binary.ts';
 import { ImportProblem, noMids, READABLE, readable, readableOn, readablePower, tooLong } from './importProblem.ts';
 import { IMPORT_LIMITS } from './limits.ts';
 import { PLANNER_APP } from './midsPatches.ts';
+import { decodeShare } from './share.ts';
 import { numericVersion } from '../version.ts';
 
 export interface MidsMap {
@@ -21,6 +23,10 @@ export interface MidsMap {
   renames: Record<string, string>;
   powers: [number, number][]; // [mids StaticIndex, game power id]
   enh: { si: number; uid: string; name: string; long?: string; type: number; boost?: number; normal?: string }[];
+  // Mids power -> game power where the names differ ('' for one the game lacks); maps made before it have none
+  names?: Record<string, string>;
+  // game power -> the Mids name an export writes, where it isn't the game's own ('' for none)
+  exportNames?: Record<string, string>;
 }
 
 export interface ImportResult {
@@ -119,10 +125,28 @@ function swapEpic(name: string, table: Map<string, string>): string | undefined 
   return set ? [set, ...parts.slice(2)].join('.') : undefined;
 }
 
+const ORIGIN_PREFIX = /^((Generic|Magic|Mutation|Natural|Science|Technology)_)+/;
+
+/** How an enhancement Mids has no record of goes to Mids: the nearest piece it has, and why. */
+interface StandIn {
+  // the Mids record and grade written
+  entry: MidsMap['enh'][number];
+  grade: string;
+  // the IO level written (a set piece's top level), when it has one
+  ioLevel?: number;
+  // the warning it is counted under, and its ending for one piece and for several ('#' is the count)
+  key: string;
+  one: string;
+  many: string;
+}
+
 /** Lookups built from the map + game data. */
 class Translator {
   readonly renames = new Map<string, string>();
   readonly reverseRenames = new Map<string, string>();
+  // the map's names and exportNames, by lower-cased name
+  readonly names = new Map<string, string>();
+  readonly exportNames: Map<string, string> | undefined;
   readonly byUid = new Map<string, MidsMap['enh'][number]>();
   readonly bySi = new Map<number, MidsMap['enh'][number]>();
   readonly byName = new Map<string, MidsMap['enh'][number]>();
@@ -142,6 +166,12 @@ class Translator {
       this.renames.set(a.toLowerCase(), b);
       this.reverseRenames.set(b.toLowerCase(), a);
     }
+    for (const [a, b] of Object.entries(map.names ?? {})) this.names.set(a.toLowerCase(), b);
+    if (map.exportNames) this.exportNames = new Map(Object.entries(map.exportNames).map(([a, b]) => [a.toLowerCase(), b]));
+    for (const b of gd.boosts) {
+      this.boostByDisplay.set(norm(b.dn), b.id);
+      this.boostsByDisplay.set(norm(b.dn), [...(this.boostsByDisplay.get(norm(b.dn)) ?? []), b.id]);
+    }
     for (const e of map.enh) {
       this.byUid.set(e.uid.toLowerCase(), e);
       this.bySi.set(e.si, e);
@@ -150,31 +180,72 @@ class Translator {
       if (e.long) this.byName.set(norm(e.long), e);
       if (e.type === 1) this.byName.set(norm(e.name), e);
     }
+    // a set piece Mids keeps under another internal name (Crafted_Shrapnel_A is the game's
+    // Crafted_Artillery_A) exports by the same full-name match the import uses
+    for (const e of map.enh) {
+      if (e.boost !== undefined || e.normal) continue;
+      const boost = this.boostByLongName(e);
+      if (boost !== undefined && !this.boostToMids.has(boost)) this.boostToMids.set(boost, e);
+    }
     for (const [si, pid] of map.powers) {
       this.powerBySi.set(si, pid);
       if (!this.siByPower.has(pid)) this.siByPower.set(pid, si);
     }
-    for (const b of gd.boosts) {
-      this.boostByDisplay.set(norm(b.dn), b.id);
-      this.boostsByDisplay.set(norm(b.dn), [...(this.boostsByDisplay.get(norm(b.dn)) ?? []), b.id]);
-    }
   }
 
-  power(name: string): number | undefined {
+  /**
+   * The game power a Mids power name is.
+   *
+   * Mids' names go through the map's names first: Mids and the game give some powers different
+   * names, and the game has moved names around inside a set (pipeline/mids_map.py). The planner's
+   * own exports from before the map had them wrote the game's names, and are read as they always
+   * were (`legacy`).
+   *
+   * @param name A Mids power's full name.
+   * @param legacy Read it as the planner's exports before the map's names did.
+   * @return The power id, or undefined.
+   */
+  power(name: string, legacy = false): number | undefined {
+    const named = legacy ? undefined : this.names.get(name.toLowerCase());
+    if (named !== undefined) return named ? this.gd.powerByName.get(named.toLowerCase())?.id : undefined;
     const n = this.renames.get(name.toLowerCase()) ?? swapEpic(name, EPIC_TO_GAME) ?? name;
     return this.gd.powerByName.get(n.toLowerCase())?.id;
   }
 
+  /** @return The name an export gives a power in Mids ('' when Mids has no such power and gives its name to another). */
   midsPowerName(pid: number): string {
     const n = this.gd.power(pid).n;
+    if (this.exportNames) return this.exportNames.get(n.toLowerCase()) ?? n;
     return this.reverseRenames.get(n.toLowerCase()) ?? swapEpic(n, EPIC_TO_MIDS) ?? n;
   }
 
-  /** Game enhancement for a Mids enhancement (normal grades resolve by origin). */
+  /** @return Whether Mids has the power (the map gives it a Mids index). */
+  midsHas(pid: number): boolean {
+    return this.siByPower.has(pid);
+  }
+
+  /**
+   * Game enhancement for a Mids enhancement (normal grades resolve by origin).
+   *
+   * A DualO is the game's two-origin piece of that type that the origin can use: each origin is
+   * one of the two in two of them (Mutation_Magic, Natural_Magic), and the first in the data's
+   * order is taken (they are the same strength).
+   */
   boostFor(entry: MidsMap['enh'][number] | undefined, grade: string, origin: string): number | undefined {
     if (!entry) return undefined;
     if (entry.boost !== undefined) return entry.boost;
     if (!entry.normal) return this.boostByLongName(entry);
+    if (grade === 'DualO') {
+      const want = entry.normal.toLowerCase();
+      const o = origin.toLowerCase();
+      const dual = this.gd.boosts.find((b) => {
+        const n = shortName(b);
+        const prefix = ORIGIN_PREFIX.exec(n)?.[0] ?? '';
+        const origins = prefix.toLowerCase().split('_').filter(Boolean);
+        return origins.length === 2 && origins.includes(o) && n.slice(prefix.length).toLowerCase() === want;
+      });
+      if (dual) return dual.id;
+    }
     const prefix = grade === 'TrainingO' ? 'Generic' : origin;
     return this.gd.powerByName.get(`boosts.${prefix}_${entry.normal}.${prefix}_${entry.normal}`.toLowerCase())?.id;
   }
@@ -194,15 +265,51 @@ class Translator {
     return (this.boostsByDisplay.get(norm(entry.long)) ?? []).find((id) => version(shortName(this.gd.power(id))) === want);
   }
 
-  /** Mids record + grade for one of our enhancements. */
+  /** Mids record + grade for one of our enhancements (a two-origin piece is a DO, one origin an SO). */
   midsFor(boostId: number): { entry: MidsMap['enh'][number]; grade: string } | undefined {
     const direct = this.boostToMids.get(boostId);
     if (direct) return { entry: direct, grade: 'None' };
     const b = this.gd.power(boostId);
-    if (enhKind(this.gd, b) === 'Training' || enhKind(this.gd, b) === 'Origin') {
-      const suffix = shortName(b).replace(/^(Generic|Magic|Mutation|Natural|Science|Technology)_/, '');
-      const entry = this.normalBySuffix.get(suffix.toLowerCase());
-      if (entry) return { entry, grade: enhKind(this.gd, b) === 'Training' ? 'TrainingO' : 'SingleO' };
+    const kind = enhKind(this.gd, b);
+    if (kind === 'Training' || kind === 'Origin') {
+      const prefix = ORIGIN_PREFIX.exec(shortName(b))?.[0] ?? '';
+      const entry = this.normalBySuffix.get(shortName(b).slice(prefix.length).toLowerCase());
+      const origins = prefix.split('_').filter(Boolean).length;
+      if (entry) return { entry, grade: kind === 'Training' ? 'TrainingO' : origins > 1 ? 'DualO' : 'SingleO' };
+    }
+    return undefined;
+  }
+
+  /**
+   * The nearest Mids piece for an enhancement Mids has no record of: an attuned or superior set
+   * piece goes as the crafted piece at the top of its set's range, a Synthetic Hamidon
+   * enhancement as its Hamidon one, a Yin's talisman as the Single Origin piece of its type.
+   *
+   * @param boostId The enhancement.
+   * @return The stand-in, or undefined when Mids has nothing near it.
+   */
+  standIn(boostId: number): StandIn | undefined {
+    const n = shortName(this.gd.power(boostId));
+    const piece = /^(Superior_Attuned|Superior|Attuned)_(.+)$/.exec(n);
+    if (piece) {
+      const crafted = this.gd.powerByName.get(`boosts.Crafted_${piece[2]}.Crafted_${piece[2]}`.toLowerCase());
+      const m = crafted && this.midsFor(crafted.id);
+      if (crafted && m) {
+        const ioLevel = ioLevelRange(this.gd, crafted)?.[1] ?? 49;
+        const kind = piece[1] === 'Attuned' ? 'attuned' : 'superior';
+        const set = this.gd.boostSetOf.get(crafted.id)?.set.dn ?? crafted.dn;
+        const tail = `to Mids as crafted at level ${ioLevel + 1}`;
+        return { ...m, ioLevel, key: `${set}: Mids has no ${kind} version of this set, so`, one: `its ${kind} piece goes ${tail}`, many: `its # ${kind} pieces go ${tail}` };
+      }
+    }
+    if (n.startsWith('Synthetic_')) {
+      const real = this.gd.powerByName.get(`boosts.${n.slice(10)}.${n.slice(10)}`.toLowerCase());
+      const m = real && this.midsFor(real.id);
+      if (m) return { ...m, key: 'Synthetic Hamidon enhancements: Mids has none, so', one: 'one goes to Mids as the Hamidon enhancement it copies', many: '# go to Mids as the Hamidon enhancements they copy' };
+    }
+    if (n.startsWith('Yins_')) {
+      const entry = this.normalBySuffix.get(n.slice(5).replace(ORIGIN_PREFIX, '').toLowerCase());
+      if (entry) return { entry, grade: 'SingleO', key: "Yin's talismans: Mids has none, so", one: 'one goes to Mids as a Single Origin enhancement of its type', many: '# go to Mids as Single Origin enhancements of their types' };
     }
     return undefined;
   }
@@ -242,6 +349,7 @@ export interface Mbd {
   Origin: string;
   Alignment: string;
   Name?: string;
+  // the build comment Mids shows and keeps; the planner's exports put the build's share link in it
   Comment?: string;
   PowerSets: string[];
   LastPower?: number;
@@ -261,14 +369,80 @@ function setIdFor(gd: GameData, t: Translator, name: string): number | undefined
   return undefined;
 }
 
+/** How importMbd reads a build file beyond its Mids fields. */
+export interface MbdReading {
+  // the build behind the share link in the file's comment (linkedBuild): what Mids still holds
+  // as the planner exported it comes back exactly from it
+  link?: Build;
+  // power names are the game's own (a legacy code read through the Mids database's indexes)
+  gameNames?: boolean;
+}
+
+/** The label before the share link in the comment of the planner's Mids exports. */
+const LINK_LABEL = "Hate's CoH Planner build: ";
+
+/**
+ * @return The share codes (after '#b=') the planner wrote in a Mids build's comment, at most a
+ *   few: only links after its own label, never one a player pasted there.
+ */
+function linkCodes(m: Mbd): string[] {
+  if (typeof m.Comment !== 'string') return [];
+  return [...m.Comment.matchAll(new RegExp(`${LINK_LABEL}[^\\s#]*#b=([A-Za-z0-9_-]+)`, 'g'))].slice(0, 4).map((x) => x[1]!);
+}
+
+/**
+ * The comment the planner writes in its Mids exports: the build's share link after its label, and
+ * the game version alone on the last line, which Mids keeps when it saves the file over the
+ * planner's `BuiltWith` (midsMadeOn). Lines end in CR LF: Mids' comment box shows a bare LF as
+ * nothing, which would run the version into the link.
+ *
+ * @param link The build's share link.
+ * @param version The game version id ("i28p4").
+ * @return The comment.
+ */
+function linkComment(link: string, version: string): string {
+  return `${LINK_LABEL}${link}\r\n${version}`;
+}
+
+/**
+ * The build behind the share link in a Mids build's comment, when it is one this version's data
+ * can read.
+ *
+ * The comment is text from outside: a code is only decoded (decodeShare) and checked (checkBuild),
+ * never followed, and one made on another game version or server is ignored.
+ *
+ * @param gd The game version the file is read with.
+ * @param m The build file.
+ * @return The linked build, or undefined.
+ */
+export async function linkedBuild(gd: GameData, m: Mbd): Promise<Build | undefined> {
+  for (const code of linkCodes(m)) {
+    try {
+      const b = await decodeShare(code);
+      if (b.dataVersion !== gd.core.manifest.dataVersion) continue;
+      const checked = checkBuild(gd, gd.server !== DEFAULT_SERVER ? { ...b, server: gd.server } : b).build;
+      if (checked) return checked;
+    } catch {
+      // a damaged code: the file is read from its Mids fields alone
+    }
+  }
+  return undefined;
+}
+
 /**
  * Convert a Mids .mbd object into a build.
+ *
+ * With the build behind the planner's share link in the file's comment, every power and slot Mids
+ * still holds as the planner exported it comes back exactly from the link (attuned pieces, the
+ * levels Mids moves), the powers Mids lacks come back where the file left their place empty, and
+ * whatever was changed in Mids is read from the file.
  *
  * @param gd Game data.
  * @param map Mids map.
  * @param m Parsed .mbd JSON.
+ * @param reading The linked build and how names are read.
  */
-export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
+export function importMbd(gd: GameData, map: MidsMap, m: Mbd, reading: MbdReading = {}): ImportResult {
   if (!isMbd(m)) throw new ImportProblem("it isn't a Mids build file the planner can read (it looks damaged)", READABLE);
   const t = new Translator(gd, map);
   const warn: string[] = [];
@@ -298,6 +472,19 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     granted: {},
   };
 
+  // the planner's exports from before they carried a share link wrote the game's power names, and
+  // are read as they were
+  const legacy = m.BuiltWith?.App === PLANNER_APP && !linkCodes(m).length;
+  const powerOf = (name: string): number | undefined => {
+    if (!reading.gameNames) return t.power(name, legacy);
+    const found = gd.powerByName.get(name.toLowerCase());
+    return found && !/^boosts\./i.test(found.n) ? found.id : undefined;
+  };
+  // the linked build, when it is this build (same archetype and power sets), and what the planner
+  // exports for it: the file's fields equal to those are as the planner wrote them
+  const from = reading.link && reading.link.at === at.id && reading.link.primary === primary && reading.link.secondary === secondary ? reading.link : undefined;
+  const ref = from ? exportMbd(gd, map, from) : undefined;
+  const fromEntries = from ? new BuildRules(gd, from).entries() : [];
   const toEnh = (e: MbdEnh | null | undefined, where: string): SlottedEnh | undefined => {
     if (!e) return undefined;
     const entry = (e.Uid ? t.byUid.get(e.Uid.toLowerCase()) : undefined) ?? (e.Enhancement ? t.byName.get(norm(e.Enhancement)) : undefined);
@@ -314,20 +501,59 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     const bp = gd.power(boost);
     if (bp.bie && !bp.bup) out.ioLevel = Math.max(0, Math.min(52, e.IoLevel ?? 49));
     const rel = RELATIVE.indexOf(e.RelativeLevel ?? 'Even');
-    if (!bp.bie && rel > 0) out.rel = rel - 4;
+    if (!bp.bie && rel > 0 && rel !== 4) out.rel = rel - 4;
     if (bp.bb && rel > 4) out.boosters = rel - 4;
     return out;
   };
   // Mids' StatInclude, by entry key: applied once the build is put together (applyStats), since a
   // power's default can depend on the rest of the build
   const stats = new Map<string, boolean>();
-  const toSlots = (p: MbdPower, where: string): Slot[] =>
-    p.SlotEntries.map((s) => ({ level: Math.max(0, s.Level - 1), enh: toEnh(s.Enhancement, where) }));
+  const toSlots = (p: MbdPower, where: string): Slot[] => p.SlotEntries.map((s) => ({ level: Math.max(0, s.Level - 1), enh: toEnh(s.Enhancement, where) }));
+  /**
+   * A power's slots: the linked build's own when Mids holds them as the planner exported them,
+   * else slot by slot, the link's where the slot is unchanged and the file's where it was changed.
+   */
+  const mergedSlots = (p: MbdPower, refP: MbdPower | undefined, own: Slot[] | undefined, counted: Slot[] | undefined, where: string): Slot[] => {
+    if (!refP || !counted) return toSlots(p, where);
+    if (own && sameSlots(p, refP)) return own.map(copySlot);
+    return p.SlotEntries.map((s, k) => {
+      const r = refP.SlotEntries[k];
+      const c = counted[k];
+      return r && c && sameSlot(s, r) ? copySlot(c) : { level: Math.max(0, s.Level - 1), enh: toEnh(s.Enhancement, where) };
+    });
+  };
+
+  // the link's picks by their Mids name and level, and its auto-granted powers: Mids may leave out
+  // the entries of powers it can't read, so the file's entries are matched by name, not by place
+  const linkPicks = new Map<string, number>();
+  const linkGrants = new Set<number>();
+  ref?.powers.forEach((pid, k) => {
+    if (pid === null) return;
+    const r = ref.mbd.PowerEntries[k]!;
+    if (k >= sched.length) linkGrants.add(pid);
+    else if (r.PowerName) linkPicks.set(`${r.PowerName.toLowerCase()}|${r.Level}`, k);
+  });
+  const matched = new Set<number>(); // the link's picks the file still holds
+  let changed = false; // a pick was read from the file: the link's build-wide fields may not fit it
 
   const used = new Set<number>();
+  const seen = new Set<number>(); // auto-granted powers the file holds
   m.PowerEntries.forEach((p, i) => {
+    const k = from && p.PowerName ? linkPicks.get(`${p.PowerName.toLowerCase()}|${p.Level}`) : undefined;
+    // a pick the file holds as the planner exported it: the link's, exactly
+    if (k !== undefined && !used.has(k)) {
+      const fromPick = from!.picks[k]!;
+      const refP = ref!.mbd.PowerEntries[k]!;
+      const counted = fromEntries.find((e) => e.key === `pick:${k}`);
+      used.add(k);
+      matched.add(k);
+      b.picks[k] = { power: fromPick.power, level: fromPick.level, slots: mergedSlots(p, refP, fromPick.slots, counted?.slots, gd.power(fromPick.power).dn) };
+      // the link's switch: Mids rewrites StatInclude for every power when it saves (MidsReborn 3.8)
+      if (fromPick.on !== undefined) b.picks[k]!.on = fromPick.on;
+      return;
+    }
     if (!p.PowerName) return;
-    const pid = t.power(p.PowerName);
+    const pid = powerOf(p.PowerName);
     if (pid === undefined) {
       // Auto-granted powers Mids names differently only matter if they carried enhancements.
       if (i < sched.length || p.SlotEntries.some((s) => s.Enhancement)) {
@@ -337,7 +563,9 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
     }
     const level = Math.max(0, p.Level - 1);
     const name = gd.power(pid).dn;
-    if (i < sched.length) {
+    // an auto-granted power of the link moved into the picks' places is still one
+    if (i < sched.length && !linkGrants.has(pid)) {
+      changed = true;
       let idx = sched[i] === level && !used.has(i) ? i : -1;
       if (idx < 0) idx = sched.findIndex((l, k) => l === level && !used.has(k));
       if (idx < 0) {
@@ -348,13 +576,71 @@ export function importMbd(gd: GameData, map: MidsMap, m: Mbd): ImportResult {
       b.picks[idx] = { power: pid, level, slots: toSlots(p, name) };
       if (typeof p.StatInclude === 'boolean') stats.set(`pick:${idx}`, p.StatInclude);
     } else {
-      b.granted[pid] = { slots: toSlots(p, name) };
-      if (typeof p.StatInclude === 'boolean') stats.set(`grant:${pid}`, p.StatInclude);
+      seen.add(pid);
+      const j = ref ? ref.powers.findIndex((x, k) => k >= sched.length && x === pid) : -1;
+      const refG = j >= 0 ? ref!.mbd.PowerEntries[j] : undefined;
+      const own = from?.granted[pid];
+      if (refG && sameSlots(p, refG)) {
+        // as the planner exported it: the link's record, or none where the link had none
+        if (own) b.granted[pid] = { ...own, slots: own.slots.map(copySlot) };
+        return;
+      }
+      const counted = fromEntries.find((e) => e.key === `grant:${pid}`);
+      b.granted[pid] = { slots: mergedSlots(p, refG, own?.slots ?? [], counted?.slots, name) };
+      if (refG) {
+        if (own?.on !== undefined) b.granted[pid]!.on = own.on; // the link's switch, as for picks
+      } else if (typeof p.StatInclude === 'boolean') stats.set(`grant:${pid}`, p.StatInclude);
     }
   });
+  if (from) {
+    from.picks.forEach((fromPick, k) => {
+      if (!fromPick || matched.has(k)) return;
+      if (t.midsHas(fromPick.power)) {
+        changed = true; // taken out or changed in Mids
+        return;
+      }
+      // a pick Mids has no record of: the link's, where its place is still free
+      if (!b.picks[k] && !b.picks.some((x) => x?.power === fromPick.power)) b.picks[k] = { ...fromPick, slots: fromPick.slots.map(copySlot) };
+      else warn.push(`${gd.power(fromPick.power).dn}, which Mids doesn't have, was left out: the build has another power in its place`);
+    });
+    // auto-granted powers Mids has no record of come back from the link
+    for (const [key, g] of Object.entries(from.granted)) {
+      const pid = Number(key);
+      if (!seen.has(pid) && !t.midsHas(pid)) b.granted[pid] = { ...g, slots: g.slots.map(copySlot) };
+    }
+    // what Mids has no field for, while the picks are the link's
+    if (m.Alignment === ref!.mbd.Alignment) b.alignment = from.alignment;
+    if (from.petOn) b.petOn = { ...from.petOn };
+    if (!changed) {
+      if (from.exemplar !== undefined) b.exemplar = from.exemplar;
+      if (from.endLevel !== undefined) b.endLevel = from.endLevel;
+      if (from.respecTo !== undefined) b.respecTo = from.respecTo;
+    }
+  }
   applyStats(gd, b, stats);
   return { build: b, warnings: warn };
 }
+
+/** @return A copy of a slot. */
+const copySlot = (s: Slot): Slot => (s.enh ? { level: s.level, enh: { ...s.enh } } : { level: s.level });
+
+/** @return Whether two Mids enhancements are the same piece at the same level. */
+function sameEnh(a: MbdEnh | null | undefined, b: MbdEnh | null | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return (
+    (a.Uid ?? '').toLowerCase() === (b.Uid ?? '').toLowerCase() &&
+    (a.Grade ?? 'None') === (b.Grade ?? 'None') &&
+    // an IO's level; Mids rewrites the unused IoLevel of other grades (an SO's as 1)
+    ((a.Grade ?? 'None') !== 'None' || (a.IoLevel ?? 49) === (b.IoLevel ?? 49)) &&
+    (a.RelativeLevel ?? 'Even') === (b.RelativeLevel ?? 'Even')
+  );
+}
+
+/** @return Whether two Mids slots are the same. */
+const sameSlot = (a: MbdSlot, b: MbdSlot): boolean => a.Level === b.Level && sameEnh(a.Enhancement, b.Enhancement);
+
+/** @return Whether two Mids power entries hold the same slots. */
+const sameSlots = (a: MbdPower, b: MbdPower): boolean => a.SlotEntries.length === b.SlotEntries.length && a.SlotEntries.every((s, k) => sameSlot(s, b.SlotEntries[k]!));
 
 /**
  * Set an imported build's on/off switches from Mids' StatInclude.
@@ -416,8 +702,10 @@ function applyStats(gd: GameData, b: Build, stats: Map<string, boolean>): void {
  * @param gd Game data.
  * @param map Mids map.
  * @param b Build.
+ * @param link The build's share link, for the build comment (the planner reads it back on import).
+ * @return The file, the warnings, and each power entry's power (null for an empty pick).
  */
-export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; warnings: string[] } {
+export function exportMbd(gd: GameData, map: MidsMap, b: Build, link?: string): { mbd: Mbd; warnings: string[]; powers: (number | null)[] } {
   const t = new Translator(gd, map);
   const warn: string[] = [];
   const rules = new BuildRules(gd, b);
@@ -434,32 +722,55 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     if (kind === 'epic') epic = swapEpic(ref.set.n, EPIC_TO_MIDS) ?? ref.set.n;
   }
   while (pools.length < 4) pools.push('');
+  // pieces Mids has no record of, by warning: one warning per set or kind, not per piece
+  const standIns = new Map<string, { one: string; many: string; count: number }>();
+  const count = (key: string, one: string, many: string) => {
+    const c = standIns.get(key);
+    standIns.set(key, { one, many, count: (c?.count ?? 0) + 1 });
+  };
   const enh = (s: Slot): MbdEnh | null => {
     if (!s.enh) return null;
+    const bp = gd.power(s.enh.boost);
+    const rel = bp.bie ? 4 + (s.enh.boosters ?? 0) : 4 + Math.max(-3, s.enh.rel ?? 0);
     const m = t.midsFor(s.enh.boost);
     if (!m) {
-      warn.push(`Enhancement ${gd.power(s.enh.boost).dn} has no Mids equivalent`);
-      return null;
+      // Mids has no such piece: the nearest one it has stands in, and the comment's link brings the real one back
+      const sub = t.standIn(s.enh.boost);
+      if (!sub) {
+        // "Set: Aspect" reads as "Set (Aspect)" before the warning's own colon
+        count(`${bp.dn.replace(/^([^:]+): (.+)$/, '$1 ($2)')}: Mids has no such enhancement, so`, 'its slot is empty in Mids (the planner keeps it)', '# slots are empty in Mids (the planner keeps them)');
+        return null;
+      }
+      count(sub.key, sub.one, sub.many);
+      return { Uid: sub.entry.uid, Grade: sub.grade, IoLevel: sub.ioLevel ?? 49, RelativeLevel: RELATIVE[rel] ?? 'Even', Obtained: false };
     }
-    const bp = gd.power(s.enh.boost);
     // Mids goes down to -3: an outleveled piece (it gives nothing in the game) goes out at -3
     if (!bp.bie && (s.enh.rel ?? 0) < -3) warn.push(`${bp.dn} is outleveled (it gives nothing); Mids has no level below -3, so it is exported at -3`);
-    const rel = bp.bie ? 4 + (s.enh.boosters ?? 0) : 4 + Math.max(-3, s.enh.rel ?? 0);
     return { Uid: m.entry.uid, Grade: m.grade, IoLevel: s.enh.ioLevel ?? 49, RelativeLevel: RELATIVE[rel] ?? 'Even', Obtained: false };
   };
+  // powers Mids has no record of, by set (Mids leaves them out, with their slots)
+  const missing = new Map<number, number[]>();
   const entries = rules.entries();
   const defaults = defaultsOf(gd, rules.entries());
-  const entry = (key: string, pid: number | null, level: number, slots: Slot[], on: boolean | undefined): MbdPower => ({
-    PowerName: pid === null ? '' : t.midsPowerName(pid),
-    Level: pid === null ? -1 : level + 1,
-    // Mids has no "default": write what the planner actually counts (defaultsOf)
-    StatInclude: pid === null ? false : (on ?? defaults.get(key) ?? defaultOn(gd.power(pid))),
-    ProcInclude: false,
-    VariableValue: 0,
-    InherentSlotsUsed: 0,
-    SubPowerEntries: [],
-    SlotEntries: slots.map((s) => ({ Level: s.level + 1, IsInherent: false, Enhancement: enh(s), FlippedEnhancement: null })),
-  });
+  const powers: (number | null)[] = [];
+  const entry = (key: string, pid: number | null, level: number, slots: Slot[], on: boolean | undefined): MbdPower => {
+    powers.push(pid);
+    if (pid !== null && !t.midsHas(pid) && (key.startsWith('pick:') || slots.some((s) => s.enh))) {
+      const set = gd.setOfPower.get(pid)?.set.id ?? -1;
+      missing.set(set, [...(missing.get(set) ?? []), pid]);
+    }
+    return {
+      PowerName: pid === null ? '' : t.midsPowerName(pid),
+      Level: pid === null ? -1 : level + 1,
+      // Mids has no "default": write what the planner actually counts (defaultsOf)
+      StatInclude: pid === null ? false : (on ?? defaults.get(key) ?? defaultOn(gd.power(pid))),
+      ProcInclude: false,
+      VariableValue: 0,
+      InherentSlotsUsed: 0,
+      SubPowerEntries: [],
+      SlotEntries: slots.map((s) => ({ Level: s.level + 1, IsInherent: false, Enhancement: enh(s), FlippedEnhancement: null })),
+    };
+  };
   const PowerEntries: MbdPower[] = b.picks.map((p, i) => {
     const e = entries.find((x) => x.key === `pick:${i}`);
     return p && e ? entry(e.key, p.power, p.level, e.slots, p.on ?? undefined) : entry('', null, 0, [], false);
@@ -476,12 +787,21 @@ export function exportMbd(gd: GameData, map: MidsMap, b: Build): { mbd: Mbd; war
     // Mids has no plain Praetorian; Loyalist and Resistance only differ in its colors and labels
     Alignment: b.alignment === 'Praetorian' ? 'Loyalist' : b.alignment,
     Name: b.name,
-    Comment: '',
+    Comment: link ? linkComment(link, gd.core.manifest.dataVersion) : '',
     PowerSets: [gd.powerset(b.primary).n, gd.powerset(b.secondary).n, '', ...pools.slice(0, 4), epic],
     LastPower: b.picks.length,
     PowerEntries,
   };
-  return { mbd, warnings: warn };
+  for (const [setId, pids] of missing) {
+    const set = gd.setById.get(setId);
+    const known = set?.p.some((p) => t.midsHas(p));
+    if (set && !known) warn.push(`${set.dn}: Mids has no such power set, so Mids leaves out its powers and their enhancements (the planner keeps them)`);
+    else if (pids.length === 1) warn.push(`${gd.power(pids[0]!).dn}${set ? ` (${set.dn})` : ''}: Mids has no such power, so Mids leaves it out with its enhancements (the planner keeps it)`);
+    // several of one set (a Kheldian form's attacks): one warning naming them all
+    else warn.push(`${set ? `${set.dn}: ` : ''}Mids has no ${pids.map((x) => gd.power(x).dn).join(', ')}, so Mids leaves them out with their enhancements (the planner keeps them)`);
+  }
+  for (const [key, { one, many, count: n }] of standIns) warn.push(`${key} ${n === 1 ? one : many.replace('#', String(n))}`);
+  return { mbd, warnings: warn, powers };
 }
 
 // ---- share codes ------------------------------------------------------------------------------
@@ -557,7 +877,7 @@ export async function mbdToChunk(mbd: Mbd): Promise<string> {
 /** Encode the legacy |MxDz; chunk (zlib + uppercase hex) for older Mids versions. */
 export async function buildToMxDz(gd: GameData, map: MidsMap, b: Build): Promise<{ text: string; warnings: string[] }> {
   const t = new Translator(gd, map);
-  const { mbd, warnings } = exportMbd(gd, map, b);
+  const { mbd, warnings, powers } = exportMbd(gd, map, b);
   const w = new ByteWriter();
   w.bytes(new Uint8Array([77, 120, 68, 12]));
   w.f32(3.2);
@@ -571,11 +891,11 @@ export async function buildToMxDz(gd: GameData, map: MidsMap, b: Build): Promise
   for (const s of mbd.PowerSets) w.netString(s);
   w.i32(b.picks.length);
   w.i32(mbd.PowerEntries.length - 1);
-  for (const p of mbd.PowerEntries) {
-    const pid = p.PowerName ? t.power(p.PowerName) : undefined;
-    const si = pid !== undefined ? t.siByPower.get(pid) : undefined;
+  mbd.PowerEntries.forEach((p, i) => {
+    const pid = powers[i];
+    const si = pid !== null && pid !== undefined ? t.siByPower.get(pid) : undefined;
     if (si === undefined) {
-      if (p.PowerName && p.SlotEntries.some((s) => s.Enhancement)) warnings.push(`${p.PowerName}: no Mids index`);
+      // a power Mids has no record of: exportMbd has warned about it
       w.i32(-1);
     } else {
       w.i32(si);
@@ -604,7 +924,7 @@ export async function buildToMxDz(gd: GameData, map: MidsMap, b: Build): Promise
       }
       w.bool(false); // no flipped enhancement
     }
-  }
+  });
   const raw = w.done();
   const comp = await streamBytes(raw, 'deflate', true);
   const hex = [...comp].map((x) => x.toString(16).padStart(2, '0')).join('').toUpperCase();
@@ -675,6 +995,7 @@ async function mxdzToMbd(gd: GameData, map: MidsMap, bytes: Uint8Array): Promise
     const pname = qualified ? r.netString() : '';
     if (si >= 0 || (qualified && pname)) {
       const pid = qualified ? t.power(pname) : t.powerBySi.get(si);
+      // the game's name: importMbd reads it as that (gameNames), not as a Mids name
       powerName = pid !== undefined ? gd.power(pid).n : '';
       unknown = pid === undefined;
       level = r.i8() + 1;
@@ -870,7 +1191,7 @@ function notOursHint(gd: GameData, m: Mbd): string {
  * @return The build and the warnings for anything that could not be mapped.
  */
 export async function importParsed(gd: GameData, map: MidsMap, p: MidsParsed): Promise<ImportResult> {
-  if (p.kind === 'mbd') return importMbd(gd, map, p.mbd);
+  if (p.kind === 'mbd') return importMbd(gd, map, p.mbd, { link: await linkedBuild(gd, p.mbd) });
   let legacy: { mbd: Mbd; warnings: string[] };
   try {
     legacy = await mxdzToMbd(gd, map, p.raw);
@@ -878,7 +1199,7 @@ export async function importParsed(gd: GameData, map: MidsMap, p: MidsParsed): P
     throw e instanceof EndOfData ? DAMAGED_CODE() : e; // the data ran out: a damaged code
   }
   const { mbd, warnings } = legacy;
-  const res = importMbd(gd, map, mbd);
+  const res = importMbd(gd, map, mbd, { gameNames: true });
   return { build: res.build, warnings: [...warnings, ...res.warnings] };
 }
 

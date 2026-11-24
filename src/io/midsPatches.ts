@@ -54,19 +54,22 @@ export function midsDbPatch(db: string | undefined, table: readonly { db: string
 }
 
 /**
- * Where a Mids build was made: read from the planner's own exports (which name their game version),
- * else from the Mids database version.
+ * Where a Mids build was made: read from the planner's own exports (which name their game version
+ * in `BuiltWith`, and on the comment's last line, which Mids keeps when it saves), else from the
+ * Mids database version.
  *
  * @param mbd The decoded build (undefined for the old |MxDz; codes, which record no version).
  * @return The patch, or undefined when it can't be told.
  */
 export function midsMadeOn(mbd: Mbd | undefined): MadeOn | undefined {
   const bw = mbd?.BuiltWith;
-  if (!bw) return undefined;
-  if (bw.App === PLANNER_APP) {
+  if (bw?.App === PLANNER_APP) {
     // exports made before game versions were recorded were all made on the legacy version's data
     const v = typeof bw.GameVersion === 'string' && bw.GameVersion ? bw.GameVersion : LEGACY_GAME_VERSION;
     return { patch: v.replace(/^(i\d+p\d+).*$/, '$1'), version: v };
   }
-  return midsDbPatch(bw.DatabaseVersion);
+  // saved again by Mids: the game version the planner put on the comment's last line
+  const v = typeof mbd?.Comment === 'string' ? /\n(i\d+p\d+)\s*$/.exec(mbd.Comment)?.[1] : undefined;
+  if (v) return { patch: v, version: v };
+  return bw ? midsDbPatch(bw.DatabaseVersion) : undefined;
 }
