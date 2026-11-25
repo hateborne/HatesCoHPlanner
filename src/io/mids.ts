@@ -941,12 +941,6 @@ export interface PlanEntry {
   name: string;
 }
 
-// Limits on the Hero Plan text read above a chunk (it comes from a stranger)
-const PLAN_MAX_CHARS = 64_000;
-const PLAN_MAX_LINE = 400;
-const PLAN_MAX_ENTRIES = 200;
-const PLAN_MAX_NAME = 80;
-
 /**
  * The power lines of a "Hero Plan by Mids' Hero Designer" post ("Level 8: Unyielding -- <enhancements>").
  *
@@ -954,15 +948,17 @@ const PLAN_MAX_NAME = 80;
  * @return The lines' levels and names, in order (a power with no enhancements has no "--").
  */
 function parseHeroPlan(head: string): PlanEntry[] {
+  // it comes from a stranger: read within IMPORT_LIMITS.mids.plan
+  const lim = IMPORT_LIMITS.mids.plan;
   const out: PlanEntry[] = [];
-  for (const raw of head.slice(0, PLAN_MAX_CHARS).split('\n')) {
-    if (out.length >= PLAN_MAX_ENTRIES) break;
-    if (raw.length > PLAN_MAX_LINE) continue;
+  for (const raw of head.slice(0, lim.chars).split('\n')) {
+    if (out.length >= lim.entries) break;
+    if (raw.length > lim.line) continue;
     const m = /^\s*Level\s+(\d{1,2})\s*:\s*(.*)$/.exec(stripHidden(raw));
     if (!m) continue;
     const level = Number(m[1]);
     const name = m[2]!.split(' -- ')[0]!.replace(/\s+/g, ' ').trim();
-    if (level < 1 || level > 50 || !name || name.length > PLAN_MAX_NAME) continue;
+    if (level < 1 || level > 50 || !name || name.length > lim.name) continue;
     out.push({ level, name });
   }
   return out;
@@ -999,7 +995,7 @@ function planNames(gd: GameData, t: Translator, sets: string[], cls: string, pla
   for (const id of ids) {
     const s = gd.setById.get(id);
     s?.p.forEach((pid, i) => {
-      if ((s.av[i] ?? -1) < 0 || known.has(pid)) return; // only powers a player picks
+      if ((s.av[i] ?? -1) < 0) return; // only powers a player picks
       const pw = gd.power(pid);
       add(byDisplay, key(pw.dn), pid);
       add(byInternal, key((pw.n.split('.').pop() ?? '').replace(/_/g, ' ')), pid);
@@ -1013,8 +1009,9 @@ function planNames(gd: GameData, t: Translator, sets: string[], cls: string, pla
     plan.forEach((pl, li) => {
       if (pl.level !== e.Level || usedLines.has(li)) return;
       const k = key(pl.name);
-      const hit = byDisplay.get(k) ?? byInternal.get(k);
-      for (const pid of hit ?? []) if (!taken.has(pid)) found.set(pid, li);
+      // a display name, even of a power already identified, is never read as an internal name
+      const hit = byDisplay.has(k) ? byDisplay.get(k) : byInternal.get(k);
+      for (const pid of hit ?? []) if (!taken.has(pid) && !known.has(pid)) found.set(pid, li);
     });
     if (found.size !== 1) continue;
     const [pid, li] = [...found][0]!;

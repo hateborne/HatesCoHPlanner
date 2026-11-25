@@ -197,6 +197,45 @@ describe('Mids interop', () => {
     }
   });
 
+  it("never reads a plan's display name as another power's internal name", async () => {
+    // Homecoming's Battle Axe: the power shown as Gash is internally Beheader, and the one shown as
+    // Beheader is internally Gash. With Gash (Beheader) already identified, a plan line "Gash" for an
+    // unidentified pick is that same power, not the one internally named Gash.
+    const sets = ['Brute_Melee.Battle_Axe', 'Brute_Defense.Shield_Defense'];
+    const gash = pid(gd, 'Brute_Melee.Battle_Axe.Beheader');
+    expect(gd.power(gash).dn).toBe('Gash');
+    const w = new ByteWriter();
+    w.bytes(new Uint8Array([77, 120, 68, 12]));
+    w.f32(3.2);
+    w.bool(false);
+    w.bool(true);
+    for (const s of ['Class_Brute', 'Magic']) w.netString(s);
+    w.i32(2);
+    w.netString('Plan');
+    w.i32(sets.length - 1);
+    for (const s of sets) w.netString(s);
+    w.i32(0);
+    w.i32(23); // 24 power entries
+    for (let i = 0; i < 24; i++) {
+      w.i32(i === 0 ? map.powers.find(([, id]) => id === gash)![0] : i === 1 ? 999_999 : -1);
+      if (i <= 1) {
+        w.i8(0); // level 1
+        w.bool(true);
+        w.bool(false);
+        w.i32(0);
+        w.i32(0);
+        w.i8(-1);
+      }
+      w.i8(-1); // no slots
+    }
+    const raw = w.done();
+    const hex = Buffer.from(deflateSync(raw)).toString('hex').toUpperCase();
+    const res = await importMidsText(gd, map, `Level 1: Gash -- x\n|MxDz;${raw.length};${hex.length / 2};${hex.length};HEX;|\n${hex}\n|----|`);
+    expect(res.build.picks[0]?.power).toBe(gash);
+    expect(res.build.picks.filter(Boolean)).toHaveLength(1);
+    expect(res.warnings).toEqual(["A power couldn't be identified, so it was left out"]);
+  });
+
   /**
    * A legacy |MxDz; code of one small build, as a Mids of one save version wrote it.
    *

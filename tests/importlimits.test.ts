@@ -242,7 +242,7 @@ describe('the import limits table', () => {
       text: 2_000_000,
       inflated: 1_048_576,
       link: { payload: 65_536, picks: 64, slots: 32, granted: 512, petSwitches: 64, petName: 160 },
-      mids: { sets: 32, powers: 512, slots: 64 },
+      mids: { sets: 32, powers: 512, slots: 64, plan: { chars: 64_000, line: 400, entries: 200, name: 80 } },
       buildTxt: { powers: 512, slots: 64, skipped: 200 },
     });
     // one number for the pet switches a checked build keeps and a link reads
