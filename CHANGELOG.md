@@ -12,6 +12,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 ### Fixed
 
 - Mids exports and imports no longer drop or mix up about 50 powers Mids names differently, epic powers in old Mids codes, Artillery, DOs, or attuned and other pieces Mids lacks (Mids gets the nearest piece it has). Mids files and share codes carry the build's share link in their comment, so the planner reopens them as they were, with your changes made in Mids. Mids export is best effort, and the planner says so.
+- Builds posted from the original game's Mids (a Hero Plan with an old Mids code) now import complete when you paste the whole post, including powers the old code alone can't name, such as Unyielding and Afterburner.
 
 ## v1.3.0 - November 21, 2026
 

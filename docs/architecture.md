@@ -360,7 +360,12 @@ every listed version is unknown and opens on the default version (it may be any 
 today's Mids builds never land on older data). The planner's own exports
 name their game version (`BuiltWith.GameVersion`, which Mids ignores). Old `|MxDz;` codes record
 nothing and open on the default version; their layout follows the save version they carry (a
-power's ProcInclude from 3.10, the inherent-slot fields only from 3.20: `mxdzToMbd`). `importTarget()` (`src/data/versions.ts`) then opens the
+power's ProcInclude from 3.10, the inherent-slot fields only from 3.20: `mxdzToMbd`). A code
+posted from the original game's Mids (1.9x) may hold a power index today's map lacks; when the
+"Hero Plan" text above it is pasted too, `parseHeroPlan` reads its `Level N: name` lines (within
+`IMPORT_LIMITS.mids.plan`, hidden characters stripped) and `planNames` names such a power from the
+line at its level, by display name, else by the last part of its internal name (Afterburner), only
+when exactly one pickable power of the build's sets matches; a name is never shown. `importTarget()` (`src/data/versions.ts`) then opens the
 build on its own patch when the site carries it, exact data before approximate. Otherwise it
 offers the nearest newer patch, or the newest. A move first lists the swaps `fitToPatch()` makes
 in the confirm dialog: picks trade places, slots trade the levels they were gained at, nothing is
