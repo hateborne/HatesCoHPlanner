@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_SERVER, defaultServer, serverById, serverOf, SERVERS, type GameServer } from '../../data/servers.ts';
 import { hasWork, skinOf } from '../../engine/build.ts';
+import { saveFirstText } from '../../io/library.ts';
 import { lastServer } from '../../state/lastServer.ts';
-import { CONTINUE_BUILD, useStore } from '../../state/store.ts';
+import { CONTINUE_BUILD, useStore, type ResumeLabel } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { pressKeys } from '../press.ts';
 import { SKINS } from '../skin/skin.ts';
@@ -11,6 +12,7 @@ import { play } from '../sound.ts';
 import { MenuFrame, SetTitle } from './Chrome.tsx';
 import { SELECT } from './OriginAlign.tsx';
 import { useStage } from './Stage.tsx';
+import { POPUP_LAYER } from '../floating.ts';
 
 /** @return A server's logo URL. */
 const logoSrc = (s: GameServer) => `${import.meta.env.BASE_URL}${s.logo}`;
@@ -31,9 +33,10 @@ async function switchServer(): Promise<void> {
   // a build with nothing in it (left on its first power screen) is cleared without asking
   if (build && hasWork(build)) {
     const from = serverById(serverOf(build))?.label ?? 'another server';
+    const keep = await saveFirstText(build, 'Saved builds / Import');
     const ok = await askConfirm({
       title: `Switch to ${to.label}?`,
-      text: `This clears ${build.name ? `"${build.name}"` : 'your current build'}: it is a ${from} build and can't move to another server. Save it first (Saved builds / Import) if you want to keep it.`,
+      text: `This clears ${build.name ? `"${build.name}"` : 'your current build'}: it is a ${from} build and can't move to another server.${keep}`,
       okLabel: 'Switch',
     });
     if (!ok) return;
@@ -93,7 +96,7 @@ export function ServerDialog() {
 }
 
 /** The open server list (mounted per opening, so each starts on its own highlighted server). */
-function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; preselect: string; resume?: string }) {
+function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; preselect: string; resume?: ResumeLabel }) {
   const { close, shown, alignment, hasBuild } = useStore(
     useShallow((s) => ({ close: s.closeServerAsk, shown: s.server, alignment: s.build?.alignment, hasBuild: !!s.build && hasWork(s.build) })),
   );
@@ -163,8 +166,8 @@ function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; 
   const rowLeft = phone ? x + pad : x + (w - (n * TILE.w + (n - 1) * TILE.gap)) / 2;
   const btnW = Math.min(170, (w - 72) / 2);
   return (
-    <div ref={root} className="abs" role="dialog" aria-label="Choose a server" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 106, background: 'rgba(0,0,0,0.55)' }}>
-      <MenuFrame x={x} y={y} w={w} h={h} r25 skin={skin} style={{ background: 'rgba(0,3,24,0.97)' }} />
+    <div {...POPUP_LAYER} ref={root} className="abs" role="dialog" aria-label="Choose a server" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 106, background: 'rgba(0,0,0,0.55)' }}>
+      <MenuFrame x={x} y={y} w={w} h={h} r25 skin={skin} style={{ background: skin.panel }} />
       <SetTitle skin={skin} x={x + (phone ? 22 : 36)} y={y + 26} size={phone ? 26 : 28} text="Choose a Server" />
       <div className="abs body-text" style={{ left: x + pad, top: y + textTop, width: w - 2 * pad, fontSize: 19, lineHeight: 1.35, color: '#cfe8ff', whiteSpace: 'pre-line' }}>
         {text}
@@ -208,12 +211,15 @@ function ServerList({ cancellable, preselect, resume }: { cancellable: boolean; 
             ref={resumeRef}
             className={`info-button server-continue${hi === n ? ' on' : ''}`}
             data-testid="server:continue"
-            title={resume}
+            title={`${resume.build} ${resume.server}`}
+            aria-label={`${resume.build} ${resume.server}`}
             style={{ position: 'static', maxWidth: w - 2 * pad, padding: '0 28px' }}
             onFocus={() => setHi(n)}
             onClick={() => pick(n)}
           >
-            {resume}
+            {/* a long build name is cut short; the server it continues on always shows */}
+            <span className="server-continue-build">{resume.build}</span>
+            <span className="server-continue-server">{resume.server}</span>
           </button>
         ) : (
           <button className="info-button" data-testid="server:ok" style={{ position: 'static', width: btnW, padding: 0 }} onClick={() => pick(hi)}>

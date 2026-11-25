@@ -111,18 +111,23 @@ for (const { id } of loadVersionIndex().versions) {
   it(`only the always-on unique pieces add their own effects (${id})`, () => {
     const d = loadData(id);
     const family = (n: string) => n.split('.')[1]!.replace(/^(Crafted|Attuned|Superior_Attuned|Superior)_/, '');
+    // out of combat, and in combat (a fight stops the travel pieces' stealth)
     const added = new Set<string>();
+    const inCombat = new Set<string>();
     for (const set of d.boostSets) {
       const power = set.elig[0];
       if (power === undefined) continue;
       for (const boost of set.slots.flat().map((x) => d.power(x)).filter((x) => hasOwnEffect(d, x))) {
         const b = blaster(d);
         b.picks[3] = { power, level: d.core.schedule.power[3]!, slots: [{ level: d.core.schedule.power[3]!, enh: { boost: boost.id, ioLevel: 49 } }], on: true };
-        const t = totals(b, d);
-        expect([...t.lines.keys()].filter((k) => k.includes('Null')), boost.n).toEqual([]);
-        if ([...t.lines.values()].some((l) => l.sources.some((s) => s.name === boost.dn))) added.add(family(boost.n));
+        for (const out of [true, false]) {
+          const t = computeTotals(d, new BuildRules(d, b), b, 49, out);
+          expect([...t.lines.keys()].filter((k) => k.includes('Null')), boost.n).toEqual([]);
+          if ([...t.lines.values()].some((l) => l.sources.some((s) => s.name === boost.dn))) (out ? added : inCombat).add(family(boost.n));
+        }
       }
     }
+    expect([...inCombat].sort()).toEqual(['Impervious_Skin_E', 'Kismet_E', 'Launch_D', 'Miracle_F', 'Numinas_Convalesence_F', 'Regenerative_Tissue_E', 'Thrust_D', 'Warp_D']);
     // chance procs, PPM procs, proc-chance changes and granted powers add nothing here
     expect([...added].sort()).toEqual([
       'Celerity_C',

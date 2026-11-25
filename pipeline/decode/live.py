@@ -18,7 +18,7 @@ from pipeline.coh import p7reader as P
 from pipeline.coh.messages import decode_messages
 from pipeline.label.attribs import all_attributes
 
-CACHE_VERSION = 7
+CACHE_VERSION = 9
 
 
 @dataclass
@@ -41,6 +41,18 @@ class LiveData:
     enums: dict                 # {"power.Type": {int: name}, "mod.Aspect": {...}, ...}
     health: dict = field(default_factory=dict)
     fingerprint: dict = field(default_factory=dict)
+    # villain defs, trimmed to what pets need: {"Name", "Class", "Power": [{"PowerCategory",
+    # "PowerSet", "Power"}], "DisplayName": its first level's first name's message key,
+    # "VillainGroup": its group (`group target>`: Supremacy reaches "MastermindPets")}
+    # (villaindef.bin)
+    villains: list = field(default_factory=list)
+    # villain classes, trimmed: {"Name", "ModTable", and the attribute tables a pet's stats read,
+    # each as the archetypes have them ([{attribute: [per level]}]): CLASS_TABLES}
+    # (villain_classes.bin)
+    villain_classes: list = field(default_factory=list)
+    # the client's EntCreate param struct (a mod's Params of type 3) in serialized order:
+    # [(field name, is a string earray)]
+    ent_create_layout: list = field(default_factory=list)
 
 
 _SHA_MEMO: dict[tuple, str] = {}
@@ -149,6 +161,10 @@ def decode_all(verbose=True) -> LiveData:
                         P.pick_table("AssignableBoost", {"Power", "AssignableBoost"}),
                         wrapped=True, health=health)
     origins = _origins(health)
+    if verbose:
+        print("decoding villain defs and classes ...", flush=True)
+    villains, villain_classes = _villains(health)
+    ent_create_layout = _ent_create_layout()
     messages = decode_messages(P.load_member(config.BIN_PIGG, "bin/clientmessages-en.bin"))
     health["bin/clientmessages-en.bin"] = {"records": len(messages), "clean": len(messages),
                                            "partial": 0}
@@ -159,7 +175,134 @@ def decode_all(verbose=True) -> LiveData:
                     boostsets=boostsets, origins=origins, attrib_names=attrib_names,
                     dim_returns=dim_returns, schedules=schedules, boost_effect=boost_effect,
                     exemplar=exemplar, messages=messages, attribs=attribs, enums=enums,
-                    health=health)
+                    health=health, villains=villains, villain_classes=villain_classes,
+                    ent_create_layout=ent_create_layout)
+
+
+def _ent_create_layout() -> list:
+    """The client's EntCreate param struct, as its Params stash table lays it out.
+
+    Clients differ: Homecoming's has a CostumeEffect word that Thunderspy's lacks.
+
+    @return [(field name, is a string earray)] in serialized order.
+    @raise RuntimeError When the client has no such table.
+    """
+    x = P.exe()
+    seen = set()
+    for va in P.field_entries(x, "PriorityList"):
+        try:
+            start = x.find_table_start(va)
+        except Exception:  # noqa: BLE001 -- not a parse entry
+            continue
+        if start in seen:
+            continue
+        seen.add(start)
+        cols = x.extract(start)
+        names = {c.name for c in cols}
+        if {"EntityDef", "Class", "Power"} <= names and "Attrib" not in names:
+            return ent_create_layout_of(cols)
+    raise RuntimeError("the client has no EntCreate param table")
+
+
+def ent_create_layout_of(cols) -> list:
+    """The serialized fields of a param parse table, as P7Reader.read_table reads a struct.
+
+    Structural entries, aliases (TOK_REDUNDANTNAME) and columns kept out of bins (TOK_NOBIN) take
+    no word.
+
+    @param cols The table (list[Column]).
+    @return [(field name, is an earray)] in serialized order.
+    """
+    return [(c.name, bool(c.type & P.PB.TOK_EARRAY)) for c in cols
+            if P.PB.tok_type(c.type) not in P._SKIP and not c.type & (P.PB.TOK_REDUNDANTNAME | P.TOK_NOBIN)]
+
+
+def _villain_table():
+    """The client's VillainDef parse table, nameless columns included.
+
+    It serializes two nameless ints after ScriptDef, which the usual extraction (that stops at the
+    first nameless entry) would leave out, leaving every record 8 bytes short.
+
+    @return The table (list[Column]).
+    @raise RuntimeError When the client has no such table.
+    """
+    x = P.exe()
+    seen = set()
+    for va in P.field_entries(x, "SpawnLimitMission"):
+        try:
+            start = x.find_table_start(va)
+        except Exception:  # noqa: BLE001 -- not a parse entry
+            continue
+        if start in seen:
+            continue
+        seen.add(start)
+        cols = x.extract(start, anonymous=True)
+        if {"Name", "Class", "Power", "Level", "GroupDescription"} <= {c.name for c in cols}:
+            # the table opens with Name (ParseVillainDef); the scan back can run into a
+            # StaticDefine just before it (an older Homecoming client's Inverse, Angel, ...)
+            return cols[next(i for i, c in enumerate(cols) if c.name == "Name"):]
+    raise RuntimeError("the client has no VillainDef parse table")
+
+
+# a villain class's attribute tables a pet's stats read (Exporter.build_henchmen), as classes.bin's
+# archetypes have them
+CLASS_TABLES = ("AttribBase", "AttribMin", "AttribMaxTable", "AttribMaxMaxTable", "StrengthMaxTable",
+                "ResistanceMaxTable")
+
+
+def _villains(health) -> tuple[list, list]:
+    """Villain defs and villain classes, trimmed to what pseudo-pets need (export.Exporter.build_pets).
+
+    The client's power info totals the damage of a pet whose villain def it finds, with that def's
+    class (villain_classes.bin), so both are decoded whole and checked by the health gate. A def's
+    VillainGroup is an index into villaingroups.bin (villainGroupGetName), kept by name; a client
+    without that bin leaves every group empty (only Supremacy's reach to henchmen reads it), so it
+    is not part of the health gate.
+
+    @param health Decode health, filled in for both bins.
+    @return (villain defs, villain classes).
+    """
+    defs = _earray("bin/villaindef.bin", _villain_table(), health=health)
+    try:
+        groups = [g.get("Name") or "" for g in _earray(
+            "bin/villaingroups.bin", P.pick_table("DisplaySingluar", {"Name", "DisplayName", "DisplaySingluar"}))]
+    except (StopIteration, ValueError) as e:  # no such bin, or one the pigg can't give whole
+        print(f"warning: villain groups not read ({type(e).__name__}); pets get no group", flush=True)
+        groups = []
+
+    def group(v: dict) -> str:
+        i = v.get("VillainGroup")
+        return groups[i] if isinstance(i, int) and 0 <= i < len(groups) else ""
+
+    villains = [{"Name": v.get("Name") or "", "Class": v.get("Class") or "",
+                 "Power": [{k: r.get(k) or "" for k in ("PowerCategory", "PowerSet", "Power")}
+                           for r in v.get("Power") or []],
+                 "DisplayName": _first_display_name(v), "VillainGroup": group(v),
+                 # a pet made from this def gets a copy of its creator's strength mods
+                 # (character_CreatePet, character_pet.c)
+                 "CopyCreatorMods": 1 if v.get("CopyCreatorMods") else 0}
+                for v in defs]
+    classes = _earray("bin/villain_classes.bin",
+                      P.pick_table("PrimaryCategory", {"Name", "PrimaryCategory", "ModTable"}),
+                      health=health)
+    villain_classes = [{"Name": c.get("Name") or "", "ModTable": c.get("ModTable") or [],
+                        **{k: [_first_row(c.get(k))] if _first_row(c.get(k)) else [] for k in CLASS_TABLES}}
+                       for c in classes]
+    return villains, villain_classes
+
+
+
+def _first_display_name(vdef: dict) -> str:
+    """@return The message key of a villain def's first level's first display name (the name the
+    client's power info gives the pet: levels[0]->displayNames[0]), or ""."""
+    levels = vdef.get("Level") or []
+    names = (levels[0].get("DisplayNames") or []) if levels and isinstance(levels[0], dict) else []
+    return names[0] if names and isinstance(names[0], str) else ""
+
+
+def _first_row(rows) -> dict:
+    """@return The first row of a class's attribute table (one per class: {attribute: [per level]}), or {}."""
+    return rows[0] if rows and isinstance(rows[0], dict) else {}
 
 
 def _origins(health) -> list:

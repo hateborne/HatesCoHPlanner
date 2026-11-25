@@ -25,6 +25,8 @@
   --title-top: #ffff00;
   --title-bottom: #ffa500;
   --menu-border: #4f94ff;
+  --button-top: #1f6dff;
+  --button-bottom: #0a3fb5;
   --desc: #48ff48;
   font-family: 'Montreal', Verdana, sans-serif;
   background: #000;
@@ -109,6 +111,24 @@ button {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  /* that padding reaches past the heading's box, over the line under it: clicks there go to the
+     line (the totals' first row under a section heading), and those on the heading to its box */
+  pointer-events: none;
+}
+
+/* the pet pane's switches that do nothing: drawn like the rest, greyed out under the pointer */
+.inert-switch .inert-gray,
+.inert-switch:hover .inert-normal {
+  display: none;
+}
+.inert-switch:hover .inert-gray {
+  display: inline;
+}
+
+/* the totals' pet rows: the name glows under the pointer (a click opens the pet's pane) */
+.pet-row:hover .pet-name {
+  color: #ffffff;
+  text-shadow: 0 0 8px #8fd6ff, 0 0 4px #8fd6ff, 0 0 2px #ffffff;
 }
 
 .bar-text {
@@ -196,14 +216,15 @@ button {
   position: absolute;
   height: 40px;
   border-radius: 20px;
-  border: 2px solid #4f94ff;
-  background: linear-gradient(#1f6dff, #0a3fb5);
+  /* the skin's colours (Stage sets them; Hero's blue outside the stage) */
+  border: 2px solid var(--menu-border);
+  background: linear-gradient(var(--button-top), var(--button-bottom));
   color: #fff;
   font-family: 'Montreal', Verdana, sans-serif;
   font-size: 17px;
   padding: 0 14px;
   cursor: pointer;
-  box-shadow: 0 0 6px #1f6dff;
+  box-shadow: 0 0 6px var(--button-top);
 }
 .info-button:disabled,
 .info-button[aria-disabled='true'] {
@@ -299,6 +320,24 @@ button {
 }
 
 /* fadingText (uiFx.c): alpha sin(pi t) over the 1s life while the scale grows 0.01 per tick */
+/* the picker's Max Slot/Build Level label: glows twice in half a second, a double-click's rhythm */
+@keyframes capglow {
+  0%,
+  50%,
+  100% {
+    color: inherit;
+    text-shadow: none;
+  }
+  25%,
+  75% {
+    color: #ffffff;
+    text-shadow: 0 0 4px #ffffff, 0 0 10px #7fd3ff, 0 0 18px #4f94ff;
+  }
+}
+.cap-glow {
+  animation: capglow 0.5s ease-in-out;
+}
+
 @keyframes fadingtext {
   0% {
     opacity: 0;
@@ -540,12 +579,38 @@ button {
 .server-continue {
   box-shadow: none;
   filter: brightness(0.8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   white-space: nowrap;
   overflow: hidden;
+}
+/* the build's name gives way (with an ellipsis) so the server after it is never cut off */
+.server-continue-build {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+}
+.server-continue-server {
+  flex: none;
+  margin-left: 0.3em;
 }
 .server-continue.on {
   filter: none;
   border-color: #cfe8ff;
   box-shadow: 0 0 14px rgba(79, 148, 255, 0.9);
+}
+
+/* the picker's drawn switches (SwitchBox): the see-through checkbox's keyboard focus shows on the switch */
+/* an on/off switch that works (OnSwitch in the overview, SwitchBox, the pet pane's) lights up a
+   little under the pointer */
+.switch-box:hover,
+.switch-hover:hover {
+  filter: brightness(1.35);
+}
+
+.switch-box:has(> input:focus-visible) {
+  outline: 2px solid var(--menu-border);
+  outline-offset: 2px;
 }

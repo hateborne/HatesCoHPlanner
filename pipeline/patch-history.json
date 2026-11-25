@@ -1,0 +1,3970 @@
+{
+  "about": "Patch timeline of City of Heroes from the Issue 24 beta to Homecoming Issue 28, catalogued from homecoming.wiki patch notes (summarised, not copied). 'planner' lists changes to data a build planner reads; 'markers' lists facts that tell a client of that patch apart from the one before. See docs/patch-history.md.",
+  "retrieved": "2026-11-18",
+  "patches": [
+    {
+      "date": "2012-08-08",
+      "issue": 24,
+      "page": null,
+      "server": "Retail beta",
+      "label": "12.08.08 Build 2400.20120806XXXX.X (Initial Beta Release)",
+      "kind": "beta",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Patch_Notes/2012-08-08_Beta",
+      "sections": [
+        "Combined",
+        "New Powers",
+        "User Interface",
+        "Powers",
+        "Enhancements",
+        "Contacts",
+        "Enemies"
+      ],
+      "planner": [
+        "New Blaster secondary set Martial Combat (melee/ranged, mixes Martial Arts, Ninjitsu, Time Manipulation).",
+        "New Dominator secondary set Martial Assault (melee/ranged, Martial Arts plus Ninjitsu shuriken attacks).",
+        "Power pool, epic pool and patron pool powers become customizable; Minimal FX variants added for Shark Skin, Scorpion Shield, Oppressive Gloom, Dark Embrace.",
+        "All non-travel pools gain a 5th power, trainable at level 14 with any two other pool powers owned.",
+        "Presence: Challenge replaced by Pacify (single-target Placate, no Taunt enhancements). Intimidate cost 10 end, mag 3 fear plus 30% chance of extra mag 1. Invoke Panic cost 18 end, mag 3, acc 0.9x.",
+        "Presence gets 5th power Unrelenting: 30s boost to damage, attack speed and recovery, unenhanceable heal over time.",
+        "Dominators: Intimidate and Invoke Panic bonus fear raised from mag 2 to mag 3.",
+        "Fighting pool gets 5th power Cross Punch; Boxing, Kick, Cross Punch and Brawl gain synergy bonuses depending on how many Fighting attacks are owned.",
+        "Medicine: Stimulant replaced by Injection (usable on allies and foes, foe debuff of speed, to-hit, damage; range 40ft; no Interrupt Time enhancements).",
+        "Medicine gets 5th power Field Medic; owning it removes Aid Other interrupt and adds an endurance gain effect to Aid Self.",
+        "Concealment gets 5th power Misdirection (PBAoE placate, up to 10 targets, resistance debuff).",
+        "Leadership gets 5th power Victory Rush (recovery and end-reduction team buff after a foe is defeated; recharge not enhanceable).",
+        "Blaster secondaries each get a 'sustain' power pickable by level 20; renamed: Touch of Fear -> Touch of the Beyond (Darkness Manipulation, 80ft), Blazing Aura -> Cauterizing Aura, Chilling Embrace -> Frigid Protection, Cloaking Device -> Field Operative, Lightning Clap -> Force of Thunder, Conserve Power -> Energize.",
+        "Sustain click powers cost very little endurance; sustain toggles cost none.",
+        "Ranged blast tier 9 nukes (Blackstar, Thunderous Blast, Nova, Inferno, Psychic Wail, Atomic Blast, Dreadful Wail, Blizzard): recharge cut to 145-170s, damage scale ~4, no endurance crash, cost ~27.73 end.",
+        "Overcharge recharge 180s -> 125s; Geyser 205s -> 125s; Hail of Bullets 120s -> 105s. Full Auto and Rain of Arrows left alone.",
+        "All Snipe powers become instant and uninterruptible when user has at least 22% bonus To Hit.",
+        "Strong single-target 'tier 3' blasts have range raised from 40/50ft to 80ft.",
+        "Touch of Fear (Blaster, Brute, Scrapper, Stalker, Tanker Dark/Darkness) gets 30% chance of 7s mag 1 PvE fear; Scare PvE fear 7s -> 10s, PvP 4s -> 2s.",
+        "Power Boost, Build Up and similar effects now also strengthen Absorb; Cardiac and Resilient Alpha swap Intangible Duration for Absorb strength; Clarion Destiny +Special boosts Absorb.",
+        "Defender and Corruptor pseudo-pet blast damage (Burn, Ice Storm, Blizzard, Rain of Fire, Rain of Arrows) re-based to own AT damage mods; Corruptor nuke scourge raised to 50% for most sets.",
+        "Dual Pistols: Pistols applies ammo-type DoT/slow/debuff; Empty Clips, Bullet Rain, Executioner's Shot cast times cut to 1.67s.",
+        "Spines: Barb Swipe cast 0.83s, recharge 3s, end 4.368, damage scale 0.84; Lunge recharge 6s, end 6.864, scale 1.32.",
+        "Origin ranged powers (Apprentice Charm, Taser Dart, Tranq Dart, Throwing Knives, Mutagen) get extra accuracy and damage until level 15.",
+        "Four new Lore sets: Banished Pantheon, The Tsoo, Knives of Vengeance, Talons of Vengeance; all Lore pets lose endurance cost; many existing Lore pet powers rebalanced.",
+        "Alpha/Destiny and incarnate fixes: Doublehit no longer over-counts AoE area; Peacebringer Light Form recovery bonus now benefits from enhancements.",
+        "Rise of the Phoenix (Fire/Flame/Heat Mastery epics): untouchable phase no longer has a delay.",
+        "Four new rare IO sets, level 20-50: Annihilation (Targeted AoE, resist debuff proc), Unbreakable Guard (Resist Damage, +7.5% max HP), Reactive Defenses (Defense, resist scaling with lost HP), Preventive Medicine (Healing, absorb proc).",
+        "Invention procs converted from flat percent chance to Procs Per Minute for many sets; PPM chance capped at 90% maximum; PvP damage procs now deal more damage instead of higher chance.",
+        "PPM values set per enhancement, e.g. 3.5 for most damage procs, 4.5 for former 33% procs (Hecatomb, Apocalypse, Armageddon), 1 for Decimation Build Up and Gaussian's.",
+        "Store-bought versions of many procs raised to match crafted PPM (e.g. 3 -> 3.5); Ragnarok store version 3.5 PPM, Armageddon crafted 5 PPM.",
+        "Set bonuses reworked: XP debt reduction bonuses removed; single mez resistances replaced by paired damage resist plus mez resist bonuses (e.g. Fire/Cold/Mez); all damage resistance bonuses increased.",
+        "New set bonus type introduced: Endurance Discount.",
+        "Dozens of IO sets get individual bonus changes (Bonesnap, Touch of Death, Crushing Impact, Salvo, Tempest, Detonation, Positron's Blast, Ragnarok, MultiStrike, Armageddon, Executioner's Contract, etc.).",
+        "Unique bonuses raised: Shield Wall damage resist 3% -> 5%, Impervium Armor Psionic 3% -> 6%, Aegis Psionic 3% -> 5%.",
+        "Going Rogue special IOs (Will of the Seers, Clockwork Efficiency, Might of the Empire, Resistance Tactics, Syndicate Techniques) proc becomes 2 PPM."
+      ],
+      "markers": [
+        "Blaster secondary set Martial Combat exists",
+        "Dominator secondary set Martial Assault exists",
+        "Presence pool has Pacify (no Challenge) and 5 powers incl. Unrelenting",
+        "Fighting pool has 5 powers incl. Cross Punch",
+        "Medicine pool has Injection (no Stimulant) and Field Medic as 5th power",
+        "Concealment pool has Misdirection; Leadership pool has Victory Rush",
+        "Blaster powers named Field Operative, Cauterizing Aura, Frigid Protection, Force of Thunder, Energize, Touch of the Beyond exist",
+        "IO sets Annihilation, Unbreakable Guard, Reactive Defenses, Preventive Medicine exist",
+        "Lore sets Banished Pantheon, The Tsoo, Knives of Vengeance, Talons of Vengeance exist",
+        "Enhancement procs carry Procs Per Minute values rather than flat percent chances",
+        "Set bonus Endurance Discount type exists"
+      ],
+      "note": "The wiki gives only a partial build id, 2400.20120806XXXX.X (XXXX as written there); notes are cumulative over retail Issue 23. VIP open beta opened 2012-08-08."
+    },
+    {
+      "date": "2012-08-14",
+      "issue": 24,
+      "page": null,
+      "server": "Retail beta",
+      "label": "12.08.14 Beta Build 2400.201208122118.08",
+      "kind": "beta",
+      "build": "2400.201208122118.08",
+      "source": "https://homecoming.wiki/wiki/Patch_Notes/2012-08-14_Beta",
+      "sections": [
+        "Combined",
+        "Powers",
+        "Tasks"
+      ],
+      "planner": [
+        "Concealment/Misdirection duration fixed at a constant 15 seconds, no level scaling.",
+        "Blaster sustain toggles (Cauterizing Aura, Frigid Protection, Reaction Time, Field Operative) all recharge in 10 seconds and stay toggled when mezzed, with offence suppressed.",
+        "Martial Combat Defiance values corrected (wrong Area Factor lookups).",
+        "Martial Assault: Shuriken Throw, Caltrops, Explosive Shuriken endurance cost lowered; Ki Push no longer autohit.",
+        "Preventive Medicine proc: 10% chance at 31-75% health, 100% below 31%, internal cooldown 120s -> 90s.",
+        "Scourging Blast recharge proc gains a small AoE heal.",
+        "Improved Movement Bonus global set bonuses +50%; Running, Flying and Leaping set bonuses swapped with global Improved Movement Bonus.",
+        "Mez resistance part of many set bonuses reduced (about 3%/5% pairs lowered to 1.5%/2.5% or 2.25%/3.75%), across roughly 35 sets incl. Crushing Impact, Salvo, Annihilation, Unbreakable Guard, Celerity.",
+        "Reactive Armor 2 and 3 piece bonuses corrected; Fury of the Gladiator 2 slot PvE bonus changed to 3.75% Fire/Cold, 6.25% Mez.",
+        "Disorient-bonus procs (Executioner's Contract, Pounding Slugfest, Debilitative Action, Razzle Dazzle, Unspeakable Terror, Triumphant Insult) now trigger mez suppression in PvP."
+      ],
+      "markers": [
+        "Misdirection has a fixed 15s duration",
+        "Blaster sustain toggles recharge 10s",
+        "Preventive Medicine proc has internal cooldown 90s",
+        "Crushing Impact 2 slot bonus is 1.5% Lethal/Smash and 2.5% Mez resist",
+        "Improved Movement Bonus set bonus values 50% higher than first beta"
+      ]
+    },
+    {
+      "date": "2012-08-23",
+      "issue": 24,
+      "page": null,
+      "server": "Retail beta",
+      "label": "12.08.23 Beta Build 2400.201208211101.1",
+      "kind": "beta",
+      "build": "2400.201208211101.1",
+      "source": "https://homecoming.wiki/wiki/Patch_Notes/2012-08-23_Beta",
+      "sections": [
+        "Combined",
+        "Powers",
+        "Zones"
+      ],
+      "planner": [
+        "New Sorcery Power Pool: five arcane powers with Mystic Flight travel and Translocation; Arcane Bolt, Enflame (level 14) and Rune of Protection (level 20) named.",
+        "Sorcery/Arcane Bolt damage, recharge and endurance cost raised slightly.",
+        "Epic AT nukes standardised: Dawn Strike, Quasar, Widow Psychic Wail recharge 360s -> 145s, scale 4 damage, ~27.7 end, no crash.",
+        "Fighting/Cross Punch debuffs no longer scale with level difference.",
+        "No endurance discount enhancements accepted by Cauterizing Aura, Field Operative, Frigid Protection, Reaction Time (no endurance cost).",
+        "Martial Combat/Burst of Speed cast 2.57s -> 1s, recharge after use 2s -> 1s; consecutive-use counter persists through death.",
+        "Leadership/Victory Rush now benefits from endurance modification enhancements and sets; Pacify no longer listed as accepting Taunt sets.",
+        "Medicine/Injection now accepts Accuracy and Slow enhancements plus To Hit Debuff, Accurate To Hit Debuff and Slow sets.",
+        "Second resistance pass on IO set bonuses: many sets get 2-6 slot resist bonuses raised or lowered; Mako's Bite 2 slot changed to Toxic/Psionic/Mez.",
+        "Preventive Medicine, Reactive Defenses and others get adjusted health and endurance discount bonuses; Exploit Weakness, Calibrated Accuracy, Executioner's Contract defense bonuses raised.",
+        "Knives of Vengeance Lore power Rallying Cry now buffs all friends in its area, not only the caster.",
+        "Enhancement Sets section repeats the second beta's Improved Movement Bonus, Preventive Medicine, Scourging Blast and 2-3 slot mez resist reductions.",
+        "Spider's Bite global Toxic proc fixed; Scourging Blast description now mentions +Health chance."
+      ],
+      "markers": [
+        "Sorcery power pool exists (Mystic Flight, Translocation, Arcane Bolt, Enflame, Rune of Protection)",
+        "Dawn Strike, Quasar and Widow Psychic Wail recharge 145s",
+        "Martial Combat Burst of Speed cast time 1s",
+        "Blaster sustain powers have no endurance cost and reject endurance discount IOs",
+        "Injection accepts Accuracy and Slow enhancements"
+      ],
+      "note": "Build id as written on the page; per the Issue 24 overview, City of Heroes Resurgence (Jan 2013) used the third beta as its base."
+    },
+    {
+      "date": "2013-01-22",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Server-side Issue 25 updates begin",
+      "kind": "server-side",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "wiki gives Issue 25 as one consolidated list, so individual 2013 patch dates are unknown; only the first server-side patch date is stated"
+    },
+    {
+      "date": "2013-05-21",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Issue 25 client launch (consolidated notes to 2014-01-19)",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25",
+      "sections": [
+        "Incarnate System",
+        "Supergroups",
+        "Zones",
+        "Veteran Leveling",
+        "Tasks",
+        "Costumes",
+        "Powers",
+        "Enhancements",
+        "Pets",
+        "Emotes",
+        "Trading",
+        "Rewards",
+        "Removed Things",
+        "Slash Commands",
+        "Interface",
+        "Critters",
+        "Badges",
+        "Mission Architect",
+        "PvP",
+        "Quality of Life",
+        "Memorials",
+        "Miscellaneous",
+        "SCoRE Server Only"
+      ],
+      "planner": [
+        "New archetype: Sentinel (ranged damage with moderate protection and control protection).",
+        "Sentinel inherent Scrutiny: target takes extra 10% damage and is easier to hit; opportunities/vulnerabilities up to 30% extra damage; meter-based.",
+        "Sentinel vulnerabilities/opportunities last 15s (was 8s); attack resistance debuff 10s (was 5s); opportunity damage doubled.",
+        "Sentinel defensive opportunities heal once per attack, based on cast time.",
+        "New power sets listed in highlights: Atomic Manipulation, Ninja Training, Radiation Armor, Radiation Melee, Radioactive Assault, Tactical Arrow, Temporal Manipulation.",
+        "Power set proliferation across archetypes (details not listed in the consolidated notes).",
+        "New Judgement power Mighty Judgement: PBAoE smashing; Core tree more damage, Radial tree high-magnitude knockup.",
+        "Incarnate story arcs and the Apex and Tin Mage task forces now always reward Empyrean Merits; all enemies drop Incarnate XP and Threads.",
+        "Veteran levels: level 50 earns Veteran Levels per 5 million XP, to 99, giving Empyrean Merits, respecs and Incarnate Threads.",
+        "Task forces, strike forces and trials (non-Incarnate) can start at any team size, including solo.",
+        "Incarnate Lore and Destiny level shifts work in the Apex and Tin Mage task forces, which can start without every member having the Alpha slot.",
+        "Dr. Quaterfield Task Force exemplars to 45 instead of 44, keeping Incarnate powers.",
+        "Enhancement Catalyst turns any Invention Set IO of any level into its Attuned version; Attuned IOs mix with crafted for bonuses.",
+        "Superior Attuned IOs have higher set bonuses and do not keep bonuses when mixed with non-Superior set IOs.",
+        "Attuned IOs (ATOs and Winter sets included) become tradable on the Auction House; no longer account bound.",
+        "New Knockback IO set: Sudden Acceleration.",
+        "Intangibility enhancements retired; remaining powers that took them no longer accept them.",
+        "Boosters, Catalysts, Converters and Unslotters tradable; boosted or combined enhancements can be traded or emailed keeping boosts.",
+        "Proc rework: Absolute Amazement, Achilles' Heel, Annihilation, Basilisk's Gaze, Bruising (Tankers), Dark Watcher's Despair, Dominion of Arachnos, Fury of the Gladiator, Induced Coma, Pacing of the Turtle, Winter's Bite no longer use GrantPower hacks.",
+        "Those procs now use linked chance mods and caster stacking: they stack, extend duration, and obey combat mods (level difference).",
+        "Proc 8% (attuned) and 12% (superior) resistance debuffs share a stack key; the larger overwrites the smaller.",
+        "Dynamic-damage procs (Offensive Adaptation, Plant Manipulation Toxins, Hybrid Double Hit) evaluated separately in auras and pseudo pets.",
+        "Bio Armor Defensive Adaptation heal procs: one heal per attack, cast-time based, no level-dependent loss.",
+        "Shield Wall proc no longer affected by damage buffs.",
+        "Tanker Ice Melee fixes: Frost DoT accelerated, Frozen Fists two damage ticks, Freezing Touch damage increased.",
+        "Blaster Ninja Training Kuji-In Toh recharge 200s, lasts 210s.",
+        "Blaster Temporal Manipulation Time Wall accepts Immobilize duration enhancements and set IOs.",
+        "Dual Pistols costume-slot fix lets Ninja Training work as a Blaster secondary.",
+        "Controller Force Fields Repulsion Bomb does containment damage.",
+        "Day job powers normalised (10 days pre-badge, 7 days post-badge/accolade, max 30 charges); Jet Pack max duration 2 hours.",
+        "Spider's Bite Toxic chance no longer affects caster or friendly targets.",
+        "Tanker Super Reflexes Evasion taunt duration corrected.",
+        "Set-acceptance fixes: Blaster Darkness Manipulation Touch of the Beyond takes ToHit Debuff sets; Blaster Devices Web Grenade takes Speed Debuff sets; Blaster Electricity Manipulation Force of Thunder takes Healing sets; Mastermind Cold Domination takes IO sets; Sentinel Sonic Attack takes Universal sets.",
+        "Mez-protection click powers (Power Surge, Overload, Hybernate, Icy Bastion, Unstoppable, Moment of Glory, Active Defense, Kuji-In Rin, Kuji-In Retsu, Practiced Brawler, Elude, Rune of Protection) usable while mezzed.",
+        "Ninja Training Immobilizing Dart, Plant Manipulation Entangle, Temporal Manipulation Time Wall usable while mezzed; Wild Fortress, Temporal Healing, Sentinel Willpower Up To The Challenge no longer drop when mezzed.",
+        "Martial Combat: Throw Sand recharge 90s, magnitude 3.",
+        "Atomic Manipulation fixes: Positron Cell as damage over time; Beta Decay accepts Accurate ToHit Debuff IOs; Radioactive Cloud accepts Accuracy.",
+        "Fire Manipulation: Burn does damage in PvP and shows its up-front AoE in power info; Lightning Rod usable while flying. Defiance duration formulas fixed.",
+        "Sentinel Willpower Up To The Challenge no longer roots on activation; Rage crash no longer fails to expire if Rage is reactivated while crashing.",
+        "Brute Mercurial Blow no longer applies Bruising.",
+        "Sentinel Psy Blast: Will Domination accepts Sleep enhancements and generic IOs; Psionic Strike no longer accepts them.",
+        "Stalker Fiery Melee and Ice Melee affected by Assassin's Mark ATO proc."
+      ],
+      "markers": [
+        "Sentinel archetype exists (inherent initially named Scrutiny).",
+        "Power sets exist: Atomic Manipulation, Ninja Training, Radiation Armor, Radiation Melee, Radioactive Assault, Tactical Arrow, Temporal Manipulation.",
+        "Sentinel power sets exist (e.g. Psy Blast, Sonic Attack, Willpower; Beam Rifle proliferated later).",
+        "Judgement power Mighty Judgement exists (Core and Radial trees).",
+        "Remaining powers no longer accept Intangibility enhancements.",
+        "IO set Sudden Acceleration (Knockback) exists.",
+        "Superior Attuned set IOs have higher set bonuses than the regular versions.",
+        "Proc IOs listed use linked-chance stacking (no GrantPower proc powers).",
+        "Blaster Ninja Training Kuji-In Toh recharge 200s duration 210s.",
+        "Martial Combat Throw Sand recharge 90s, mag 3."
+      ],
+      "note": "wiki gives these as one consolidated list, so individual 2013 patch dates are unknown; client tests began 2013-03-21, launch 2013-05-21 with Tequila and Island Rum patchers; notes cover everything up to 2014-01-19. Its planner lines and markers hold by 2014-01-19 at the latest: a client from earlier in 2013 may lack some of them."
+    },
+    {
+      "date": "2014-02-21",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for February 21st, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_February_21st,_2014",
+      "sections": [
+        "Maps",
+        "Powers",
+        "Critters",
+        "Supergroup Base Editor"
+      ],
+      "planner": [
+        "Reveal power only clears fog of war for the user.",
+        "Burn, Foot Stomp, Tremor, Ice Patch, Atom Smasher (all sets) usable while flying near ground."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-03-31",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for March 31st, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_March_31st,_2014",
+      "sections": [
+        "Powers",
+        "Sentinel Archetype",
+        "Powexec_Location",
+        "Costume Pieces",
+        "Combat Monitor",
+        "Cel Shader"
+      ],
+      "planner": [
+        "Sentinel inherent renamed from Scrutiny to Opportunity.",
+        "Sentinel regular attacks lose the 5% non-stacking resist debuff.",
+        "Sentinel base damage scale raised from 0.90 to 0.95.",
+        "Atomic Manipulation Beta Decay now gives base 10% recharge.",
+        "Controller Traps Poison Trap and Web Grenade accept ATOs; Sentinel Psionic Blast accepts Universal Damage and ATOs.",
+        "Ball Lightning up-front damage tripled, DoT lowered; Short Circuit DoT delivered in 2s (Blaster, Defender, Corruptor, Sentinel).",
+        "Nature Affinity Wild Growth resistance buff no longer resistible; Rest and Reveal recharge 30s.",
+        "Tanker Broad Sword and Spines single target attacks no longer splash procs."
+      ],
+      "markers": [
+        "Sentinel inherent named Opportunity (not Scrutiny).",
+        "Sentinel damage scale 0.95.",
+        "Rest and Reveal recharge 30s."
+      ]
+    },
+    {
+      "date": "2014-04-28",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for April 28th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_April_28th,_2014",
+      "sections": [
+        "Sentinel",
+        "Contacts And Tasks",
+        "Costumes",
+        "Power Customization",
+        "Cel Shader"
+      ],
+      "planner": [
+        "Several Sentinel powers fixed to accept the correct enhancement sets.",
+        "Ice Armor Frigid Shield, Invulnerability Durability, Regeneration Instant Regeneration stack up to 5 Absorb buffs."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-05-01",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for May 1st, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_May_1st,_2014",
+      "sections": [
+        "Powers",
+        "Costumes - Auras",
+        "Costumes - Weapons",
+        "Costumes - Female",
+        "Costumes - Male",
+        "Other"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-06-13",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for June 13th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_June_13th,_2014",
+      "sections": [
+        "Rewards",
+        "City Zones",
+        "Costumes And Powers",
+        "Arena"
+      ],
+      "planner": [
+        "Respec granted with security level badges 10, 20, 30, 40, 50."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-06-20",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for June 20th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_June_20th,_2014",
+      "sections": [
+        "General"
+      ],
+      "planner": [
+        "Secondary Mutation recharges right after the Monkey period."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-07-01",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for July 1st, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_July_1st,_2014",
+      "sections": [
+        "Flood The Market",
+        "Stores",
+        "Tasks",
+        "Other",
+        "Known Issues"
+      ],
+      "planner": [
+        "P2W-bought powers no longer disabled when exemplaring."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-07-02",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for July 2nd, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_July_2nd,_2014",
+      "sections": [
+        "Flood The Market",
+        "Other"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-07-03",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for July 3rd, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_July_3rd,_2014",
+      "sections": [
+        "Flood The Market",
+        "Market Crash"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-07-14",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for July 14th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_July_14th,_2014",
+      "sections": [
+        "Fixes 'N' Stuff"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-07-28",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for July 28th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_July_28th,_2014",
+      "sections": [
+        "Crash Reporting"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-08-04",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for August 4th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_August_4th,_2014",
+      "sections": [
+        "Kheldians",
+        "Respec",
+        "Powers",
+        "Badges",
+        "Maps",
+        "Other"
+      ],
+      "planner": [
+        "Warshade and Peacebringer powers customizable; shape-shift attacks move from Inherent into the main primary and secondary sets for new builds; respecs move Nova/Dwarf attacks and travel powers.",
+        "Energy Light, Combat Flight, Shadow Step and Shadow Recall become customizable and move into the secondary Aura sets.",
+        "Kheldian T1 attack usable in Dwarf form (reduced range); T2 attack usable in Nova form (more damage, longer recharge).",
+        "Respec phase two places all enhancements for the level in any power at once.",
+        "Beam Rifle proliferated to Sentinels.",
+        "Dominator Martial Assault Masterful Throw no longer accepts ToHit debuff enhancements.",
+        "Blaster Temporal Manipulation Future Pain available at level 28.",
+        "Tactical Arrow EMP Arrow renamed ESD Arrow with longer recharge.",
+        "Atomic Manipulation Radioactive Cloud accuracy matched to other AoE control powers.",
+        "Absorb fix: certain HP heals no longer turn into Absorb."
+      ],
+      "markers": [
+        "Sentinels have Beam Rifle primary.",
+        "Tactical Arrow power ESD Arrow exists (EMP Arrow gone).",
+        "Blaster Temporal Manipulation Future Pain level 28.",
+        "Warshade/Peacebringer shape-shift attacks listed in primary/secondary sets."
+      ]
+    },
+    {
+      "date": "2014-08-13",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for August 13th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_August_13th,_2014",
+      "sections": [
+        "Powers",
+        "Enhancements",
+        "Super Packs"
+      ],
+      "planner": [
+        "PvP enhancements slottable at level 7 (flag was level 12).",
+        "Procs now stack across damage types correctly; PvP damage formulas for Corruptor and Blaster corrected.",
+        "Powers referencing others in later-lettered categories failed; fixed, so Burnout works for Stalkers, Scrappers, Sentinels, Tankers, Warshades.",
+        "Sentinel Opportunity works again after sidekicking up more than 3 levels, dying and resurrecting; Beam Rifle insta-snipe applies Disintegrate.",
+        "SKU requirements removed from player power sets."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-08-18",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for August 18th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_August_18th,_2014",
+      "sections": [
+        "Contacts",
+        "Other"
+      ],
+      "planner": [
+        "Beam Rifle quick Snipe has 55% chance of Disintegration spread; slow Snipe stays 100%.",
+        "Wind Control power set locked again."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-09-05",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for September 5th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_September_5th,_2014",
+      "sections": [
+        "Market",
+        "Enhancements",
+        "Contacts"
+      ],
+      "planner": [
+        "Attuned enhancements forced to level 1 on acquisition."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-09-12",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for September 12th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_September_12th,_2014",
+      "sections": [
+        "Powers"
+      ],
+      "planner": [
+        "Redirector powers no longer wrongly flagged as NearGround."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-09-19",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for September 19th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_September_19th,_2014",
+      "sections": [
+        "Yaaaar",
+        "City Zones",
+        "Market",
+        "Base Items"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-09-26",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for September 26th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_September_26th,_2014",
+      "sections": [
+        "General"
+      ],
+      "planner": [
+        "Account Bound restrictions removed from all attuned enhancements; freely tradable."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2014-10-03",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for October 3rd, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_October_3rd,_2014",
+      "sections": [
+        "General",
+        "Powers"
+      ],
+      "planner": [
+        "Enhancement Converters return, supporting Attuned enhancements (attuned converts to attuned).",
+        "Energy Flight, Mystic Flight, Group Energy Flight endurance cost matched to Fly/Group Fly.",
+        "Quantum Acceleration endurance cost matched to Afterburner; the two are mutually exclusive."
+      ],
+      "markers": [
+        "Energy Flight, Mystic Flight and Group Energy Flight cost same endurance as Fly/Group Fly; Quantum Acceleration costs same as Afterburner."
+      ]
+    },
+    {
+      "date": "2014-10-10",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for October 10th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_October_10th,_2014",
+      "sections": [
+        "Halloween",
+        "Other"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-10-17",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for October 17th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_October_17th,_2014",
+      "sections": [
+        "Tasks",
+        "City Zones"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-11-07",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for November 7th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_November_7th,_2014",
+      "sections": [
+        "Supergroup Base Editor",
+        "Filesystem Adjustments",
+        "Other"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-11-29",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for November 29th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_November_29th,_2014",
+      "sections": [
+        "Microtransactions Return"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-12-05",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for December 5th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_December_5th,_2014",
+      "sections": [
+        "WINTER EVENT"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2014-12-11",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes for December 11th, 2014",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2014#Patch_Notes_for_December_11th,_2014",
+      "sections": [],
+      "planner": [
+        "Invention License (coliinvn) checks removed for crafting; tables without coupon checkbox no longer apply invention coupons."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2015-01-02",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-01-02",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2015-01-16",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-01-16",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2015-01-23",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-01-23",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2015-01-30",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-01-30",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2015-03-10",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-03-10",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2015-04-27",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-04-27",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2015-05-22",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-05-22",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2015-11-14",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2015-11-14",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2015",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-01-21",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-01-21",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-01-29",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-01-29",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-01-31",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-01-31",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-02-19",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-02-19",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-04-29",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-04-29",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-07-22",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-07-22",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-07-29",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-07-29",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-08-19",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-08-19",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2016-12-23",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2016-12-23",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2016",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-03-10",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-03-10",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-03-24",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-03-24",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-03-31",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-03-31",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-04-07",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-04-07",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-04-14",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-04-14",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-04-28",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-04-28",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-09-29",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-09-29",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-10-06",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-10-06",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-10-13",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-10-13",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-11-03",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-11-03",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-11-24",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-11-24",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-12-01",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-12-01",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-12-08",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-12-08",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2017-12-22",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2017-12-22",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2017",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2018-04-27",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2018-04-27",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2018",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2018-05-04",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2018-05-04",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2018",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2018-05-11",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2018-05-11",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2018",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2018-05-25",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2018-05-25",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2018",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2018-06-15",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2018-06-15",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2018",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2018-12-07",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2018-12-07",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2018",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2018-12-14",
+      "issue": 25,
+      "page": null,
+      "server": "SCoRE",
+      "label": "Patch Notes/2018-12-14",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_25_-_Patch_Notes_for_2018",
+      "sections": [],
+      "planner": [],
+      "markers": [],
+      "note": "no notes on the wiki; date only"
+    },
+    {
+      "date": "2019-04-28",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "April 28th, 2019, Patch 1",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#April_28th,_2019,_Patch_1",
+      "sections": [],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-04-28",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "April 28th, 2019, Patch 2",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#April_28th,_2019,_Patch_2",
+      "sections": [],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-04-29",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "April 29th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#April_29th,_2019",
+      "sections": [],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-05-01",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "May 1st, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#May_1st,_2019",
+      "sections": [],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-05-05",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "May 5th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#May_5th,_2019",
+      "sections": [],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-05-07",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "May 7th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#May_7th,_2019",
+      "sections": [
+        "General",
+        "Tasks",
+        "Badges"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-05-09",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "May 9th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#May_9th,_2019",
+      "sections": [],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-05-16",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "May 16th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#May_16th,_2019",
+      "sections": [
+        "General",
+        "Custom XP Rates",
+        "Power",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "Beta Decay (Tanker, Scrapper, Brute, Blaster): first-target 10% recharge buff no longer stacks per foe; max +35% with 10 targets",
+        "Beta Decay (Blaster) needs a target to get the first-target recharge buff",
+        "Bio Armor > Evolving Armor: stacking buff overlap bug fixed",
+        "Frost Bite: damage scale fixed so it no longer heals targets",
+        "Paragon Police > Call for Backup now limited via a Meter attribute",
+        "XP booster powers (+25/50/100%) added at P2W vendor as removable powers; Experienced power replaces Super Pack XP boosters"
+      ],
+      "markers": [
+        "Frost Bite damage scale no longer heals",
+        "Call for Backup uses Meter attribute",
+        "Powers for XP boosters (+25%, +50%, +100%) exist"
+      ]
+    },
+    {
+      "date": "2019-05-30",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "May 30th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#May_30th,_2019",
+      "sections": [
+        "General",
+        "Base Editor",
+        "Graphics",
+        "Powers",
+        "Rewards"
+      ],
+      "planner": [
+        "Controller and Dominator primary Immobilize powers no longer make targets immune to KnockUp; KnockBack converted to KnockDown",
+        "Rain of Arrows: animation 4s -> 2s, base recharge +5s",
+        "Flash Freeze affects flying foes; Glacier usable while flying",
+        "Shield Defense no longer creatable with Claws, Dual Blades, Ninja Sword, Spines or Staff Fighting primaries (always broken)",
+        "Scrapper Shinobi-Iri accepts Jump enhancement sets; Sentinel Beam Rifle > Refractor Beam accepts Defense Debuff sets"
+      ],
+      "markers": [
+        "Rain of Arrows recharge 5s higher than before",
+        "Refractor Beam (Sentinel) allows Defense Debuff set slotting",
+        "Shinobi-Iri (Scrapper) allows Jump sets",
+        "Rain of Arrows cast time 2s"
+      ]
+    },
+    {
+      "date": "2019-06-05",
+      "issue": 26,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "June 5th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_1#June_5th,_2019",
+      "sections": [],
+      "planner": [
+        "Sudden Acceleration: crafted (non-attuned) version no longer keeps set bonuses below exemplar level like purples"
+      ],
+      "markers": [
+        "IO set Sudden Acceleration is not flagged as an exemplar-persistent (purple) set"
+      ]
+    },
+    {
+      "date": "2019-08-22",
+      "issue": 26,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "August 22nd, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_2#August_22nd,_2019",
+      "sections": [
+        "General",
+        "Social",
+        "Input",
+        "Physics",
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Page 2 main release: 64-bit client, roleplaying tag, game controller input. No power data changes listed; data changes on Beta were held back."
+    },
+    {
+      "date": "2019-08-23",
+      "issue": 26,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "August 23rd, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_2#August_23rd,_2019",
+      "sections": [
+        "Input",
+        "Mission Architect",
+        "Rewards"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-08-27",
+      "issue": 26,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "August 27th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_2#August_27th,_2019",
+      "sections": [
+        "General",
+        "Costumes",
+        "Base Editor",
+        "Peacebringer FX",
+        "Powers: Snipes",
+        "Powers: Dominator Assault Sets",
+        "Powers: Devices",
+        "Powers: Stealth",
+        "Powers: Misc Changes & Bug Fixes"
+      ],
+      "planner": [
+        "Snipes reworked: fast snipe depends on combat status (attacked or attacked within 8s), +ToHit raises quick-snipe damage up to a cap at +22%",
+        "Blaster/Defender/Corruptor snipes: 12s recharge, 14.352 end, quick 2.28 scale (cap 2.76), slow 4.5",
+        "Dominator snipes: 20s recharge, 18.512 end, quick 2.67 scale (cap 3.56), slow 4.5",
+        "Epic snipes: quick 1.75 scale (cap 2.3), slow 3.56; Scrapper snipes crit 10%",
+        "New PvP IO set Experienced Marksman (Snipe set) with proc making snipes fast",
+        "Dominator Earth, Energy, Icy Assault: Power Boost renamed Power Up (90s recharge, +34% damage, +75% str)",
+        "Earth Assault: Stone Spears, Tremor, Hurl Boulder, Heavy Mallet, Mud Pots retuned (cast, recharge, damage, radius)",
+        "Electricity Assault Thunder Strike: cast 2.5s, now knocks down, more damage",
+        "Energy Assault: Total Focus and Power Burst cast times cut; new Energy Focus mode mechanic boosts Whirling Hands and Power Burst",
+        "Icy Assault: Ice Bolt, Ice Sword, Ice Slash retuned; Chilling Embrace radius 15ft, -10% damage str, cold damage",
+        "Martial Assault: Thunder Kick, Trick Shot (chain, 5 targets), Spinning Kick, Dragon's Tail retuned; Envenomed Blades proc fix",
+        "Psionic Assault: Psionic Dart and Telekinetic Thrust cast times cut",
+        "Radioactive Assault: Contaminated Strike, X-Ray Beam, Devastating Blow retuned; Devastating Blow and Atom Smasher accept Dominator ATOs",
+        "Savage Assault: Vicious Slash, Call Hawk, Feral Charge (5 target cap) retuned",
+        "Thorny Assault: Aim replaced by Build Up; Thorny Darts, Skewer, Impale, Fling Thorns, Ripper, Thorn Barrage retuned",
+        "Devices: Web Grenade -> Toxic Web Grenade (toxic DoT, damage slottable); Taser, Time Bomb, Trip Mine retuned",
+        "Devices: Targeting Drone gives first out-of-combat attack Build Up (80%) plus 20% damage in combat",
+        "Self-stealth toggles recharge 2s; Pool Concealment Stealth no longer slows; Invisibility end cost 0.65 -> 0.2275, can attack (defense suppresses)",
+        "Illusion Control Superior Invisibility end cost 0.52 -> 0.182",
+        "Pool Leaping > Spring Attack does Containment damage for Controllers; Pool Sorcery > Enflame works for Sentinels",
+        "Sentinel Regeneration > Dismiss Pain max HP 6% -> 24%; Sentinel Ice Blast > Chilling Ray accepts Slow",
+        "Mu Mastery > Zap uses melee damage modifiers; Beam Rifle disintegration spread chances set (Penetrating Ray 55%, Lancer Shot 100%)",
+        "Night Widow and Fortunata Vengeance trigger on league members; Dominator Unkindness and Stalker Shred text now says they generate Blood Frenzy",
+        "Kheldian inherents now treat Sentinels like Blasters and Scrappers",
+        "Ice Control > Flash Freeze flagged as Targeted AoE, not Point Blank AoE"
+      ],
+      "markers": [
+        "IO set Experienced Marksman exists",
+        "Dominator Earth/Energy/Icy Assault has Power Up instead of Power Boost",
+        "Dominator Thorny Assault has Build Up instead of Aim",
+        "Devices has Toxic Web Grenade instead of Web Grenade",
+        "Pool Concealment > Invisibility end cost 0.2275",
+        "Blaster snipe recharge 12s"
+      ]
+    },
+    {
+      "date": "2019-09-10",
+      "issue": 26,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "September 10th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_2#September_10th,_2019",
+      "sections": [
+        "General",
+        "Tasks",
+        "Zones",
+        "Badges",
+        "Base Items",
+        "Powers"
+      ],
+      "planner": [
+        "Targeting Drone out-of-combat timer corrected to 8s; Concealment Stealth double-stealth and translucency fixed",
+        "Blaster Devices: Gun Drone now taunts, takes Taunt enhancements and taunt sets; Targeting Drone and Field Operative double buffs fixed",
+        "Stalker Mu Mastery Zapp multi-crit fixed; Mace Mastery Mace Beam double crit fixed; Assassin's Frenzy gives 3 Blood Frenzy stacks from hide",
+        "Dominator Radioactive Assault procs no longer trigger off special contaminated AoE",
+        "Illusion Control pets now use enhancements and stacking fixed; Blaster quick snipe +Range buff restored"
+      ],
+      "markers": []
+    },
+    {
+      "date": "2019-10-01",
+      "issue": 26,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "October 1st, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_3#October_1st,_2019",
+      "sections": [
+        "Tasks",
+        "Powers",
+        "Other Changes",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "New Origin power pool Force of Will: Weaken Resolve, Project Will, Mighty Leap, Takeoff, Wall of Force, Unleash Potential",
+        "Only one Origin pool (Sorcery or Force of Will) allowed per build",
+        "Wall of Force and Unleash Potential each require two other Force of Will powers"
+      ],
+      "markers": [
+        "Power pool Force of Will exists",
+        "Force of Will has 6 powers (Weaken Resolve, Project Will, Mighty Leap, Takeoff, Wall of Force, Unleash Potential)",
+        "Sorcery and Force of Will are mutually exclusive"
+      ],
+      "note": "Page 3 main release."
+    },
+    {
+      "date": "2019-10-23",
+      "issue": 26,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "October 23rd, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_3#October_23rd,_2019",
+      "sections": [
+        "Stability"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-10-29",
+      "issue": 26,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "October 29th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_3#October_29th,_2019",
+      "sections": [
+        "Powers",
+        "Stability & Performance",
+        "UI"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-11-01",
+      "issue": 26,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "November 1st, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_3#November_1st,_2019",
+      "sections": [
+        "User Interface",
+        "Misc",
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-11-19",
+      "issue": 26,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "November 19th, 2019 [ROLLED BACK]",
+      "kind": "rolled-back",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_3#November_19th,_2019_[ROLLED_BACK]",
+      "sections": [
+        "Bug Fixes",
+        "Homecoming Crash Handler"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Rolled back for stability issues; its contents returned in the November 29th patch."
+    },
+    {
+      "date": "2019-11-29",
+      "issue": 26,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "November 29th, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_3#November_29th,_2019",
+      "sections": [
+        "General",
+        "Bug Fixes",
+        "Homecoming Crash Handler"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2019-12-03",
+      "issue": 26,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "December 3rd, 2019",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_3#December_3rd,_2019",
+      "sections": [
+        "Advanced Crash Avoidance Technology Implementation"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-01-23",
+      "issue": 26,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "January 23rd, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_4#January_23rd,_2020",
+      "sections": [
+        "Homecoming Crash Handler",
+        "Tanker & Brute Changes",
+        "Pets & Henchmen Updates",
+        "Powers",
+        "PvP Powers Changes",
+        "Bases",
+        "Miscellaneous",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "Tanker ranged damage modifier 0.5 -> 0.8, melee 0.8 -> 0.95; Bruise removed in favour of a flat damage scale increase",
+        "Tanker buff modifiers raised to match Controller values; Tanker damage buff cap 400% -> 500%",
+        "Brute ranged and melee damage modifiers both 0.75; Brute damage buff cap 775% -> 700%",
+        "All Brute and Tanker epic pools now use ranged damage modifiers (no net damage change)",
+        "Tanker inherent: +50% radius on AoE attacks and +50% arc on cones; some powers exempt (noted in description)",
+        "Tanker melee AoE target caps raised: most cones to 10, most PBAoEs to 16",
+        "Tanker caps 10 -> 16: Whirling Axe, Cleave, Whirling Sword, Spin, Dark Consumption, Typhoon's Edge, One Thousand Cuts, Thunder Strike, Lightning Clap, Whirling Hands",
+        "Tanker caps 10 -> 16: Combustion, Breath of Fire, Fire Sword Circle, Frost, Frozen Aura, The Lotus Drops, Repulsing Torrent, Burst, Dragon's Tail, Mass Levitate, Atom Smasher",
+        "Tanker caps 10 -> 16: Rending Flurry, Spine Burst, Eye of the Storm, Fault, Tremor, Spinning Strike, Hand Clap, Foot Stomp, Whirling Smash, Whirling Mace",
+        "Tanker caps 5 -> 10: Pendulum, Slice, Head Splitter, Eviscerate, Shadow Maul, Sweeping Strike, Flashing Steel, Psi Blade Sweep, Proton Sweep, Shred",
+        "Tanker caps 5 -> 10: Ripper, Guarded Spin, Innocuous Strikes, Sweeping Cross, Arc of Destruction, Shatter; Katana Golden Dragonfly 16 -> 10",
+        "Arc buff ignored by Pendulum, Eviscerate, Claws Shockwave, Throw Spines, Titan Weapons Defensive Sweep/Titan Sweep/Arc of Destruction, Crowd Control, Judgement powers",
+        "Radius buff ignored by Lightning Clap, Lightning Rod, Savage Leap, Quills, Hand Clap, Foot Stomp, Whirling Smash, Judgement powers",
+        "Tanker Broad Sword Slice and Katana Flashing Steel arc 130 -> 90 degrees (135 with inherent)",
+        "Brute Fury: no bonus for hitting AVs; generation now uses cast time, team size bonus, 10s before accelerated decay",
+        "Tanker Gauntlet now a global proc: single-target powers with End Reduction slotted trigger AoE taunt, AoEs and auras taunt hit foes; 10ft, 5 targets; taunt scale 10% above Brute",
+        "Brute PunchVoke now a global proc triggered by damage powers or powers taking Accuracy enhancements",
+        "Brute and Tanker Ice Armor powers lose built-in taunt (covered by global proc)",
+        "Tanker acquisition levels: Battle Axe Whirling Axe 20, Swoop 28; Martial Arts Dragon Tail 20, Focus Chi 28, Crippling Axe Kick 35",
+        "Tanker acquisition levels: Stone Melee Tremor 28, Hurl Boulder 35; War Mace Whirling Mace 20, Clobber 28",
+        "Oppressive Gloom, Cloak of Fear and Burn (Brute/Tanker) accept Taunt enhancements; Burn accepts Taunt sets; Spine Burst honours Radius buffs, Quills ignores them",
+        "Pool Teleportation > Long Range Teleport grants a Second Chance popup power",
+        "Weaken Resolve -res debuff scale -1.5 -> -1.0 (Force of Will)",
+        "Golden Dragonfly max targets 10 -> 5 for Brute and Scrapper Katana and Stalker Ninja Blade",
+        "Mez duration/suppression rules enforced on many powers and IO sets (Debilitative Action, Devastation, Frozen Blast, Lockdown, Razzle Dazzle, etc.)",
+        "Knockback suppression enforced on many powers and sets (Avalanche, Kinetic Combat, Overwhelming Force, Stupefy, Ragnarok, Might of the Empire, Superior Avalanche)",
+        "Fixes: Electron Shackles no longer takes Endurance Mod; Umbra Beast takes Fear; Crippling Axe Kick takes Defense Debuff; Sentinel Athletic Regulation no longer takes travel sets",
+        "Fixes: Sentinel Power Armor takes Healing sets; Blazing Blast 13 DoT ticks; Weaken Resolve takes Accurate ToHit Debuff sets",
+        "Poison Weaken and Cold Domination -Special powers no longer boosted by +Special powers; Performance Shifter proc can grant Endurance on attacks",
+        "Dominator Savage Assault Call Hawk and Feral Charge no longer accept Dominator ATO sets",
+        "Drain Psyche -Regeneration no longer enhanceable (Blaster Psionic Manipulation, Dominator Psionic Assault)",
+        "Dominator Fire Control Fire Imps always summon 3 imps"
+      ],
+      "markers": [
+        "Tanker melee damage modifier 0.95, ranged 0.8",
+        "Tanker damage buff cap 500%; Brute cap 700%",
+        "Brute melee and ranged damage modifiers 0.75",
+        "Tanker Whirling Axe target cap 16",
+        "Gauntlet is a global proc",
+        "Brute PunchVoke is a global proc",
+        "Tanker Battle Axe Whirling Axe available at level 20",
+        "Slice and Flashing Steel arc 90 for Tankers",
+        "Weaken Resolve -res scale -1.0",
+        "Pool Teleportation Long Range Teleport grants Second Chance power"
+      ]
+    },
+    {
+      "date": "2020-01-28",
+      "issue": 26,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "January 28th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_4#January_28th,_2020",
+      "sections": [
+        "Powers",
+        "Bug Fixes",
+        "Powers Bug Fixes"
+      ],
+      "planner": [
+        "Battle Axe > Cleave max targets: Brute and Scrapper 10 -> 5, Tanker 16 -> 10",
+        "Tanker and Brute inherent taunt procs now show a combat message to caster",
+        "Procs erroneously raised to 100% last patch restored: Avalanche, Energy Manipulator, Kinetic Combat, Might of the Empire, Overwhelming Force, Ragnarok, Stupefy",
+        "Many powers (Explosive Arrow, Psionic Tornado, Head Splitter, Jacobs Ladder, Arctic Air, Hail of Bullets, pet and temp powers) restored from 100% knockback/control chance",
+        "Brute PunchVoke triggers on aura powers; stray Fury power removed from Brute slotting screen",
+        "Pool Grant Invisibility buff only suppresses in combat, returns after 10s",
+        "Dominator Energy Assault Bone Smasher Energy Focus debuff applies to target; Voltaic Sentinel pet uses enhancements",
+        "Pools Sorcery > Arcane Bolt no longer knocks back; Mastermind Painbringer no longer 1% knockdown; Dual Pistols ammo effects fixed"
+      ],
+      "markers": [
+        "Battle Axe Cleave max targets 5 for Brute and Scrapper, 10 for Tanker",
+        "Arcane Bolt has no knockback"
+      ]
+    },
+    {
+      "date": "2020-01-29",
+      "issue": 26,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "January 29th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_4#January_29th,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-02-18",
+      "issue": 26,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "February 18th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_4#February_18th,_2020",
+      "sections": [
+        "Powers",
+        "Bug Fixes",
+        "Powers Bug Fixes"
+      ],
+      "planner": [
+        "Player buffing procs (e.g. Chance for Build Up) no longer proc on pseudo-pets",
+        "Caltrops (Blaster Devices, Dominator Martial Assault), Thorntrops now take enhancements and procs",
+        "Interface incarnate damage over time proc chance corrected (was too low)",
+        "Defender/Corruptor Epic Power Mastery Power Build Up no longer boosted by other Power Build Ups",
+        "Stalker Ice Melee > Frost takes range enhancements; Brute Fury no longer gained passively from some auras",
+        "Tanker and Brute global taunt proc now triggers on aura powers"
+      ],
+      "markers": [
+        "Caltrops accepts enhancements and procs"
+      ]
+    },
+    {
+      "date": "2020-03-03",
+      "issue": 26,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "March 3rd, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_4#March_3rd,_2020",
+      "sections": [
+        "Bug Fixes",
+        "General"
+      ],
+      "planner": [
+        "Soulbound Allegiance Chance for Build Up proc works on pets again, not on player when summoning"
+      ],
+      "markers": []
+    },
+    {
+      "date": "2020-03-03",
+      "issue": 26,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "March 3rd, 2020 (Hotfix)",
+      "kind": "hotfix",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_4#March_3rd,_2020_(Hotfix)",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-03-17",
+      "issue": 26,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "March 17th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_4#March_17th,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-03-31",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "March 31st, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#March_31st,_2020",
+      "sections": [
+        "Safe Mode Discontinuation",
+        "Costume Editor Update",
+        "New Support Powerset: Electrical Affinity",
+        "New Origin Power Pool: Experimentation",
+        "New IO Sets",
+        "Powers",
+        "General",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "New support set Electrical Affinity for Defender, Corruptor, Controller, Mastermind (Static stacks, chain Circuit powers)",
+        "Electrical Affinity powers: Shock, Rejuvenating Circuit, Galvanic Sentinel (Discharge for Masterminds), Energizing Circuit, Faraday Cage, Empowering Circuit, Defibrillate, Insulating Circuit, Amp Up",
+        "New Origin pool Experimentation: Experimental Injection, Toxic Dart, Speed of Sound (grants Jaunt), Corrosive Vial, Adrenal Booster; shares one-Origin-pool limit",
+        "New IO sets: Synapse's Shock (Endurance Mod, rare, 21-50), Power Transfer (Endurance Mod, rare, 21-50, heal proc 3 PPM)",
+        "New IO sets: Preemptive Optimization (Endurance Mod, uncommon, 21-50), Bombardment (Targeted AoE, rare, 30-50, fire proc 3.5 PPM), Artillery (Targeted AoE, uncommon, 30-50)",
+        "Set bonuses defined: Synapse's Shock 7.5% movement speed at 2, 6.25% recharge at 5; Power Transfer 6% regen at 2; Bombardment 5% range at 2; Artillery 8% regen at 2",
+        "Fade, Elixir of Life (Poison), Genomic Evolution now ignore outside buffs",
+        "Scrapper and Stalker epics: Web Cocoon toxic DoT, Spirit Shark Jaws/Electric Shackles/Soul Storm can crit, Shuriken recharge 3 -> 6s, Explosive Shuriken damage up",
+        "Leadership Maneuvers, Assault, Tactics activation 3.63s -> 1.5s",
+        "Call of the Sandman heal proc 5% -> 15%, unique, single proc per power; Gaussian's Chance for Build Up works on pet to-hit powers again",
+        "Dark Miasma Twilight Grasp and Tar Patch use own AT modifiers; Twilight Grasp accuracy 1.0x -> 1.2x",
+        "Dark Melee Shadow Maul: arc 45 -> 120 degrees, recharge 8 -> 11s, cast 3.07 -> 2.35s, damage scale 2.156 -> 1.6184, target cap Tanker 16, others 10",
+        "Evasion Defense Resistance fixed; Unstoppable no longer takes Endurance Mod; some villain powers retagged from Ranged+AoE",
+        "Recharge text bands standardised (Very Fast <=3s ... Extremely Long >600s)",
+        "Corrosive Vial and Adrenal Booster each require 2 other Experimentation pool powers"
+      ],
+      "markers": [
+        "Electrical Affinity power set exists (Defender, Corruptor, Controller, Mastermind)",
+        "Power pool Experimentation exists with 5 powers plus Jaunt",
+        "IO sets Synapse's Shock, Power Transfer, Preemptive Optimization, Bombardment, Artillery exist",
+        "Shadow Maul recharge 11s, arc 120",
+        "Maneuvers/Assault/Tactics activation 1.5s",
+        "Corrosive Vial and Adrenal Booster require 2 Experimentation powers"
+      ],
+      "note": "Page 5 main release; later build ids on this page are 26.5.x."
+    },
+    {
+      "date": "2020-04-01",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "April 1st, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#April_1st,_2020",
+      "sections": [
+        "Take Your Child to Work Day",
+        "Powers",
+        "Floors",
+        "Nemesis"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "April Fools joke patch; the listed Brawl rebalance and Nerf Bats are jokes."
+    },
+    {
+      "date": "2020-04-01",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "April 1st, 2020 (Hotfix)",
+      "kind": "hotfix",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#April_1st,_2020_(Hotfix)",
+      "sections": [
+        "Take Your Child to Work Day",
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-04-07",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "April 7th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#April_7th,_2020",
+      "sections": [
+        "General",
+        "Bug Fixes",
+        "Powers"
+      ],
+      "planner": [
+        "Electrical Affinity: Energizing, Empowering and Insulating Circuit buffs now cancellable; Faraday Cage shows no caster buff icon",
+        "Savage Melee set description corrected (Shred builds Blood Frenzy; Frenzy adds recharge and end discount)",
+        "Incarnate Hybrid Support top tier endurance discount fixed; Stalker Weapon Mastery Shuriken gets Page 5 recharge change"
+      ],
+      "markers": []
+    },
+    {
+      "date": "2020-04-21",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "April 21st, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#April_21st,_2020",
+      "sections": [
+        "Badges",
+        "Powers",
+        "Enhancements"
+      ],
+      "planner": [
+        "Pool Leadership > Maneuvers: Melee, AoE, Lethal and Cold defense now granted to allies, not only caster",
+        "Tanker Spines > Spine Burst: target cap fix instead of radius 16",
+        "Blaster Dual Pistols grants Defiance damage again; Hail of Bullets DoT chance per tick",
+        "Synthetic Hamidon Accuracy/Mez and Damage/Mez enhancements combine with Titan, Hydra and Hamidon versions",
+        "Synapse's Shock set bonus no longer shows a buff icon"
+      ],
+      "markers": [
+        "Synthetic Hamidon Accuracy/Mez combines with Hamidon enhancements"
+      ]
+    },
+    {
+      "date": "2020-06-24",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "June 24th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#June_24th,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-06-30",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "June 30th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#June_30th,_2020",
+      "sections": [
+        "Miscellaneous"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-10-06",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "October 6th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#October_6th,_2020",
+      "sections": [
+        "Halloween Event",
+        "Bug Fixes",
+        "Technical Stuff"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Client changes: new command line (-assetpath, -legacylayout; -patchdir and -patchversion removed), visited-map storage moved, resume_info.txt login disabled."
+    },
+    {
+      "date": "2020-10-08",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "October 8th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#October_8th,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-10-13",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "October 13th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#October_13th,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-10-17",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "October 17th, 2020",
+      "kind": "live",
+      "build": "26.5.2778",
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#October_17th,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-11-03",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "November 3rd, 2020",
+      "kind": "live",
+      "build": "26.5.3018",
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#November_3rd,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-11-10",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "November 10th, 2020",
+      "kind": "live",
+      "build": "26.5.3224a",
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#November_10th,_2020",
+      "sections": [
+        "General"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2020-11-17",
+      "issue": 26,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "November 17th, 2020",
+      "kind": "server-side",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_26_Page_5#November_17th,_2020",
+      "sections": [
+        "General"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Server-side configuration update only (Kings Row population cap)."
+    },
+    {
+      "date": "2020-11-24",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "November 24th, 2020",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#November_24th,_2020",
+      "sections": [
+        "Story arcs",
+        "Stance Selection",
+        "Power Customisation Update",
+        "Sonic Manipulation",
+        "Energy Melee",
+        "Energy Melee for Scrappers",
+        "Titan Weapons",
+        "Trick Arrow",
+        "Teleportation pool",
+        "Blaster Secondary Revamp",
+        "Other Powers Changes",
+        "Travel Updates",
+        "Enhancements",
+        "Badges",
+        "PvP Updates",
+        "Arena maps and gamepad",
+        "Map Changes",
+        "Other Changes",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "New Blaster secondary set Sonic Manipulation (9 powers: Sonic Thrust through Earsplitter).",
+        "Energy Melee proliferated to Scrappers (Barrage, Energy Punch, Bone Smasher, Build Up, Power Crash, Confront, Whirling Hands, Total Focus, Energy Transfer).",
+        "Energy Melee revamp: Stun replaced by Power Crash (cone, takes PBAoE damage sets); Energy Focus combo mechanic; Total Focus and Energy Transfer retimed.",
+        "Energy Melee power order changed for Stalkers and Tankers (Total Focus moved from T9, Energy Transfer from T8, Power Crash replaces Stun).",
+        "Energy Transfer recharge 20s -> 10s, no endurance cost, self damage 10% base HP; Energy Punch recharge 4s -> 5s, damage scale 1 -> 1.16.",
+        "Stalker Power Crash has 16s recharge (9s for other archetypes); Energy Focus now consumed by Energy Melee powers for bonus effects.",
+        "Titan Weapons: bonus damage (about 8-10%) removed from all attacks; Momentum gives 25% faster recharge and extra endurance discount; several cast times and Whirling Smash radius 15ft -> 10ft.",
+        "Trick Arrow revamp: Entangling Arrow, Flash Arrow, Glue Arrow, Ice Arrow, Poison Gas Arrow, Acid Arrow, Disruption Arrow, Oil Slick Arrow, EMP Arrow all changed.",
+        "Trick Arrow: Flash Arrow, Oil Slick Arrow, EMP Arrow can now take Range enhancements; Glue Arrow and EMP Arrow become location targeted; EMP Arrow spawns an EMP Field.",
+        "Trick Arrow: Disruption Arrow target cap 10 -> 16, recharge 60s -> 30s, now takes Endurance Modification enhancements/sets.",
+        "Teleportation pool: Recall Friend and Teleport Foe merged into Teleport Target; new Combat Teleport takes Teleport Foe's slot.",
+        "Teleportation pool: Long Range Teleport removed from the pool and replaced by new Fold Space; Team Teleport endurance 20 -> 16; Teleport grants 4s untouchable.",
+        "Warshade powers Shadow Recall, Starless Step, Shadow Slip now mirror Teleport Target, Combat Teleport, Fold Space.",
+        "Blaster secondary revamp across Tactical Arrow, Atomic Manipulation, Darkness Manipulation, Devices, Electrical Manipulation, Fire, Energy, Ice, Martial Combat, Mental, Ninja Training, Plant, Temporal Manipulation.",
+        "Blaster T1 immobilize powers now share 60ft range (Electron Shackles, Chilblain, Entangle, Ring of Fire, Electric Fence, Time Wall, Toxic Web Grenade, Immobilizing Dart etc.).",
+        "Many single-target holds/stuns changed to Mag 2 non-stacking plus Mag 1 stacking (Positron Cell, Strangler, Time Stop, Choking Powder, Ice Arrow, Dark Pit, Time Shift).",
+        "Tactical Arrow: Agility renamed/merged into Gymnastics (T7); old Gymnastics slot replaced by Oil Slick Arrow (T9); ESD Arrow gets stun, Upshot weakened.",
+        "Electrical Manipulation: Lightning Field renamed Dynamo (now T6 sustain power, no endurance); Force of Thunder moved T6 -> T8; power order reshuffled.",
+        "Energy Manipulation: Stun recharge 20s -> 14s and interacts with Power Boost / Boost Range; Energize gives PvE stun protection.",
+        "Mental Manipulation: Telekinetic Thrust moved T3 -> T9, recharge 6s -> 16s, damage scale 0.8 -> 2.92; Scare T8 -> T7, Psychic Shockwave T9 -> T8, World of Confusion T7 -> T3.",
+        "Plant Manipulation: Spore Cloud moved T9 -> T5, Thorn Burst moved T5 -> T9, Vines hold reworked; Ice Manipulation Frozen Aura now deals damage.",
+        "Ninja Training: Shinobi now gives 20% crit chance instead of damage buff; Sting of the Wasp and Golden Dragonfly recharge increased; The Lotus Drops recharge 28s -> 14s.",
+        "Darkness Manipulation: Touch of the Beyond self buff 60s -> 120s with Fear protection, accuracy 150% -> 120%; Dark Pit recharge 60s -> 90s, endurance 13 -> 20.18.",
+        "Martial Combat: Ki Push damage scale 0.8 -> 1.0, recharge 6s -> 4s; Eagles Claw gains bleed DoT. Devices Gun Drone gets 80% resistance to all damage.",
+        "Fire Manipulation Cauterizing Aura and Ice Manipulation Frigid Protection target cap corrected 11 -> 10.",
+        "Athletic Run, a non-stance Ninja Run, added to P2W prestige powers (free if Beast Run/Ninja Run not owned).",
+        "Temporal Manipulation: Time Wall deals damage and takes damage sets; Future Pain and End of Time recharge/damage adjusted; Aging Touch damage reduced.",
+        "Absorb powers (Frigid Protection, Reaction Time, Wild Fortress, Temporal Healing) rebalanced to match Cauterizing Aura healing per second.",
+        "Dark Melee: Shadow Maul target cap 10 -> 5; Touch of Fear now targeted melee AoE accepting Melee AoE damage sets.",
+        "Kinetics: Transfusion, Siphon Power, Transference, Fulcrum Shift converted from pseudopets to execute-power mechanics.",
+        "Taunt-capable auras (e.g. Invincibility, Rise to the Challenge, Mud Pots, Dark Armor Death Shroud) can now be slotted with Taunt sets; list covers many armor sets.",
+        "Active combat accolade powers now recharge in 10 minutes, ignoring global recharge buffs.",
+        "Pocket D VIP Pass becomes the Long Range Teleporter accolade power; new Supergroup Portal and Rapid Response Portal powers; Base Teleporter renamed Monitor Duty Teleporter; Base Transporter recharge 30 -> 10 minutes.",
+        "Enhancement Upgrade button added; combining enhancements now raises level directly (Titan/Hydra/Hamidon can reach 53).",
+        "Single Origin enhancements buyable at levels 5/10/15/20; DOs at 5 and 10; TOs removed from regular vendors; Yin's Talisman enhancements usable by all origins.",
+        "AoE set categories renamed: Targeted AoE Damage -> Ranged AoE Damage; PBAoE Damage -> Melee AoE Damage (no change to which powers take them).",
+        "Damage procs no longer auto-hit in auto-hit powers; Gaussian's Synchronized Fire Control and Performance Shifter sets now require level 17 for all pieces.",
+        "Powers that give +Strength (Power Boost, Power Up) now ignore strength buffs so chained boosts add instead of multiply.",
+        "Opportunity Proc, Envenomed Blades, Frostbite procs standardized formula for powers above 20s recharge.",
+        "Fixed Dual Pistols Defiance, Savage Melee crits, Sentinel Ice Armor Frost Protection now accepts recharge, Stalker Willpower Reconstruction accepts resistance sets, Dominator Masterful Throw takes ToHit Debuff sets, Stone Armor Earth's Embrace heal ignores resistance.",
+        "PvP: new Arena-vendor fakkolade powers (Veteran, Indestructible, Supercharger, Mind Games, Nullifier, Justice, Rampage); many temporary/day job powers disabled in Arena and PvP zones."
+      ],
+      "markers": [
+        "Blaster secondary Sonic Manipulation exists (powers Sonic Thrust, Strident Echo, Echo Chamber, Sound Booster, Deafening Wave, Sound Barrier, Disruption Aura, Sound Cannon, Earsplitter)",
+        "Scrapper primary Energy Melee exists",
+        "Energy Melee has Power Crash instead of Stun",
+        "Teleportation pool has Teleport Target, Combat Teleport, Fold Space; no Recall Friend/Teleport Foe/Long Range Teleport",
+        "Blaster Tactical Arrow has Gymnastics and Oil Slick Arrow, no Agility",
+        "Blaster Electrical Manipulation has Dynamo, no Lightning Field",
+        "Long Range Teleporter power exists; Supergroup Portal and Rapid Response Portal powers exist; Monitor Duty Teleporter is the old Base Teleporter",
+        "Enhancement set categories named Ranged AoE Damage and Melee AoE Damage",
+        "Warshade has Shadow Recall, Starless Step, Shadow Slip as renamed/changed powers",
+        "Plant Manipulation order: Spore Cloud T5, Thorn Burst T9",
+        "Mental Manipulation order: Telekinetic Thrust T9, Scare T7, Psychic Shockwave T8, World of Confusion T3"
+      ],
+      "note": "Page's main release; build id not stated in the notes."
+    },
+    {
+      "date": "2020-12-01",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "December 1st, 2020",
+      "kind": "live",
+      "build": "27.1.3516",
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#December_1st,_2020",
+      "sections": [
+        "Winter Event",
+        "Long Range Teleporter",
+        "Story Arcs",
+        "Powers",
+        "General",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "Blaster Psychic Blast ranges raised 80ft -> 100ft (Psionic Dart, Mental Blast, Telekinetic Blast, Will Domination, Psionic Tornado, Scramble Thoughts).",
+        "Sentinel Psychic Blast ranges raised 60ft -> 75ft, Psychic Scream and Psionic Tornado 40ft -> 50ft.",
+        "Long Range Teleporter can be bought from the P2W vendor for 1,000,000 influence.",
+        "Energy Melee Power Crash endurance 9.36 -> 15.184; Stalker crit fixes for Power Crash and Energy Punch.",
+        "Trick Arrow Disruption Arrow -MaxEnd affected by AT modifiers; Glue Arrow takes Slow enhancements; Tactical Arrow Oil Slick Arrow gives Defiance.",
+        "Dark Melee Touch of Fear regains 30% chance of extra fear; Victory Rush accepts End Mod enhancements; Entropic Aura no longer debuffs own recharge.",
+        "Warshade Shadow Slip flagged AoE negative energy attack; Mastermind Trick Arrow end costs restored."
+      ],
+      "markers": [
+        "Blaster Psychic Blast Psionic Dart range is 100ft",
+        "Sentinel Psychic Blast Mental Blast range is 75ft"
+      ]
+    },
+    {
+      "date": "2020-12-03",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "December 3, 2020",
+      "kind": "live",
+      "build": "27.1.3537",
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#December_3,_2020",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Client crash fix only; wiki heading says Version 27.1.3537."
+    },
+    {
+      "date": "2021-01-05",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "January 5, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#January_5,_2021",
+      "sections": [
+        "General"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Weapon redraw/emote animation fixes only."
+    },
+    {
+      "date": "2021-02-09",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "February 9, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#February_9,_2021",
+      "sections": [
+        "Powers"
+      ],
+      "planner": [
+        "Banished Pantheon Lore pets now obey combat modifiers and have corrected target caps."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2021-03-02",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "March 2, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#March_2,_2021",
+      "sections": [
+        "Stability"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2021-03-10",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "March 10, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#March_10,_2021",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2021-03-30",
+      "issue": 27,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "March 30, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_1#March_30,_2021",
+      "sections": [
+        "Miscellaneous"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2021-04-20",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "April 20th, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#April_20th,_2021",
+      "sections": [
+        "Tour Guide Missions",
+        "Travel Power Updates",
+        "Sorcery pool",
+        "Powers Changes",
+        "Story Arc Updates",
+        "PvP-Specific Changes",
+        "Miscellaneous",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "Travel powers no longer mutually exclusive; only the strongest buff of each type applies; travel powers no longer scale with level (level 50 values everywhere).",
+        "All Inherent Fitness powers now gained at level 1 instead of level 2.",
+        "Concealment pool becomes a travel pool (first 3 powers available at once); Invisibility removed, merged into Stealth, new T3 power Infiltration.",
+        "Stealth radius and out-of-combat defense increased (PvE 36ft -> 55ft, 3.5% -> 7%).",
+        "Flight pool: Afterburner becomes a free timed-toggle tray power granted with Fly; new Evasive Maneuvers at tier 5; Fly raises fly speed cap 50%.",
+        "Super Speed gets momentum leap and free Speed Phase tray power; Super Jump gets free Double Jump; Speed of Sound, Mighty Leap, Super Jump raise speed caps.",
+        "Peacebringer: Quantum Acceleration folded into Energy Flight, new Quantum Maneuvers; Quantum Flight and Warshade Nebulous Form endurance 2.6/s -> 0.65/s.",
+        "Teleport range 300ft -> 350ft, hover buff 15s, activation 1.5s; Teleport Target recharge +4s for allies; Translocation range 350ft.",
+        "Sorcery pool overhaul: Spirit Ward becomes a toggle absorb shield; Arcane Bolt gets Arcane Power proc; Enflame timed toggle; Rune of Protection duration 60s, recharge 180s, no recharge enhancement.",
+        "Sorcery Spirit Ward cooldown 60s -> 15s; Arcane Bolt cast 2.07s -> 1.73s; Enflame cooldown 90s -> 10s.",
+        "Prestige run powers and temp jetpacks normalised to 0.57 end/s; Rocket Board, Magic Carpet, Void Skiff no longer disable powers.",
+        "Mastermind henchmen summon recharges cut to 5s/10s/15s, endurance costs lowered, summon powers ignore recharge buffs; Ambrosia and Essence of the Earth affect henchmen.",
+        "Powers with excessively long cast times shortened: Demon Summoning, Ignite, Full Auto, Hail of Bullets, Thunderous Blast, Death Shroud, Ice Patch, Summon Dire Wolf.",
+        "Stone Armor: Rooted only debuffs movement while Granite Armor active; Granite Armor disables flying, running and jumping toggles.",
+        "Ninjitsu: Shinobi-Iri loses movement buffs and Jump/Run/Universal Travel slotting; Kuji-In Rin gains run/jump buff and now accepts those enhancements and damage resistance sets.",
+        "Ninjitsu: Scrapper Shinobi-Iri stealth crit after 8s out of combat (65% single target, 30% AoE); Sentinel Shinobi-Iri stealth damage buff +20% -> +40%.",
+        "Sentinel Mace Mastery Focused Accuracy renamed Coordinated Targeting.",
+        "Inherent Rest has no recharge and no longer takes recharge enhancements; Hibernate no longer detoggles flight; fast snipes ranges normalised to 80ft (100ft Psi).",
+        "No Phase suppression window reduced from 2 minutes to 90 seconds.",
+        "Sentinel Bio Armor Athletic Regulation stance bonuses reworked.",
+        "Stalker crit consistency pass across melee sets: 100% single-target/50% AoE from Hide, 7% PvE non-Hide; many PvP damage scales adjusted.",
+        "Power animation time and rooting time decoupled; non-offensive buffs/heals no longer root.",
+        "Enhancement Boosters and Catalysts can be applied directly by clicking.",
+        "Enhancements weaker against higher-level enemies fixed: Impervious Skin, Numina's Convalescence, Sentinel's Ward, Miracle, Aegis, Dominating Grasp.",
+        "PvP: mez protection added to Clarity, Clear Mind, Insulation Shield, Antidote, Thaw, Faraday Cage, EMP Field and others; Elude and Kuji-In Retsu give elusivity.",
+        "Fixed attack-type flags and misc power bugs (Radiation Siphon Stalker level 18, Time Wall takes Blaster/Ranged/Universal damage sets, Dynamo no self damage)."
+      ],
+      "markers": [
+        "Concealment pool has Infiltration and no Invisibility",
+        "Flight pool tier 5 power is Evasive Maneuvers (not Afterburner); Afterburner is an Inherent/tray power",
+        "Peacebringer has Quantum Maneuvers as a picked power",
+        "Super Speed has Speed Phase as a secondary power; Super Jump has Double Jump",
+        "Sorcery Spirit Ward is a toggle",
+        "Inherent Fitness powers available at level 1",
+        "Sentinel Mace Mastery power named Coordinated Targeting",
+        "Mastermind T1 henchmen summon recharge is 5s",
+        "Teleport base range 350ft; Sorcery Rune of Protection recharge 180s"
+      ],
+      "note": "Page's main release; build id not stated in the notes."
+    },
+    {
+      "date": "2021-04-27",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "April 27th, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#April_27th,_2021",
+      "sections": [
+        "Powers",
+        "Miscellaneous",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "New P2W Prestige Utility powers: Only Affect Self and Disable All Powers (free).",
+        "Evasive Maneuvers, Quantum Maneuvers and Stealth defense suppression rules changed; Group Fly respects Disallow Group Fly option.",
+        "Respec recipes can no longer be sold to vendors.",
+        "New IO set category Sprints: Sprint powers accept only Sprint sets; Celerity, Quickfoot listed as Running & Sprints, Unbounded Leap, Springfoot as Leaping & Sprints.",
+        "Essence Transfer proc now persists like Assassin's Mark and its heal no longer scales by enemy level.",
+        "Several Superior set enhancements granted less than intended and were corrected (Superior Avalanche, Blistering Cold, Frozen Blast, Assassin's Mark, Critical Strikes, Gauntleted Fist and others)."
+      ],
+      "markers": [
+        "Prestige powers Only Affect Self and Disable All Powers exist",
+        "IO set category Sprints exists; Running & Sprints and Leaping & Sprints sets (Celerity, Quickfoot, Unbounded Leap, Springfoot)"
+      ]
+    },
+    {
+      "date": "2021-05-04",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "May 4th, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#May_4th,_2021",
+      "sections": [
+        "Powers",
+        "Combat Log",
+        "Enhancements",
+        "Miscellaneous",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "Infiltration run, jump speed and jump height buffs increased by 10%.",
+        "Inherent Walk no longer disables all powers; now applies Only Affect Self, caps speed and disables travel powers.",
+        "Stygian Circle no longer roots.",
+        "+Range set bonuses now have 7 tiers instead of 3 (no effect on existing sets)."
+      ],
+      "markers": [
+        "Concealment Infiltration run speed buff raised 10%"
+      ]
+    },
+    {
+      "date": "2021-06-02",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "June 2nd, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#June_2nd,_2021",
+      "sections": [
+        "Powers",
+        "Miscellaneous",
+        "Bug Fixes"
+      ],
+      "planner": [
+        "Arcane Bolt: toggling powers no longer grants Arcane Power; floating message removed.",
+        "Inherent Walk speed cap 3.15mph -> 3.25mph; jump speed cap 14.32mph.",
+        "Fixed Cognitive and Spectral Interface procs, Fortunata Hypnosis proc and EMP Arrow proc formula."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2021-08-24",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "August 24th, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#August_24th,_2021",
+      "sections": [
+        "General",
+        "Mission Architect",
+        "Powers"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Support patch for the Cimerora Mission Architect contest."
+    },
+    {
+      "date": "2021-10-05",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "October 5th, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#October_5th,_2021",
+      "sections": [
+        "Halloween Event",
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2021-10-19",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "October 19, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#October_19,_2021",
+      "sections": [
+        "Halloween Event"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2021-11-02",
+      "issue": 27,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "November 2, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_2#November_2,_2021",
+      "sections": [
+        "General"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Fixed a crash creating a character with an invalid powerset combination."
+    },
+    {
+      "date": "2021-11-26",
+      "issue": 27,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "November 26th, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_3#November_26th,_2021",
+      "sections": [
+        "General",
+        "Dr. Aeon Strike Force",
+        "D-Sync Origin Enhancements",
+        "Advanced Difficulty Options",
+        "Challenge Modes",
+        "Tasks",
+        "Turnstile / LFG Queue",
+        "City Zones",
+        "Villain Groups",
+        "Inspirations",
+        "Powers",
+        "Invention Origin Sets",
+        "PVP",
+        "Badges",
+        "Costumes",
+        "Supergroup Bases",
+        "World Geometry & Textures",
+        "Dynamic Geometry"
+      ],
+      "planner": [
+        "New Earth powersets: Seismic Blast (Blaster/Corruptor primary, Defender secondary) and Earth Manipulation (Blaster secondary).",
+        "Seismic Blast powers: Encase, Shatter, Rock Shards, Entomb, Seismic Force, Upthrust, Tombstone, Stalagmite, Meteor.",
+        "Earth Manipulation powers: Stone Prison, Heavy Mallet, Salt Crystals, Build Up, Tremor, Mud Bath, Beryl Crystals, Fracture, Seismic Smash.",
+        "Scrapper Stone Armor Geode is a Hibernate-like structure that builds Geothermal Power to boost Brimstone's fire proc; Scrapper Seismic Smash hold Mag 3, 20% crit.",
+        "Stone Melee and Stone Armor proliferated to Scrappers; Scrapper Stone Armor has Geode instead of Granite Armor.",
+        "Stone Armor: Stone Skin takes some Granite resistances/defense and accepts Defense enhancements; Brimstone Armor gains fire proc; Crystal Armor, Minerals gain buffs; Earth's Embrace recharge 360s -> 120s, heal scale 4 -> 1.35.",
+        "Stone Armor and Mud Pots endurance costs reduced (0.26 -> 0.208 end/s, Mud Pots 0.78 -> 0.52).",
+        "Stone Melee: Fault damages in a cone; Tremor cast time 3.3s -> 2.53s; Tanker Tremor damage lowered to 1.04.",
+        "Earth Control Stone Prison cast time 1.93s -> 1.23s; Stalagmites 2.1s -> 1s.",
+        "Taunt enhancement category renamed Threat Duration Enhancements; they now also boost Placate duration; many Stalker/Widow/Bane Placate, Smoke Flash, Misdirection, Pacify, Call Jounin, Kemuridama powers accept them.",
+        "Placate normalised for Stalker, Bane Spider Soldier, Widow sets: 60ft range, 0.8s cast, instant hit, 15ft radius AoE, 5 targets.",
+        "Player 100%-sleep powers now auto-hit (Blind, Blinding Powder, Chilling Ray, Flash Freeze, Frozen Aura, Mass Hypnosis, Mesmerize, Salt Crystals, Siren Song, Sleep Grenade, Spore Burst).",
+        "Dual Blades combo system reliability changes; Savage Melee numerous damage/crit/DoT fixes; Sonic Manipulation holds adjusted for lieutenants/bosses.",
+        "Robotics Protector Bots Force Field scale 0.75 -> 1.3 with single buffer; Total Focus gets Fiery Embrace for Brutes and Tankers.",
+        "New D-Sync Origin enhancements (DSO) with new combinations, level up to 53 when combined; reward from Dr. Aeon Strike Force.",
+        "New IO sets: Ice Mistral's Torment (Slow Movement), Hypersonic (Flying), Launch (Leaping), Thrust (Running), Warp (Teleportation).",
+        "Ice Mistral's Torment is a rare 6-piece set, levels 20-50, with a cold damage proc (3.5 ppm); Hypersonic, Launch, Thrust, Warp are rare 4-piece sets, levels 15-50, each with a unique IO.",
+        "Immortal Recovery inspiration gives 25 endurance (was 50).",
+        "PvP: Super Reflexes scaling resistance period 2s -> 0.5s (also PvE); Faraday Cage and EMP Field PvP effect duration 20s; Dimension Shift 3s in PvP.",
+        "Crey CBX-9 Pistol, Stolen Immobilizer Ray and Chilblain tooltips now list their -Fly effect."
+      ],
+      "markers": [
+        "Powerset Seismic Blast exists for Blaster, Corruptor, Defender",
+        "Blaster secondary Earth Manipulation exists",
+        "Scrapper powersets Stone Melee and Stone Armor exist; Scrapper Stone Armor has Geode",
+        "Stone Armor Earth's Embrace recharge 120s",
+        "IO sets Ice Mistral's Torment, Hypersonic, Launch, Thrust, Warp exist",
+        "D-Sync Origin (DSO) enhancement category exists",
+        "Enhancement category named Threat Duration (formerly Taunt)",
+        "Stalker Placate is a 15ft radius AoE with 0.8s cast"
+      ],
+      "note": "Page's main release; build id not stated in the notes."
+    },
+    {
+      "date": "2021-11-30",
+      "issue": 27,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "November 30th, 2021",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_3#November_30th,_2021",
+      "sections": [
+        "General",
+        "Costumes",
+        "Badges",
+        "Emotes",
+        "Powers",
+        "Critters",
+        "Tasks",
+        "Dr. Aeon's Strike Force"
+      ],
+      "planner": [
+        "Seismic Blast fixes: Seismic Shockwaves work while exemplared, Stalagmite Lava theme colour fixed; Doppelgangers use Seismic Blast and Stone powers.",
+        "Amplifiers work on shape-shifted Kheldians; Experience Boosters moved in P2W; some Day Job powers now disable with temp powers off."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2022-01-04",
+      "issue": 27,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "January 4th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_3#January_4th,_2022",
+      "sections": [
+        "General",
+        "Geometry",
+        "Powers",
+        "Emotes",
+        "Quick Chat Emote Menu"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2022-02-10",
+      "issue": 27,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "February 10th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_3#February_10th,_2022",
+      "sections": [
+        "Events",
+        "NPCs",
+        "Tasks"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Spring Fling event and story fixes."
+    },
+    {
+      "date": "2022-03-29",
+      "issue": 27,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "March 29th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_3#March_29th,_2022",
+      "sections": [
+        "General"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2022-08-23",
+      "issue": 27,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "August 23rd, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#August_23rd,_2022",
+      "sections": [
+        "General",
+        "Marquee Features",
+        "Powers & Gameplay Adjustments",
+        "Character Customization Improvements",
+        "Various Additions & Enhancements",
+        "City Zone Adjustments & Fixes",
+        "Game Client Adjustments & Fixes"
+      ],
+      "planner": [
+        "Free respec for all characters on login because of the many power changes.",
+        "New primary Symphony Control for Controllers and Dominators (Melodic Binding, Hymn of Dissonance, Aria of Stasis, Impassioned Serenade, Dreadful Discord, Enfeebling Lullaby, Confounding Chant, Chords of Despair, Reverberant).",
+        "New secondary Sonic Assault for Dominators (Shriek, Strident Echo, Scream, Shockwave, Bass Boost, Deafening Wave, Disruption Aura, Shout, Earsplitter).",
+        "Corruptor set 'Sonic Attacks' renamed 'Sonic Attack'; all Sonic Attack powers now Energy-typed and apply Sonic Vibrations resistance debuffs; Scream, Shout, Screech, Howl, Shockwave, Siren's Song get new damage, cast time and recharge values.",
+        "Ice Control: Shiver renamed Cold Snap (recharge 30s -> 40s, adds a Fear cone, now takes ATOs, Fear enhancements and sets); Ice Slick now does damage and accepts Accuracy/Damage enhancements and Ranged AoE and Universal Damage sets.",
+        "Ice Control Arctic Air gains Overpower/Domination effects; Dominator version no longer accepts Fear enhancements or sets.",
+        "Armor psionic/toxic mitigation pass: Invulnerability, Ice Armor, Energy Aura, Stalker Hide and Fighting pool Weave gain psionic/toxic defense or resistance; Stalker Invulnerability 'Reinforced' renamed Invincible.",
+        "All player attack powers now carry up to one positional and one type defense check; many damage types adjusted; Explosive Arrow and M30 Grenade become Fire/Lethal 50/50 instead of Smashing/Lethal.",
+        "Sphere/cone attacks flagged Ranged, and Melee ones with arc >= 30 degrees, are re-tagged AoE Attack for defense checks.",
+        "New toggle suspension: Granite Armor and Kheldian forms suspend other set toggles (and pool/travel toggles) instead of dropping them.",
+        "Toggles that dropped when mezzed now suppress their effects while mezzed and 5s after instead.",
+        "Slotting changes: Leviathan Mastery Knockout Blow loses Ranged AoE sets; Static Field gains End Mod sets; Psychic Shockwave (Dominator) gains Dominator ATOs; Thorn Burst gains Defense Debuff sets; Lich loses Def Debuff sets; Shocking Bolt loses Melee AoE sets; Beta Decay loses To Hit/Def Debuff sets; Particle Shielding loses End Mod; Throw Sand loses To Hit Debuff.",
+        "Flash Freeze (Ice Control) now 100% cold damage, Controller version does Containment damage; Knockout Blow standardized to 13.2 ft range.",
+        "Level changes: Scrapper Shinobi-Iri, Sentinel Durability and Sentinel Shinobi-Iri tier 3 secondary moved from level 6 to level 4.",
+        "Stalker Radiation Siphon grants Assassin's Focus; Rending Flurry (Dominator, Stalker) endurance 20.8 -> 13.52; Frozen Aura (Ice Manipulation) endurance 18.512 and PvE damage no longer doubled.",
+        "Critical-hit tags standardised on Scrapper powers (CritSmall/CritLarge/CritPlayer); Martial Arts attacks now get Scrapper crit buff from Shinobi-Iri; Scrapper ATOs only buff the new tags.",
+        "Placate for Stalker/Night Widow/Bane Spider ignores combat mods; Mercenary Soldier upgrade powers corrected.",
+        "Radiation Infection cast time 3.1s -> 1.5s; Warshade Shadow Cloak gets a No Fade version; Electric Melee attacks (Chain Induction, Thunder Strike, Assassin's Shock) become 100% Energy damage.",
+        "Temporal Warrior option: new level 50 PvP-only characters with Incarnate slots unlocked (character creation).",
+        "Sentinel's Ward ATO description corrected: absorb proc is 2 PPM; Kismet (Unique) description says it grants ToHit.",
+        "Fixes: Energize and Kuji-In Toh regeneration scale 118.98% -> 112.5%; Atom Smasher now Toxic-typed; Explosive Shuriken Fire-typed; Defensive Sweep (Slow) endurance 5.356; Thunder Strike radius 12 -> 10 ft.",
+        "Seismic Blast Meteor is now an AoE attack (no longer auto-hit); Rock Shards (Enhanced) reduces other Seismic Blast cooldowns for non-Blasters; Propel splash knockdown now vectored.",
+        "Tough Hide, Moment of Glory, Granite Armor and Stone Skin gain psionic (and toxic) defense/resistance values."
+      ],
+      "markers": [
+        "Power set Symphony Control exists for Controller and Dominator",
+        "Power set Sonic Assault exists for Dominator",
+        "Corruptor power set is named 'Sonic Attack' (not 'Sonic Attacks')",
+        "Ice Control power 'Shiver' is named 'Cold Snap'; its recharge is 40s",
+        "Stalker Invulnerability power 'Reinforced' is named 'Invincible'",
+        "Dominator Ice Control Arctic Air has Overpower/Domination effects",
+        "Scrapper/Sentinel Shinobi-Iri and Sentinel Durability available at level 4",
+        "Howl recharge is 8s; Shockwave (Sonic Attack) recharge is 11s"
+      ]
+    },
+    {
+      "date": "2022-08-24",
+      "issue": 27,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "August 24th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#August_24th,_2022",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2022-08-30",
+      "issue": 27,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "August 30th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#August_30th,_2022",
+      "sections": [
+        "Tasks",
+        "Power Fixes",
+        "Costumes",
+        "Enemy Groups",
+        "Zones",
+        "Supergroup Bases",
+        "Miscellaneous"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2022-09-13",
+      "issue": 27,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "September 13th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#September_13th,_2022",
+      "sections": [
+        "Advanced Difficulty Settings - General",
+        "Advanced Difficulty Settings - Dr. Aeon's Strike Force",
+        "Imperious Task Force",
+        "Dr. Aeon's Strike Force",
+        "Custom/Sheathed Weapons",
+        "Costume Fixes",
+        "Power Bug Fixes",
+        "Peregrine Island",
+        "Cimerora",
+        "Imperial City",
+        "Pocket D",
+        "Miscellaneous"
+      ],
+      "planner": [
+        "Sonic Assault Shriek and Scream can no longer be used while mezzed.",
+        "Defender epic Force of Nature recovery effect no longer ignores strength buffs.",
+        "Ethereal Shift, Med Pack, Backup Radio and Signature Summons disabled in PvP zones."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2022-10-04",
+      "issue": 27,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "October 4th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#October_4th,_2022",
+      "sections": [
+        "Halloween Event 2022"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2022-10-11",
+      "issue": 27,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "October 11th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_4#October_11th,_2022",
+      "sections": [
+        "Halloween Event 2022",
+        "System"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2022-10-18",
+      "issue": 27,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "October 18th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_5#October_18th,_2022",
+      "sections": [
+        "General",
+        "Marquee Features",
+        "Powers & Gameplay Adjustments",
+        "Character Customization Improvements",
+        "Costumes",
+        "Various Additions & Enhancements"
+      ],
+      "planner": [
+        "Sentinel archetype revamp: Ranged and Melee damage modifiers 0.95 -> 1.10, base perception 500 -> 550 ft, 10% resistance to ToHit/Perception debuffs.",
+        "Sentinel inherent Opportunity builds automatically; new inherent power Vulnerability spends 50% Opportunity to debuff a target; old Opportunity debuff modes and inherent proc removed; Opportunity Strikes proc grants 7.5 / 10.0 Opportunity.",
+        "Seismic Blast proliferated to Sentinels as a primary (Gravestone replaces Tombstone).",
+        "Stone Armor proliferated to Sentinels as a secondary (Terra Firma replaces Mud Pots).",
+        "Illusion Control proliferated to Dominators as a primary (Spectral Wall and Gleam replace Spectral Wounds and Group Invisibility).",
+        "Mastermind Mercenaries revamp: henchmen powers reworked; Equip Mercenary takes Resistance sets, Tactical Upgrade takes Defense sets; Serum recharge 1000s -> 250s.",
+        "Mastermind Necromancy revamp: Dark Blast/Gloom/Life Drain summon Spectral Minions; Enchant Undead takes Resistance sets; Dark Empowerment takes Healing sets, range 50 ft; Zombie Horde, Grave Knights, Lich lose heal slotting; Soul Extraction recharge 150s.",
+        "Mastermind Ninjas revamp: crit chances for henchmen; Smoke Flash recharge 90s; Kuji-In Zen renamed Kuji-In Sha and takes Heal sets; Train Ninjas takes Defense sets.",
+        "Mastermind Robotics revamp: Repair replaced by Maintenance Drone; Equip Robot grants resistances and takes Resistance sets; Upgrade Robot takes Healing sets; Protector Bots summon loses heal slotting; Pulse Rifle attacks apply -regeneration.",
+        "Battle Axe revamp: Whirling Axe renamed Axe Cyclone (pulls foes, 18s recharge); Pendulum and Cleave become targeted AoE spheres; Beheader and Chop chance of defense debuff; cast times reduced; new power order for Brutes/Scrappers and Tankers.",
+        "Fiery Melee: Fire Sword, Greater Fire Sword, Fire Sword Circle now pure fire with small defense debuff and take Defense Debuff sets; Cremate knocks down and takes Knockback sets; Combustion cast time 2.4s.",
+        "Fire Manipulation Burn hits 5 targets; Fire Sword now pure fire with defense debuff.",
+        "Fiery Aura: Rise of the Phoenix renamed Phoenix Rising and usable while alive; Consume takes Healing sets and is auto-hit; Temperature Protection gains Mag 1 knock protection and regeneration; Healing Flames cast time 0.73s.",
+        "Force Fields: Force Bolt renamed Repulsion Bolt (-res); Repulsion Bomb renamed Force Bomb (-res, vectored knockdown); Force Bubble renamed Damping Bubble (click power with pseudopet field); Repulsion Field merged with Force Bubble repel aura.",
+        "Level availability pass for non-Epic ATs: primary tier 8 level 26 -> 22, tier 9 level 32 -> 26; secondary tier 2 level 2 -> 1, tier 7 level 28 -> 24, tier 8 level 35 -> 28, tier 9 level 38 -> 30.",
+        "Epic pool tier 3 powers moved from level 41 to level 38.",
+        "Hero Epic AT (Kheldian) power levels moved earlier, e.g. Nova level 6 -> 4, Light Form and Eclipse level 38 -> 32; Shining Shield and Gravity Shield available at level 1; Quantum Acceleration and Shadow Slip level 24 -> 26.",
+        "Arachnos Soldier and Widow powers moved earlier (e.g. Placate and Frenzy 26 -> 22, Call Reinforcements 38 -> 30, Eviscerate 26 -> 22, Psychic Wail 32 -> 28).",
+        "Player stealth toggles (Stealth, Super Speed, Infiltration, Shinobi, Superior Invisibility and others) no longer mutually exclusive; effects do not stack.",
+        "Radiation Melee Irradiated Ground proc limited to once per 10s and accepts ATOs; Call to Arms grants all-type defense; Edict of the Master grants toxic defense.",
+        "Fixes: Web Grenade slow enhancements; Bombardment, Sudden Acceleration, Power Transfer procs not boostable; Stalagmites endurance 15.6; Bio Armor Rebuild DNA adaptations adjusted."
+      ],
+      "markers": [
+        "Sentinel has inherent power 'Vulnerability'",
+        "Power set Seismic Blast exists for Sentinel (has Gravestone, no Tombstone)",
+        "Power set Stone Armor exists for Sentinel (has Terra Firma, no Mud Pots)",
+        "Power set Illusion Control exists for Dominator (has Spectral Wall and Gleam)",
+        "Battle Axe power 'Whirling Axe' is named 'Axe Cyclone'",
+        "Fiery Aura power 'Rise of the Phoenix' is named 'Phoenix Rising'",
+        "Force Fields powers renamed: Repulsion Bolt, Force Bomb, Damping Bubble",
+        "Ninja Mastermind power 'Kuji-In Zen' is named 'Kuji-In Sha'",
+        "Robotics Mastermind has 'Maintenance Drone' instead of 'Repair'",
+        "Primary tier 9 powers available at level 26; secondary tier 2 available at level 1",
+        "Epic pool tier 3 available at level 38"
+      ]
+    },
+    {
+      "date": "2022-10-25",
+      "issue": 27,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "October 25th, 2022",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_5#October_25th,_2022",
+      "sections": [
+        "Bug Fixes",
+        "Power Bug Fixes",
+        "Prestige Costumes",
+        "Costume: Undefined Mode & Costume: Undefined Mini Mode"
+      ],
+      "planner": [
+        "Atomic Manipulation Beta Decay no longer roots; Eagle Eye no longer accepts Endurance Reduction enhancements.",
+        "Mastermind Traps Web Grenade slow IO sets accepted; Necromancy Life Drain accepts Accurate To-Hit Debuff enhancements.",
+        "Aegis (Invention Origin set) mez resistance always active regardless of slot; Sentinel Fiery Aura Molten Embrace proc no longer fires on pets.",
+        "Primary/secondary stealth toggles gain 0.5 ft PvE and 1.0 ft PvP stealth radius to separate them from pool stealth toggles."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2023-03-14",
+      "issue": 27,
+      "page": 5,
+      "server": "Homecoming",
+      "label": "March 14th, 2023",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_5#March_14th,_2023",
+      "sections": [
+        "Name Release System",
+        "Animations",
+        "Teaming & Task Forces",
+        "Costumes",
+        "Stability & Backend"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2023-04-25",
+      "issue": 27,
+      "page": 6,
+      "server": "Homecoming",
+      "label": "April 25th, 2023",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#April_25th,_2023",
+      "sections": [
+        "General",
+        "Marquee Features",
+        "Powers & Gameplay Adjustments",
+        "Character Customization Improvements",
+        "Various Additions, Enhancements, & Fixes"
+      ],
+      "planner": [
+        "New power set Storm Blast: primary for Blasters, Corruptors and Sentinels, secondary for Defenders (Gust, Hailstones, Jet Stream, Storm Cell, Intensify, Direct Strike or Lightning Strike for Sentinels, Chain Lightning, Cloudburst, Category Five).",
+        "Redraw revamp: weapon power sets play a draw animation on first use after idle; /sheathe command added.",
+        "Assault Rifle: Slug cast time 1.4s; Beanbag recharge 10s and damage 0.98; Sniper Rifle Quick cast 1.17s; Ignite replaces Incinerator for Sentinels; Flamethrower DoT over 4.7s; Full Auto arc 90 degrees.",
+        "Dark Blast: Gloom cast time 1.1s for Blasters; Abyssal Gaze recharge 11s, damage 0.707, shorter hold.",
+        "Dual Pistols: Suppressive Fire cast 1.5s and 8s recharge for non-standard ammo; Piercing Rounds resistance debuff works with any ammo, 15s duration.",
+        "Fire Blast cast time 1.2s for Blasters and Sentinels.",
+        "Psychic Blast reshuffle: Will Domination renamed Dominate Will for Blasters (tier 1, 4s recharge); Psionic Dart renamed Psionic Darts (cone, tier 4); Scramble Thoughts renamed Scramble Minds (chain); Defender/Corruptor Telekinetic Blast tier 3, Will Domination tier 5, Psionic Lance tier 6.",
+        "Psychic Blast: Mental Blast, Subdue, Psychic Scream and Psionic Tornado timing, damage and radius adjusted.",
+        "PvP: many AoE attacks (e.g. Cross Punch, Explosive Arrow, Bullet Rain, Fire Breath, Frost Breath, Howl) use single-target damage on the main target only.",
+        "Slotting fixes: Mace Mastery Summon Tarantula gains Slow sets; Soul Mastery Summon Widow (Brute/Tanker) loses ToHit Debuff sets.",
+        "Brute Radiation Melee Taunt hits 5 targets; Water Blast powers build Tidal Force even on a miss."
+      ],
+      "markers": [
+        "Power set Storm Blast exists for Blaster, Corruptor, Sentinel (primary) and Defender (secondary)",
+        "Blaster Psychic Blast has 'Dominate Will', 'Psionic Darts', 'Scramble Minds' (old names Will Domination, Psionic Dart, Scramble Thoughts)",
+        "Sentinel Assault Rifle has Ignite instead of Incinerator",
+        "Beanbag recharge 10s"
+      ]
+    },
+    {
+      "date": "2023-05-02",
+      "issue": 27,
+      "page": 6,
+      "server": "Homecoming",
+      "label": "May 2nd, 2023",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#May_2nd,_2023",
+      "sections": [
+        "Powers",
+        "Costumes",
+        "Supergroup Bases",
+        "System"
+      ],
+      "planner": [
+        "Water Jet (quick) uses PvP damage tables in PvP; Full Auto description updated; Flamethrower endurance cost lowered."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2023-05-16",
+      "issue": 27,
+      "page": 6,
+      "server": "Homecoming",
+      "label": "May 16th, 2023",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#May_16th,_2023",
+      "sections": [
+        "Critters",
+        "Story Arcs",
+        "Badges",
+        "Powers & Enhancements",
+        "Miscellaneous"
+      ],
+      "planner": [
+        "Exploit Weakness Damage/Range enhancement can now be accepted by the auction house."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2023-05-23",
+      "issue": 27,
+      "page": 6,
+      "server": "Homecoming",
+      "label": "May 23rd, 2023",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#May_23rd,_2023",
+      "sections": [
+        "Story Arcs",
+        "Powers",
+        "Zones"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2023-06-07",
+      "issue": 27,
+      "page": 6,
+      "server": "Homecoming",
+      "label": "June 7th, 2023",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#June_7th,_2023",
+      "sections": [
+        "Miscellaneous",
+        "Diagnostic"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2023-08-15",
+      "issue": 27,
+      "page": 6,
+      "server": "Homecoming",
+      "label": "August 15th, 2023",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#August_15th,_2023",
+      "sections": [
+        "Miscellaneous"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-01-19",
+      "issue": 27,
+      "page": 6,
+      "server": "Homecoming",
+      "label": "January 19th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_6#January_19th,_2024",
+      "sections": [
+        "System"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-02-20",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "February 20th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#February_20th,_2024",
+      "sections": [
+        "General",
+        "Marquee Features",
+        "Powers & Gameplay Adjustments",
+        "Character Customization Improvements",
+        "Various Additions, Enhancements, & Fixes"
+      ],
+      "planner": [
+        "New primary Arsenal Control for Controllers and Dominators (Tranquilizer, Cryo Freeze Ray, Sleep Grenade, Liquid Nitrogen, Cloaking Device, Smoke Canister, Flash Bang, Tear Gas, Tri-Cannon).",
+        "New secondary Arsenal Assault for Dominators (Burst, Buttstroke, Buckshot, Elbow Strike, Power Up, Trip Mine, Targeting Drone, Sniper Rifle, Ignite).",
+        "New Epic/Ancillary pools: Dark Mastery for Blasters, Controllers, Dominators, Masterminds, Tankers and Brutes; Ice Mastery for Defenders, Corruptors, Scrappers and Stalkers; Psionic Mastery for Brutes, Tankers, Scrappers and Stalkers.",
+        "Epic pool names merged: Flame/Heat/Pyre/Blaze -> Fire Mastery; Darkness -> Dark Mastery; Stone -> Earth Mastery; Electrical/Charge -> Electricity Mastery; Primal Forces/Power/Body -> Energy Mastery; Cold/Chill/Arctic -> Ice Mastery; Psychic -> Psionic Mastery; Ninja Tool -> Weapon Mastery; Munitions -> Arsenal Mastery.",
+        "Epic/patron balancing pass: dozens of recharge, endurance, range, damage and target-cap changes (e.g. most Temp Invulnerability/Mind Over Body/Frozen Armor 2s -> 8s, Char 32s -> 24s, Shocking Bolt, Soul Storm, Spirit Shark Jaws 24s).",
+        "Epic hold attacks use 3.0x cooldown penalty and epic immobilize attacks 2.0x; single-target immobilize 8s recharge, AoE 16s.",
+        "Dark Mastery Soul Drain (Defender/Corruptor) replaced by Spirit Drain (targeted AoE, takes Target AoE sets); Torrent (Scrapper/Stalker) renamed Umbral Torrent; Earth's Embrace (Controller/Mastermind epic) renamed Embrace of the Earth.",
+        "Leviathan Mastery Spirit Shark gains Leviathan Hunger mechanic and new values; Electricity Mastery Lightning Field (Sentinel) renamed Shocking Field; Mu Mastery Conserve Power (Corruptor/Defender) changed to Energize with Healing sets.",
+        "Force Mastery (Blaster) Repulsion Bomb becomes Force Bomb; Fire Control and Fire Mastery Bonfire accept Accuracy (Mastery loses auto-hit); Psionic Mastery Telekinesis reworked; Web Cocoon/Web Envelope now toxic DoT and accept damage sets.",
+        "Many epic/patron slotting changes: Summon Coralax, Summon Guardian, Summon Tarantula, Summon Mistress, Summon Adept, Summon Seer, Water Spout, Web Cocoon accept new set types; several lose Taunt or Healing enhancements.",
+        "Arachnos Soldier/Widow update: new auto powers Pain Tolerance (Night Widow) and Fate Sealed (Fortunata) at level 1; Mace attacks, Placate, Psychic Scream, Wide Area Web Grenade, Omega Maneuver and others retuned.",
+        "Mask Presence and Cloaking Device can now stack with other stealth toggles; Placate recharge 35s for Bane/Night Widow.",
+        "Storm Blast retune: Chain Lightning recharge 16s, damage and chain pattern changed; Category Five and Storm Cell proc rates changed.",
+        "Cold Domination Sleet, Storm Summoning Freezing Rain, Sonic Resonance Liquefy and Nature Affinity Lifegiving Spores become true pseudopets using AT modifiers (lower non-Defender debuffs); Heat Loss stops being a pseudopet; +Recovery 62.5%.",
+        "Blaster Devices Time Bomb replaced by Remote Bomb; Controller/Corruptor/Defender Traps Time Bomb replaced by Temporal Bomb; Mastermind Detonator recharge 300s.",
+        "Mind Control Telekinesis becomes an immobilize with pull effect, 120s recharge, 16 targets; Thermal Radiation Melt Armor recharge 100s; Thunder Strike consistency pass (recharge 20s, 18.512 endurance).",
+        "Shadow Fall, Steamy Mist and Arctic Fog now only affect teammates and leaguemates; immobilize powers no longer grant knockback protection.",
+        "Endurance cost sweep (e.g. Salt Crystals 15.6, Eagle's Claw 16.848, Pistols 5.2, Freeze Ray 10.192, Impale 8.528, Confounding Chant 15.6).",
+        "Defense-type check fixes (e.g. Electrified Net Arrow energy, Aging Touch psionic, Masterful Throw lethal) and Sentinel recharge fixes (Power Blast 8s, Power Burst 11s, Cosmic Burst 11s).",
+        "Atomic Manipulation Proton Cell takes Defense Debuff sets instead of To-Hit Debuff; Electron Shackles takes Defense Debuff sets; Frost Protection (Sentinel) no longer takes recharge; Stone Armor Mud Pots (Tanker) takes Taunt sets.",
+        "Sentinel Dark Blast Umbral Torrent damage 1.28; Blazing Blast damage 1.0; Scourging Blast proc now ignores combat levels.",
+        "Origin Attacks (new-player) damage flat scale 1.00 through level 10, no endurance cost, 3s recharge, 80 ft range, in tray at creation.",
+        "Placate for Stalker/Bane/Widow now also grants a 5s hide that damage cannot break; Guile proc similar (3s).",
+        "New characters start with Athletic Run in place of Sprint; Passport/Long Range Teleporter unlocked by any 10 exploration badges.",
+        "Patron tier moves: Soul Mastery Soul Storm (Defender/Corruptor) tier 1 and Soul Drain tier 4; Soul Drain target cap 7 -> 10."
+      ],
+      "markers": [
+        "Power set Arsenal Control exists for Controller and Dominator",
+        "Power set Arsenal Assault exists for Dominator",
+        "Epic pool Dark Mastery exists for Blaster, Controller, Dominator, Mastermind, Tanker, Brute",
+        "Epic pool Ice Mastery exists for Defender, Corruptor, Scrapper, Stalker",
+        "Epic pool Psionic Mastery exists for Brute, Tanker, Scrapper, Stalker",
+        "Only one pool each named Fire Mastery, Dark Mastery, Earth Mastery, Electricity Mastery, Energy Mastery, Ice Mastery, Psionic Mastery, Weapon Mastery; Munitions Mastery renamed Arsenal Mastery",
+        "Defender/Corruptor Dark Mastery has Spirit Drain, not Soul Drain",
+        "Blaster Devices has Remote Bomb; Controller/Corruptor/Defender Traps has Temporal Bomb (no Time Bomb)",
+        "Night Widow has auto power Pain Tolerance; Fortunata has auto power Fate Sealed",
+        "Sentinel Electricity Mastery power is Shocking Field (not Lightning Field)",
+        "Mu Mastery Corruptor/Defender has Energize instead of Conserve Power",
+        "Temp Invulnerability recharge 8s"
+      ]
+    },
+    {
+      "date": "2024-02-20",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "February 20th, 2024 Hotfix",
+      "kind": "hotfix",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#February_20th,_2024_Hotfix",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-02-27",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "February 27th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#February_27th,_2024",
+      "sections": [
+        "Powers",
+        "New Player Experience Improvements",
+        "Task Forces",
+        "Rewards",
+        "Badges",
+        "Graphics"
+      ],
+      "planner": [
+        "Some powers no longer fail to trigger Domination; Liquid Nitrogen damage now needs a hit check.",
+        "Stalker Savage Leap grants Assassin's Focus.",
+        "Mind Control Telekinesis recharge 120s -> 90s; Psionic Mastery Telekinesis recharge 240s -> 180s.",
+        "Traps Poison Trap no longer accepts Slow enhancements; Fire Mastery Bonfire duration restored."
+      ],
+      "markers": [
+        "Mind Control Telekinesis recharge is 90s"
+      ]
+    },
+    {
+      "date": "2024-03-05",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "March 5th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#March_5th,_2024",
+      "sections": [
+        "Costumes",
+        "Powers",
+        "Task Forces",
+        "Trials",
+        "System"
+      ],
+      "planner": [
+        "Arsenal Control Liquid Nitrogen now accepts slow enhancements and sets; Poison Trap accepts accuracy enhancements.",
+        "Dark Melee Touch of Fear and Savage Melee Rending Flurry grant Assassin's Focus.",
+        "Arsenal Mastery LRM quick range 150 -> 80 ft; Dark Mastery Possess can stack and adds -special on confused targets; Thunder Strike knockback uses full radius.",
+        "Domination deactivation effect no longer replays every 90s; Devolution expires properly on death."
+      ],
+      "markers": [
+        "Arsenal Mastery LRM quick form range is 80 ft"
+      ]
+    },
+    {
+      "date": "2024-03-12",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "March 12th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#March_12th,_2024",
+      "sections": [
+        "Events",
+        "Powers",
+        "Task Forces",
+        "Missions"
+      ],
+      "planner": [
+        "Arsenal Control Liquid Nitrogen inherits slow enhancements; Tri-Cannon can proc Containment damage; Tear Gas damages held targets and takes damage enhancements and sets."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2024-03-19",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "March 19th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#March_19th,_2024",
+      "sections": [
+        "Powers",
+        "Task Forces",
+        "Missions",
+        "Enemy NPCs",
+        "Giant Monsters"
+      ],
+      "planner": [
+        "Arsenal Control Sleep Grenade damage no longer requires a held target; Sonic Resonance Sonic Repulsion can slot Accuracy.",
+        "Super Reflexes Elude powers (all versions) now take Defense, EndMod, Running and Universal Travel sets."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2024-04-30",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "April 30th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#April_30th,_2024",
+      "sections": [
+        "Events",
+        "Badges"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-06-11",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "June 11th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#June_11th,_2024",
+      "sections": [
+        "Server Stability"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-07-02",
+      "issue": 27,
+      "page": 7,
+      "server": "Homecoming",
+      "label": "July 2nd, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_27_Page_7#July_2nd,_2024",
+      "sections": [
+        "Enemies",
+        "Zones"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-07-23",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "July 23rd, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#July_23rd,_2024",
+      "sections": [
+        "General",
+        "Marquee Features",
+        "Powers & Gameplay Adjustments",
+        "Character Customization Improvements",
+        "Various Additions, Enhancements, & Fixes"
+      ],
+      "planner": [
+        "New support powerset Marine Affinity for Defender, Controller, Corruptor and Mastermind (Shoal Rush, Soothing Wave, Toroidal Bubble, Whitecap, Tide Pool, Brine, Shifting Tides, Barrier Reef, Power of the Depths; Tide Pool Frenzy is a sub-effect).",
+        "Four new accolade powers: Core Attunement (Labyrinth teleport), Mark & Recall (instant-cast mark and return teleport), and two Sheer Willpower self mez-resist clicks (30s, 10 min recharge)."
+      ],
+      "markers": [
+        "Power set Marine Affinity exists for Defender, Controller, Corruptor, Mastermind",
+        "Powers Shoal Rush, Soothing Wave, Toroidal Bubble, Whitecap, Tide Pool, Brine, Shifting Tides, Barrier Reef, Power of the Depths exist",
+        "Accolade powers Core Attunement, Mark & Recall and Sheer Willpower exist",
+        "Marine Affinity at launch: Whitecap is a targeted teleport"
+      ],
+      "note": "Labelled Work in Progress on the wiki; Date noted 2024-07-23."
+    },
+    {
+      "date": "2024-07-30",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "July 30th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#July_30th,_2024",
+      "sections": [
+        "Labyrinth of Fog",
+        "Badges",
+        "Aether Rewards",
+        "Powers",
+        "Tasks",
+        "Zones",
+        "Miscellaneous"
+      ],
+      "planner": [
+        "Marine Affinity added to Architect Entertainment and Doppelganger power entries."
+      ],
+      "markers": []
+    },
+    {
+      "date": "2024-09-17",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "September 17th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#September_17th,_2024",
+      "sections": [
+        "Zones",
+        "Tasks",
+        "Rewards",
+        "NPCS",
+        "Maps",
+        "Miscellaneous",
+        "Powers"
+      ],
+      "planner": [
+        "Marine Affinity > Barrier Reef: now has the correct Disable All flag; rename sticks; no stray Tempest on buff bar.",
+        "Radiation Blast > Irradiate (Sentinel): no longer able to slot Single Target Ranged enhancement sets."
+      ],
+      "markers": [
+        "Sentinel Irradiate does not accept Single Target Ranged sets",
+        "Barrier Reef has Disable All flag"
+      ]
+    },
+    {
+      "date": "2024-10-08",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "October 8, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#October_8,_2024",
+      "sections": [
+        "Zones",
+        "Missions",
+        "NPCs",
+        "Rewards",
+        "Events"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Only Labyrinth of Fog zone, enemy and reward changes; nothing in player power or enhancement data."
+    },
+    {
+      "date": "2024-10-14",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "October 14th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#October_14th,_2024",
+      "sections": [
+        "Stability"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Client crash workaround only."
+    },
+    {
+      "date": "2024-10-29",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "October 29th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#October_29th,_2024",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Chat crash fix only."
+    },
+    {
+      "date": "2024-11-05",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "November 5th",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#November_5th",
+      "sections": [
+        "Zones",
+        "NPCs",
+        "Rewards",
+        "Powers",
+        "Miscellaneous"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "The wiki heading gives no year; 2024 is certain, as it sits between the 2024-10-29 and 2024-11-12 patches."
+    },
+    {
+      "date": "2024-11-12",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "November 12th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#November_12th,_2024",
+      "sections": [
+        "Server Stability"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-11-26",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "November 26th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#November_26th,_2024",
+      "sections": [
+        "Bug Fixes"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2024-12-05",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "December 5th, 2024",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#December_5th,_2024",
+      "sections": [
+        "AI",
+        "Zones",
+        "Task Forces",
+        "Miscellaneous"
+      ],
+      "planner": [],
+      "markers": []
+    },
+    {
+      "date": "2025-02-07",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "February 7th, 2025",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#February_7th,_2025",
+      "sections": [
+        "Spring Fling Event",
+        "General",
+        "Badges",
+        "Enhancements",
+        "Tasks"
+      ],
+      "planner": [
+        "New attuned-only IO set Cupid's Crush (Universal Damage, with a Chance for Confuse proc); converts to and from Overwhelming Force; cannot be made Superior.",
+        "Brute's Fury: Recharge/Fury Bonus proc no longer scales with the level difference to the target (fix).",
+        "Fixed minimum slotting level of Dark Watcher's Despair."
+      ],
+      "markers": [
+        "IO set Cupid's Crush exists (Universal Damage, attuned only, Chance for Confuse proc)",
+        "Dark Watcher's Despair minimum slotting level corrected"
+      ]
+    },
+    {
+      "date": "2025-02-14",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "February 14th, 2025",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#February_14th,_2025",
+      "sections": [
+        "Spring Fling Event"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Text-only change; no data marker."
+    },
+    {
+      "date": "2025-04-23",
+      "issue": 28,
+      "page": 1,
+      "server": "Homecoming",
+      "label": "April 23, 2025",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_1#April_23,_2025",
+      "sections": [
+        "Badges",
+        "Events"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Anniversary event badges and Time Capsule fixes only."
+    },
+    {
+      "date": "2025-06-17",
+      "issue": 28,
+      "page": 2,
+      "server": "Homecoming",
+      "label": "Issue 28, Page 2 (What's New in Issue 28, Page 2?)",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_2",
+      "sections": [
+        "Known Issues",
+        "Kallisti Wharf Zone Comes To Life",
+        "New Story Arcs",
+        "New Enemy Group: Blackwing Industries",
+        "New Powerset: Pyrotechnic Control",
+        "New Powerset: Psionic Armor",
+        "Powers & Gameplay Adjustments",
+        "Zones",
+        "Mission Maps",
+        "Enemies",
+        "Architect Entertainment",
+        "Miscellaneous"
+      ],
+      "planner": [
+        "New control powerset Pyrotechnic Control for Controller and Dominator (Sparkling Cage, Dazzle, Sparkling Chain, Glittering Column, Hypnotizing Lights, Brilliant Barrage, Incendiary Aura, Explosive Bouquet, Catherine Wheel; Blast Off effect).",
+        "New armor powerset Psionic Armor for Brute, Scrapper, Sentinel, Stalker, Tanker (Psychic Wall, Psionic Shield, Impenetrable Mind, Consume/Devour Psyche, Precognition, Psychokinetic Barrier, Impose/Mask Presence, Aura of Insanity/Madness, Memento Mori); Stalkers also get Hide.",
+        "Sleep revamp: sleep stacks and is no longer cancelled by damage; new Deep Sleep variant (damage shortens it) on Tranquilizer, Salt Crystals, Flash Freeze, Mesmerize, Mass Hypnosis, Spore Burst, Hypnotizing Lights, Enfeebling Lullaby.",
+        "Controller inherent: can command Tier 9 pets; Containment also triggers on Terrified or recently asleep targets; many controller pets can proc Containment at 33.33%.",
+        "Tanker inherent: self damage buff 1.0x to 0.875x, -Res modifiers lowered, DR on over-cap melee powers (Gauntlet immune), passive Arc/Radius buff removed, primary/secondary sphere AoE radii +50% (max 15 ft).",
+        "Energy Aura proliferated to Tankers (Kinetic Shield, Dampening Field, Power Shield, Entropic Aura, Energy Protection, Power Armor Energy Reserve, Energize, Energy Drain, Overload without crash).",
+        "Dark Armor: Cloak of Fear reworked (end 0.56 to 0.26/s, 15 ft radius, auto-hit, -Dmg, KB protection); Soul Transfer usable alive with self-rez; Dark Regeneration open to Sentinels and Obscure Sustenance to Brute/Scrapper/Stalker/Tanker as mutually exclusive picks; Sentinel Tenebrous Regeneration renamed Shadow Dweller.",
+        "Dark Armor: Obscure Sustenance heal 5% to 25%, now a click needing no foes, no damage/accuracy sets; Soul Transfer takes accuracy; Dark Embrace and Murky Cloud recharge 4s to 2s.",
+        "Electric Armor: Static Shield +Toxic res, Grounded res and KB changes, Power Sink regen buff, Energize regen 30s to 45s, Power Surge crash removed (350s recharge, 30s effects).",
+        "Energy Aura Energy Drain and Power Shield defense lowered. Ice Armor: Hibernate converted to Icy Bastion (toggle) for Scrapper/Sentinel/Stalker; Icicles now cold damage; new power Rime (exclusive with Hoarfrost).",
+        "Radiation Armor: Ground Zero offense capped at 16 foes; Radiation Therapy gets adaptive recharge (15s base, up to 60s), accuracy 3 to 1.2, heal values changed.",
+        "Sonic Attack: -Res stacking simplified; Shriek, Scream, Howl, Shout, Screech, Dreadful Wail each apply scale -1.5 res debuff. Water Blast Water Jet and Dehydrate gain PvE extra ticks. Dark Miasma Black Hole gains trawl effect.",
+        "Staff Fighting: Perfection levels granted on misses, stacks last 10s (was 6s), Sky Splitter and Eye of the Storm bonus damage doubled.",
+        "Darkness Manipulation Touch of the Beyond usable without a target."
+      ],
+      "markers": [
+        "Power set Pyrotechnic Control exists for Controller and Dominator",
+        "Power set Psionic Armor exists for Brute, Scrapper, Sentinel, Stalker, Tanker",
+        "Power Rime exists in Ice Armor (exclusive with Hoarfrost); Icy Bastion replaces Hibernate for Scrapper/Sentinel/Stalker",
+        "Power set Energy Aura exists for Tanker",
+        "Dark Armor > Cloak of Fear radius 15 ft, end cost 0.26/s; Sentinel Tenebrous Regeneration is named Shadow Dweller",
+        "Obscure Sustenance available to Brute/Scrapper/Stalker/Tanker; Dark Regeneration available to Sentinel",
+        "Deep Sleep variant exists on Hypnotizing Lights, Mesmerize, Flash Freeze and others",
+        "Staff Fighting Perfection stacks last 10s",
+        "Radiation Therapy has adaptive recharge (15s base, 60s max)"
+      ],
+      "note": "Released June 17, 2025 per the page. Known issues listed: Consume/Devour Psyche First Target Only popups, Memento Mori and Soul Transfer resurrect timing."
+    },
+    {
+      "date": "2025-11-25",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "Issue 28, Page 3 (What's New in Issue 28, Page 3?)",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3",
+      "sections": [
+        "New Expanded +5 & Incarnate +6/+7 Difficulty Options",
+        "New Task Force",
+        "New Story Arc",
+        "New Labyrinth of Fog Expansion",
+        "Tasks",
+        "Badges",
+        "Badge Tracker & Profile Customization",
+        "Costumes",
+        "Rewards",
+        "Events",
+        "Enemies",
+        "Zone",
+        "Maps",
+        "Supergroup Bases",
+        "Arena",
+        "Architect Entertainment",
+        "Miscellaneous",
+        "Powers"
+      ],
+      "planner": [
+        "New melee powerset Sonic Melee for Brute, Scrapper, Stalker, Tanker (Sonic Thrust, Strident Echo, Attune, Sound Booster/Build Up, Sonic Clap, Sandman's Whisper/Assassin's Whisper, Deafening Wave, Earsplitter); Attune marks Attuned targets.",
+        "Standard set bonuses now last for the full duration of most summoned pseudopets; 40% of standard set bonuses apply to henchmen in Supremacy range.",
+        "Masterminds: henchmen spawn even level; summon powers no longer ignore recharge buffs; Supremacy gives lower-level T1/T2 henchmen a ToHit bonus; henchmen -res debuff modifiers lowered.",
+        "Beast Mastery: Train Beasts now takes ToHit, Tame Beasts takes Healing and Resistance, both lose recharge; Lick Wounds/Howl/Growl grants shuffled; Summon Dire Wolf, Lions, Wolves lose some Heal, Resist, Defense or ToHit slotting.",
+        "Demons: Corruption, Lash, Crack Whip recharge and endurance reduced; Enchant Demons now takes Resistance, Abyssal Empowerment takes Healing; Summon Demons loses Heal and Resist slotting; both upgrades lose recharge.",
+        "Necromancy, Mercenaries, Ninjas, Robotics upgrade powers (Enchant Undead, Dark Empowerment, Equip Mercenary, Tactical Upgrade, Train Ninjas, Kuji In Zen, Equip Robot, Upgrade Robot) lose their recharge.",
+        "Thugs: Pistols recharge 3s to 4s; Street Cred stacks from Pistols, Dual Wield, Empty Clips raise Posse chances and cut Gang War recharge; Gang War 600s to 300s, 60s duration; Equip Thugs takes ToHit, Upgrade Equipment takes Defense, Call Enforcer loses both.",
+        "Salvage Monstrous Aether renamed Unstable Aether (sub-currency of Prismatic Aether).",
+        "Combat Dummies become their own power category; Power Analyzer usable in all but PvP; Nemesis Staff cast time 2.5s to 2s.",
+        "Fixes: Electricity Mastery Shocking Field no longer claims Healing sets; Radiation Melee Scrapper Atom Smasher/Proton Sweep target caps; Regeneration Integration target count; Sentinel Overload crash."
+      ],
+      "markers": [
+        "Power set Sonic Melee exists for Brute, Scrapper, Stalker, Tanker",
+        "Powers Sonic Thrust, Strident Echo, Attune, Sound Booster, Sonic Clap, Sandman's Whisper, Assassin's Whisper, Deafening Wave, Earsplitter exist",
+        "Beast Mastery Train Beasts has no recharge and accepts ToHit; Tame Beasts accepts Healing/Resistance",
+        "Demons Enchant Demons takes Resistance sets; Abyssal Empowerment takes Healing",
+        "Thugs Gang War recharge 300s; Street Cred mechanic exists",
+        "Mercenary, Ninja, Robot, Necromancy upgrade powers have no recharge time",
+        "Salvage named Unstable Aether exists (formerly Monstrous Aether)"
+      ],
+      "note": "Released November 25, 2025 per page intro. Later Panel 2 / Panel 3 updates are separate entries."
+    },
+    {
+      "date": "2025-12-01",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "December 1 Update",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#December_1_Update",
+      "sections": [
+        "Winter Event",
+        "Lord Winter's Realm Trial",
+        "New Badges"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Event and trial changes only; no player power or enhancement data. Posted December 1, 2025."
+    },
+    {
+      "date": "2025-12-02",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "December 2 Hotfix",
+      "kind": "hotfix",
+      "build": "28.3.7372.3",
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#December_2_Hotfix",
+      "sections": [
+        "Stability & Performance"
+      ],
+      "planner": [],
+      "markers": [],
+      "note": "Hotfix dated by its heading; the notes were posted 2025-12-03."
+    },
+    {
+      "date": "2025-12-16",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "December 16 Update",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#December_16_Update",
+      "sections": [
+        "Tasks",
+        "Zones",
+        "Rewards",
+        "Enemies",
+        "Miscellaneous",
+        "Powers"
+      ],
+      "planner": [
+        "Fixed Corruptor/Defender Freeze Ray and Corruptor Bitter Freeze Ray missing the held requirement for -KB.",
+        "Fixed Beast Mastery Apex Predator not granting the +Accuracy buff to henchmen or caster.",
+        "Experience curve: required XP rounded down to nearest 100 per level (level 40 needs 8,401,500)."
+      ],
+      "markers": [
+        "Level 40 experience requirement is 8,401,500 (was 8,401,519)"
+      ]
+    },
+    {
+      "date": "2026-02-10",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "February 10 Update - Panel 2",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#February_10_Update_-_Panel_2",
+      "sections": [
+        "Badges",
+        "Enhancements",
+        "Customization",
+        "Rewards",
+        "Zones",
+        "Enemies",
+        "Tasks",
+        "PvP",
+        "Architect Entertainment",
+        "Supergroup Bases",
+        "Miscellaneous",
+        "Powers"
+      ],
+      "planner": [
+        "Enhancement slot moving: adding an enhancement to a power with no free slot can take an empty slot from another power.",
+        "Invention set recipe rarities aligned with their conversion sets: many Uncommon to Rare (Miracle, Kismet, Gift of the Ancients, Touch of Death, Salvo, Tempest, Decimation, Explosive Strike and more); Adjusted Targeting, Dampened Spirits, Efficacy Adaptor, Kinetic Crash, Mocking Beratement, Undermined Defenses Rare to Uncommon.",
+        "Aura radius increases for Cloak of Fear, Oppressive Gloom, Mud Pots, Entropy Shield, Repulse, Chilling Embrace, Invincibility, World of Confusion, Impose Presence, Beta Decay, Integration, Against All Odds, Inky Aspect, Rise to the Challenge and others.",
+        "Endurance cost cuts: Mastermind primary personal attacks and secondaries, all Epic pool powers, ally rez powers, and pool powers Boxing, Kick, Cross Punch, Air Superiority, Jump Kick, Flurry.",
+        "Ally rez powers reworked (Howling Twilight, Resurrect, Defibrillate, Rebirth, Conduit of Pain, Elixir of Life now area rez, Mutation, Power of the Phoenix): lower endurance, faster cast, longer range, 15s stealth on revived ally.",
+        "Archetype changes: Brute resist/defense modifiers 75% to 85% and higher max HP; Sentinel modifiers 70% to 75% and Opportunity changes; Stalker Assassination scale 7 to 8.5 PvE.",
+        "Masterminds: henchmen summoned stealthy for 15s, T1 power can teleport henchmen, set bonus share 40% to 50%, Supremacy retuned; Mastermind ATOs now slottable in primary personal attacks and many secondary attacks (Sleet, Howling Twilight, Force Bolt, Whitecap, Shifting Tides, Fallout, Gale, Acid Mortar, Caltrops, Seeker Drones, Trip Mine and more).",
+        "Broad Sword: new Boomerang Slice, mutually exclusive with Slice; Slice, Slash, Whirling Sword, Disembowel, Head Splitter retuned.",
+        "Electrical Melee: Chain Induction becomes a true chain accepting Melee AoE sets (no longer Melee sets); Lightning Clap foe-targeted and accepts damage sets; Lightning Rod true pseudopet.",
+        "Kinetic Melee, Psionic Melee, Sonic Melee, Spines, Fiery Melee (Breath of Fire arc 120 degrees; Greater Fire Sword loses -defense and Defense Debuff sets), Storm Blast (Storm Brewing stacks, Storm Cell immobile, Category Five retune, Cloudburst takes Slow and ToHit sets) all reworked.",
+        "Marine Affinity: Whitecap becomes a location teleport with 15s recharge; Brine and Shoal Rush faster casts; Soothing Wave, Tide Pool, Tide Pool Frenzy -Dam debuffs lowered and resistable.",
+        "Beast Mastery: Lick Wounds becomes a 20% self heal and goes to Howler Wolves under Tame Beasts; Howl and Maiming Bite cast times cut; Dire Wolf roars faster.",
+        "Dual Pistols Swap Ammo converts 100% of the set's damage to the ammo element. Pyrotechnic Control Glittering Column explosion is an auto power.",
+        "Dark Miasma and Dark Mastery Black Hole: only main target phased; radius raised to 30 ft and 20 ft."
+      ],
+      "markers": [
+        "Power Boomerang Slice exists in Broad Sword",
+        "Electrical Melee Chain Induction is AoE_Attack type (accepts Melee AoE sets, not Melee sets)",
+        "Marine Affinity Whitecap is a location teleport with 15s recharge",
+        "Storm Blast has Storm Brewing as a stackable temporary power",
+        "Recipes Miracle_A, Kismet_A, Gift_of_the_Ancients_A are Rare rarity; Adjusted_Targeting_F is Uncommon",
+        "Fiery Melee Breath of Fire arc 120 degrees; Greater Fire Sword has no -defense",
+        "Brute resist/defense modifier 85%; Sentinel self resist/defense modifier 75%",
+        "Howling Twilight endurance cost 10.4; Empathy Resurrect 5.2 and 120s recharge",
+        "Mastermind set bonus share 50% to henchmen",
+        "Black Hole radius 30 ft (Dark Miasma), 20 ft (Dark Mastery)"
+      ],
+      "note": "Posted February 10, 2026."
+    },
+    {
+      "date": "2026-03-11",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "March 11 Update",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#March_11_Update",
+      "sections": [
+        "Labyrinth of Fog",
+        "Lady Gray Task Force",
+        "Powers",
+        "Missions",
+        "Miscellaneous Fixes"
+      ],
+      "planner": [
+        "Head Splitter no longer crits for special damage.",
+        "Lightning Clap Scrapper crits apply only to the main target."
+      ],
+      "markers": [],
+      "note": "Posted March 11, 2026. Mostly text/behaviour fixes."
+    },
+    {
+      "date": "2026-03-31",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "March 31 Update",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#March_31_Update",
+      "sections": [
+        "Powers",
+        "Enemies",
+        "Zones",
+        "Tasks",
+        "Customization"
+      ],
+      "planner": [
+        "Broadsword (Brute) Headsplitter now accepts Melee AoE sets.",
+        "Electrical Melee (Tanker) Lightning Clap now accepts Universal Damage sets.",
+        "Kinetic Melee Power Siphon stacks now buff psionic and toxic damage.",
+        "Sonic Melee (Stalker) Deafening Wave now grants Assassin's Focus."
+      ],
+      "markers": [
+        "Brute Headsplitter accepts Melee AoE sets",
+        "Tanker Lightning Clap accepts Universal Damage sets"
+      ],
+      "note": "Posted March 31, 2026."
+    },
+    {
+      "date": "2026-06-23",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "June 23 Update - Panel 3",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#June_23_Update_-_Panel_3",
+      "sections": [
+        "Fiery Aura",
+        "Ninjitsu",
+        "Psionic Armor",
+        "Radiation Armor",
+        "Shield Defense",
+        "Willpower",
+        "Dark Armor",
+        "Sonic Melee",
+        "Electric Melee",
+        "Storm Blast",
+        "Broad Sword",
+        "Fiery Melee",
+        "Kinetic Melee",
+        "Marine Affinity"
+      ],
+      "planner": [
+        "Fiery Aura: Burn bigger area (15 ft, 10 targets) and stronger; Temperature Protection gains KB 3, Psi/Toxic res, Fear protection, +10% MaxHP, healing slotting; Consume adaptive recharge; Phoenix Rising reworked; Stalker Hide becomes Hidden Flame; Cauterizing Blaze boosts damage.",
+        "Ninjitsu: Blinding Powder and Smoke Flash merged (Smoke Flash for Scrapper/Stalker, now PBAoE; takes Taunt and Sleep sets); Stalker Smoke Flash replaced by Bo Ryaku; Seishinteki Kyoyo and Shinobi-Iri retuned.",
+        "Psionic Armor: Consume Psyche debuff durations changed and recharge ring added.",
+        "Shield Defense: Shield Charge becomes a true pseudopet and breaks Hide.",
+        "Willpower: Stalker Fast Healing +15% Recovery and takes Endurance Modification; Quick Recovery +20% res to -Recovery; Resurgence usable while conscious and takes Resist Damage sets; Stalker Reconstruction replaced by Up to the Challenge (toggle); owners of Reconstruction get Resurgence.",
+        "Dark Armor: Obscure Sustenance accepts Endurance Modification sets; Sentinel Dark Regeneration takes accurate healing sets.",
+        "Sonic Melee, Marine Affinity, Kinetic Melee tweaks (-Debuff Res to scale -1.0; Soothing Wave 0.85, Tide Pool 1.7, Frenzy 0.85 -Dam); Tanker Fiery Breath arc 30 to 40 degrees; Brute Headsplitter takes Melee AoE sets."
+      ],
+      "markers": [
+        "Stalker Fiery Aura has Hidden Flame instead of Hide",
+        "Stalker Ninjitsu has Bo Ryaku in place of Smoke Flash; Scrapper/Stalker Blinding Powder is named Smoke Flash (PBAoE)",
+        "Stalker Willpower has Up to the Challenge instead of Reconstruction; Resurgence takes Resist Damage sets",
+        "Fiery Aura > Burn radius 15 ft, target cap 10",
+        "Marine Affinity Soothing Wave -Dam scale 0.85, Tide Pool 1.7"
+      ],
+      "note": "Posted June 23, 2026."
+    },
+    {
+      "date": "2026-07-07",
+      "issue": 28,
+      "page": 3,
+      "server": "Homecoming",
+      "label": "July 7 Update",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_3#July_7_Update",
+      "sections": [
+        "Powers",
+        "Enhancements"
+      ],
+      "planner": [
+        "Fixed Psionic Armor powers disappearing on level-up until respec.",
+        "Dark Armor Obscure Sustenance recharge now 60s for all ATs.",
+        "Fixed Willpower Resurgence ignoring global recharge buffs; Scrapper ATOs now modify Lightning Rod inner crit chance."
+      ],
+      "markers": [
+        "Obscure Sustenance recharge 60s on every AT"
+      ],
+      "note": "Posted July 7, 2026. Last Page 3 update before Page 4."
+    },
+    {
+      "date": "2026-10-06",
+      "issue": 28,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "Issue 28, Page 4 (What's New in Issue 28, Page 4?)",
+      "kind": "live",
+      "build": null,
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_4",
+      "sections": [
+        "Marquee Features",
+        "Zones",
+        "Tasks",
+        "Badges",
+        "Costumization",
+        "Emote Additions",
+        "Rewards",
+        "Events",
+        "Enemies",
+        "Mission Maps",
+        "Architect Entertainment",
+        "Supergroup Base Editor",
+        "Miscellaneous",
+        "Player Vs. Player",
+        "Powers"
+      ],
+      "planner": [
+        "New support powerset Light Affinity for Defender, Controller, Corruptor, Mastermind (Protective Beam, Blinding Beam, Radiance, Purifying Beam, Lightfield, Magnify, Searing Beam, Spotlight, Prismatic Shield).",
+        "New armor powerset Sonic Aura for Brute, Scrapper, Sentinel, Stalker, Tanker (Sonic Diffusion, Attenuation Blanket, Equalization, Harmonic Distortion, Disruption Aura/Strike, Ultrasonic Flow/Hide, Somatic Aura, Sonic Boom, Noise Cancellation); Stalkers get Ultrasonic Hide, Sentinels Disruption Strike.",
+        "Tanker and Brute: Claws and Stone Armor may now be paired (exclusion removed).",
+        "Empathy rework: overheal absorb on Heal Other, Healing Aura, Absorb Pain; Resurrect now area; Adrenalin Boost can revive allies; Fortitude, Recovery Aura, Regeneration Aura, Clear Mind retuned.",
+        "Force Field: Repulsion Bolt and Force Bomb damage up, Personal Force Field passive 10%, Detention Field usable on allies, Damping Bubble stronger with absorb, Dispersion Bubble cost cut.",
+        "Sonic Resonance: debuff resists added, Sonic Siphon self res, Sonic Cage and Disruption Field usable on allies/enemies, Sonic Repulsion auto-hit with hold chance and Hold sets, Clarity targeted AoE, Liquefy -MaxHP.",
+        "Super Strength rework: Rage no longer crashes (20 end, damage scale 5.0, +15% base damage, Smash AoE on Haymaker, Hurl, Knockout Blow); Jab, Punch, Hand Clap (5-target AoE knockdown), Hurl retuned; power order changed for Brute/Tanker.",
+        "Traps: Caltrops renamed Shrapnel Grenade (range 70 ft), Web Grenade renamed Debilitating Web Grenade, Triage Beacon, Acid Mortar, Force Field Generator, Seeker Drones, Poison Trap, Trip Mine (unified with Devices, knockup) and Detonator reworked.",
+        "Damage cap raised to +400% for Controller, Defender, Dominator, Mastermind, Peacebringer, Warshade, Arachnos Soldier and Widow (and their pets).",
+        "Chain attack AreaFactor formula changed from 1 + 0.75*MaxTargets to 1 + 0.15*radius*(MaxTargets/10); affects proc rates only.",
+        "Dominating Grasp Chance for Fiery Orb and Overwhelming Presence Chance for Energy Font: cap 3, can trigger per target, PPM 1 to 2 (2 to 3 Superior).",
+        "Absorb Pain, Share Pain, Rebirth healing now resistable by Heal Resistance; animation dead time removed from many summon/buff powers (Arctic Fog, Dark Servant, Resurrect, Fallout, Jack Frost, Lich, Targeting Drone, Time Stop and more).",
+        "AoE toggle endurance cuts: Death Shroud, Genetic Contamination, Lightning Field, Blazing Aura, Icicles, Mud Pots, Quills 0.52 to 0.26/s; Dispersion Bubble and Sonic Dispersion 0.4/s; Hot Feet, Orbiting Death, Group Fly, Group Energy Flight lowered.",
+        "Avoid fixed and applied to Caltrops/Thorntrops/Monkey Gas; Sleet, Freezing Rain, Rain of Fire, Ice Storm, Blizzard, Rain of Arrows now work with Avoid.",
+        "Mastermind Supremacy full strength from level 1; Mastermind ATOs work non-Superior; Fire Mastery Char 0.5 to 1.1 damage; Brute Fiery/Sonic Melee Taunt duration fixed; Wormhole teleport magnitude 4.1 to 6.1.",
+        "Sentinel and Stalker Dark Regeneration accept ATOs; Soul Transfer accepts all ATOs; Gravity Distortion Field gets damage enhancement; Venomous Gas loses range enhancements; Dominator Vicious Slash removed from Dominator sets; Breath of Fire accepts Ranged AoE sets.",
+        "Villain Epic AT support buffs now affect all nearby friendlies; Black Dwarf and White Dwarf now respect global recharge."
+      ],
+      "markers": [
+        "Power set Light Affinity exists for Defender, Controller, Corruptor, Mastermind",
+        "Power set Sonic Aura exists for Brute, Scrapper, Sentinel, Stalker, Tanker",
+        "Powers Sonic Diffusion, Attenuation Blanket, Harmonic Distortion, Noise Cancellation, Sonic Boom exist",
+        "Powers Protective Beam, Radiance, Lightfield, Magnify, Spotlight, Prismatic Shield exist",
+        "Claws and Stone Armor no longer mutually exclusive for Tanker/Brute",
+        "Caltrops renamed Shrapnel Grenade; Web Grenade renamed Debilitating Web Grenade",
+        "Super Strength Rage costs 20 endurance with damage scale 5.0 and no crash; Hand Clap recharge 15s, 5 targets",
+        "Empathy Resurrect is AoE; Adrenalin Boost can revive; Fortitude damage buff scale 4.5",
+        "Sonic Resonance Sonic Repulsion takes Hold sets",
+        "Damage cap +400% for Controller/Defender/Dominator/Mastermind/Peacebringer/Warshade/Arachnos",
+        "Force Field Repulsion Bolt damage scale 1.0",
+        "Seeker Drones recharge 60s; Trip Mine unified with Devices (recharge 30s)"
+      ],
+      "note": "Page states the update reached the Homecoming servers on October 6, 2026. Planner data i28p4 should correspond to this page (or its patch)."
+    },
+    {
+      "date": "2026-10-20",
+      "issue": 28,
+      "page": 4,
+      "server": "Homecoming",
+      "label": "Patch Notes - 2026-10-20",
+      "kind": "live",
+      "build": "28.4.8623",
+      "source": "https://homecoming.wiki/wiki/Issue_28_Page_4/Patches#Patch_Notes_-_2026-10-20",
+      "sections": [
+        "Tasks",
+        "Badges",
+        "Costumes",
+        "Rewards",
+        "Zones",
+        "Powers",
+        "System"
+      ],
+      "planner": [
+        "Group Fly and Peacebringer Group Energy Flight gain an opt-out toggle when affected.",
+        "Avoid flag dropped from Sleet, Freezing Rain, Rain of Fire, Ice Storm, Blizzard, Oil Slick Burn and Whirlpool.",
+        "Sonic Resonance Clarity splash mez protection 5 to 15; Sonic Repulsion loses damage slotting; Sonic Aura Harmonic Distortion fix (Scrapper KB resistance); Detention Field and Sonic Cage respect global recharge.",
+        "Defender Traps Force Field Generator updated; Trip Mine proc rate for Devices and Arsenal Assault matched to Traps."
+      ],
+      "markers": [
+        "Sonic Repulsion does not accept damage enhancements",
+        "Clarity mez protection scale 15",
+        "Group Fly has opt-out toggle"
+      ],
+      "note": "Version Number 28.4.8623 given on the Patches page."
+    }
+  ]
+}

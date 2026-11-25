@@ -26,6 +26,7 @@ interface CheckBarProps {
   clickSounds?: string[]; // played on a click (default: the level-up screens' powerselect2)
   hoverSounds?: boolean; // the character creator's N_MouseEnter / N_MouseExit (drawHybridBar)
   onClick?: () => void;
+  fixable?: boolean; // planner extra: an 'unselectable' bar that still takes a click, to fix it (the overview's rule breaks)
   onRightClick?: () => void; // planner extra: right-click undoes (e.g. removes a slot placed at this level)
   onLongPress?: (pt: { x: number; y: number }) => void; // phones: press and hold (window px), in place of hovering
   onHover?: (on: boolean, at?: DOMRect) => void; // at: the bar's outline (window px) when the pointer enters
@@ -55,11 +56,11 @@ function brighten(c: string, amt: number): string {
  * meat over the same box, no check box, the label centered.
  */
 export function CheckBar(props: CheckBarProps) {
-  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, hitPad = 0, isPower, noBox, clickSounds, hoverSounds, onClick, onRightClick, onLongPress, onHover, title, testId } = props;
+  const { skin, x, y, wd, scale = S, text, state, down, icon, halfText, hitPad = 0, isPower, noBox, clickSounds, hoverSounds, onClick, fixable, onRightClick, onLongPress, onHover, title, testId } = props;
   useFontsReady();
   const { phone } = useStage();
   const [hover, setHover] = useState(false);
-  const selectable = state !== 'unselectable' && !!onClick;
+  const selectable = (state !== 'unselectable' || !!fixable) && !!onClick;
   const chosen = down || state === 'selected';
   const colors: ElemColors = state === 'unselectable' ? skin.unselectable : chosen ? skin.selected : skin.standard;
   const lit = hover && selectable;
@@ -101,8 +102,9 @@ export function CheckBar(props: CheckBarProps) {
   const band = snap(2 * s);
   /** The middle frame's top and bottom border rows over [l, r) (a bridge under an end frame). */
   const frameBridge = (key: string, l: number, r: number) =>
-    [0, fH - band].map((top) => (
-      <div key={`${key}${top}`} className="layer" style={{ left: l, top: fTop + top, width: r - l, height: band, overflow: 'hidden', zIndex: 3 }}>
+    // keyed by place, not by offset: at a height no taller than the band both rows sit at 0
+    [0, fH - band].map((top, row) => (
+      <div key={`${key}${row}`} className="layer" style={{ left: l, top: fTop + top, width: r - l, height: band, overflow: 'hidden', zIndex: 3 }}>
         <Sprite src={ui(`${dir}/checkbar_frame_lg_${sel}mid${tt}`, skin)} x={0} y={-top} w={r - l} h={fH} tint={colors.frame} />
       </div>
     ));
@@ -206,7 +208,49 @@ export function CheckBar(props: CheckBarProps) {
   );
 }
 
-/** drawCheckBox: the round box at the bar's left end, or a power ring holding an icon. */
+/**
+ * The planner's round on/off switch (the overview's totals switch, the picker's level box), drawn
+ * to fill a `size` square: the skin's own check box (CheckBox), its orb lit while on. Pointer
+ * events pass through, so the parent takes the clicks.
+ *
+ * @param props.skin The current skin.
+ * @param props.on Whether it is switched on.
+ * @param props.size Its width and height (stage px).
+ * @param props.gray Drawn greyed out, as a bar that can't be chosen draws its box (a switch that
+ *   does nothing: the pet pane's powers that move no stat).
+ */
+export function OnSwitch({ skin, on, size, gray = false }: { skin: Skin; on: boolean; size: number; gray?: boolean }) {
+  const colors = gray ? skin.unselectable : on ? skin.selected : skin.standard;
+  return (
+    <span style={{ position: 'absolute', left: size / 2, top: size / 2, width: 0, height: 0, pointerEvents: 'none' }}>
+      <CheckBox skin={skin} colors={colors} base={colors.base} sc={size / 32} down={on && !gray} gray={gray} />
+    </span>
+  );
+}
+
+/**
+ * A checkbox drawn as OnSwitch: the real checkbox (keys, screen readers, the label's clicks) lies
+ * see-through over the switch, and keyboard focus rings the switch in the menu border's color.
+ *
+ * @param props.skin The current skin.
+ * @param props.on Whether it is ticked.
+ * @param props.size Its width and height (stage px).
+ * @param props.onChange Called when it is ticked or unticked.
+ * @param props.testId data-testid for the browser tests (e2e/).
+ */
+export function SwitchBox({ skin, on, size, onChange, testId }: { skin: Skin; on: boolean; size: number; onChange: () => void; testId?: string }) {
+  return (
+    <span className="switch-box" style={{ position: 'relative', display: 'inline-block', width: size, height: size, flex: 'none', borderRadius: size / 2 }}>
+      <OnSwitch skin={skin} on={on} size={size} />
+      <input type="checkbox" data-testid={testId} checked={on} onChange={onChange} style={{ position: 'absolute', left: 0, top: 0, width: size, height: size, margin: 0, opacity: 0, cursor: 'pointer' }} />
+    </span>
+  );
+}
+
+/**
+ * drawCheckBox: the round box at the bar's left end, or a power ring holding an icon. Drawn
+ * centred on its parent's origin.
+ */
 function CheckBox({ skin, isPower, colors, base, sc, down, gray, icon }: { skin: Skin; isPower?: boolean; colors: ElemColors; base: string; sc: number; down: boolean; gray: boolean; icon?: string }) {
   const dir = 'creation/common/checkbox';
   const praet = skin.name === 'praetorian';

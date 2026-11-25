@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import { defaultServer, serverById, serverInLink, serverOf, SERVERS, withServer, type GameServer } from '../../data/servers.ts';
 import { importTarget, madeOnLabel, type GameVersion } from '../../data/versions.ts';
@@ -7,13 +8,14 @@ import { fitToPatch } from '../../engine/migrate.ts';
 import type { Issue } from '../../engine/rules.ts';
 import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../../io/buildtxt.ts';
 import { describeImportFailure, noBuildSave, readBuildFile, unknownServer } from '../../io/importProblem.ts';
-import { deleteBuild, listBuilds, saveBuild, type SavedBuild } from '../../io/library.ts';
+import { deleteBuild, listBuilds, saveBuild, savedName, saveFirstText, type SavedBuild } from '../../io/library.ts';
 import { buildToMxDz, exportMbd, importParsed, loadMidsMap, mbdToChunk, notReadableOn, parseMidsText } from '../../io/mids.ts';
 import { midsMadeOn } from '../../io/midsPatches.ts';
 import { decodeShare, shareLink } from '../../io/share.ts';
 import { askOverRemembered, shareServer, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
+import type { Skin } from '../skin/skin.ts';
 import { useStage } from '../components/Stage.tsx';
 import { TitleText } from '../components/GameText.tsx';
 import { safeFileName } from '../../io/fileName.ts';
@@ -22,6 +24,8 @@ const btn = (left: number, top: number) => ({ left, top, position: 'absolute' as
 
 // the most gaps the "Imported, with gaps" list shows before "... and N more"
 const MAX_GAP_LINES = 40;
+// shown with every Mids export: the planner doesn't chase what Mids lacks
+const MIDS_BEST_EFFORT = "Warning: Mids export is best effort. Mids doesn't have all of the game's powers and enhancements, so the build may not match in Mids.";
 
 /** @return An issue as a line for the patch-move dialog ("Knockout Blow: Available at level 24"). */
 function issueLine(gd: GameData, b: Build, i: Issue): string {
@@ -69,8 +73,8 @@ export function saveFailedText(server: GameServer): string {
 }
 
 /** Save / load / share / Mids import-export, in the in-game skin. */
-export function BuildMenu({ onClose }: { onClose: () => void }) {
-  const { gd, build, loadBuild, versions } = useStore();
+export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }) {
+  const { gd, build, loadBuild, versions } = useStore(useShallow((s) => ({ gd: s.gd, build: s.build, loadBuild: s.loadBuild, versions: s.versions })));
   useEscape(onClose);
   const [saved, setSaved] = useState<SavedBuild[]>([]);
   const [text, setText] = useState('');
@@ -155,9 +159,35 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     console.error(`saved builds: ${what}`, e);
     say(what === 'saved' ? saveFailedText(ofBuild) : "Couldn't delete that build: this browser's storage refused.");
   };
-  /** Save the open build in this browser, then remind the player that only this browser has it. */
-  const saveHere = (b: Build) =>
-    saveBuild(b).then(
+  /**
+   * Save the open build in this browser, then remind the player that only this browser has it. A
+   * saved build of the same name is replaced, or kept beside it, as the player chooses.
+   */
+  const saveHere = async (b: Build) => {
+    let id: number | undefined;
+    const name = savedName(b);
+    // those of that name, newest first (as the list is); unreadable storage: the save says so below
+    const named = await listBuilds().then(
+      (all) => all.filter((s) => s.name === name),
+      () => [],
+    );
+    const same = named[0];
+    if (same) {
+      // several of that name (kept both before): Replace overwrites the newest, and says so
+      const which = named.length > 1 ? `${named.length} builds named "${cleanName(name)}" are already saved in this browser. Replace the newest one` : `A build named "${cleanName(name)}" is already saved in this browser. Replace it`;
+      const answer = await useStore.getState().askThreeWay({
+        title: 'Replace the saved build?',
+        text: `${which} with this one, or keep both?`,
+        okLabel: 'Replace',
+        altLabel: 'Keep both',
+      });
+      if (answer === 'ok') id = same.id;
+      else if (answer !== 'alt') {
+        if (answer === 'cancel') say('Not saved.');
+        return;
+      }
+    }
+    return saveBuild(b, id).then(
       () => {
         void refresh();
         say('Saved in this browser.');
@@ -166,6 +196,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
       },
       (e: unknown) => storageFailed(e, 'saved'),
     );
+  };
   /**
    * The open build's own game data and Mids map, for exports: New Build's version picker may be
    * showing another version, and the build must be written out against the data it was made on.
@@ -189,9 +220,10 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
     const current = useStore.getState().build;
     if (!current) return (await askOverRemembered('Replace your last build?', loading, 'Replace')) === 'go';
     if (!hasWork(current)) return true;
+    const keep = await saveFirstText(current);
     return useStore.getState().askConfirm({
       title: 'Replace the current build?',
-      text: `${loading} replaces ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
+      text: `${loading} replaces ${current.name ? `"${current.name}"` : 'your current build'}.${keep}`,
       okLabel: 'Replace',
     });
   };
@@ -207,7 +239,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
       if (m) {
         // a link's address names its server (/HatesCoHPlanner/Homecoming/#b=...); a bare code is the
         // server's its game version belongs to (Homecoming's for a code from before servers)
-        const named = serverInLink(t, import.meta.env.BASE_URL);
+        const named = serverInLink(t, import.meta.env.BASE_URL, location.host);
         if (named.unknown) throw unknownServer(named.unknown);
         const code = await decodeShare(m[1]!);
         const b = withServer(code, shareServer(named, code.dataVersion));
@@ -313,8 +345,8 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
-        <MenuFrame x={L.frame[0]!} y={L.frame[1]!} w={L.frame[2]!} h={L.frame[3]!} r25 style={{ background: 'rgba(0,0,20,0.95)' }} />
-        <SetTitle x={L.title[0]!} y={L.title[1]!} size={phone ? 28 : 36} text="Build menu" />
+        <MenuFrame x={L.frame[0]!} y={L.frame[1]!} w={L.frame[2]!} h={L.frame[3]!} r25 skin={skin} style={{ background: skin.panel }} />
+        <SetTitle x={L.title[0]!} y={L.title[1]!} size={phone ? 28 : 36} text="Build menu" skin={skin} />
         <div style={L.wrap}>
         <div className={phone ? 'body-text' : 'abs body-text'} style={leftStyle}>
           <TitleText style={{ fontSize: 22 }}>THIS BUILD</TitleText>
@@ -337,10 +369,10 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   className="info-button"
                   style={{ position: 'static' }}
                   onClick={() =>
-                    void buildData().then(({ bgd, map }) => {
-                      const { mbd, warnings } = exportMbd(bgd, map, build);
+                    void buildData().then(async ({ bgd, map }) => {
+                      const { mbd, warnings } = exportMbd(bgd, map, build, await shareLink(build));
                       download(`${build.name || 'build'}.mbd`, JSON.stringify(mbd, null, 2));
-                      say('Mids .mbd downloaded.', ...warnings.map((w) => `Warning: ${w}`));
+                      say('Mids .mbd downloaded.', MIDS_BEST_EFFORT, ...warnings.map((w) => `Warning: ${w}`));
                     }).catch(midsFailed)
                   }
                 >
@@ -353,9 +385,9 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                   style={{ position: 'static' }}
                   onClick={() =>
                     void buildData().then(async ({ bgd, map }) => {
-                      const { mbd, warnings } = exportMbd(bgd, map, build);
+                      const { mbd, warnings } = exportMbd(bgd, map, build, await shareLink(build));
                       await copy(await mbdToChunk(mbd), 'Mids share code');
-                      if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
+                      setStatus((s) => [...s, MIDS_BEST_EFFORT, ...warnings.map((w) => `Warning: ${w}`)]);
                     }).catch(midsFailed)
                   }
                 >
@@ -370,7 +402,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
                     void buildData().then(async ({ bgd, map }) => {
                       const { text: code, warnings } = await buildToMxDz(bgd, map, build);
                       await copy(code, 'Legacy Mids (MxDz) code');
-                      if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
+                      setStatus((s) => [...s, MIDS_BEST_EFFORT, ...warnings.map((w) => `Warning: ${w}`)]);
                     }).catch(midsFailed)
                   }
                 >
@@ -411,7 +443,7 @@ export function BuildMenu({ onClose }: { onClose: () => void }) {
               dropFile(f);
             }}
             placeholder={`Paste ${takes.length > 1 ? `${takes.slice(0, -1).join(', ')}, or ${takes[takes.length - 1]}` : takes[0]}.${fileKinds.length ? ' Or drop a file here.' : ''}`}
-            style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: dropping ? '#001a3a' : '#000', color: '#cfe8ff', border: `2px ${dropping ? 'dashed #9fd0ff' : 'solid #4f94ff'}`, borderRadius: 10, padding: 10, fontSize: 14 }}
+            style={{ position: 'absolute', left: 0, top: BOX_Y, width: phone ? W - 40 : 620, height: BOX_H, boxSizing: phone ? 'border-box' : undefined, background: dropping ? '#001a3a' : '#000', color: '#cfe8ff', border: `2px ${dropping ? 'dashed #9fd0ff' : `solid ${skin.menuBorder}`}`, borderRadius: 10, padding: 10, fontSize: 14 }}
           />
           <div style={btn(0, BOX_Y + BOX_H + 20)}>
             <button className="info-button" style={{ position: 'static' }} onClick={() => void doImport(text, from ?? undefined)} disabled={!text.trim()}>

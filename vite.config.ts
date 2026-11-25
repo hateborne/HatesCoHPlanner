@@ -1,8 +1,9 @@
 /// <reference types="vitest/config" />
 import { createHash } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { notFoundRedirect, SERVERS } from './src/data/servers.ts';
+import { notFoundRedirect, PAGES_BASE, SERVERS } from './src/data/servers.ts';
 import { VERSION } from './scripts/release-version.mjs';
 
 /**
@@ -30,13 +31,17 @@ function serverPages(): Plugin {
  * link to the planner. The redirect is notFoundRedirect itself, written in inline and allowed by its
  * hash alone (the page's own Content-Security-Policy).
  *
+ * A build for another base than GitHub Pages' (HCP_BASE) also sends a link made at the GitHub Pages
+ * address to the same page under its own base, so the link opens with only its host changed.
+ *
  * @param base The site base ("/HatesCoHPlanner/").
  * @return The page's HTML.
  */
 function notFoundHtml(base: string): string {
   const paths = SERVERS.map((s) => s.path);
   const fn = notFoundRedirect.toString();
-  const script = `(function(){var to=(${fn})(location.pathname,${JSON.stringify(base)},${JSON.stringify(paths)});if(to)location.replace(to+location.search+location.hash);})();`;
+  const was = base === PAGES_BASE ? '' : `,${JSON.stringify(PAGES_BASE)}`;
+  const script = `(function(){var to=(${fn})(location.pathname,${JSON.stringify(base)},${JSON.stringify(paths)}${was});if(to)location.replace(to+location.search+location.hash);})();`;
   const hash = createHash('sha256').update(script).digest('base64');
   const csp = `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'`;
   return `<!doctype html>
@@ -78,6 +83,10 @@ function notFoundPage(): Plugin {
       if (run(`${base}${own.toLowerCase()}/x`, base, [own]) !== `${base}${own}/` || run(`${base}${own}/`, base, [own]) !== null) {
         return this.error('the 404 page redirect does not run on its own');
       }
+      // a build for another base: a link made at the GitHub Pages address lands on its page here
+      if (base !== PAGES_BASE && (run(`${PAGES_BASE}${own}/`, base, [own], PAGES_BASE) !== `${base}${own}/` || run(PAGES_BASE, base, [own], PAGES_BASE) !== base)) {
+        return this.error('the 404 page does not send a GitHub Pages link to this base');
+      }
       this.emitFile({ type: 'asset', fileName: '404.html', source: notFoundHtml(base) });
     },
   };
@@ -92,7 +101,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'", // React style props
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "media-src 'self'",
+  "media-src 'self' blob:", // interface sounds fetched ahead of their first play are played from memory (ui/sound.ts)
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -126,12 +135,58 @@ function release(): { version: string; commit: string } {
 
 const RELEASE = release();
 
-// Served from https://hateborne.github.io/HatesCoHPlanner/ so every asset URL is under this base.
+/**
+ * The interface sounds the site carries: every sound file but the menu music, which loads only when
+ * Music is on. The page fetches them all when Sound is on (ui/sound.ts loadSounds), so it needs their
+ * names; read from the folder here, the list can't fall out of step with the files.
+ *
+ * @return Their file names without the extension, sorted.
+ */
+function uiSounds(): string[] {
+  let files: string[];
+  try {
+    files = readdirSync(new URL('./public/assets/sounds', import.meta.url));
+  } catch {
+    throw new Error('public/assets/sounds is missing: the interface sounds are part of the site (the data pipeline writes them)');
+  }
+  return files
+    .filter((f) => f.endsWith('.ogg') && !f.includes('menumusic'))
+    .map((f) => f.slice(0, -'.ogg'.length))
+    .sort();
+}
+
+/**
+ * The path the site is served under: GitHub Pages' "/HatesCoHPlanner/", unless HCP_BASE names
+ * another (the deploy's second build, for the site's own domain, sets "/": docs/hosting.md).
+ *
+ * Every address the planner makes or reads comes from it (import.meta.env.BASE_URL), so a
+ * malformed value stops the build.
+ *
+ * @return The base, starting and ending with "/".
+ */
+function siteBase(): string {
+  const base = process.env.HCP_BASE || PAGES_BASE;
+  if (!/^\/([A-Za-z0-9_-]+\/)*$/.test(base)) throw new Error(`HCP_BASE must be a path like / or /Planner/, not ${JSON.stringify(base)}`);
+  return base;
+}
+
+// Served from https://hateborne.github.io/HatesCoHPlanner/ (every asset URL is under that base),
+// or from the root of the site's own domain when HCP_BASE says so.
 export default defineConfig({
-  base: '/HatesCoHPlanner/',
+  base: siteBase(),
   plugins: [react(), cspMeta, serverPages(), notFoundPage()],
   // the release shown in the footer (src/version.ts)
-  define: { __HCP_VERSION__: JSON.stringify(RELEASE.version), __HCP_COMMIT__: JSON.stringify(RELEASE.commit) },
+  // whether the unfinished set finder shows in this build (src/ui/flags.ts): HCP_SET_FINDER=1
+  // and whether the site this build is for has brotli copies of its data files (src/data/packed.ts):
+  // HCP_BROTLI=1, which no deploy sets today (docs/architecture.md, "Brotli copies on GitHub Pages")
+  define: {
+    __HCP_VERSION__: JSON.stringify(RELEASE.version),
+    __HCP_COMMIT__: JSON.stringify(RELEASE.commit),
+    __HCP_SET_FINDER__: JSON.stringify(process.env.HCP_SET_FINDER === '1'),
+    __HCP_BROTLI__: JSON.stringify(process.env.HCP_BROTLI === '1'),
+    // the interface sounds' names, for fetching them when Sound is on (src/ui/sound.ts)
+    __HCP_UI_SOUNDS__: JSON.stringify(uiSounds()),
+  },
   // brotli-wasm locates its .wasm relative to its own module; pre-bundling breaks that in dev.
   optimizeDeps: { exclude: ['brotli-wasm'] },
   test: {

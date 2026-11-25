@@ -1,0 +1,479 @@
+/**
+ * The set finder's state: the search being built, what the last search found, the swaps kept so
+ * far and the shopping list (whether its pane is open is in finderOpen.ts). Nothing here is put
+ * in a link, and only the shopping list is saved (io/shopping.ts): closing the tab forgets the
+ * rest, and the build the planner holds only changes when the player applies the kept swaps.
+ */
+import { create } from 'zustand';
+import { loadFinderStats, type FinderStats } from '../data/finderStats.ts';
+import { loadRecipes, type RecipeData } from '../data/recipes.ts';
+import { dataRoot, DEFAULT_SERVER, serverById } from '../data/servers.ts';
+import type { Build } from '../engine/build.ts';
+import { applySwaps, type Swap } from '../engine/finder/pending.ts';
+import type { FinderQuery } from '../engine/finder/query.ts';
+import { finderProblem, searchSwaps, swapsLegal, type FinderResult, type RankedSwap } from '../engine/finder/search.ts';
+import { swapItems, type ShopItem } from '../engine/finder/shopping.ts';
+import { shareLink } from '../io/share.ts';
+import { MAX_SHOP_ITEMS, readShopping, SHOPPING_KEY, writeShopping } from '../io/shopping.ts';
+import { closeSetFinder } from './finderOpen.ts';
+import { useStore } from './store.ts';
+
+// how long one slice of a search may run before the page gets its turn again (ms)
+const SLICE_MS = 12;
+
+/** The set finder's store. */
+export interface FinderStore {
+  stats: FinderStats | null; // the build statistics, once downloaded
+  loading: boolean; // the statistics are on their way
+  problem: string | null; // why the finder can't work on this build, in plain words
+  query: FinderQuery; // the search as the form holds it
+  searched: FinderQuery | null; // the search the list shown was made with (another object than `query`: the form changed since)
+  searchedKept: RankedSwap[] | null; // the kept swaps the list shown was ranked on top of (another array than `kept`: the ranking after a change was given up or failed)
+  result: FinderResult | null; // what the last search found
+  progress: number | null; // 0..1 while a search runs
+  kept: RankedSwap[]; // the swaps kept so far, one per power
+  selected: string | null; // id of the swap whose gains and losses show (a tap on phones; a click on desktop)
+  link: string | null; // a share link to the build with the kept swaps in, for "open as new build"
+  note: string | null; // something that went wrong with the last step, in plain words
+  recipes: RecipeData | null; // the recipes of the build's game version, once downloaded (null: not yet, or it has none)
+  recipesFor: string | null; // the game version `recipes` was asked for
+  recipesLoading: boolean; // the recipes are on their way
+  recipesMissing: boolean; // the site has no recipes for that game version (not a failed download)
+  recipesFailed: string | null; // the game version whose recipes did not download (asked for again when the list next opens)
+  unsavedFor: string | null; // the server whose list the browser refused to store: `shop` is its only copy, for as long as the tab lives
+  shop: ShopItem[]; // the shopping list the browser keeps: the pieces of swaps already applied
+  shopFor: string | null; // the server whose list `shop` is (enhancement ids are a server's own)
+  shopOwned: Record<string, boolean[]>; // which pieces of each kept swap (by swap id) the player has; never saved: they join `shop` when the swap is applied
+  settled: string[]; // ids of kept swaps whose pieces are on `shop` already ("Open as new build" was used)
+  /** Get ready for the build the pane opened on: download the statistics the first time, and say why it can't work if it can't. */
+  prepare(): void;
+  /** Change part of the search. */
+  setQuery(patch: Partial<FinderQuery>): void;
+  /** Search with the form's query, against the build with the kept swaps in. */
+  search(): void;
+  /** Give up the running search (the pane closed). The list it would have replaced stays, marked out of date. */
+  stop(): void;
+  /** Show a swap's gains and losses (null: none). */
+  select(id: string | null): void;
+  /** Keep a swap (it replaces the one its power had) and rank the list again. Refused while a search runs: the list is on its way out. */
+  keep(swap: RankedSwap): void;
+  /** Let a power's kept swap go and rank the list again. */
+  drop(key: string): void;
+  /** Put every kept swap into the build the planner holds, after the player agrees. Their pieces go on the shopping list. */
+  apply(): Promise<void>;
+  /** Read the shopping list the browser keeps and download the game version's recipes (the list was opened). */
+  openShopping(): void;
+  /** Mark items of the list shown (shopItems) as owned or not, by their indexes in it. */
+  setOwned(indexes: readonly number[], owned: boolean): void;
+  /** Empty the shopping list the browser keeps, after the player agrees. */
+  clearShopping(): Promise<void>;
+  /** The build with the kept swaps in was opened in a new tab: their pieces go on the shopping list. */
+  openedNewBuild(): void;
+}
+
+/**
+ * The pieces of the kept swaps that are not on the saved shopping list yet, with the player's marks.
+ *
+ * @param s The finder's state.
+ * @return Per such swap, its id and its pieces to get.
+ */
+function pendingItems(s: Pick<FinderStore, 'kept' | 'shopOwned' | 'settled'>): { id: string; items: ShopItem[] }[] {
+  return s.kept
+    .map((k) => ({ id: swapId(k), swap: k }))
+    .filter((k) => !s.settled.includes(k.id))
+    .map((k) => ({ id: k.id, items: swapItems([k.swap]).map((it, i) => ({ ...it, owned: s.shopOwned[k.id]?.[i] ?? false })) }));
+}
+
+/**
+ * The shopping list as shown: what the browser keeps, then the pieces the kept swaps would add.
+ *
+ * @param s The finder's state.
+ * @return The items; setOwned takes indexes into this list.
+ */
+export function shopItems(s: Pick<FinderStore, 'shop' | 'kept' | 'shopOwned' | 'settled'>): ShopItem[] {
+  return [...s.shop, ...pendingItems(s).flatMap((p) => p.items)];
+}
+
+/**
+ * A swap's id in lists: its power, set and pieces.
+ *
+ * @param s The swap.
+ * @return A string equal for two swaps that place the same pieces in the same slots.
+ */
+export function swapId(s: Swap): string {
+  return `${s.key}|${s.set}|${s.pieces.map((p) => `${p.slot}:${p.enh.boost}:${p.enh.ioLevel ?? ''}`).join(',')}`;
+}
+
+const EMPTY_QUERY: FinderQuery = { goals: [], tags: [], extra: [] };
+
+// each search and each link request gets a number; a newer one makes the older give up
+let searchRun = 0;
+let linkRun = 0;
+// the search the running slices are working on (null: none runs)
+let running: FinderQuery | null = null;
+
+export const useFinder = create<FinderStore>((set, get) => {
+  /** Work out the new-build link again (the kept swaps changed). */
+  const relink = (): void => {
+    const run = ++linkRun;
+    const build = useStore.getState().build;
+    const kept = get().kept;
+    set({ link: null });
+    if (!build || !kept.length) return;
+    shareLink(applySwaps(build, kept))
+      .then((link) => {
+        if (run === linkRun) set({ link });
+      })
+      .catch((e: unknown) => {
+        console.warn('set finder: the new-build link was not written', e);
+        if (run === linkRun) set({ note: "The link for a new build couldn't be written. Your kept swaps are as they were." });
+      });
+  };
+
+  /** @return The id of the server the build's data is for (each server has its own shopping list). */
+  const serverId = (): string => useStore.getState().gd?.server ?? DEFAULT_SERVER;
+
+  /**
+   * Keep a shopping list in the browser and show it.
+   *
+   * @param items The list; past MAX_SHOP_ITEMS its oldest items go.
+   * @return What the player should be told (the browser would not store it, or items were dropped), else null.
+   */
+  const saveShop = (items: ShopItem[]): string | null => {
+    const cut = items.slice(-MAX_SHOP_ITEMS);
+    const stored = writeShopping(serverId(), cut);
+    set({ shop: cut, shopFor: serverId(), unsavedFor: stored ? null : serverId() });
+    if (!stored) return "Your browser wouldn't store the shopping list, so it will be gone when this tab closes.";
+    return cut.length < items.length ? 'The shopping list is full, so its oldest items were dropped.' : null;
+  };
+
+  /**
+   * The shopping list as it is kept now: read from the browser (another tab may have changed it,
+   * and this one may never have opened it), or the store's own when the browser refused to store
+   * this server's list, so that list lasts as long as the tab. (A browser that refuses this tab
+   * refuses the others too, so nothing another tab stored is passed over.)
+   *
+   * @return The items.
+   */
+  const keptShop = (): ShopItem[] => {
+    const server = serverId();
+    return get().unsavedFor === server && get().shopFor === server ? get().shop : readShopping(server);
+  };
+
+  /**
+   * Put the kept swaps' pieces on the saved shopping list: the swaps are going into a build.
+   * A swap goes on once, however often it is applied or opened.
+   *
+   * @return What the player should be told about the saving (saveShop), else null.
+   */
+  const settle = (): string | null => {
+    const pending = pendingItems(get());
+    if (!pending.length) return null;
+    const added = pending.flatMap((p) => p.items);
+    const warning = added.length ? saveShop([...keptShop(), ...added]) : null;
+    set({ settled: [...get().settled, ...pending.map((p) => p.id)] });
+    return warning;
+  };
+
+  /** Forget the owned marks of swaps that are no longer kept: a swap kept again starts unmarked. */
+  const pruneOwned = (): void => {
+    const ids = new Set(get().kept.map(swapId));
+    const marks = get().shopOwned;
+    const keys = Object.keys(marks);
+    if (keys.some((k) => !ids.has(k))) set({ shopOwned: Object.fromEntries(keys.filter((k) => ids.has(k)).map((k) => [k, marks[k]!])) });
+  };
+
+  /**
+   * Rank the swaps for a search, in slices, against the build with the kept swaps in.
+   *
+   * The list on screen stays as it is until this one is whole: `searched` and `searchedKept` name
+   * what a list was made with only once it is shown, so a search given up or failed leaves the
+   * old list marked out of date.
+   *
+   * @param query The search to rank for.
+   */
+  const rank = (query: FinderQuery): void => {
+    const { gd, build } = useStore.getState();
+    const { stats, kept } = get();
+    if (!gd || !build || !stats) return;
+    const run = ++searchRun;
+    const steps = searchSwaps({ gd, stats, build, kept, query });
+    running = query;
+    set({ progress: 0, note: null });
+    const slice = (): void => {
+      if (run !== searchRun) return;
+      const until = performance.now() + SLICE_MS;
+      let step: IteratorResult<number, FinderResult>;
+      try {
+        step = steps.next();
+        while (!step.done && performance.now() < until) step = steps.next();
+      } catch (e) {
+        // never leave the pane saying "Searching": say it stopped, details in the console
+        console.warn('set finder: the search failed', e);
+        running = null;
+        set({ progress: null, note: "The search couldn't finish. Press Search to try again." });
+        return;
+      }
+      if (!step.done) {
+        set({ progress: step.value });
+        setTimeout(slice, 0);
+        return;
+      }
+      const result = step.value;
+      running = null;
+      const left = result.stale.length ? get().kept.filter((k) => !result.stale.includes(k.key)) : get().kept;
+      const ids = new Set([...left, ...result.swaps].map(swapId));
+      set({ result, searched: query, searchedKept: left, progress: null, kept: left, selected: ids.has(get().selected ?? '') ? get().selected : null });
+      if (left.length !== kept.length) {
+        relink();
+        pruneOwned();
+      }
+    };
+    setTimeout(slice, 0);
+  };
+
+  /**
+   * Rank the list again after the kept swaps changed.
+   *
+   * It ranks for the search the list was made with (or the one being worked on), not the form's:
+   * the form may have changed since, even to one that can't be searched, and only Search takes it.
+   */
+  const rerank = (): void => {
+    const query = running ?? (get().result ? get().searched : null);
+    if (query) rank(query);
+  };
+
+  return {
+    stats: null,
+    loading: false,
+    problem: null,
+    query: EMPTY_QUERY,
+    searched: null,
+    searchedKept: null,
+    result: null,
+    progress: null,
+    kept: [],
+    selected: null,
+    link: null,
+    note: null,
+    recipes: null,
+    recipesFor: null,
+    recipesLoading: false,
+    recipesMissing: false,
+    recipesFailed: null,
+    unsavedFor: null,
+    shop: [],
+    shopFor: null,
+    shopOwned: {},
+    settled: [],
+
+    prepare() {
+      const { gd, build, server } = useStore.getState();
+      if (!gd || !build) return;
+      const known = get().stats;
+      if (known) {
+        set({ problem: finderProblem(gd, build, known) });
+        return;
+      }
+      if (get().loading) return;
+      const s = serverById(server);
+      // another server's builds are told so without a download
+      if (!s || gd.server !== DEFAULT_SERVER) {
+        set({ problem: finderProblem(gd, build, null) });
+        return;
+      }
+      set({ loading: true, problem: null });
+      loadFinderStats(dataRoot(s, import.meta.env.BASE_URL))
+        .then((stats) => {
+          const now = useStore.getState();
+          set({ stats, loading: false, problem: now.gd && now.build ? finderProblem(now.gd, now.build, stats) : null });
+        })
+        .catch((e: unknown) => {
+          console.warn('set finder: statistics did not load', e);
+          set({ loading: false, problem: "The set finder couldn't load its build statistics. Check your connection and open it again." });
+        });
+    },
+
+    setQuery(patch) {
+      set({ query: { ...get().query, ...patch } });
+    },
+
+    search() {
+      rank(get().query);
+    },
+
+    stop() {
+      searchRun++;
+      running = null;
+      if (get().progress !== null) set({ progress: null });
+    },
+
+    select(id) {
+      set({ selected: id });
+    },
+
+    keep(swap) {
+      const { gd, build } = useStore.getState();
+      // while a search runs the list on screen is the old one: what it offers may no longer fit
+      if (!gd || !build || get().progress !== null) return;
+      const kept = [...get().kept.filter((k) => k.key !== swap.key), swap];
+      if (!swapsLegal(gd, build, kept)) {
+        set({ note: "That swap no longer fits with the swaps you kept. Search again for a list that does." });
+        return;
+      }
+      set({ kept, selected: null, note: null });
+      pruneOwned();
+      relink();
+      rerank();
+    },
+
+    drop(key) {
+      set({ kept: get().kept.filter((k) => k.key !== key), note: null });
+      pruneOwned();
+      relink();
+      rerank();
+    },
+
+    async apply() {
+      const main = useStore.getState();
+      const { kept } = get();
+      const build = main.build;
+      if (!build || !kept.length) return;
+      const pieces = kept.reduce((n, k) => n + k.pieces.length, 0);
+      const replaced = kept.reduce((n, k) => n + k.pieces.filter((p) => (k.before[p.slot] ?? null) !== null).length, 0);
+      const ok = await main.askConfirm({
+        title: 'Apply the kept swaps',
+        text: `This puts ${pieces} set ${pieces === 1 ? 'piece' : 'pieces'} into ${kept.length} ${kept.length === 1 ? 'power' : 'powers'} of this build${replaced ? `, replacing ${replaced} ${replaced === 1 ? 'enhancement' : 'enhancements'} it holds now` : ''}.`,
+        okLabel: 'Apply',
+      });
+      // the build may have changed while the question was up: the kept swaps were cleared with it
+      if (!ok || useStore.getState().build !== build) return;
+      // so may the kept swaps (a ranking that ended meanwhile found one out of date): the question named others
+      if (get().kept !== kept) {
+        set({ note: 'Your kept swaps changed while the question was up, so nothing was applied.' });
+        return;
+      }
+      const warning = settle();
+      closeSetFinder();
+      main.setBuild(applySwaps(build, kept));
+      // the pane is closed and its note went with the build: said where the player still sees it
+      if (warning) main.notify(warning);
+    },
+
+    openShopping() {
+      const { gd } = useStore.getState();
+      if (!gd) return;
+      // a list the browser refused to store is kept for its own server only: another server's list replaces it here
+      set({ shop: keptShop(), shopFor: gd.server, unsavedFor: get().unsavedFor === gd.server ? gd.server : null });
+      const version = gd.core.manifest.dataVersion;
+      const s = serverById(gd.server);
+      if (!s || get().recipesFor === version) return;
+      set({ recipes: null, recipesFor: version, recipesLoading: true, recipesMissing: false, recipesFailed: null });
+      loadRecipes(dataRoot(s, import.meta.env.BASE_URL), version)
+        .then((recipes) => {
+          // none for this version (an approximate one): not asked for again, the list names enhancements only
+          if (get().recipesFor === version) set({ recipes, recipesLoading: false, recipesMissing: !recipes });
+        })
+        .catch((e: unknown) => {
+          console.warn('set finder: the recipes did not load', e);
+          // asked for again the next time the list opens
+          if (get().recipesFor === version) set({ recipesFor: null, recipesLoading: false, recipesFailed: version });
+        });
+    },
+
+    setOwned(indexes, owned) {
+      const shown = get().shop;
+      // the list as it is kept now: another tab (the changed build, opened in one) may have added to it
+      const saved = keptShop().slice();
+      const same = saved.length >= shown.length && shown.every((it, i) => it.boost === saved[i]!.boost && it.level === saved[i]!.level);
+      if (!same) {
+        // not the list the indexes were taken from: mark nothing, show what is kept
+        set({ shop: saved, shopFor: serverId(), note: 'The shopping list changed in another tab. It is shown as it is now.' });
+        return;
+      }
+      const pending = pendingItems(get());
+      const marks: Record<string, boolean[]> = {};
+      for (const p of pending) marks[p.id] = p.items.map((it) => it.owned);
+      let touched = false;
+      for (const i of indexes) {
+        if (i >= 0 && i < shown.length) {
+          if (saved[i]!.owned !== owned) touched = true;
+          saved[i] = { ...saved[i]!, owned };
+          continue;
+        }
+        // past the list as shown: a kept swap's piece
+        let at = i - shown.length;
+        for (const p of pending) {
+          if (at >= 0 && at < p.items.length) marks[p.id]![at] = owned;
+          at -= p.items.length;
+        }
+      }
+      set({ shopOwned: marks });
+      if (touched) {
+        const warning = saveShop(saved);
+        if (warning) set({ note: warning });
+      } else if (saved.length !== shown.length) {
+        // items another tab added come after the ones shown here: once shown, a kept swap's pieces follow them
+        set({ shop: saved, shopFor: serverId() });
+      }
+    },
+
+    async clearShopping() {
+      const main = useStore.getState();
+      const build = main.build;
+      const kept = get().kept.length;
+      const ok = await main.askConfirm({
+        title: 'Clear the shopping list',
+        text: `This empties the shopping list this browser keeps.${kept ? ' The pieces of the swaps you have kept stay on it until you let those swaps go.' : ''}`,
+        okLabel: 'Clear',
+      });
+      // another build may have been opened while the question was up: the list is that server's now
+      if (!ok || useStore.getState().build !== build) return;
+      // the kept swaps' pieces show again as not on the list yet, those opened as a new build included
+      set({ shopOwned: {}, settled: [] });
+      // refused: the list is empty here, but what the browser holds is as it was
+      set({ note: saveShop([]) ? "Your browser wouldn't clear the stored shopping list, so the old one will be back when the page loads again." : null });
+    },
+
+    openedNewBuild() {
+      const warning = settle();
+      if (warning) set({ note: warning });
+    },
+  };
+});
+
+// the kept swaps and the results belong to the build they were made for: any change to the build
+// (an edit, another build opened, the kept swaps applied) starts the finder afresh
+let lastBuild: Build | undefined = useStore.getState().build;
+const unsubscribe = useStore.subscribe((s) => {
+  if (s.build === lastBuild) return;
+  lastBuild = s.build;
+  searchRun++;
+  linkRun++;
+  running = null;
+  useFinder.setState({ searched: null, searchedKept: null, result: null, progress: null, kept: [], selected: null, link: null, note: null, shopOwned: {}, settled: [] });
+  if (!s.build) closeSetFinder();
+});
+/**
+ * Another tab changed what the browser keeps: the shopping list is shown as it is now.
+ *
+ * A list the browser refused to store for this tab stays as it is: it is this tab's own.
+ *
+ * @param key The storage key that changed; null when the whole storage was cleared.
+ */
+export function shoppingChangedElsewhere(key: string | null): void {
+  if (key !== null && key !== SHOPPING_KEY) return;
+  const { shopFor, unsavedFor } = useFinder.getState();
+  if (shopFor && unsavedFor !== shopFor) useFinder.setState({ shop: readShopping(shopFor) });
+}
+const onStorage = (e: StorageEvent): void => shoppingChangedElsewhere(e.key);
+// (tests run without a window)
+const listening = typeof window !== 'undefined' && typeof window.addEventListener === 'function';
+if (listening) window.addEventListener('storage', onStorage);
+// a dev server swapping this module in again must not leave the old one listening too
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    unsubscribe();
+    if (listening) window.removeEventListener('storage', onStorage);
+  });
+}

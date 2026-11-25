@@ -1,27 +1,33 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
+import { DEFAULT_SERVER } from '../../data/servers.ts';
 import type { Power, Powerset } from '../../data/types.ts';
 import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
-import { pickHoldsEnhancements, setEnh, setExclusive, setOn } from '../../engine/actions.ts';
+import { setEnh, setExclusive, setOn, setPetOn } from '../../engine/actions.ts';
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
+import { openSetFinder } from '../../state/finderOpen.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
-import { CheckBar } from '../components/CheckBar.tsx';
+import { CheckBar, OnSwitch } from '../components/CheckBar.tsx';
+import { FINDER_NAME, FinderIcon } from '../components/FinderIcon.tsx';
+import { SET_FINDER } from '../flags.ts';
 import { InfoButton, MenuFrame, NextButton, PHONE_LEVEL_SCALE, SetFrame, SetTitle, SlotRing, TitleBar, type TitleAlt, type TitleEdit } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
 import { PatchNotesBar, PatchNotesBox, patchNotesHeight } from '../components/PatchNotes.tsx';
-import { phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
+import { PHONE_SET_GAP, phoneGeom, phoneMenuButton, phonePanel, PhoneTabs, phoneTopRowY } from '../components/Phone.tsx';
 import { PhoneTipLayer } from '../components/PhoneTip.tsx';
 import { changeOrigin, ORIGIN_PANE_H, OriginAlignPane } from '../components/OriginAlign.tsx';
 import { DescTip, EnhTip, SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
 import { LockFlash } from '../components/LockFlash.tsx';
+import { PetPaneLayer, usePetCards } from '../components/PetCard.tsx';
+import { petPowerDefault } from '../../engine/petstats.ts';
 import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { useStage } from '../components/Stage.tsx';
-import { TotalsPanel } from '../components/TotalsPanel.tsx';
+import { COMBAT_ROW, CombatSwitch, TotalsPanel } from '../components/TotalsPanel.tsx';
 import { S, snap, SX, SY, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
@@ -29,6 +35,8 @@ import { EnhancementPicker } from './EnhancementPicker.tsx';
 import { useEscape } from '../escape.ts';
 import { clearHover, useFreshHover, useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
+import { POPUP_LAYER } from '../floating.ts';
+import { useCombat } from '../../state/combat.ts';
 
 const COLS = [
   { x: 33, w: 480, column: 0 },
@@ -75,7 +83,7 @@ const NAME_MAX = 40;
 /**
  * Phones: the level log, in place of the desktop's strip of level orbs. A capsule left of the
  * menu button ("1 - 50") opens a list of what each level added: the powers picked there (tap one
- * to swap it, as tapping its orb does: refused while it holds enhancements) and the slots placed
+ * to swap it, as tapping its orb does) and the slots placed
  * there ("Fire Blast +2"; tap to reopen that level's slot screen). Unfinished levels show in red.
  * Closes on Escape, the button or a tap outside it.
  *
@@ -83,7 +91,7 @@ const NAME_MAX = 40;
  * @param props.entries The overview's power entries (for the slots placed at each level).
  */
 function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Skin; build: Build; shown: LevelStep[]; entries: BuildEntry[] }) {
-  const { editPick, editSlots, notify } = useStore(useShallow((s) => ({ editPick: s.editPick, editSlots: s.editSlots, notify: s.notify })));
+  const { editPick, editSlots } = useStore(useShallow((s) => ({ editPick: s.editPick, editSlots: s.editSlots })));
   const [open, setOpen] = useState(false);
   useEscape(() => setOpen(false), open);
   const stage = useStage();
@@ -94,10 +102,6 @@ function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Ski
   const paneTop = g.line + 6;
   const paneW = stage.w - 16;
   const swap = (k: number) => {
-    if (pickHoldsEnhancements(gd, build, k)) {
-      notify(`Remove the enhancements from ${gd.power(build.picks[k]!.power).dn} first`);
-      return;
-    }
     setOpen(false);
     editPick(k);
   };
@@ -164,10 +168,10 @@ function LevelLog({ gd, skin, build, shown, entries }: { gd: GameData; skin: Ski
       />
       {open ? (
         <>
-          <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
+          <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOpen(false)} />
           {/* on whole device pixels, so the bars inside tile without seams */}
           <div className="abs" style={{ left: snap(8), top: snap(paneTop), width: paneW, height: paneH, zIndex: 71 }}>
-            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+            <MenuFrame x={0} y={0} w={paneW} h={paneH} skin={skin} style={{ background: skin.panel }} />
             <div className="abs scroll-y" style={{ left: 0, top: 0, width: paneW, height: paneH }}>
               <div style={{ position: 'relative', height: y + 8 }}>{rows}</div>
             </div>
@@ -224,9 +228,14 @@ function OrbLight({ level, style }: { level: number; style: CSSProperties }) {
   return lit ? <div className="abs hover-light" style={style} /> : null;
 }
 
-/** One level orb; it blinks once a second while a power or slot taken at its level is hovered. */
-function LevelOrb({ level, className, style, title, onClick, children }: { level: number; className: string; style: CSSProperties; title: string; onClick: () => void; children: ReactNode }) {
+/**
+ * One level orb; it blinks once a second while a power or slot taken at its level is hovered.
+ * It shows `face` (the powers picked there, or the slots added) and the level number while hovered;
+ * a `bare` face (power icons) is drawn without the orb's ring and fill.
+ */
+function LevelOrb({ level, className, style, title, onClick, face, bare, children }: { level: number; className: string; style: CSSProperties; title: string; onClick: () => void; face: ReactNode; bare?: boolean; children: ReactNode }) {
   const blinking = useHover((h) => h.blink === level);
+  const hovered = useHover((h) => h.orb === level);
   return (
     <div
       onClick={onClick}
@@ -235,26 +244,28 @@ function LevelOrb({ level, className, style, title, onClick, children }: { level
       onMouseLeave={() => useHover.setState((h) => (h.orb === level ? { orb: null } : h))}
       title={title}
       className={className}
-      style={style}
+      style={bare && !hovered ? { ...style, border: '2px solid transparent', background: 'transparent' } : style}
     >
+      {/* what it shows takes no pointer: hovering swaps the face for the number, and a press landing
+          on a part that swap removes would lose its click (the pointer arriving and pressing at once) */}
       {/* under the number, so the number stays readable while the orb lights */}
-      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: 0 }} /> : null}
-      <span style={{ position: 'relative', zIndex: 1 }}>{children}</span>
+      {blinking ? <div className="abs hover-light orb-blink" style={{ left: 0, top: 0, right: 0, bottom: 0, borderRadius: '50%', zIndex: hovered ? 0 : 2, pointerEvents: 'none' }} /> : null}
+      {hovered ? <span style={{ position: 'relative', zIndex: 1, pointerEvents: 'none' }}>{children}</span> : <span style={{ display: 'contents', pointerEvents: 'none' }}>{face}</span>}
     </div>
   );
 }
 
 /** The power / enhancement hover boxes; the only part of the overview that follows the pointer. */
-function OverviewTips({ gd, skin, build, end }: { gd: GameData; skin: Skin; build: Build; end: number }) {
+function OverviewTips({ gd, skin, build, rules, end }: { gd: GameData; skin: Skin; build: Build; rules: BuildRules; end: number }) {
   const { tip, ringTip } = useHover(useShallow((h) => ({ tip: h.tip, ringTip: h.ringTip })));
   const tipLevel = useTipLevel();
   const hint = useShiftHint();
   return (
     <>
-      {ringTip && tipLevel !== 'off' ? <EnhTip gd={gd} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
+      {ringTip && tipLevel !== 'off' ? <EnhTip key={`${ringTip.entry.key}:${ringTip.slot}`} gd={gd} skin={skin} at={gd.archetype(build.at)} slots={ringTip.entry.slots} slot={ringTip.slot} level={end} x={ringTip.x} y={ringTip.y} /> : null}
       {tip && tipLevel === 'basic' ? <DescTip skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} hint={hint} /> : null}
       {tip && tipLevel === 'advanced' ? (
-        <SlotTip gd={gd} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} />} />
+        <SlotTip gd={gd} skin={skin} power={tip.entry.power} x={tip.x} y={tip.y} avoid={tip.at} advanced={<AdvancedInfo gd={gd} at={gd.archetype(build.at)} entry={tip.entry} level={end} rules={rules} />} />
       ) : null}
     </>
   );
@@ -278,7 +289,13 @@ export function Overview({ skin }: { skin: Skin }) {
   // for the room it takes: the list itself is drawn by PatchNotesBox / PatchNotesBar
   const notes = useStore((s) => s.patchNotes);
   const notesH = notes ? patchNotesHeight(notes.lines) : 0;
-  const [picker, setPicker] = useState<{ entry: BuildEntry; slot: number } | null>(null);
+  // the enhancement picker, with the build it was opened on: a build opened over it (a share link
+  // pasted into the address) closes it, since its power and slot belong to the build before
+  const [opened, setPicker] = useState<{ entry: BuildEntry; slot: number; on: Build } | null>(null);
+  const picker = opened && opened.on === build ? opened : null;
+  useEffect(() => {
+    if (opened && opened.on !== build) setPicker(null);
+  }, [opened, build]);
   const [tab, setTab] = useState(0);
   const [oaOpen, setOaOpen] = useState(false);
   useEscape(() => setOaOpen(false), oaOpen);
@@ -289,7 +306,12 @@ export function Overview({ skin }: { skin: Skin }) {
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
-  const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build) : null), [gd, build, rules]);
+  const outOfCombat = useCombat((s) => s.outOfCombat);
+  const totals = useMemo(() => (gd && build && rules ? computeTotals(gd, rules, build, undefined, outOfCombat) : null), [gd, build, rules, outOfCombat]);
+  // the pets the build makes, at the totals' level (computeTotals' default)
+  const pets = usePetCards(gd, rules, build, build ? (build.exemplar ?? build.endLevel ?? 49) : 49);
+  // the pet pane's switch: whether a pet power counts in the pets' stats (its default stored as none)
+  const switchPet = (p: Power, on: boolean) => build && setBuild(setPetOn(build, p.n, gd && on === petPowerDefault(gd, p) ? undefined : on));
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
   // an older build whose power sets can't go together: its title alternates with INVALID_TITLE
   const pairInvalid = useMemo(() => !!(gd && build && buildPairProblem(gd, build)), [gd, build]);
@@ -306,8 +328,10 @@ export function Overview({ skin }: { skin: Skin }) {
   const mouse = usePointer();
 
   if (!gd || !build || !rules || !totals) return null;
-  // every pick (even unslottable ones such as Adaptation), plus granted powers the game lets you slot
-  const entries = rules.entries().filter((e) => e.source === 'pick' || (e.power.sm !== 0 && rules.slottable(e.power)));
+  // every pick (even unslottable ones such as Adaptation), granted powers the game lets you slot,
+  // and the archetype's inherent
+  const inherent = rules.inherentShown();
+  const entries = rules.entries().filter((e) => e.source === 'pick' || (e.power.sm !== 0 && rules.slottable(e.power)) || inherent.has(e.key));
   const originIndex = gd.core.origins.findIndex((o) => o.id === build.origin);
   const end = build.endLevel ?? 49;
   const who = `${gd.core.origins.find((o) => o.id === build.origin)?.dn ?? ''} ${gd.archetype(build.at).dn}`.trim().toUpperCase();
@@ -341,8 +365,10 @@ export function Overview({ skin }: { skin: Skin }) {
     const items: ReactElement[] = [];
     const u = g.unit;
     let primY = g.start;
+    let bottom = 0; // the lowest thing drawn so far: a row's slot rings or its rule note
     for (const grp of list) {
-      primY += g.row;
+      // a set after another starts a row down (the game's); phones: just past the rings above it
+      primY += g.phone && grp !== list[0] ? PHONE_SET_GAP : g.row;
       const top = primY;
       const boxAt = items.length;
       items.push(<GameText key={`h${grp.set?.id ?? 'x'}`} font="title_12" scale={S} x={g.barCX + g.boxW / 2} y={top - 23 * u} align="center" colors={skin.heading} text={grp.title} />);
@@ -359,6 +385,8 @@ export function Overview({ skin }: { skin: Skin }) {
         // phones: a long press shows the power's tooltip (with the rule it breaks, if any)
         const longBar = g.phone ? (pt: { x: number; y: number }) => useHover.setState({ press: { kind: 'power', entry: e, notes: flagged.map((f) => f.message), ...pt } }) : undefined;
         const toggleOn = () => {
+          // the archetype's inherent always runs: its switch stays on
+          if (e.inherent) return;
           let nb = setOn(build, e.key, !on === dflt ? undefined : !on);
           // as in the game, switching on one of toggles that exclude each other switches the rest off
           if (!on) {
@@ -384,6 +412,8 @@ export function Overview({ skin }: { skin: Skin }) {
             icon={icon('powers', e.power.icon || 'power_missing')}
             title={flagged.map((f) => f.message).join('\n') || undefined}
             onClick={e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            // a pick flagged in red still opens on a click, so the rule it breaks can be fixed
+            fixable
             onLongPress={longBar}
             onHover={(h, at) => hoverOn(e, h, at)}
           />,
@@ -408,7 +438,7 @@ export function Overview({ skin }: { skin: Skin }) {
                 play('powerselect2');
                 setBuild(setExclusive(build, members.map((m) => m.id), v ? Number(v) : undefined));
               }}
-              style={{ left: g.barCX + barW + 8, top: y - (g.phone ? 24 : 16), width: SELECT_W, height: g.phone ? 48 : 32, fontFamily: "'Montreal'", fontSize: 15, color: '#fff', background: 'linear-gradient(#0c2a6e, #04102e)', border: '2px solid #4f94ff', borderRadius: 16, padding: '0 6px 0 10px', cursor: 'pointer', zIndex: 9 }}
+              style={{ left: g.barCX + barW + 8, top: y - (g.phone ? 24 : 16), width: SELECT_W, height: g.phone ? 48 : 32, fontFamily: "'Montreal'", fontSize: 15, color: '#fff', background: `linear-gradient(${skin.select[0]}, ${skin.select[1]})`, border: `2px solid ${skin.menuBorder}`, borderRadius: 16, padding: '0 6px 0 10px', cursor: 'pointer', zIndex: 9 }}
             >
               <option value="">Off</option>
               {members.map((m) => (
@@ -422,13 +452,15 @@ export function Overview({ skin }: { skin: Skin }) {
           items.push(
             <div
               key={`${e.key}:on`}
-              className="abs"
-              title={on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
+              className="abs switch-hover"
+              title={e.inherent ? 'Always counted in totals' : on ? 'Counted in totals (click to exclude)' : 'Not counted in totals (click to include)'}
               onClick={toggleOn}
               {...pressKeys(toggleOn, undefined, on ? 'Counted in totals' : 'Not counted in totals')}
-              {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
-              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: 'pointer', border: '2px solid #4f94ff', background: on ? 'radial-gradient(#7fff7f, #00a020)' : '#111', boxShadow: on ? '0 0 8px #3f3' : 'none', zIndex: 9 }}
-            />,
+              {...longPress(g.phone ? (pt) => useHover.setState({ press: { kind: 'text', text: e.inherent ? 'Always counted in the totals.' : on ? 'Counted in the totals (tap to leave it out).' : 'Not counted in the totals (tap to count it).', ...pt } }) : undefined)}
+              style={{ left: g.barCX + g.barW + g.sw / 2 + 4, top: y - g.sw / 2, width: g.sw, height: g.sw, borderRadius: g.sw / 2, cursor: e.inherent ? 'default' : 'pointer', zIndex: 9 }}
+            >
+              <OnSwitch skin={skin} on={on} size={g.sw} />
+            </div>,
           );
         }
         e.slots.forEach((s, i) => {
@@ -463,7 +495,7 @@ export function Overview({ skin }: { skin: Skin }) {
                         blink: h ? orbLevel : st.blink === orbLevel ? null : st.blink,
                       }))
               }
-              onClick={() => setPicker({ entry: e, slot: i })}
+              onClick={() => setPicker({ entry: e, slot: i, on: build })}
               onLongPress={
                 g.phone
                   ? (pt) => useHover.setState({ press: boost ? { kind: 'enh', entry: e, slot: i, ...pt } : { kind: 'text', text: `Empty slot (level ${s.level + 1}).\nTap it to choose an enhancement.`, ...pt } })
@@ -482,9 +514,13 @@ export function Overview({ skin }: { skin: Skin }) {
           );
         });
         primY += g.row;
+        // its slot rings, or the bar itself (CheckBar's 19s half height) for a power with no slots
+        bottom = Math.max(bottom, e.slots.length ? y + g.ringDy + g.ring / 2 : y + 19 * S);
         if (flagged.length) {
+          const noteTop = g.phone ? y + g.ringDy + g.ring / 2 + 2 : primY - 30 * u + 30 * S;
+          bottom = Math.max(bottom, noteTop + (g.phone ? 22 : 18));
           items.push(
-            <div key={`${e.key}:issue`} className="abs body-text" style={{ left: g.barCX, top: g.phone ? y + g.ringDy + g.ring / 2 + 2 : primY - 30 * u + 30 * S, fontSize: g.phone ? 16 : 13, color: '#ff6060', whiteSpace: 'nowrap' }}>
+            <div key={`${e.key}:issue`} className="abs body-text" style={{ left: g.barCX, top: noteTop, fontSize: g.phone ? 16 : 13, color: '#ff6060', whiteSpace: 'nowrap' }}>
               {flagged[0]!.message}
             </div>,
           );
@@ -494,9 +530,12 @@ export function Overview({ skin }: { skin: Skin }) {
       // the set's frame from the bar's x, as specMenu draws it
       items.splice(boxAt, 0, <SetFrame key={`b${grp.set?.id ?? 'x'}`} skin={skin} x={g.barCX} y={top - 30 * u} w={g.boxW} h={primY - top - 35 * u} />);
     }
+    // the column ends as far under its last row as the first set's frame starts below the top, so a
+    // column that fits doesn't scroll through empty space
+    const colEnd = bottom + (g.start + g.row - 30 * u);
     return (
       <GameScroll key={key} skin={skin} left={view.left} top={view.top} width={view.width} height={view.height} barX={bar.x} barTop={bar.top} barHeight={bar.height}>
-        <div style={{ position: 'relative', height: Math.max(0, Math.ceil(primY + 30 * u)) }}>{items}</div>
+        <div style={{ position: 'relative', height: list.length ? Math.max(0, Math.ceil(colEnd)) : 0 }}>{items}</div>
       </GameScroll>
     );
   };
@@ -519,20 +558,45 @@ export function Overview({ skin }: { skin: Skin }) {
     shown.map((s, i) => {
       const isPick = s.picks.length > 0;
       const filled = isPick ? s.picks.every((k) => build.picks[k]) : rules.slotsUsed(s.level) >= s.slots;
+      const { orb } = skin;
+      // the powers picked here (level 1's two overlap), else the slots the level adds
+      // (a pick not made yet keeps its place as an empty red circle)
+      const icons = s.picks.map((k) => {
+        const p = build.picks[k];
+        return p ? gd.power(p.power).icon || 'power_missing' : null;
+      });
+      // the icons fill the whole orb (its 2px ring is hidden under them)
+      const inner = size;
+      const one = icons.length > 1 ? Math.round(inner * 0.72) : inner;
+      const bare = icons.some((n) => n);
+      const face = bare ? (
+        icons.map((n, j) => {
+          const at: CSSProperties = { position: 'absolute', left: (j ? inner - one : 0) - 2, top: (j ? inner - one : 0) - 2, width: one, height: one, borderRadius: '50%', zIndex: 1 - j };
+          return n ? (
+            <img key={j} src={icon('powers', n)} alt="" draggable={false} style={at} />
+          ) : (
+            <div key={j} style={{ ...at, boxSizing: 'border-box', border: '1px solid #f33', background: '#300' }} />
+          );
+        })
+      ) : (
+        <span style={{ position: 'relative', zIndex: 1 }}>{isPick ? s.level + 1 : `+${s.slots}`}</span>
+      );
       return (
         <LevelOrb
           key={s.level}
           level={s.level}
           onClick={() => {
             if (!isPick) return editSlots(s.level);
-            // the bar that flashes "Remove Enhancements First!" may be scrolled out of view: say it too
-            const k = s.picks[0]!;
-            if (build.picks[k] && pickHoldsEnhancements(gd, build, k)) useStore.getState().notify(`Remove the enhancements from ${gd.power(build.picks[k].power).dn} first`);
-            editPick(k);
+            // every pick of the level in turn: level 1's primary power, then its secondary (a Respec
+            // build's the other way round, as its respec asks them)
+            const order = build.respecTo !== undefined && s.picks.length > 1 ? [...s.picks].reverse() : s.picks;
+            editPick(order[0]!, order.slice(1));
           }}
           title={orbTitle(s)}
+          face={face}
+          bare={bare}
           className="abs body-text"
-          style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? '#ffd200' : '#4f94ff'}`, background: filled ? (isPick ? '#6b5400' : '#0b3d9a') : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
+          style={{ left: x0 + (i % perRow) * (size + 4), top: y0 + Math.floor(i / perRow) * (size + 6), width: size, height: size, borderRadius: size / 2, cursor: 'pointer', fontSize: size * 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: `2px solid ${isPick ? orb.pickRing : orb.slotRing}`, background: filled ? (isPick ? orb.pickFill : orb.slotFill) : '#300', boxShadow: filled ? 'none' : '0 0 6px #f33' }}
         >
           {s.level + 1}
         </LevelOrb>
@@ -560,10 +624,10 @@ export function Overview({ skin }: { skin: Skin }) {
         {canContinue ? <InfoButton skin={skin} x={cx + w / 2 + 8} y={cy} w={w} h={h} text={respecLeft ? 'Continue Respec' : 'Continue Leveling'} onClick={continueLeveling} /> : null}
         {oaOpen ? (
           <>
-            <div className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOaOpen(false)} />
+            <div {...POPUP_LAYER} className="abs" style={{ left: 0, top: 0, width: stage.w, height: stage.h, zIndex: 70 }} onClick={() => setOaOpen(false)} />
             <div className="abs" style={{ left: oaX - (PW * POP) / 2, top: cy + h / 2 + 6, width: PW * POP, height: PH * POP, zIndex: 71 }}>
               <div className="abs" style={{ left: 0, top: 0, width: PW, height: PH, zoom: POP }}>
-                <MenuFrame x={0} y={0} w={PW} h={PH} skin={skin} style={{ background: 'rgba(0,3,20,0.96)' }} />
+                <MenuFrame x={0} y={0} w={PW} h={PH} skin={skin} style={{ background: skin.panel }} />
                 <OriginAlignPane
                   skin={skin}
                   x={0}
@@ -587,15 +651,28 @@ export function Overview({ skin }: { skin: Skin }) {
       gd={gd}
       skin={skin}
       entry={picker.entry}
+      entries={rules?.entries() ?? []}
+      bonusLevel={build.exemplar ?? build.endLevel ?? 49}
       slot={picker.slot}
       originIndex={originIndex}
       atId={build.at}
       refusal={(b) => rules?.slotRefusal(picker.entry, picker.slot, b) ?? null}
       lastLevel={rules?.lastLevel() ?? 49}
       onClose={() => setPicker(null)}
-      onPlace={(enh) => {
-        play(enh ? 'select5' : 'delete');
-        setBuild(setEnh(build, picker.entry.key, picker.slot, enh, picker.entry.level));
+      checkPlace={(placed) => {
+        // the build with every piece in, each piece judged in its slot as the game would (enhRefusal)
+        const after = placed.reduce((b, x) => setEnh(b, picker.entry.key, x.slot, x.enh, picker.entry.level), build);
+        const r = new BuildRules(gd, after);
+        const e = r.entries().find((x) => x.key === picker.entry.key);
+        for (const x of placed) {
+          const why = e && x.enh ? r.enhRefusal(e, x.slot, x.enh) : null;
+          if (why) return `${gd.power(x.enh!.boost).dn} (slot ${x.slot + 1}): ${why}`;
+        }
+        return null;
+      }}
+      onPlace={(placed) => {
+        play(placed.some((x) => x.enh) ? 'select5' : 'delete');
+        setBuild(placed.reduce((b, x) => setEnh(b, picker.entry.key, x.slot, x.enh, picker.entry.level), build));
         setPicker(null);
       }}
     />
@@ -616,18 +693,22 @@ export function Overview({ skin }: { skin: Skin }) {
         {tab < 3 ? (
           renderPanel({ left: P.x + 2, top: P.y + 6, width: P.w - 4, height: P.h - 12 }, { x: P.x + P.w, top: P.y + 18, height: P.h - 36 }, geom(P.w - 4, S, true), groups(COLS[tab]!.column), tab)
         ) : (
-          <GameScroll skin={skin} left={P.x + 16} top={P.y + 14} width={P.w - 32} height={P.h - 28} barX={P.x + P.w}>
-            {/* a little larger text than the desktop panel; its spacing keeps it readable */}
-            <div style={{ zoom: TOTALS_ZOOM }}>
-              <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} />
-            </div>
-          </GameScroll>
+          <>
+            <CombatSwitch skin={skin} left={P.x + 16} top={P.y + 10} width={P.w - 50} scale={TOTALS_ZOOM} />
+            <GameScroll skin={skin} left={P.x + 16} top={P.y + 10 + COMBAT_ROW * TOTALS_ZOOM} width={P.w - 32} height={P.h - 24 - COMBAT_ROW * TOTALS_ZOOM} barX={P.x + P.w}>
+              {/* a little larger text than the desktop panel; its spacing keeps it readable */}
+              <div style={{ zoom: TOTALS_ZOOM }}>
+                <TotalsPanel gd={gd} t={totals} width={(P.w - 50) / TOTALS_ZOOM} pets={pets} />
+              </div>
+            </GameScroll>
+          </>
         )}
         <PatchNotesBar skin={skin} y={pg.navTop - 8 - NOTES_BAR / 2} />
         <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
         <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
         {picker_}
-        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} />
+        <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
+        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} rules={rules} />
       </>
     );
   }
@@ -637,6 +718,19 @@ export function Overview({ skin }: { skin: Skin }) {
       {/* the name stops just short of the Origin / Alignment button (two half-size lines past it) */}
       <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
       <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
+      {/* the set finder's button, right of the origin and archetype (Homecoming builds; see flags.ts) */}
+      {SET_FINDER && gd.server === DEFAULT_SERVER ? (
+        <button
+          data-testid="finder:open"
+          className="info-button"
+          aria-label={FINDER_NAME}
+          title={FINDER_NAME}
+          onClick={openSetFinder}
+          style={{ left: TOP_LABEL_RIGHT + 8, top: 20, width: 36, height: 36, padding: 0, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <FinderIcon size={20} />
+        </button>
+      ) : null}
       {topButtons(stage.w / 2, vy(22), OA_W, vy(26))}
       <MenuFrame x={32} y={58} w={1937} h={988} r25 outer skin={skin} />
       {/* level strip: reopen any level's in-game screen (levels after a stop are left off) */}
@@ -648,10 +742,13 @@ export function Overview({ skin }: { skin: Skin }) {
       <MenuFrame x={1503} y={TOP} w={464} h={H} skin={skin} />
       {/* a patch move's changes sit above the totals until dismissed */}
       <PatchNotesBox skin={skin} x={1521} y={TOP + 16} w={420} />
-      <GameScroll skin={skin} left={1515} top={TOP + 18 + notesH} width={444} height={H - 36 - notesH} barX={1503 + 464}>
-        <TotalsPanel gd={gd} t={totals} width={420} />
+      {/* the Out of Combat switch at the box's top right (under any patch notes), the totals below it */}
+      <CombatSwitch skin={skin} left={1515} top={TOP + 12 + notesH} width={420} />
+      <GameScroll skin={skin} left={1515} top={TOP + 12 + notesH + COMBAT_ROW} width={444} height={H - 30 - notesH - COMBAT_ROW} barX={1503 + 464}>
+        <TotalsPanel gd={gd} t={totals} width={420} pets={pets} />
       </GameScroll>
-      <OverviewTips gd={gd} skin={skin} build={build} end={end} />
+      <OverviewTips gd={gd} skin={skin} build={build} rules={rules} end={end} />
+      <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker_}

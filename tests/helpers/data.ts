@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { GameData } from '../../src/data/gamedata.ts';
+import { GameData, HENCHMEN_FOLDER, INFO_FOLDER, PETS_FOLDER } from '../../src/data/gamedata.ts';
 import { DEFAULT_SERVER, serverById } from '../../src/data/servers.ts';
 import type { BoostsFile, Core, Power, Powerset } from '../../src/data/types.ts';
 import type { GameVersions } from '../../src/data/versions.ts';
@@ -16,7 +16,8 @@ export function dataDir(server: string = DEFAULT_SERVER): string {
 }
 
 /**
- * Load an exported data set (the same files the site serves).
+ * Load an exported data set (the same files the site serves), with its pseudo-pet file when
+ * there is one (pets/<version>.json beside the version folders), as the site attaches it.
  *
  * @param version Game version id (default: the server's default version, from its latest.json).
  * @param server Game server id (default: Homecoming).
@@ -42,7 +43,27 @@ export function loadData(version?: string, server: string = DEFAULT_SERVER): Gam
     },
     server,
   );
+  const pets = join(root, PETS_FOLDER, `${id}.json`);
+  if (existsSync(pets)) gd.setPets(JSON.parse(readFileSync(pets, 'utf-8')));
+  const info = join(root, INFO_FOLDER, `${id}.json`);
+  if (existsSync(info)) gd.setInfo(JSON.parse(readFileSync(info, 'utf-8')), id);
   cached.set(key, gd);
+  return gd;
+}
+
+/**
+ * Attach a version's real pets file (henchmen/<version>.json) to its data, as the site does once a
+ * build asks for it (GameData.requestHenchmen).
+ *
+ * @param gd The version's data (loadData).
+ * @param server Game server id (default: Homecoming).
+ * @return The same data, with the file taken (throws when the file is missing or refused).
+ */
+export function withHenchmen(gd: GameData, server: string = DEFAULT_SERVER): GameData {
+  if (gd.henchmen) return gd;
+  const id = gd.core.manifest.dataVersion;
+  const raw: unknown = JSON.parse(readFileSync(join(dataDir(server), HENCHMEN_FOLDER, `${id}.json`), 'utf-8'));
+  if (!gd.setHenchmen(raw)) throw new Error(`henchmen/${id}.json was refused`);
   return gd;
 }
 

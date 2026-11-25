@@ -7,6 +7,7 @@
  * calm, generic message and the details go to the browser console for whoever looks into it.
  */
 import { stripHidden } from '../engine/build.ts';
+import { IMPORT_LIMITS } from './limits.ts';
 
 /** Something wrong with what was imported, worded for the user: what is wrong and what to do. */
 export class ImportProblem extends Error {
@@ -145,8 +146,10 @@ export function noBuildSave(s: ServerName, writers: readonly ServerName[]): Impo
   );
 }
 
-/** Largest file the import reads: build files are a few KB to a few hundred KB of text. */
-export const MAX_BUILD_FILE = 2_000_000;
+/** @return The problem to report for text too long to be a build (pasted text, a file's text). */
+export function tooLong(): ImportProblem {
+  return new ImportProblem("it's too long to be a build (over 2 MB of text)", 'Check that it is the right text: a share code or build file is small.');
+}
 
 /**
  * Read a file the user opened or dropped for importing.
@@ -156,7 +159,7 @@ export const MAX_BUILD_FILE = 2_000_000;
  * @raise ImportProblem when it is too big, empty, or can't be read.
  */
 export async function readBuildFile(f: Blob): Promise<string> {
-  if (f.size > MAX_BUILD_FILE) throw new ImportProblem("it's too big to be a build file (over 2 MB)", 'Check that it is the right file: build files are small text files.');
+  if (f.size > IMPORT_LIMITS.text) throw new ImportProblem("it's too big to be a build file (over 2 MB)", 'Check that it is the right file: build files are small text files.');
   let text: string;
   try {
     text = await f.text();

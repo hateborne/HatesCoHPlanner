@@ -19,11 +19,12 @@ export const ALIGNMENTS: Alignment[] = ['Hero', 'Villain', 'Praetorian'];
  * Fold any alignment name (ours, a Mids one, or one saved before the alignments were condensed)
  * into the three the planner uses.
  *
- * @param a Alignment name, any case; unknown or missing names count as Hero.
+ * @param a Alignment name, any case; unknown or missing names, and anything that isn't text (a
+ *   stored build's field may hold anything), count as Hero.
  * @return Hero, Villain or Praetorian.
  */
-export function toAlignment(a: string | undefined): Alignment {
-  switch ((a ?? '').toLowerCase()) {
+export function toAlignment(a: unknown): Alignment {
+  switch (typeof a === 'string' ? a.toLowerCase() : '') {
     case 'villain':
     case 'rogue':
       return 'Villain';
@@ -88,11 +89,20 @@ export function skinOf(a: string): 'hero' | 'villain' | 'praetorian' {
   return n === 'Villain' ? 'villain' : n === 'Praetorian' ? 'praetorian' : 'hero';
 }
 
+// The most pet switches a build keeps (Build.petOn): a build switches a few. checkBuild keeps no
+// more, and a share link is read with no more (src/io/limits.ts).
+export const MAX_PET_SWITCHES = 64;
+
+// The lowest relative level a TO/DO/SO keeps: share links hold it in one byte offset by 8. Any
+// piece 4 or more levels below the character is outleveled and gives nothing, so lower ones are
+// kept at this.
+export const MIN_REL_LEVEL = -8;
+
 /** An enhancement placed in a slot. */
 export interface SlottedEnh {
   boost: number; // enhancement power id
   ioLevel?: number; // 0-based enhancement level for IOs / set IOs (boostable or fixed)
-  rel?: number; // relative level for TO/DO/SO/HO style enhancements (-3..+3), default 0
+  rel?: number; // relative level for TO/DO/SO/HO style enhancements (MIN_REL_LEVEL..+3), default 0
   boosters?: number; // enhancement boosters applied (0..5)
 }
 
@@ -131,6 +141,9 @@ export interface Build {
   exemplar?: number; // 0-based exemplar level (undefined = full level)
   endLevel?: number; // 0-based level a build planned short of 50 stops at (View Build / Save mid-leveling)
   respecTo?: number; // Respec build type: the 0-based level it respecs to (absent: built by leveling)
+  // the pets' powers switched from their default in the pet pane, by full name: whether each counts
+  // in the pets' stats (absent: autos, toggles and the click buffs a pet can keep up on)
+  petOn?: Record<string, boolean>;
 }
 
 /**

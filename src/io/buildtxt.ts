@@ -23,10 +23,11 @@ import type { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Power } from '../data/types.ts';
 import { slotsFor } from '../engine/actions.ts';
-import { cleanName, cloneBuild, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
+import { cleanName, cloneBuild, MIN_REL_LEVEL, type Alignment, type Build, type Slot, type SlottedEnh } from '../engine/build.ts';
 import { BuildRules, respecOnlyNote } from '../engine/rules.ts';
 import { leveledSlotShortfall, lowestFreeLevels } from '../engine/schedule.ts';
-import { ImportProblem, READABLE, readable, readablePower } from './importProblem.ts';
+import { ImportProblem, READABLE, readable, readablePower, tooLong } from './importProblem.ts';
+import { IMPORT_LIMITS } from './limits.ts';
 
 /** One enhancement line of a build.txt. */
 export interface TxtEnh {
@@ -64,6 +65,13 @@ export interface TxtImport {
   warnings: string[];
 }
 
+// counts no /build_save file comes near: past them the text isn't one, and is refused before
+// anything is built from it
+const LIMITS = IMPORT_LIMITS.buildTxt;
+
+/** @return The problem for a file listing more powers or slots than any build holds. */
+const TOO_MANY = () => new ImportProblem('it lists more powers or slots than a build can hold', 'Save the build again in game with /build_save, then import the new build.txt.');
+
 const HEADER = /^([^:]+): Level (\d+) (\S+) (\S+)$/;
 const POWER = /^Level (-?\d+): (\S+) (\S+) (\S+)$/;
 const ENH = /^(\S+) \((\d+)(?:\+(\d+))?\)$/;
@@ -79,9 +87,11 @@ const firstLine = (lines: string[]) => lines.find((l) => l.trim() !== '')?.trim(
  *
  * @param text Pasted or opened text.
  * @return True when it starts with the "Name: Level N Origin Class_..." line (the game's internal
- *   class name), has a "Character Profile:" line, and holds no Mids data chunk.
+ *   class name), has a "Character Profile:" line, and holds no Mids data chunk. Text longer than a
+ *   build file may be is none (the import then reports it as too long).
  */
 export function isBuildTxt(text: string): boolean {
+  if (text.length > IMPORT_LIMITS.text) return false;
   const lines = text.split(/\r?\n/);
   const head = HEADER.exec(firstLine(lines));
   return !!head && /^Class_/i.test(head[4]!) && lines.some((l) => l.trim() === 'Character Profile:') && !/\|(MBD|MxDz);/.test(text);
@@ -92,9 +102,12 @@ export function isBuildTxt(text: string): boolean {
  *
  * @param text The file's text.
  * @return The parsed file.
- * @raise ImportProblem when the header line is missing or no power is listed.
+ * @raise ImportProblem when the header line is missing, no power is listed, or the text is longer
+ *   or lists more than any build does (IMPORT_LIMITS: the text's length, and a /build_save
+ *   file's powers, slots and lines the reader can't place).
  */
 export function parseBuildTxt(text: string): BuildTxt {
+  if (text.length > IMPORT_LIMITS.text) throw tooLong();
   const lines = text.split(/\r?\n/);
   const head = HEADER.exec(firstLine(lines));
   if (!head) throw new ImportProblem("it isn't a /build_save file", READABLE);
@@ -110,6 +123,7 @@ export function parseBuildTxt(text: string): BuildTxt {
     if (!inList) continue;
     const p = POWER.exec(line);
     if (p) {
+      if (out.powers.length >= LIMITS.powers) throw TOO_MANY();
       out.powers.push({ level: Number(p[1]), name: `${p[2]}.${p[3]}.${p[4]}`, slots: [] });
       continue;
     }
@@ -117,9 +131,14 @@ export function parseBuildTxt(text: string): BuildTxt {
     if (!indented && line.endsWith(':')) break; // the next section
     const last = out.powers[out.powers.length - 1];
     const e = ENH.exec(line);
-    if (indented && last && line === 'EMPTY') last.slots.push(null);
-    else if (indented && last && e) last.slots.push({ name: e[1]!, level: Number(e[2]), boosters: Number(e[3] ?? 0) });
-    else out.skipped.push(line);
+    if (indented && last && (line === 'EMPTY' || e)) {
+      if (last.slots.length >= LIMITS.slots) throw TOO_MANY();
+      last.slots.push(line === 'EMPTY' || !e ? null : { name: e[1]!, level: Number(e[2]), boosters: Number(e[3] ?? 0) });
+    } else {
+      // a real file has none: this many lines the reader can't place is some other text
+      if (out.skipped.length >= LIMITS.skipped) throw new ImportProblem("it isn't a /build_save file", READABLE);
+      out.skipped.push(line);
+    }
   }
   if (!out.powers.length) throw new ImportProblem('the file lists no powers', 'Save the build again in game with /build_save, then import the new build.txt.');
   return out;
@@ -177,10 +196,11 @@ export function readBuildTxt(gd: GameData, text: string): TxtImport {
     }
     const out: SlottedEnh = { boost: bp.id };
     // an IO keeps its own level (attuned ones follow the character); a TO/DO/SO/HO is relative
-    // to the character; values the game wouldn't allow are kept and flagged by the build
+    // to the character, one outleveled further than MIN_REL_LEVEL kept there (it gives nothing
+    // either way); values the game wouldn't allow are kept and flagged by the build
     if (bp.bie) {
       if (!bp.bup) out.ioLevel = s.level - 1;
-    } else if (s.level !== txt.level) out.rel = s.level - txt.level;
+    } else if (s.level !== txt.level) out.rel = Math.max(MIN_REL_LEVEL, s.level - txt.level);
     if (s.boosters) out.boosters = s.boosters;
     return out;
   };
@@ -273,7 +293,11 @@ export function finishBuildTxt(gd: GameData, imp: TxtImport, opts: { alignment: 
     imp.level,
   );
   const byKey = new Map<string, number[]>();
-  keys.forEach((k, i) => byKey.set(k, [...(byKey.get(k) ?? []), levels[i]!]));
+  keys.forEach((k, i) => {
+    const own = byKey.get(k);
+    if (own) own.push(levels[i]!);
+    else byKey.set(k, [levels[i]!]);
+  });
   for (const [key, lv] of byKey) {
     const ref = slotsFor(b, key);
     if (!ref) continue;

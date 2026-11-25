@@ -27,6 +27,7 @@ export interface Mod {
   fl?: string[]; // flag names (IgnoreStrength, Boost, BoostIgnoreDiminishing, ...)
   bma?: number;
   pw?: number[]; // power ids for grant/revoke/execute mods
+  pwn?: string[]; // a pseudo-pet's power's grants, by full name (the pets file allocates no ids)
 }
 
 /** An effect group: chance, requirements and its mods. */
@@ -87,6 +88,7 @@ export interface Power {
   slot?: [number, number]; // min/max character level (0-based) this enhancement may be slotted
   maxBL?: number;
   redir?: { p: number; req: string[] }[];
+  life?: number; // a pet's power (real pets file): it lasts this long once the pet has it (Materialization's spawn shield)
   eff?: Effect[];
   act?: Effect[];
   // enhancement-only
@@ -190,6 +192,126 @@ export interface Core {
     approximate?: { base: string; patch: string; midsDb: string; from: string };
     framesFrom?: string; // the version whose enhancement frames it borrowed (its client had none)
   };
+}
+
+/**
+ * A pseudo-pet one EntCreate mod creates, as the client's power info totals its damage
+ * (getTotalDamage's pet branch; see Exporter.build_pets). Only pets whose every power is Auto are
+ * listed, as only those count.
+ */
+export interface PetCreation {
+  p: string[]; // the pet's powers (keys of PetsFile.powers), in the order the client lists them
+  def?: number; // how many of them (the first) come from its villain def; the rest are the mod's own
+  dur?: number; // the mod's Duration: each pet power counts max(1, floor(dur / its ap) + PetsFile.plus) times
+  boosts?: number; // 1: CopyBoosts, the pet's damage takes the caster's enhancements
+  mods?: number; // 1: CopyCreatorMods (its mod's or its villain def's), the pet takes the caster's strength buffs
+  pseudo?: number; // 1: PseudoPet, the pet runs with its caster's class
+  cls?: string; // otherwise the class it runs with (the mod's Class, else its villain def's)
+  hid?: number; // 1: the client lists none of its effects (Homecoming's, for a mod under a HideFromInfo group); its damage counts
+}
+
+/** A pet's power: what its damage total needs. */
+export interface PetPower {
+  type: string; // Click | Auto | Toggle | ...
+  ap?: number; // ActivatePeriod
+  eff?: Effect[];
+  act?: Effect[];
+}
+
+/**
+ * One game version's pseudo-pets (<server data>/pets/<version>.json), kept beside the version's
+ * folder so a published folder never changes. Optional: without it powers show no pet damage.
+ */
+export interface PetsFile {
+  plus?: number; // the server's client counts each pet power max(1, floor(dur / ap) + plus) times (Thunderspy's 1)
+  pets: Record<string, PetCreation[]>; // creating power (full name) -> the pets its EntCreate mods make
+  powers: Record<string, PetPower>; // pet powers by full name, and the powers they execute
+  names?: Record<string, string>; // display names of what pet powers grant that the version's own data lacks
+  // per power, the executions its PvP-only groups hold (the export drops those groups; the client's
+  // damage total counts every execution): what each runs, and 1 when it copies boosts
+  exec?: Record<string, { p: string[]; boosts?: number }[]>;
+  classes: Record<string, Record<string, number>>; // class -> lower-cased table name -> index into tables
+  tables: number[][];
+}
+
+/** One EntCreate mod of a power that makes a real pet (HenchmenFile.makes), in the client's template order. */
+export interface PetMake {
+  pet: string; // key into HenchmenFile.pets
+  req?: string[][]; // the requirements of each group around the mod (Battle Drones' second drone: combatlevel past 5)
+  ch?: number; // the chance of its groups all landing (Gang War's extra posse members)
+  del?: number; // seconds after the power before it spawns (Hell on Earth: one every 10 s)
+  dur?: number; // its lifetime in seconds, for a pet that doesn't stay (none: until dismissed or defeated)
+  pseudo?: number; // 1: PseudoPet, it runs with its creator's class
+}
+
+/** One kind of real pet: what the client's power info names and runs it with. */
+export interface PetKind {
+  dn: string; // its name (its villain def's, else the EntCreate mod's own)
+  vd?: string; // its villain def (what `<name> target.VillainName>` requirements test)
+  grp?: string; // its villain def's group (`group target>`: Supremacy reaches "MastermindPets")
+  cls?: string; // the class it runs with (none for a PseudoPet: its creator's)
+  p: string[]; // its powers (keys of HenchmenFile.powers), as the client lists them
+  def?: number; // how many of them (the first) come from its villain def
+}
+
+/**
+ * A real pet's class: the attribute tables its stats read and the tables its powers read. The
+ * attribute tables are an archetype's (Archetype.base, max, ...) cut to what the totals read; a pet
+ * that runs with an archetype's class has none here (the version's core.json has them).
+ */
+export interface PetClass {
+  base?: Record<string, number | number[]>; // attribute -> base value per 0-based level (one number: every level)
+  min?: Record<string, number | number[]>; // attribute -> minimum (the speed floors; one not listed is 0)
+  max?: Record<string, number | number[]>; // attribute -> maximum (max hit points, endurance, speed caps)
+  maxMax?: Record<string, number | number[]>; // attribute -> the cap on the maximum
+  strMax?: Record<string, number | number[]>; // DamageTypeNN, RechargeTime -> strength cap
+  resMax?: Record<string, number | number[]>; // DamageTypeNN -> resistance cap
+  mod: Record<string, number>; // lower-cased table name -> index into HenchmenFile.tables
+}
+
+/**
+ * One game version's real pets (<server data>/henchmen/<version>.json): the pets with powers of
+ * their own (Mastermind henchmen, Phantom Army, a patron pool's summon) that the Pets and Minions
+ * cards show. Kept beside the version's folder, so a published folder never changes, and fetched
+ * only for a build with a power that makes a pet. Optional: without it the cards don't show.
+ */
+export interface HenchmenFile {
+  plus?: number; // the server's client's extra pseudo-pet activation (as PetsFile.plus)
+  makes: Record<string, PetMake[]>; // power full name -> the real pets its EntCreate mods make
+  pets: Record<string, PetKind>;
+  powers: Record<string, Power>; // the pets' powers by full name (id -1: no build names them), and what they execute
+  pseudo?: Record<string, PetCreation[]>; // pseudo-pets the pets' powers make, as PetsFile.pets
+  // power full name -> its mods that stack once whoever casts them (two Protector Bots' Force
+  // Shields), by place: its eff groups then its act groups, each group's mods before its sub-groups
+  collective?: Record<string, number[]>;
+  classes: Record<string, PetClass>;
+  tables: number[][];
+}
+
+/**
+ * One effect group's place in a version's info file: its mods' own notes and its sub-groups', laid
+ * out as the power's groups are (null: neither it nor a group in it has a note).
+ */
+export type InfoNode = { m?: (string | null)[]; s?: InfoNode[] } | null;
+
+/**
+ * One game version's power-info extras (<server data>/info/<version>.json): what the client's power
+ * info reads from fields the version's own files don't carry. Kept beside the version's folder, like
+ * the pets file, so a published folder never changes. Optional: without it the power info shows no
+ * effect notes, every grant line and the planner's own wording.
+ */
+export interface InfoFile {
+  // per power full name (the version's own and its pets file's), each mod's own note
+  // (Messages.DisplayInfo: "Within 20ft radius", "Main Target Only"), laid out as its eff (e) and
+  // act (a) groups; on a power in `groups`, as those groups
+  notes: Record<string, { e?: InfoNode[]; a?: InfoNode[] }>;
+  hiddenGrants: string[]; // granted powers (full names) whose grant the client lists no line for (ShowInInventory 0)
+  aggro: Record<string, string>; // power full name -> the "Aggro Type" row's text (AIReport)
+  attr: Record<string, string>; // attribute offset -> its name as the client writes it ("knock", "to&nbsp;hit")
+  text: Record<string, string>; // the client's texts for the planner's own notes (Unresistable, ...)
+  // per power full name, its groups as the client lists them where the version's file differs
+  // (Thunderspy's client lists PvP-only groups); granted powers by name (pwn)
+  groups?: Record<string, { eff?: Effect[]; act?: Effect[] }>;
 }
 
 export interface BoostSetBonus {

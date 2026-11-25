@@ -156,15 +156,33 @@ export function setLevelRange(set: { minL: number; maxL: number }): [number, num
 }
 
 /**
+ * Whether an IO's level is the one it was crafted at: a set piece or a common IO (Crafted_X).
+ *
+ * The Going Rogue pre-order pieces (Generic_X: Might of the Empire, Clockwork Efficiency,
+ * Resistance Tactics, Syndicate Techniques, Will of the Seers) are IOs too, but they are handed
+ * out, not crafted: /build_save lists them at level 1, and Homecoming's client hides their level
+ * (BoostHideLevel). Attuned pieces follow the character.
+ *
+ * @param gd Game data.
+ * @param boost Enhancement power.
+ * @return True for a crafted (non-attuned) set piece or common IO.
+ */
+export function isCraftedIO(gd: GameData, boost: Power): boolean {
+  if (!boost.bie || boost.bup) return false;
+  return gd.boostSetOf.has(boost.id) || shortName(boost).startsWith('Crafted_');
+}
+
+/**
  * The levels an IO is made at (0-based), for enhancements whose level is chosen.
  *
  * @param gd Game data.
  * @param boost Enhancement power.
  * @return A set piece's set range, a common IO's 10 to its maximum; null for attuned pieces (they
- *   follow the character) and for enhancements without an IO level (TO/DO/SO, HOs, ...).
+ *   follow the character), for the handed-out pre-order pieces (see isCraftedIO) and for
+ *   enhancements without an IO level (TO/DO/SO, HOs, ...).
  */
 export function ioLevelRange(gd: GameData, boost: Power): [number, number] | null {
-  if (!boost.bie || boost.bup) return null;
+  if (!isCraftedIO(gd, boost)) return null;
   const ref = gd.boostSetOf.get(boost.id);
   return ref ? setLevelRange(ref.set) : [9, Math.min(49, (boost.maxBL ?? 50) - 1)];
 }
@@ -188,7 +206,8 @@ export function defaultLevel(gd: GameData, boost: Power): number | undefined {
   if (boost.bup) return undefined; // attuned: scales with the character
   const ref = gd.boostSetOf.get(boost.id);
   if (ref) return setLevelRange(ref.set)[1];
-  if (boost.bie) return Math.min(49, (boost.maxBL ?? 50) - 1);
+  // a handed-out pre-order piece comes at level 1 (isCraftedIO)
+  if (boost.bie) return isCraftedIO(gd, boost) ? Math.min(49, (boost.maxBL ?? 50) - 1) : 0;
   return undefined;
 }
 
@@ -345,13 +364,28 @@ const BOOST_LINES: { attrib: string; type1: string; type2?: string; label1: stri
  * @return Lines in the game's order, each label once.
  */
 export function enhLines(gd: GameData, at: Archetype, power: Power, e: SlottedEnh, charLevel: number): { label: string; value: number }[] {
+  const byAttrib = new Map<number, number>();
+  for (const c of enhValues(gd, at, power, e, charLevel)) byAttrib.set(c.attrib, (byAttrib.get(c.attrib) ?? 0) + c.value);
+  return strengthLines(gd, power, byAttrib);
+}
+
+/**
+ * Enhancement strength as the game lists it (enhLines' lines), from values summed per attribute:
+ * one piece's, or several pieces' together after ED (powerStrength's `post`).
+ *
+ * @param gd Game data.
+ * @param power The power the values are for.
+ * @param byAttrib Strength per attribute offset (0.95 = +95%).
+ * @return Lines in the game's order, each label once.
+ */
+export function strengthLines(gd: GameData, power: Power, byAttrib: Map<number, number>): { label: string; value: number }[] {
   // getEffectiveString: a line shows only when the power accepts one of its types, named by the
   // type the power accepts (both names when it accepts both)
   const allowed = new Set((power.ba ?? []).filter((v) => v >= ORIGIN_COUNT).map((v) => gd.core.attribNames.Boost[v - ORIGIN_COUNT]?.n));
   const byName = new Map<string, number>();
-  for (const c of enhValues(gd, at, power, e, charLevel)) {
-    const n = gd.attribName.get(c.attrib) ?? '';
-    byName.set(n, (byName.get(n) ?? 0) + c.value); // the engine adds every mod on an attribute
+  for (const [a, v] of byAttrib) {
+    const n = gd.attribName.get(a) ?? '';
+    byName.set(n, (byName.get(n) ?? 0) + v); // the engine adds every mod on an attribute
   }
   const out: { label: string; value: number }[] = [];
   const add = (label: string, value: number) => {

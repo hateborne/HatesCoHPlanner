@@ -6,7 +6,7 @@ import type { Build } from '../../engine/build.ts';
 import { boostPog, enhLevelLabel } from '../../engine/enhance.ts';
 import { BuildRules, type BuildEntry } from '../../engine/rules.ts';
 import { previewBuild, stepsOf, useStore, useTipLevel } from '../../state/store.ts';
-import { stepSlotLevels } from '../../engine/schedule.ts';
+import { lowestFreeLevels, stepSlotLevels } from '../../engine/schedule.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { SlotTip, usePointer, useShiftHint } from '../components/PowerTip.tsx';
@@ -16,13 +16,13 @@ import { AdvancedInfo } from '../components/PowerInfoView.tsx';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { ElectricFlash, preloadElectricFlash } from '../components/ElectricFlash.tsx';
 import { SLOT_FLASH_TICKS } from '../electric.ts';
-import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar } from '../components/Chrome.tsx';
+import { FadingText, MenuFrame, NextButton, PHONE_LEVEL_SCALE, RespecCounter, SetFrame, SlotRing, SlotsAvailable, TitleBar, titleBarEnd } from '../components/Chrome.tsx';
 import { GameScroll } from '../components/GameScroll.tsx';
 import { GameText } from '../components/GameText.tsx';
-import { PHONE_PAD, phoneGeom, phonePanel as phoneFrame, PhoneTabs, type PhoneGeom, type Rect } from '../components/Phone.tsx';
+import { PHONE_PAD, PHONE_SET_GAP, phoneGeom, phonePanel as phoneFrame, PhoneTabs, type PhoneGeom, type Rect } from '../components/Phone.tsx';
 import { Sprite } from '../components/Sprite.tsx';
 import { useStage } from '../components/Stage.tsx';
-import { fitScale, FONTS, S, STAGE_W, SY, textWidth, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
+import { fitScale, FONTS, S, SY, textWidth, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts';
 import { icon, ui, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { smf } from '../smf.tsx';
@@ -89,6 +89,7 @@ interface PanelGeom {
   boxW: number; // inner set frame width
   start: number; // primY before the first set
   row: number; // POWER_SPEC_HT
+  setGap?: number; // phones: how far a set after another starts below the row after its last power (none: a whole row, the game's)
   tail: number; // content height past the last primY (makes max scroll = doc - view)
   unit: number; // virtual-y to stage px for the in-row offsets
 }
@@ -139,6 +140,7 @@ function phonePanel(pg: PhoneGeom): PanelGeom {
     boxW: P.w - 106,
     start: -10 * S,
     row: PHONE_ROW,
+    setGap: PHONE_SET_GAP,
     tail: 50,
     unit: S,
   };
@@ -208,7 +210,7 @@ function HoveredInfo({ gd, phone }: { gd: GameData; phone?: PhoneGeom }) {
 }
 
 /** The slot-details / Advanced tooltip for the power bar under the pointer. */
-function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: number }) {
+function SlotTipLayer({ gd, skin, atId, level, rules }: { gd: GameData; skin: Skin; atId: number; level: number; rules: BuildRules }) {
   const tip = useHover((h) => h.tip);
   const tipLevel = useTipLevel();
   const hint = useShiftHint();
@@ -216,12 +218,13 @@ function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: 
   return (
     <SlotTip
       gd={gd}
+      skin={skin}
       power={tip.entry.power}
       x={tip.x}
       y={tip.y}
       avoid={tip.at}
       hint={tipLevel === 'basic' && hint}
-      advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(atId)} entry={tip.entry} level={level} /> : undefined}
+      advanced={tipLevel === 'advanced' ? <AdvancedInfo gd={gd} at={gd.archetype(atId)} entry={tip.entry} level={level} rules={rules} /> : undefined}
     />
   );
 }
@@ -231,8 +234,8 @@ function SlotTipLayer({ gd, atId, level }: { gd: GameData; atId: number; level: 
  * slots; click a just-placed slot to take it back. Finish unlocks when every slot is placed.
  */
 export function AddEnhancementSlot({ skin }: { skin: Skin }) {
-  const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel, lockFlash, flashLocked } = useStore(
-    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, addPendingSlot: s.addPendingSlot, removePendingSlot: s.removePendingSlot, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
+  const { gd, steps, level, addPendingSlot, removePendingSlot, finishLevel, backLevel, lockFlash, flashLocked, askConfirm } = useStore(
+    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, addPendingSlot: s.addPendingSlot, removePendingSlot: s.removePendingSlot, finishLevel: s.finishLevel, backLevel: s.backLevel, lockFlash: s.lockFlash, flashLocked: s.flashLocked, askConfirm: s.askConfirm })),
   );
   useEscape(backLevel, level?.mode === 'edit'); // Escape cancels a level reopened from the overview
   useFreshHover(); // hover lives in useHover: hovering a bar redraws only the info box and tooltip
@@ -259,22 +262,40 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
   const buildEnd = preview!.endLevel ?? 49;
   const levels = stepSlotLevels(step); // a respec screen places the slots of several levels
   // a respec (uiReSpec.c respec_assignment) draws every power, greying the ones bought later
-  const respec = !!level.flow;
+  // (not the screen for slots a power swap freed, which holds just those: store.finishSwap)
+  const respec = !!level.flow && !level.freed;
   const later = (e: BuildEntry) => e.level > L;
   // a respec's slot level reopened from the overview (a Respec build's, or one an Arachnos build
   // had on training to 24): its slots may still go on any power
   const anyPower = respec || rules.slotsAnyPower(L);
   const entries = rules.entries().filter((e) => (anyPower || !later(e)) && rules.slottable(e.power) && e.power.sm !== 0);
-  const remaining = rules.slotsLeft(levels);
+  // a freed-slot screen places only the freed slots, even where its levels have others left over
+  const remaining = level.freed ? Math.min(rules.slotsLeft(levels), step.slots - level.pendingSlots.length) : rules.slotsLeft(levels);
+  /**
+   * @return Whether a slot added to the power still gives every freed slot a level at or after its
+   *   power's (lowestFreeLevels, as previewBuild books them); a respec's levels may go anywhere.
+   */
+  const fitsFreed = (e: BuildEntry) => {
+    if (!level.freed) return true;
+    const all = rules.entries();
+    const owned = [...level.pendingSlots.map((k) => all.find((x) => x.key === k)?.level ?? 0), e.level];
+    return lowestFreeLevels(step.slotLevels ?? [], owned, L).every((lv, i) => lv >= owned[i]! || rules.slotsAnyPower(lv));
+  };
+  // Finish waits while a slot can still go somewhere (a freed slot: on a power owned by its level)
+  const anyPlaceable = entries.some((e) => rules.slotBlock(e, L, levels) === null && fitsFreed(e));
   const visiting = visit?.base === level.base;
   const added = visiting ? visit.added : [];
   const pendingOf = (key: string) => level.pendingSlots.filter((k) => k === key).length;
-  const anyPlaceable = entries.some((e) => rules.slotBlock(e, L, levels) === null);
+
 
   const click = (e: BuildEntry) => {
     // specLevel's order: no slots left beats a full power
     const noSlots = remaining <= 0;
     const block = noSlots ? 'No Slots' : rules.slotBlock(e, L, levels);
+    if (!block && !fitsFreed(e)) {
+      flashLocked(e.key, 'Slot Levels Too Low!');
+      return;
+    }
     if (block) {
       // drawPowerAndEnhancements: fadingText only, no sound (powerselect2 is for a placed slot)
       const id = ++fadeId.current;
@@ -316,7 +337,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     const u = g.unit;
     let primY = g.start;
     for (const grp of list) {
-      primY += g.row;
+      primY += g.setGap !== undefined && grp !== list[0] ? g.setGap : g.row;
       const top = primY;
       const boxAt = items.length; // the set frame goes in behind this set's heading and bars
       items.push(<GameText key={`h${grp.set?.id ?? 'x'}`} font="title_12" scale={S} x={g.headCX} y={top - 23 * u} align="center" colors={skin.heading} text={grp.title} />);
@@ -403,7 +424,10 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
     );
   };
 
-  const title = respec ? 'CHOOSE ALL ENHANCEMENT SLOTS:' : 'ADD AN ENHANCEMENT SLOT';
+  // a slot screen within a Respec build's respec (a reopened slot level, a swap's freed slots) is
+  // titled and labelled as the respec's own
+  const respecWords = respec || (preview!.respecTo !== undefined && L <= preview!.respecTo);
+  const title = respecWords ? 'CHOOSE ALL ENHANCEMENT SLOTS:' : 'ADD AN ENHANCEMENT SLOT';
   /**
    * A panel's sets. The respec screen lists the third panel in the order the character got the
    * sets (ppPowerSets): the inherent sets from character creation first, then pools as picked
@@ -425,14 +449,28 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       <SlotsAvailable n={remaining} {...box} />
     );
   const finishText = respec && level.mode === 'wizard' ? 'Next' : 'Finish';
+  // a swap's freed slots: Cancel undoes the swap already confirmed
+  const backText = level.freed ? 'Undo Swap' : level.mode === 'edit' ? 'Cancel' : 'Back';
+  // Finish with freed slots no power here can take (Finish unlocks then): they'd be left unplaced, so ask
+  const finish = () => {
+    if (!level.freed || remaining <= 0) return finishLevel();
+    void askConfirm({
+      title: 'Leave slots unplaced?',
+      text: `${remaining} freed enhancement slot${remaining > 1 ? 's' : ''} can't go on any power here and will be left unplaced (the build shows ${remaining > 1 ? 'them' : 'it'} in red until placed). Finish anyway?`,
+      okLabel: 'Finish',
+    }).then((ok) => {
+      if (ok && useStore.getState().level === level) finishLevel();
+    });
+  };
   // which level the slots belong to: a planner extra on the slot screen; in a respec the game's own
-  // line, drawn unscaled at screen pixel (1000, 30) (uiReSpec.c prnt(1000, 30, ...)), so on the
-  // 3840 x 2160 reference it is small text just above the title bar
+  // line, placed and sized as the power screens draw it (ChooseNewPower: prnt(450 sx, 30 sy) at the
+  // screen's height scale, measured in game) -- drawn as unscaled 4K pixels it came out tiny, over
+  // the title bar; this screen's longer title pushes it right of the bar
   const levelLine = (x: number, y: number) =>
-    respec && phone ? (
+    respecWords && phone ? (
       <GameText font="title_12" scale={S} x={x} y={y} align="right" colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
-    ) : respec ? (
-      <GameText font="title_12" scale={STAGE_W / 3840} x={(1000 * STAGE_W) / 3840} y={(30 * STAGE_W) / 3840} colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
+    ) : respecWords ? (
+      <GameText font="title_12" scale={SY} x={Math.max(vx(450), titleBarEnd(title) + vx(10))} y={vy(30)} colors={['#ffffff', '#c0c0c0']} text={`Current Respec Level: ${L}`} />
     ) : (
       <GameText font="title_14" scale={S} x={x} y={y} align="right" colors={skin.heading} text={`LEVEL ${L + 1}`} />
     );
@@ -449,9 +487,9 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         {counter(phoneCounter(pg))}
         {noSlotFades}
         <HoveredInfo gd={gd} phone={pg} />
-        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(preview!.at)} level={L} />
-        <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
-        <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
+        <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(preview!.at)} level={L} rules={rules} />
+        <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />
+        <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finish} />
       </>
     );
   }
@@ -478,11 +516,11 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
       )}
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), panelGroups(i), i))}
       <HoveredInfo gd={gd} />
-      <SlotTipLayer gd={gd} atId={preview!.at} level={L} />
+      <SlotTipLayer gd={gd} skin={skin} atId={preview!.at} level={L} rules={rules} />
       {counter()}
       {noSlotFades}
-      <NextButton skin={skin} dir="left" text={level.mode === 'edit' ? 'Cancel' : 'Back'} onClick={backLevel} />
-      <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finishLevel} />
+      <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />
+      <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finish} />
     </>
   );
 }

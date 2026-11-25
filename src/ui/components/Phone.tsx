@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { Skin } from '../skin/skin.ts';
 import { CheckBar } from './CheckBar.tsx';
 import { useStage } from './Stage.tsx';
@@ -27,6 +28,9 @@ export interface PhoneGeom {
 
 // side margin of the phone panels
 export const PHONE_PAD = 10;
+// the build and slot screens' power lists: how far below the row after a set's last power the next
+// set's first power sits, room for its heading and frame top clear of the rings hanging above
+export const PHONE_SET_GAP = 36;
 // tab rows: centers this far apart, each tab's touch box this tall
 export const PHONE_TAB_ROW = 58;
 // the description box's height
@@ -77,6 +81,61 @@ export function phoneMenuButton(g: PhoneGeom): Rect {
   const b = PHONE_MENU_BTN;
   const h = 3 * b.bar + 2 * (b.pitch - b.bar) + 2 * b.pad;
   return { x: g.w - b.right - b.w, y: phoneTopRowY(g) - h / 2, w: b.w, h };
+}
+
+/**
+ * One row of tabs that scrolls sideways (a drag, or the wheel), for a screen short of room: the
+ * enhancement picker's categories. Each tab is as wide as three and a bit fit the row, so the
+ * next one always peeks in; the chosen tab is brought into view.
+ *
+ * @param props.y Center of the row.
+ * @param props.x Left edge of the row.
+ * @param props.width Width of the row.
+ */
+export function PhoneTabStrip({ skin, labels, active, onChange, y, x, width, clickSounds = ['n_select'] }: { skin: Skin; labels: string[]; active: number; onChange: (i: number) => void; y: number; x: number; width: number; clickSounds?: string[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const s = 1.3;
+  const bulb = 22 * s + 4; // the check box's center from the cell's left edge
+  const cell = Math.round(width / 3.3);
+  const shown = useRef(false); // it has been drawn once: later changes glide
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTo({ left: Math.max(0, active * cell - (width - cell) / 2), behavior: shown.current ? 'smooth' : 'auto' });
+    shown.current = true;
+  }, [active, cell, width]);
+  return (
+    <div
+      ref={ref}
+      className="abs noscrollbar"
+      data-testid="tabstrip"
+      onWheel={(e) => {
+        // an up-down wheel turns the row; a sideways one already scrolls it
+        if (!e.deltaX) e.currentTarget.scrollLeft += e.deltaY;
+      }}
+      style={{ left: x, top: y - PHONE_TAB_ROW / 2, width, height: PHONE_TAB_ROW, overflowX: 'auto', overflowY: 'hidden', touchAction: 'pan-x' }}
+    >
+      <div style={{ position: 'relative', width: labels.length * cell, height: PHONE_TAB_ROW }}>
+        {labels.map((l, i) => (
+          <CheckBar
+            key={l}
+            skin={skin}
+            x={i * cell + bulb}
+            y={PHONE_TAB_ROW / 2}
+            wd={cell - bulb - 8}
+            scale={s}
+            hitPad={(PHONE_TAB_ROW - 38 * s) / 2}
+            text={l}
+            state={i === active ? 'selected' : 'standard'}
+            down={i === active}
+            clickSounds={clickSounds}
+            onClick={() => onChange(i)}
+            testId={`tab:${l}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** @return How many rows `n` tabs take on a phone (four go two by two, more go three to a row). */

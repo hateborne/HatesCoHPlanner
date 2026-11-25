@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { defaultServer, serverById } from './data/servers.ts';
 import { skinOf } from './engine/build.ts';
+import { closeSetFinder, useFinderOpen } from './state/finderOpen.ts';
 import { useStore } from './state/store.ts';
 import { SideTotals } from './ui/components/SideTotals.tsx';
 import { StopButtons } from './ui/components/StopButtons.tsx';
@@ -21,6 +22,37 @@ import { SKINS, type Skin } from './ui/skin/skin.ts';
 import { setMusicSkin } from './ui/sound.ts';
 import { TitleText } from './ui/components/GameText.tsx';
 import { versionLabel } from './version.ts';
+
+// the set finder's pane, once downloaded (see FinderPane)
+let finderPane: ComponentType<{ skin: Skin }> | null = null;
+
+/**
+ * The set finder's pane. Its screen and engine are downloaded when the pane is first opened, not
+ * with the page. A download that fails closes the pane with a notice, and the next opening tries
+ * again. A page opened before the site was updated asks for a file the update replaced: the notice
+ * says so, as the Mids code reader's does (io/mids.ts), since only a reload fixes that.
+ */
+function FinderPane({ skin }: { skin: Skin }) {
+  const [Pane, setPane] = useState<ComponentType<{ skin: Skin }> | null>(() => finderPane);
+  useEffect(() => {
+    if (Pane) return;
+    let live = true;
+    import('./ui/screens/SetFinder.tsx')
+      .then((m) => {
+        finderPane = m.default;
+        if (live) setPane(() => m.default);
+      })
+      .catch((e: unknown) => {
+        console.warn('set finder: the pane did not load', e);
+        closeSetFinder();
+        useStore.getState().notify("The set finder couldn't load (the site may have been updated since this page was opened). Reload the page, then try again.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [Pane]);
+  return Pane ? <Pane skin={skin} /> : null;
+}
 
 /**
  * A refused change ("Remove enhancements first"). Desktop: small red text at the bottom center
@@ -101,7 +133,7 @@ function PhoneToast({ skin, text, onClose }: { skin: Skin; text: string; onClose
   const w = box?.w ?? maxW;
   return (
     <div className="abs phone-toast" role="status" onClick={onClose} style={{ left: (stage.w - w) / 2, top: phoneGeom(stage).line + 8, width: w, height: box?.h ?? 0, zIndex: 110, cursor: 'pointer' }}>
-      {box ? <MenuFrame x={0} y={0} w={box.w} h={box.h} skin={skin} style={{ background: '#000314' }} /> : null}
+      {box ? <MenuFrame x={0} y={0} w={box.w} h={box.h} skin={skin} style={{ background: skin.panel }} /> : null}
       <div
         ref={ref}
         className="abs body-text"
@@ -113,12 +145,99 @@ function PhoneToast({ skin, text, onClose }: { skin: Skin; text: string; onClose
   );
 }
 
+// how long the loading screen shows before it offers Try again. Nothing is cancelled when it does:
+// a slow connection's downloads carry on and still open the page (and pressing it keeps them too:
+// only a download that has received nothing for STALLED_MS is given up: see retryLoad). By then
+// every file that got no answer has been asked for again by itself (ask, in src/data/watch.ts).
+const SLOW_LOAD_MS = 10_000;
+
+/** A Try again button in the planner's button style, for the loading and error screens. */
+function TryAgain({ px, onClick }: { px: number; onClick: () => void }) {
+  return (
+    <button className="info-button" style={{ position: 'static', fontSize: px, padding: `${Math.round(px / 4)}px ${Math.round(px * 1.2)}px` }} onClick={onClick}>
+      Try again
+    </button>
+  );
+}
+
+/**
+ * The loading screen. After SLOW_LOAD_MS with no question on screen (the server list and the return
+ * question wait on the player, not on a download) it offers Try again, which starts the load again
+ * (retryLoad): a download that has gone quiet is given up and asked for anew, one still coming in
+ * is kept. A download that never answers would otherwise hold the page here for good. After a
+ * press it is offered again after the same wait.
+ */
+function LoadingScreen() {
+  const stage = useStage();
+  const waiting = useStore((s) => !s.serverAsk && !s.confirm);
+  const retryLoad = useStore((s) => s.retryLoad);
+  const [tries, setTries] = useState(0);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (!waiting) return;
+    const t = window.setTimeout(() => setSlow(true), SLOW_LOAD_MS);
+    return () => window.clearTimeout(t);
+  }, [waiting, tries]);
+  // desktop: where it has always been; phones: the same place on their taller, narrower stage
+  const top = stage.phone ? Math.round(stage.h * 0.46) : 520;
+  const px = stage.phone ? 34 : 48;
+  return (
+    <>
+      <TitleText className="abs" style={{ left: 0, right: 0, top, textAlign: 'center', fontSize: px }}>
+        LOADING...
+      </TitleText>
+      {slow && waiting ? (
+        <div className="abs" style={{ left: 0, right: 0, top: top + px * 2, textAlign: 'center' }}>
+          <TryAgain
+            px={stage.phone ? 20 : 24}
+            onClick={() => {
+              setTries((n) => n + 1);
+              retryLoad();
+            }}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The game data wouldn't load: what happened, in plain words, and Try again (a failed download
+ * isn't kept, so trying again really fetches again).
+ *
+ * @param text What to say (the store's `error`).
+ */
+function ErrorScreen({ text }: { text: string }) {
+  const stage = useStage();
+  const pad = stage.phone ? 24 : 200;
+  return (
+    <div className="abs body-text" style={{ left: pad, top: stage.phone ? Math.round(stage.h * 0.3) : 400, width: stage.w - 2 * pad, fontSize: stage.phone ? 20 : 28, color: '#ff6060' }}>
+      {text}
+      <div style={{ marginTop: 32 }}>
+        <TryAgain
+          px={stage.phone ? 20 : 24}
+          onClick={() => {
+            useStore.setState({ view: 'loading' });
+            void useStore.getState().load();
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** Top-level router: loading, setup, the level-up screens and the build overview. */
 export function App() {
-  const { view, error, build, level, load, menuOpen, setMenu, setupAlign } = useStore();
+  const { view, error, build, level, load, menuOpen, setMenu, setupAlign } = useStore(useShallow((s) => ({ view: s.view, error: s.error, build: s.build, level: s.level, load: s.load, menuOpen: s.menuOpen, setMenu: s.setMenu, setupAlign: s.setupAlign })));
+  const finderOpen = useFinderOpen((s) => s.open);
   useEffect(() => {
     void load();
   }, [load]);
+  // the set finder's pane belongs to the overview: leaving it closes the pane, so it can't come back on return
+  useEffect(() => {
+    if (view !== 'overview') closeSetFinder();
+  }, [view]);
   const skin = SKINS[build ? skinOf(build.alignment) : 'hero'];
   // the setup screen picks its own track from the alignment being chosen
   useEffect(() => {
@@ -128,30 +247,9 @@ export function App() {
   const stageSkin = view === 'setup' ? SKINS[skinOf(setupAlign)] : skin;
   let screen = null;
   if (view === 'loading') {
-    screen = (
-      <TitleText className="abs" style={{ left: 0, right: 0, top: 520, textAlign: 'center', fontSize: 48 }}>
-        LOADING...
-      </TitleText>
-    );
+    screen = <LoadingScreen />;
   } else if (view === 'error') {
-    screen = (
-      <div className="abs body-text" style={{ left: 200, top: 400, width: 1600, fontSize: 28, color: '#ff6060' }}>
-        Could not load game data: {error}
-        {/* a failed download isn't cached (dataFor), so trying again really fetches again */}
-        <div style={{ marginTop: 32 }}>
-          <button
-            className="info-button"
-            style={{ position: 'static', fontSize: 24, padding: '6px 28px' }}
-            onClick={() => {
-              useStore.setState({ view: 'loading' });
-              void useStore.getState().load();
-            }}
-          >
-            Try again
-          </button>
-        </div>
-      </div>
-    );
+    screen = <ErrorScreen text={error ?? ''} />;
   } else if (view === 'setup') {
     screen = <Setup />;
   } else if (view === 'level' && level) {
@@ -162,7 +260,7 @@ export function App() {
       <>
         {screen}
         <StopButtons skin={skin} />
-        <SideTotals />
+        <SideTotals skin={skin} />
       </>
     );
   } else if (view === 'overview') {
@@ -171,7 +269,8 @@ export function App() {
   return (
     <Stage skin={stageSkin}>
       {screen}
-      {menuOpen ? <BuildMenu onClose={() => setMenu(false)} /> : null}
+      {menuOpen ? <BuildMenu skin={stageSkin} onClose={() => setMenu(false)} /> : null}
+      {finderOpen && view === 'overview' ? <FinderPane skin={skin} /> : null}
       <Notice skin={stageSkin} />
       <ConfirmDialog />
       <ServerDialog />

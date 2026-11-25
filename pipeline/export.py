@@ -22,12 +22,11 @@ from pipeline.coh.p7reader import param_power_names
 from pipeline.decode.live import LiveData, sha1
 from pipeline.forced_respec import forced_respec_warnings
 from pipeline.ids import IdRegistry
+from pipeline.pvp import PVP_TEST, PVP_TESTS
 
 # special attributes whose mods name powers in their Params (481, 482, 486, 512 on Homecoming and
 # Thunderspy; looked up by name so another client's numbering can't miss them)
 GRANT_NAMES = ("GrantPower", "RevokePower", "GrantBoostedPower", "ExecutePower")
-PVP_ONLY = ["enttype", "target>", "player", "eq"]
-PVE_ONLY = ["enttype", "target>", "critter", "eq"]
 
 
 def num(v):
@@ -42,9 +41,67 @@ def strip_k(name):
     return name[1:] if isinstance(name, str) and name.startswith("k") else name
 
 
-def contains_seq(seq: list, sub: list) -> bool:
-    n = len(sub)
-    return any(seq[i:i + n] == sub for i in range(len(seq) - n + 1))
+# a pet class's attribute tables in the real pets file -> the decoded villain class's
+# (live.CLASS_TABLES), named as core.json names an archetype's
+PET_CLASS_TABLES = {"base": "AttribBase", "min": "AttribMin", "max": "AttribMaxTable", "maxMax": "AttribMaxMaxTable",
+                    "strMax": "StrengthMaxTable", "resMax": "ResistanceMaxTable"}
+# the base, minimum, maximum and cap attributes the planner's totals read: hit points, endurance,
+# regeneration, recovery, movement and perception
+_PET_STAT_ATTRS = frozenset({"HitPoints", "Endurance", "Regeneration", "Recovery", "SpeedRunning",
+                             "SpeedFlying", "SpeedJumping", "JumpHeight", "PerceptionRadius"})
+
+
+def pet_class_attr(table: str, attr: str) -> bool:
+    """Whether the real pets file keeps an attribute of a pet class's table: what a pet's stats read.
+
+    @param table The table's key in the file (PET_CLASS_TABLES).
+    @param attr The attribute's name.
+    @return True for the base, minimum, maximum and cap of a stat the totals show, the damage and
+        recharge caps (strMax) and the resistance caps (resMax).
+    """
+    if table in ("base", "min", "max", "maxMax"):
+        return attr in _PET_STAT_ATTRS
+    if table == "strMax":
+        return attr.startswith("DamageType") or attr == "RechargeTime"
+    return attr.startswith("DamageType")
+
+
+ENT_CREATE_PARAM = 3  # the param type of an EntCreate mod's Params (the client tests `*params == 3`)
+
+
+def ent_create_param(params, layout: list) -> dict | None:
+    """The names an EntCreate mod's Params carry.
+
+    The client's parse table (LiveData.ent_create_layout) gives the order: one word per field
+    (EntityDef, Class, ..., a string's pool offset or 0), and for a string earray (PowerCategory,
+    Powerset, Power) a count followed by its strings.
+
+    @param params A mod's decoded Params ({"n": param type, "words", "strings"}), or None.
+    @param layout [(field name, is a string earray)] in serialized order.
+    @return {"EntityDef", "Class", "DisplayName", "Power": [names]} (empty when absent), or None
+        when the Params aren't an EntCreate struct or its words don't fit the layout exactly.
+    """
+    if not params or params.get("n") != ENT_CREATE_PARAM or not layout:
+        return None
+    words, strings = params.get("words") or [], params.get("strings") or {}
+    i = 0
+    got: dict = {}
+    for name, is_array in layout:
+        if i >= len(words):
+            return None
+        if is_array:
+            n = words[i]
+            if i + 1 + n > len(words):
+                return None
+            got[name] = [strings[j] for j in range(i + 1, i + 1 + n) if j in strings]
+            i += 1 + n
+        else:
+            got[name] = strings.get(i, "")
+            i += 1
+    if i != len(words):
+        return None
+    return {"EntityDef": got.get("EntityDef") or "", "Class": got.get("Class") or "",
+            "DisplayName": got.get("DisplayName") or "", "Power": got.get("Power") or []}
 
 
 def grant_attribs(attribs: dict) -> set[int]:
@@ -74,10 +131,21 @@ class Exporter:
         self.cats = {c["Name"].lower(): c for c in live.powercats}
         self.E = live.enums
         self.grant_attribs = grant_attribs(live.attribs)
+        # villain defs and classes by lower-cased name, and the archetypes' classes (pets)
+        self.villains = {v["Name"].lower(): v for v in live.villains}
+        self.vclasses = {c["Name"].lower(): c for c in live.villain_classes}
+        self.pclasses = {c["Name"].lower(): c for c in live.classes}
         # no_frames: enhancements left without frame art because the client has no frame columns
         self.report: dict = {"missing_text": Counter(), "unresolved_refs": Counter(),
                              "pvp_effects_dropped": 0, "no_frames": 0}
         self.used_tables: set[str] = set()
+        # conv_mod marks a mod that stacks once whoever casts it (CasterStackType kCollective) with
+        # "cst" while this is set (build_henchmen's `collective`)
+        self.mark_collective = False
+        # the PvP-only test by requirement (pipeline/pvp.py): the current one, or a published
+        # version's own (use_pvp_test)
+        self.pvp_test_id = PVP_TEST
+        self.pvp_test = PVP_TESTS[PVP_TEST]
 
     # ---- helpers ------------------------------------------------------------------------------
     def text(self, key: str) -> str:
@@ -169,7 +237,14 @@ class Exporter:
         yield from walk(rec.get("ActivationEffect"))
 
     # ---- conversion ---------------------------------------------------------------------------
-    def conv_mod(self, a) -> dict:
+    def conv_mod(self, a, ids: bool = True) -> dict:
+        """One AttribMod in the site's short form.
+
+        @param a The decoded mod.
+        @param ids Name granted powers by id (`pw`); False names them by full name (`pwn`) instead,
+            so nothing allocates an id (pseudo-pet powers, which no build names).
+        @return The mod.
+        """
         o = {"a": a["Attrib"],
              "asp": self.enum("mod.Aspect", a["Aspect"]),
              "t": self.enum("mod.Type", a["Type"]),
@@ -204,10 +279,14 @@ class Exporter:
             o["fl"] = names
         if a.get("BoostModAllowed"):
             o["bma"] = a["BoostModAllowed"]
+        if self.mark_collective and self.enum("mod.CasterStackType", a.get("CasterStackType", 0)) == "Collective":
+            o["cst"] = 1  # build_henchmen's `collective` only: never in a version's powers
         if set(a["Attrib"]) & self.grant_attribs:
-            names = param_power_names(a["Params"])
-            o["pw"] = [self.ids.get("power", self.power_name(n)) for n in names
-                       if self.power_name(n)]
+            names = [self.power_name(n) for n in param_power_names(a["Params"])]
+            if ids:
+                o["pw"] = [self.ids.get("power", n) for n in names if n]
+            else:
+                o["pwn"] = [n for n in names if n]  # by name: a pet's grants allocate no id
         return o
 
     def mod_flags(self, words: list) -> list[str]:
@@ -224,14 +303,74 @@ class Exporter:
         en = self.E.get("effect.Flags", {})
         return [n for bit, n in sorted(en.items()) if v & bit]
 
-    def conv_effects(self, effs) -> list:
+    def use_pvp_test(self, test_id) -> None:
+        """Make the groups with one of the PvP-only tests (pvp.PVP_TESTS): a published version's
+        own, as its manifest records it (pvpTest; none: 1), so remaking it or a file beside it gives
+        what was published.
+
+        @param test_id The test's number.
+        @raise SystemExit For a number this pipeline doesn't know (nothing is written).
+        """
+        if test_id not in PVP_TESTS:
+            raise SystemExit(f"error: the version was made with PvP-only test {test_id!r}, which this "
+                             "pipeline doesn't know. Nothing was written.")
+        self.pvp_test_id = test_id
+        self.pvp_test = PVP_TESTS[test_id]
+
+    def reproduces(self, powers: list[dict]) -> bool:
+        """Whether the groups made now are a published version's own, so a file remade beside it
+        agrees with it.
+
+        Run before build(): the trial conversions leave nothing behind (the tables and report
+        counts they touch, the ids they allocate are all put back).
+
+        @param powers The version's power records as written (powers.json).
+        @return Whether every power's groups are the written ones.
+        """
+        tables = set(self.used_tables)
+        counted = {k: (Counter(v) if isinstance(v, Counter) else v) for k, v in self.report.items()}
+        maps = {k: dict(v) for k, v in self.ids.maps.items()}
+        added = dict(self.ids.added)
+        same = all((self.conv_effects(self.pw[p["n"]].get("Effect")),
+                    self.conv_effects(self.pw[p["n"]].get("ActivationEffect")))
+                   == (p.get("eff") or [], p.get("act") or []) for p in powers if p["n"] in self.pw)
+        self.used_tables = tables
+        self.report.clear()
+        self.report.update(counted)
+        self.ids.maps = maps
+        self.ids.added = added
+        return same
+
+    def pvp_flag(self, e: dict) -> bool:
+        """@return Whether an effect group carries the PVPOnly flag."""
+        return "PVPOnly" in self.effect_flags(e.get("Flags") or 0)
+
+    def pvp_only(self, e: dict, keep_flagged: bool = False) -> bool:
+        """Whether conv_effects drops an effect group as PvP-only.
+
+        @param e The decoded group.
+        @param keep_flagged Keep a group only its flag makes PvP-only (a client that tests no group
+            flags lists it); one that requires a player target is still dropped, as the client's own
+            requirement check leaves it out too.
+        @return True for its PVPOnly flag (unless kept) or a requirement the PvP-only test drops
+            (pvp_test: the current one, or the version's own).
+        """
+        return (not keep_flagged and self.pvp_flag(e)) or self.pvp_test(e.get("Requires") or [])
+
+    def conv_effects(self, effs, ids: bool = True, keep_pvp: bool = False) -> list:
+        """Effect groups in the site's short form, PvP-only groups dropped.
+
+        @param effs The decoded groups.
+        @param ids See conv_mod.
+        @param keep_pvp Keep the groups only their PVPOnly flag makes PvP-only (a client that lists
+            them: build_info).
+        @return The groups that hold mods.
+        """
         out = []
         for e in effs or []:
             req = e.get("Requires") or []
             eflags = self.effect_flags(e.get("Flags") or 0)
-            pvp = "PVPOnly" in eflags or (contains_seq(req, PVP_ONLY)
-                                          and not contains_seq(req, PVE_ONLY))
-            if pvp:
+            if self.pvp_only(e, keep_pvp):
                 self.report["pvp_effects_dropped"] += 1
                 continue
             o = {}
@@ -249,10 +388,10 @@ class Exporter:
                 o["fl"] = eflags
             if e.get("EvalFlags"):
                 o["ef"] = e["EvalFlags"]
-            mods = [self.conv_mod(a) for a in e.get("AttribMod") or []]
+            mods = [self.conv_mod(a, ids) for a in e.get("AttribMod") or []]
             if mods:
                 o["m"] = mods
-            sub = self.conv_effects(e.get("Effect"))
+            sub = self.conv_effects(e.get("Effect"), ids, keep_pvp)
             if sub:
                 o["sub"] = sub
             if mods or sub:
@@ -383,7 +522,812 @@ class Exporter:
             o["bon"].append(x)
         return o
 
+    # ---- pseudo-pets ---------------------------------------------------------------------------
+    def _set_in_category(self, category: str, set_name: str) -> dict | None:
+        """@return The powerset of a category with this short name (category_GetBaseSetByName), or None."""
+        cat = self.cats.get((category or "").lower())
+        if cat is None:
+            return None
+        for full in cat["PowerSets"]:
+            s = self.sets.get(full)
+            if s is not None and s["Name"].lower() == (set_name or "").lower():
+                return s
+        return None
+
+    def _pet_powers(self, par: dict, vdef: dict | None) -> tuple[list[str], int]:
+        """The powers a pseudo-pet runs, in the order the client's power info lists them.
+
+        Its villain def's Power refs, last first (a "*" power takes the whole set in order; a
+        category, set or power the client lacks is skipped), then the mod's own Power list, last
+        first (power_AddPetEffects; getTotalDamage walks them the same way).
+
+        @param par The mod's EntCreate params (ent_create_param).
+        @param vdef Its villain def, or None.
+        @return (full power names, how many of them come from the villain def).
+        """
+        names: list[str] = []
+        for ref in reversed((vdef or {}).get("Power") or []):
+            s = self._set_in_category(ref["PowerCategory"], ref["PowerSet"])
+            if s is None:
+                continue
+            if ref["Power"].startswith("*"):
+                names += [n for n in (self.power_name(p) for p in s["Powers"]) if n]
+            else:
+                n = self.power_name(f"{s['FullName']}.{ref['Power']}")
+                if n:
+                    names.append(n)
+        from_def = len(names)
+        names += [n for n in (self.power_name(p) for p in reversed(par["Power"])) if n]
+        return names, from_def
+
+    def client_templates(self, rec: dict):
+        """A power's mods in the order of the client's template list, with whether each is hidden.
+
+        The client flattens a power's Effect groups, then its ActivationEffect groups, each group's
+        sub-groups before its own mods (its loader, decompiled). A mod is hidden when a group
+        around it is HideFromInfo: the power info then lists no pet for it.
+
+        @param rec A decoded power.
+        @return Iterator of (mod, hidden).
+        """
+        def walk(effs, hidden):
+            for e in effs or []:
+                h = hidden or "HideFromInfo" in self.effect_flags(e.get("Flags") or 0)
+                yield from walk(e.get("Effect"), h)
+                for a in e.get("AttribMod") or []:
+                    yield a, h
+        yield from walk(rec.get("Effect"), False)
+        yield from walk(rec.get("ActivationEffect"), False)
+
+    def _pvp_executions(self, rec: dict, execute: int) -> list[dict]:
+        """The ExecutePower mods of a power's PvP-only groups, which conv_effects drops.
+
+        The client's damage total counts every ExecutePower mod, whatever its group (its
+        getTotalDamage, decompiled), so the pets file keeps these for the version's own data.
+
+        @param rec A decoded power.
+        @param execute The ExecutePower attribute's offset.
+        @return One {"p": [executed powers], "boosts"?: 1 (CopyBoosts)} per executing mod and
+            attribute, in the client's template order.
+        """
+        out: list[dict] = []
+
+        def walk(effs, pvp: bool) -> None:
+            for e in effs or []:
+                req = e.get("Requires") or []
+                p = pvp or "PVPOnly" in self.effect_flags(e.get("Flags") or 0) or self.pvp_test(req)
+                walk(e.get("Effect"), p)
+                if not p:
+                    continue
+                for a in e.get("AttribMod") or []:
+                    names = [n for n in (self.power_name(x) for x in param_power_names(a.get("Params"))) if n]
+                    for _ in range(a["Attrib"].count(execute) if names else 0):
+                        x: dict = {"p": names}
+                        if "CopyBoosts" in self.mod_flags(a.get("Flags") or []):
+                            x["boosts"] = 1
+                        out.append(x)
+
+        walk(rec.get("Effect"), False)
+        walk(rec.get("ActivationEffect"), False)
+        return out
+
+    def _special(self, name: str) -> int | None:
+        """@return The offset of the client's special attribute with this name, or None."""
+        return next((o for o, a in self.L.attribs.items() if a.get("kind") == "special" and a["name"] == name), None)
+
+    def _villain(self, name: str) -> dict | None:
+        """@return The villain def with this name (any case), or None."""
+        return self.villains.get((name or "").lower())
+
+    def _pet_class(self, par: dict, vdef: dict | None) -> dict | None:
+        """The class a pet that isn't a PseudoPet runs with: the mod's Class (a villain class or an
+        archetype), else its villain def's class (character_CreatePet, the power info's pet branch).
+
+        @param par The mod's EntCreate params.
+        @param vdef Its villain def, or None.
+        @return The decoded class, or None when it has none.
+        """
+        c = par["Class"].lower()
+        cls = (self.vclasses.get(c) or self.pclasses.get(c)) if c else None
+        if cls is None and vdef is not None:
+            cls = self.vclasses.get(vdef["Class"].lower())
+        return cls
+
+    def _pseudo_creation(self, a: dict, hidden: bool, skipped: Counter) -> dict | None:
+        """One EntCreate mod's pseudo-pet as the pets file holds it (build_pets), or None.
+
+        @param a The decoded mod.
+        @param hidden A group around it is HideFromInfo.
+        @param skipped Why mods are left out, counted.
+        @return {"p", "def"?, "hid"?, "dur"?, "boosts"?, "mods"?, "pseudo"? | "cls"}, or None for a mod left
+            out: no params, no powers, a real pet (a power that isn't Auto) or no class.
+        """
+        par = ent_create_param(a.get("Params"), self.L.ent_create_layout)
+        if par is None:
+            skipped["no EntCreate params"] += 1
+            return None
+        vdef = self._villain(par["EntityDef"]) if par["EntityDef"] else None
+        if par["EntityDef"] and vdef is None:
+            skipped["unknown villain def"] += 1
+        names, from_def = self._pet_powers(par, vdef)
+        if not names:
+            skipped["no powers"] += 1
+            return None
+        if any(self.enum("power.Type", self.pw[n]["Type"]) != "Auto" for n in names):
+            skipped["not auto only (a real pet)"] += 1
+            return None
+        flags = set(self.mod_flags(a.get("Flags") or []))
+        o: dict = {"p": names}
+        if from_def:
+            o["def"] = from_def
+        if hidden and config.SERVER.pet_skip_hidden:
+            o["hid"] = 1
+        if a.get("Duration"):
+            o["dur"] = num(a["Duration"])
+        if "CopyBoosts" in flags:
+            o["boosts"] = 1
+        # the pet gets a copy of its creator's strength mods when it is made: the villain def's flag
+        # (character_CreatePet), or the mod's own on a client that has one (Homecoming's)
+        if "CopyCreatorMods" in flags or (vdef is not None and vdef.get("CopyCreatorMods")):
+            o["mods"] = 1
+        if "PseudoPet" in flags:
+            o["pseudo"] = 1
+            return o
+        cls = self._pet_class(par, vdef)
+        if cls is None:
+            skipped["no class"] += 1
+            return None
+        o["cls"] = cls["Name"]
+        return o
+
+    def build_pets(self) -> dict:
+        """The pseudo-pets whose damage the client's power info adds to the power that creates them.
+
+        Port of the live client's getTotalDamage pet branch (decompiled; Homecoming's differs from
+        the OuroV2 source): an EntCreate mod names its pet's powers through its villain def
+        (EntityDef) and its own Power list (_pet_powers). The client counts a pet only when every
+        one of those powers is Auto (pet_IsAutoOnly). It runs them with the caster's class when the
+        mod is a PseudoPet, else with the mod's Class, else with the villain def's class (a pet with
+        none is left out: no class, no tables). The engine (powerinfo.ts) does the rest: each pet
+        power's damage times max(1, floor(Duration / its ActivatePeriod)), enhanced only with
+        CopyBoosts (Thunderspy's client adds one activation: "plus").
+
+        The file sits beside the version folders (<server data>/pets/<version>.json), so a
+        published folder never changes. Nothing here allocates an id or changes core.json, and
+        the report's counts are left as they were. Call after build().
+
+        @return {"pets": {creating power: [creation]}, "powers": {pet power: {"type", "ap"?,
+            "eff"?, "act"?}}, "classes": {class: {table: index into tables}}, "tables": [values],
+            "summary": counts, "plus"?, "names"?, "exec"?}, where a creation is {"p": [pet powers, as the
+            client lists them], "def"?: how many of them come from the villain def, "dur"?,
+            "boosts"?: 1, "pseudo"?: 1, "cls"?, "hid"?: 1 (the client lists none of it: its mod is
+            under a HideFromInfo group and config.Server.pet_skip_hidden)}, in the order of the
+            client's template list. "powers" also holds what a pet's powers execute (ExecutePower:
+            the pet runs it, and its damage counts). A pet power's mods name granted powers by full
+            name ("pwn"), and "names" gives the display name of those the version's own data
+            lacks. "exec" lists, per power, the executions its PvP-only groups hold (_pvp_executions;
+            what they execute is carried too). "classes" holds a villain class's tables, and only
+            those tables of an archetype that core.json lacks. "plus" is the server's client's extra
+            activation
+            (config.Server.pet_extra), when it has one.
+        """
+        ent = self._special("EntCreate")
+        skipped: Counter = Counter()
+
+        def creation(a, hidden: bool) -> dict | None:
+            return self._pseudo_creation(a, hidden, skipped)
+
+        execute = self._special("ExecutePower")
+        grants = {o for o in (self._special("GrantPower"), self._special("GrantBoostedPower")) if o is not None}
+        pets: dict[str, list] = {}
+        # every power the file carries: a pet's powers, what they execute, and what a dropped
+        # PvP-only group executes
+        pet_names: set[str] = set()
+        dropped: dict[str, list] = {}  # power -> the executions its dropped PvP-only groups hold
+        frontier: list[str] = []
+        seen: set[str] = set()
+
+        def carry(name: str) -> None:
+            if name not in pet_names:
+                pet_names.add(name)
+                frontier.append(name)
+
+        def visit(name: str) -> None:
+            if name in seen:
+                return
+            seen.add(name)
+            rec = self.pw[name]
+            if ent is not None:
+                made = [c for c in (creation(a, h) for a, h in self.client_templates(rec)
+                                    if ent in a["Attrib"]) if c]
+                if made:
+                    pets[name] = made
+                    for c in made:
+                        for p in c["p"]:
+                            carry(p)
+            if execute is not None:
+                found = self._pvp_executions(rec, execute)
+                if found:
+                    dropped[name] = found
+                    for x in found:
+                        for t in x["p"]:
+                            carry(t)
+
+        def targets(rec: dict, attribs: set) -> list[str]:
+            """@return The powers a power's grant-style mods on these attributes name (resolved)."""
+            out = []
+            for a in self.walk_mods(rec):
+                if set(a["Attrib"]) & attribs:
+                    out += [n for n in (self.power_name(x) for x in param_power_names(a.get("Params"))) if n]
+            return out
+
+        for name in sorted(self.exported_names):
+            visit(name)
+        while frontier:  # a carried power may make pets, or execute powers that run with it
+            n = frontier.pop()
+            visit(n)
+            for t in targets(self.pw[n], {execute} if execute is not None else set()):
+                carry(t)
+
+        kept_tables, kept_pvp = set(self.used_tables), self.report["pvp_effects_dropped"]
+        kept_text = Counter(self.report["missing_text"])
+        powers: dict[str, dict] = {}
+        tables: set[str] = set()
+        for n in sorted(pet_names):
+            r = self.pw[n]
+            o = {"type": self.enum("power.Type", r["Type"])}
+            if r.get("ActivatePeriod"):
+                o["ap"] = num(r["ActivatePeriod"])
+            for src, dst in (("Effect", "eff"), ("ActivationEffect", "act")):
+                effs = self.conv_effects(r.get(src), ids=False)
+                if effs:
+                    o[dst] = effs
+            powers[n] = o
+            tables.update(a["Table"].lower() for a in self.walk_mods(r) if a.get("Table"))
+        # what a pet's power grants, by name, when the version's own data lacks it ("Grants power X")
+        names = {t: self.text(self.pw[t].get("DisplayName") or "") for n in pet_names
+                 for t in targets(self.pw[n], grants) if t not in self.exported_names}
+        names = {t: dn for t, dn in sorted(names.items()) if dn}
+        self.used_tables, self.report["pvp_effects_dropped"] = kept_tables, kept_pvp
+        self.report["missing_text"] = kept_text
+
+        pool: dict[tuple, int] = {}
+        pool_list: list[list] = []
+        classes: dict[str, dict] = {}
+
+        def add(c: dict, skip: set[str]) -> None:
+            got = {}
+            for mt in c["ModTable"]:
+                k = mt["Name"].lower()
+                if k in tables and k not in skip:
+                    vals = tuple(num(x) for x in mt["Values"])
+                    if vals not in pool:
+                        pool[vals] = len(pool_list)
+                        pool_list.append(list(vals))
+                    got[k] = pool[vals]
+            if got:
+                classes[c["Name"]] = dict(sorted(got.items()))
+
+        made = [c for cs in pets.values() for c in cs]
+        for name in sorted({c["cls"] for c in made if "cls" in c}):
+            if name.lower() in self.vclasses:
+                add(self.vclasses[name.lower()], set())
+            else:
+                add(self.pclasses[name.lower()], kept_tables)  # an archetype: core.json has the rest
+        if any(c.get("pseudo") for c in made):
+            for c in self.L.classes:  # a PseudoPet runs with its caster's class, any archetype
+                if c["Name"] not in classes:
+                    add(c, kept_tables)
+        extra = {"plus": config.SERVER.pet_extra} if config.SERVER.pet_extra else {}
+        if names:
+            extra["names"] = names
+        if dropped:
+            extra["exec"] = dict(sorted(dropped.items()))
+        return {**extra, "pets": dict(sorted(pets.items())), "powers": powers,
+                "classes": dict(sorted(classes.items())), "tables": pool_list,
+                "summary": {"creators": len(pets), "pets": len(made), "powers": len(powers),
+                            "pet_powers": len({p for c in made for p in c["p"]}), "exec": len(dropped),
+                            "classes": len(classes), "skipped": dict(sorted(skipped.items())),
+                            "no_entcreate": ent is None}}
+
+    # ---- real pets (henchmen) ------------------------------------------------------------------
+    def conv_pet_power(self, name: str) -> dict:
+        """A pet's power in the site's short form, by name: what the power info and the pet cards read.
+
+        conv_power's fields without its id, its slotting and its requirements, with granted and
+        executed powers named (`pwn`), so nothing allocates an id: no build names a pet's power.
+
+        @param name The power's full name.
+        @return {"dn", "type", "tgt", "acc"?, "rech"?, "end"?, "rng"?, "cast"?, "ap"?, "rad"?,
+            "arc"?, "maxT"?, "intr"?, "ign"?, "si"?: 0 (the power info hides it), "life"?: seconds it
+            lasts once the pet has it (Materialization's spawn shield), "area"?, "ea"?, "atk"?, "eff"?,
+            "act"?}.
+        """
+        r = self.pw[name]
+        o: dict = {"dn": self.text(r["DisplayName"]), "type": self.enum("power.Type", r["Type"])}
+        fields = {"Accuracy": ("acc", 1.0), "RechargeTime": ("rech", 0.0), "EnduranceCost": ("end", 0.0),
+                  "Range": ("rng", 0.0), "TimeToActivate": ("cast", 0.0), "ActivatePeriod": ("ap", 0.0),
+                  "Radius": ("rad", 0.0), "Arc": ("arc", 0.0), "MaxTargetsHit": ("maxT", 0),
+                  "InterruptTime": ("intr", 0.0), "IgnoreStrength": ("ign", 0), "ShowInInfo": ("si", 1),
+                  "Lifetime": ("life", 0.0)}
+        for k, (dst, dv) in fields.items():
+            v = r.get(k, dv)
+            if v != dv:
+                o[dst] = num(v)
+        area = self.enum("power.EffectArea", r["EffectArea"])
+        if area != "Character":
+            o["area"] = area
+        o["tgt"] = self.enum("power.Target", r["Target"])
+        ea = [self.enum("power.EntsAffected", v) for v in r.get("EntsAffected") or []]
+        if ea and ea != [o["tgt"]]:
+            o["ea"] = ea
+        if r.get("AttackTypes"):
+            o["atk"] = r["AttackTypes"]
+        for src, dst in (("Effect", "eff"), ("ActivationEffect", "act")):
+            effs = self.conv_effects(r.get(src), ids=False)
+            if effs:
+                o[dst] = effs
+        return o
+
+    def _pet_grants(self) -> set[str]:
+        """The powers the version's powers grant to their pets: the targets of grant mods in a
+        group that names a pet (`<villain def> target.VillainName>`, as Equip Robot does), so their
+        tables go with the pets' classes.
+
+        @return Their full names.
+        """
+        out: set[str] = set()
+
+        def walk(effs, names_pet: bool) -> None:
+            for e in effs or []:
+                if self.pvp_only(e):
+                    continue
+                here = names_pet or any(str(t).lower() == "target.villainname>" for t in e.get("Requires") or [])
+                walk(e.get("Effect"), here)
+                if not here:
+                    continue
+                for a in e.get("AttribMod") or []:
+                    if set(a["Attrib"]) & self.grant_attribs:
+                        out.update(n for n in (self.power_name(x) for x in param_power_names(a.get("Params"))) if n)
+
+        for name in self.exported_names:
+            rec = self.pw[name]
+            walk(rec.get("Effect"), False)
+            walk(rec.get("ActivationEffect"), False)
+        return out
+
+    def _collective_mods(self, names) -> dict[str, list[int]]:
+        """Which mods of pets' powers stack once whoever casts them: CasterStackType kCollective,
+        where the game leaves the caster out of its stacking test (character_combat.c), so two
+        Protector Bots' Force Shields give one shield's defense.
+
+        @param names The powers' full names (the pets' own and those the version grants them).
+        @return {power: [index]} for the powers with such a mod; an index counts the power's mods as
+            the site lays them out: its effect groups, then its activation groups, each group's own
+            mods before its sub-groups.
+        """
+        out: dict[str, list[int]] = {}
+        self.mark_collective = True
+        try:
+            for n in names:
+                rec = self.pw[n]
+                found: list[int] = []
+                index = 0
+
+                def walk(groups: list) -> None:
+                    nonlocal index
+                    for g in groups:
+                        for m in g.get("m") or []:
+                            if m.get("cst"):
+                                found.append(index)
+                            index += 1
+                        walk(g.get("sub") or [])
+
+                walk(self.conv_effects(rec.get("Effect"), ids=False))
+                walk(self.conv_effects(rec.get("ActivationEffect"), ids=False))
+                if found:
+                    out[n] = found
+        finally:
+            self.mark_collective = False
+        return out
+
+    def build_henchmen(self) -> dict:
+        """The real pets the version's powers summon, for the planner's Pets and Minions cards.
+
+        A real pet is what the pets file leaves out: a pet that runs a power other than Auto
+        (Mastermind henchmen, Phantom Army, a patron pool's summon, Voltaic Sentinel). The file
+        keeps, per power that makes one, each EntCreate mod in the client's template order with
+        what decides whether it spawns: its groups' requirements and chance (Battle Drones makes
+        its second drone past combat level 5). Per pet: its name (its villain def's first display
+        name, else the mod's DisplayName), villain def, class and powers as the client lists them
+        (_pet_powers). Each pet power whole and by name (conv_pet_power), with what it executes; the
+        pseudo-pets the pets' powers make, as the pets file holds them ("pseudo"); which mods of the
+        pets' powers stack once whoever casts them ("collective"); and per class the attribute
+        tables its stats read (base values and caps) and the tables its pets' powers, and the powers
+        the version grants to pets (_pet_grants), scale by.
+
+        The file sits beside the version folders (<server data>/henchmen/<version>.json), so a
+        published folder never changes. Nothing here allocates an id or changes core.json, and the
+        report's counts are left as they were. Call after build().
+
+        @return {"plus"?: the server's extra pseudo-pet activation (config.Server.pet_extra), "makes":
+            {power: [{"pet", "req"?: [requirements of each group around the mod], "ch"?: the chance
+            of its groups all landing, "del"?: seconds before it spawns, "dur"?: lifetime when under
+            9999 s,
+            "pseudo"?: 1 (runs with its creator's class)}]}, "pets": {key: {"dn", "vd"?: villain def, "grp"?: its villain group, "cls"?, "p": [powers],
+            "def"?: how many come from the villain def}}, "powers": {name: power}, "pseudo"?:
+            {pet power: [creation as in the pets file]}, "collective"?: {power: [mod index]}
+            (_collective_mods), "classes": {class: {"base"?, "min"?, "max"?, "maxMax"?, "strMax"?, "resMax"?:
+            the attribute tables a pet's stats read, as core.json's archetypes hold them
+            (PET_CLASS_TABLES; an archetype's class has only "mod": core.json has the rest), "mod":
+            {table: index into tables}}}, "tables": [values], "summary": counts}.
+        """
+        ent = self._special("EntCreate")
+        execute = self._special("ExecutePower")
+        skipped: Counter = Counter()
+        kept_tables, kept_pvp = set(self.used_tables), self.report["pvp_effects_dropped"]
+        kept_text = Counter(self.report["missing_text"])
+
+        def templates(effs, reqs: list, chance: float, delay: float):
+            """The mods of effect groups in the client's template order (a group's sub-groups first),
+            PvP-only groups left out.
+
+            @param effs The groups.
+            @param reqs The requirements of the groups around them.
+            @param chance The chance of the groups around them all landing (a sub-group rolls only
+                when its group did).
+            @param delay The groups around them's delay in seconds.
+            @return (mod, requirements, chance, delay) per mod.
+            """
+            for e in effs or []:
+                if self.pvp_only(e):
+                    continue
+                r = reqs + ([list(e["Requires"])] if e.get("Requires") else [])
+                ch = chance * e.get("Chance", 1.0)
+                dl = delay + (e.get("Delay") or 0.0)
+                yield from templates(e.get("Effect"), r, ch, dl)
+                for a in e.get("AttribMod") or []:
+                    yield a, r, ch, dl
+
+        makes: dict[str, list] = {}
+        pets: dict[str, dict] = {}
+        carried: set[str] = set()
+        frontier: list[str] = []
+
+        def carry(name: str) -> None:
+            if name not in carried:
+                carried.add(name)
+                frontier.append(name)
+
+        def pet_key(par: dict, vdef: dict | None, power: str, index: int, entry: dict) -> str:
+            """@return The pet's key: its villain def's name, else the creating power's name and the
+            mod's place in it; a def made with other powers or another class gets "~2", "~3", ..."""
+            base = vdef["Name"] if vdef else f"{power}#{index}"
+            key, n = base, 1
+            while key in pets and (pets[key]["p"], pets[key].get("cls")) != (entry["p"], entry.get("cls")):
+                n += 1
+                key = f"{base}~{n}"
+            return key
+
+        def real_pets(name: str) -> list[dict]:
+            """The real pets a power's EntCreate mods make, each with what decides whether it
+            spawns; their kinds go into `pets` and their powers are carried.
+
+            @param name The power's full name.
+            @return One entry per EntCreate mod that makes a real pet, in the client's order.
+            """
+            rec = self.pw[name]
+            made: list[dict] = []
+            mods = [*templates(rec.get("Effect"), [], 1.0, 0.0), *templates(rec.get("ActivationEffect"), [], 1.0, 0.0)]
+            for a, reqs, chance, delay in mods:
+                if ent is None or ent not in a["Attrib"]:
+                    continue
+                par = ent_create_param(a.get("Params"), self.L.ent_create_layout)
+                if par is None:
+                    skipped["no EntCreate params"] += 1
+                    continue
+                vdef = self._villain(par["EntityDef"]) if par["EntityDef"] else None
+                names, from_def = self._pet_powers(par, vdef)
+                if not names:
+                    skipped["no powers"] += 1
+                    continue
+                if all(self.enum("power.Type", self.pw[n]["Type"]) == "Auto" for n in names):
+                    continue  # a pseudo-pet: the pets file's
+                flags = set(self.mod_flags(a.get("Flags") or []))
+                entry: dict = {"dn": self.text((vdef or {}).get("DisplayName") or "") or self.text(par["DisplayName"])}
+                if vdef:
+                    entry["vd"] = vdef["Name"]
+                    if vdef.get("VillainGroup"):
+                        entry["grp"] = vdef["VillainGroup"]
+                if "PseudoPet" not in flags:
+                    cls = self._pet_class(par, vdef)
+                    if cls is None:
+                        skipped["no class"] += 1
+                        continue
+                    entry["cls"] = cls["Name"]
+                entry["p"] = names
+                if from_def:
+                    entry["def"] = from_def
+                key = pet_key(par, vdef, name, len(made), entry)
+                pets.setdefault(key, entry)
+                c: dict = {"pet": key}
+                if any(reqs):
+                    c["req"] = [r for r in reqs if r]
+                if chance != 1.0:
+                    c["ch"] = num(chance)
+                if delay + (a.get("Delay") or 0.0) > 0:
+                    c["del"] = num(delay + (a.get("Delay") or 0.0))
+                if 0 < (a.get("Duration") or 0) < 9999:
+                    c["dur"] = num(a["Duration"])
+                if "PseudoPet" in flags:
+                    c["pseudo"] = 1
+                made.append(c)
+                for p in names:
+                    carry(p)
+            return made
+
+        for name in sorted(self.exported_names):
+            made = real_pets(name)
+            if made:
+                makes[name] = made
+
+        # what the pets' powers make and execute runs as the pet: its pseudo-pets (as the pets file
+        # holds them), its real pets and its executed powers come along
+        pseudo: dict[str, list] = {}
+        while frontier:
+            n = frontier.pop()
+            rec = self.pw[n]
+            if ent is not None:
+                found = []
+                for a, hidden in self.client_templates(rec):
+                    if ent not in a["Attrib"]:
+                        continue
+                    c = self._pseudo_creation(a, hidden, Counter())
+                    if c is not None:
+                        found.append(c)
+                        for p in c["p"]:
+                            carry(p)
+                if found:
+                    pseudo[n] = found
+                # a pet's power that makes a real pet (Upgrade Robot's Seeker Drones): listed as a
+                # summon's, so its card can say what it makes
+                if n not in makes:
+                    made = real_pets(n)
+                    if made:
+                        makes[n] = made
+            for a in self.walk_mods(rec):
+                if execute is not None and execute in a["Attrib"]:
+                    for t in (self.power_name(x) for x in param_power_names(a.get("Params"))):
+                        if t:
+                            carry(t)
+
+        powers = {n: self.conv_pet_power(n) for n in sorted(carried)}
+        granted = self._pet_grants()
+        tables = {a["Table"].lower() for n in carried for a in self.walk_mods(self.pw[n]) if a.get("Table")}
+        tables |= {a["Table"].lower() for n in granted for a in self.walk_mods(self.pw[n]) if a.get("Table")}
+        collective = self._collective_mods(sorted(carried | granted))
+        self.used_tables, self.report["pvp_effects_dropped"] = kept_tables, kept_pvp
+        self.report["missing_text"] = kept_text
+
+        pool: dict[tuple, int] = {}
+        pool_list: list[list] = []
+
+        def index(vals: tuple) -> int:
+            if vals not in pool:
+                pool[vals] = len(pool_list)
+                pool_list.append(list(vals))
+            return pool[vals]
+
+        def compact(vals) -> float | list:
+            """@return Per-level values, or one value when every level has it."""
+            v = [num(x) for x in vals or []]
+            return v[0] if v and all(x == v[0] for x in v) else v
+
+        classes: dict[str, dict] = {}
+
+        def add(c: dict, skip: set[str]) -> None:
+            mod = {mt["Name"].lower(): index(tuple(num(x) for x in mt["Values"])) for mt in c["ModTable"]
+                   if mt["Name"].lower() in tables and mt["Name"].lower() not in skip}
+            o: dict = {}
+            for key, src in PET_CLASS_TABLES.items():
+                table = {k: v for k, v in sorted(self.compact_attr_table(c.get(src)).items()) if pet_class_attr(key, k)}
+                if table:
+                    o[key] = table
+            o["mod"] = dict(sorted(mod.items()))
+            classes[c["Name"]] = o
+
+        named = {p["cls"] for p in pets.values() if "cls" in p} | {c["cls"] for cs in pseudo.values() for c in cs if "cls" in c}
+        for cname in sorted(named):
+            if cname.lower() in self.vclasses:
+                add(self.vclasses[cname.lower()], set())
+            elif cname.lower() in self.pclasses:
+                add({"Name": cname, "ModTable": self.pclasses[cname.lower()]["ModTable"]}, kept_tables)
+        if any(c.get("pseudo") for cs in [*makes.values(), *pseudo.values()] for c in cs):
+            for c in self.L.classes:  # a PseudoPet runs with its creator's class, any archetype
+                if c["Name"] not in classes:
+                    add({"Name": c["Name"], "ModTable": c["ModTable"]}, kept_tables)
+        classes = {k: v for k, v in classes.items() if v.get("mod") or v.get("max")}
+        out: dict = {"plus": config.SERVER.pet_extra} if config.SERVER.pet_extra else {}
+        out.update({"makes": dict(sorted(makes.items())), "pets": dict(sorted(pets.items())), "powers": powers})
+        if pseudo:
+            out["pseudo"] = dict(sorted(pseudo.items()))
+        if collective:
+            out["collective"] = collective
+        out["classes"] = dict(sorted(classes.items()))
+        out["tables"] = pool_list
+        out["summary"] = {"creators": len(makes), "pets": len(pets), "powers": len(powers),
+                          "pseudo": len(pseudo), "classes": len(classes),
+                          "skipped": dict(sorted(skipped.items())), "no_entcreate": ent is None}
+        return out
+
     # ---- archetypes ---------------------------------------------------------------------------
+    def info_tree(self, effs, keep_pvp: bool = False) -> list:
+        """Each mod's own note (Messages.DisplayInfo, translated), laid out as conv_effects lays out
+        the groups: one entry per group it keeps, in order.
+
+        @param effs The decoded groups.
+        @param keep_pvp As conv_effects.
+        @return One entry per kept group: {"m": [note or None per mod]?, "s": [entries]?}, or None
+            when neither it nor a group in it has a note.
+        """
+        out: list = []
+        for e in effs or []:
+            if self.pvp_only(e, keep_pvp):
+                continue
+            mods = e.get("AttribMod") or []
+            sub = self.info_tree(e.get("Effect"), keep_pvp)
+            if not mods and not sub:
+                continue  # conv_effects keeps no group without mods or kept sub-groups
+            notes = [self.text((a.get("Messages") or {}).get("DisplayInfo") or "") or None for a in mods]
+            node: dict = {}
+            if any(notes):
+                node["m"] = notes
+            if any(x is not None for x in sub):
+                node["s"] = sub
+            out.append(node or None)
+        return out
+
+    def _attr_names(self) -> dict:
+        """@return {offset: text}: each attribute's name as the client's power info writes it, the
+        message "Attr" + its field name (an array element as "DamageType[0]"), for those it has."""
+        out = {}
+        for off, a in sorted(self.L.attribs.items()):
+            for name in [a["name"], *a.get("aliases", [])]:
+                m = re.fullmatch(r"([A-Za-z_]+?)(\d\d)", name)
+                field = f"{m.group(1)}[{int(m.group(2))}]" if m else name
+                text = self.M.get(f"Attr{field}")
+                if text:
+                    out[str(off)] = text
+                    break
+        return out
+
+    def build_info(self, powers: list[dict], pet_powers: dict, version: str) -> dict:
+        """The power-info extras of a version: what the client's power info reads from fields the
+        version's own files don't carry (<server data>/info/<version>.json).
+
+        1. notes: per power (the version's own and its pets file's), each mod's own note
+           (DisplayInfo: "Within 20ft radius", "Main Target Only"), laid out as its groups.
+        2. groups: on a server whose client lists PvP-only groups (Server.info_lists_pvp), the
+           groups of each power with a group only its PVPOnly flag makes PvP-only, that one kept
+           (granted powers by name).
+        3. hiddenGrants: the granted powers whose grant the client doesn't list (ShowInInventory 0).
+        4. aggro: per power, the "Aggro Type" row's text (AIReport 1 or 2).
+        5. attr: the attribute names; text: the client's texts for the notes the planner writes.
+
+        A power's notes and groups are only written when its groups, made again here, are the very
+        groups the version's files hold and its notes line up with them group by group and mod by
+        mod, so a note can never land on another mod. A kept PvP-only group is only written when
+        the version's files carry every table it scales by.
+
+        It runs after build() (pipeline.run: after the version's files and ids are written), and
+        leaves what build() made as it was: the groups made again here allocate no new ids (build()
+        made the same ones; a pet's are by name), and the tables and report counts they touch are
+        put back.
+
+        @param powers The version's power records as written (powers.json, boosts.json).
+        @param pet_powers Its pets file's "powers".
+        @param version The game version id the file belongs to (the app checks it on load).
+        @return The file, with a "summary".
+        """
+        # what build() counted and the tables it wrote stay as they were: the groups are only made again here
+        counted = {k: (Counter(v) if isinstance(v, Counter) else v) for k, v in self.report.items()}
+        tables = set(self.used_tables)
+        notes: dict = {}
+        groups: dict = {}
+        mismatched: list[str] = []
+        untabled: list[str] = []
+        lists_pvp = config.SERVER.info_lists_pvp
+        for name, out, ids in ([(p["n"], p, True) for p in powers]
+                               + [(n, p, False) for n, p in sorted(pet_powers.items())]):
+            rec = self.pw.get(name)
+            if rec is None:
+                continue
+            made = (self.conv_effects(rec.get("Effect"), ids), self.conv_effects(rec.get("ActivationEffect"), ids))
+            if made != (out.get("eff") or [], out.get("act") or []):
+                mismatched.append(name)
+                continue
+            keep = lists_pvp and any(self.pvp_flag(e) and not self.pvp_only(e, True) for e in self._all_groups(rec))
+            laid = made
+            if keep:
+                full = (self.conv_effects(rec.get("Effect"), False, True),
+                        self.conv_effects(rec.get("ActivationEffect"), False, True))
+                # a pet's tables are all in its pets file (every mod's); a power of the version's own
+                # only has those its files scale by
+                if ids and self._tables_of([*full[0], *full[1]]) - tables:
+                    untabled.append(name)
+                    keep = False
+                else:
+                    laid = full
+                    groups[name] = {k: v for k, v in (("eff", full[0]), ("act", full[1])) if v}
+            te, ta = self.info_tree(rec.get("Effect"), keep), self.info_tree(rec.get("ActivationEffect"), keep)
+            if not (self._lines_up(te, laid[0]) and self._lines_up(ta, laid[1])):
+                mismatched.append(name)
+                groups.pop(name, None)
+                continue
+            tree = {k: v for k, v in (("e", te), ("a", ta)) if any(x is not None for x in v)}
+            if tree:
+                notes[name] = tree
+        hidden = set()
+        for name in [*(p["n"] for p in powers), *pet_powers]:
+            for e in self._all_groups(self.pw.get(name) or {}):
+                for a in e.get("AttribMod") or []:
+                    if set(a["Attrib"]) & self.grant_attribs:
+                        for n in param_power_names(a.get("Params")):
+                            g = self.pw.get(self.power_name(n) or "")
+                            if g is not None and not g.get("ShowInInventory"):
+                                hidden.add(g["FullName"])
+        aggro = {}
+        for p in powers:
+            rep = (self.pw.get(p["n"]) or {}).get("AIReport")
+            if rep in (1, 2):
+                key = "HitAggro" if rep == 2 and config.SERVER.hit_aggro else "NoAggro"
+                if self.M.get(key):
+                    aggro[p["n"]] = self.M[key]
+        text = {k: self.M[k] for k in ("Unresistable", "IgnoresBuffsAndEnhancements", "AggroReport") if self.M.get(k)}
+        out = {"version": version, "notes": notes, "hiddenGrants": sorted(hidden), "aggro": aggro,
+               "attr": self._attr_names(), "text": text}
+        if groups:
+            out["groups"] = groups
+        out["summary"] = {"notes": len(notes), "groups": len(groups), "hidden_grants": len(hidden),
+                          "aggro": len(aggro), "mismatched": mismatched, "untabled": untabled}
+        self.report.update(counted)
+        self.used_tables = tables
+        return out
+
+    @staticmethod
+    def _lines_up(tree: list, groups: list) -> bool:
+        """@return Whether a notes tree (info_tree) has one entry per group (conv_effects) and one
+        note per mod, at every level."""
+        if len(tree) != len(groups):
+            return False
+        for node, g in zip(tree, groups):
+            if node is None:
+                continue
+            if "m" in node and len(node["m"]) != len(g.get("m") or []):
+                return False
+            if "s" in node and not Exporter._lines_up(node["s"], g.get("sub") or []):
+                return False
+        return True
+
+    @staticmethod
+    def _tables_of(groups: list) -> set[str]:
+        """@return The tables (lower case) the mods of converted groups scale by, nested ones too."""
+        out: set[str] = set()
+        for g in groups:
+            out.update(m["tbl"].lower() for m in g.get("m") or [] if m.get("tbl"))
+            out |= Exporter._tables_of(g.get("sub") or [])
+        return out
+
+    @staticmethod
+    def _all_groups(rec: dict):
+        """@return Every effect group of a decoded power, its activation effects too, nested ones included."""
+        def walk(effs):
+            for e in effs or []:
+                yield e
+                yield from walk(e.get("Effect"))
+        yield from walk(rec.get("Effect"))
+        yield from walk(rec.get("ActivationEffect"))
+
     @staticmethod
     def compact_attr_table(rows) -> dict:
         """[{attr: [per-level values]}] -> {attr: value | [values]} with constant arrays collapsed."""
@@ -440,6 +1384,8 @@ class Exporter:
         for name in self.export_powers:
             powers_by_name[name] = self.conv_power(name)
         self.exported_names = set(powers_by_name)
+        # name, id and shown name of every exported power, for the Mids map (mids_map.build)
+        self.exported_powers = [{"n": p["n"], "id": p["id"], "dn": p.get("dn", "")} for p in powers_by_name.values()]
         boost_names = {self.power_name(b) for b in self.boost_powers if self.power_name(b)}
         bonus_names = {n for n in self.export_powers if n.lower().startswith("set_bonus.")}
         exported_ids = {p["id"] for p in powers_by_name.values()}
@@ -481,6 +1427,9 @@ class Exporter:
             "boostEffect": {k: [num(x) for x in v] for k, v in self.L.boost_effect.items()},
             "exemplar": {k: [num(x) for x in v] for k, v in self.L.exemplar.items()},
         }
+        # the power sets players pick from (the Mids map matches their powers by the name players see)
+        in_cats = {i for ids in core["categories"].values() for i in ids}
+        self.player_sets = {s["n"].lower() for s in sets if s["id"] in in_cats}
         powers = [p for n, p in powers_by_name.items() if n not in boost_names and n not in bonus_names]
         # each enhancement's category line (its Boosts.* set's short help: "Invention",
         # "Training (All Origins)", "Set: Apocalypse", ...) for the enhancement tooltip
@@ -493,6 +1442,12 @@ class Exporter:
                   "bonusPowers": [powers_by_name[n] for n in sorted(bonus_names)],
                   "sets": boostsets}
         return {"core": core, "powersets": sets, "powers": powers, "boosts": boosts}
+
+
+def info_powers(built: dict) -> list[dict]:
+    """@return The power records of a version (Exporter.build's, or its files') whose info is shown:
+    its powers, enhancements and set bonuses."""
+    return [*built["powers"], *built["boosts"]["boosts"], *built["boosts"]["bonusPowers"]]
 
 
 def utc_now() -> str:
@@ -623,10 +1578,11 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
           assets: bool = True, add_only_icons: bool = False) -> dict:
     """Export the data set for game version `version` and return a summary for the report.
 
-    Order: build in memory (Mids map and another server's icon names included, failures
-    tolerated), check the folder may be written, save the ids file, write another server's icons,
-    then write the data files atomically. Nothing is written before the check. The version index
-    files are written afterwards by write_indexes().
+    Order: build in memory (pseudo-pets too; the Mids map and another server's icon names with
+    their failures tolerated), check the folder may be written, save the ids file, write another server's
+    icons, then write the data files and the version's pseudo-pet file (<server data>/pets/
+    <version>.json, beside the folder: it is not part of the version hash) atomically. Nothing is
+    written before the check. The version index files are written afterwards by write_indexes().
 
     A version folder already made from a different client (other exe or pigg hashes) is refused
     unless `overwrite_published`: share links made on that patch load it, so a run that forgot
@@ -644,8 +1600,32 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     @raise SystemExit When the folder was made from a different client and overwriting wasn't asked.
     """
     ex = Exporter(live)          # refuses to run if the ids file is gone while data exists
+    root = config.DATA_OUT / version
+    source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
+              "bin_powers.pigg": sha1(config.POWERS_PIGG)}
+    old = None
+    try:
+        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
+    except (OSError, ValueError, KeyError):
+        pass
+    # the PvP-only test (pipeline/pvp.py): a folder published from this client keeps the one it was
+    # made with (its manifest's pvpTest; none: 1), so a run reproduces it; anything else gets the
+    # current one, which the manifest records
+    same_client = bool(old) and old.get("source") == source
+    ex.use_pvp_test(old.get("pvpTest", 1) if same_client else PVP_TEST)
+    reproduced = True
+    if same_client:
+        try:
+            reproduced = ex.reproduces(json.loads((root / "powers.json").read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            pass
     out = ex.build()
+    pets = ex.build_pets()       # beside the version folder; changes nothing build() made
+    henchmen = ex.build_henchmen()  # likewise
     warnings: list[str] = forced_respec_warnings(live.classes, ex.class_cats, ex.cats, ex.sets)
+    if not reproduced:
+        warnings.append(f"WARNING: {data_rel(version)}'s effect groups differ from what its PvP-only test "
+                        f"({ex.pvp_test_id}) makes now: the pipeline changed since it was made?")
     frames: dict | None = None
     if ex.report["no_frames"]:
         if frames_from:
@@ -681,15 +1661,7 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
         if mids.get("skipped") and not any("Mids map" in w for w in warnings):
             warnings.append(f"WARNING: Mids map skipped ({mids['skipped']})")
 
-    root = config.DATA_OUT / version
-    source = {"exe": sha1(config.EXE), "bin.pigg": sha1(config.BIN_PIGG),
-              "bin_powers.pigg": sha1(config.POWERS_PIGG)}
     # nothing is written yet: a folder made from another client stops the run here
-    old = None
-    try:
-        old = json.loads((root / "core.json").read_text(encoding="utf-8"))["manifest"]
-    except (OSError, ValueError, KeyError):
-        pass
     if old and old.get("source") and old["source"] != source:
         if not overwrite_published:
             raise SystemExit(
@@ -734,6 +1706,8 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     }
     if frames and frames["by_name"] + frames["by_set"]:
         manifest["framesFrom"] = frames_from  # enhancement frame art borrowed from that version
+    if ex.pvp_test_id != 1:
+        manifest["pvpTest"] = ex.pvp_test_id  # the PvP-only test its groups were made with (pipeline/pvp.py)
     out["core"]["manifest"] = manifest
     texts = {n: _dump(out[n]) for n in ("powersets", "powers", "boosts")}
     others = [texts["powersets"], texts["powers"], texts["boosts"]]
@@ -748,6 +1722,14 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
     for name in ("core", "powersets", "powers", "boosts"):
         config.atomic_write(root / f"{name}.json", texts[name])
         sizes[name] = len(texts[name].encode("utf-8"))
+
+    pets_summary = write_pets(pets, version)
+    warnings += pet_warnings(pets_summary)
+    henchmen_summary = write_henchmen(henchmen, version)
+    warnings += henchmen_warnings(henchmen_summary)
+    info_summary = write_info(ex.build_info(info_powers(out), pets["powers"], version), version)
+    warnings += info_warnings(info_summary)
+    recipes_summary = write_recipes(version, warnings, assets=assets, replace_icons=not add_only_icons)
 
     mids_path = root / "mids-map.json"
     if not config.SERVER.mids:
@@ -770,7 +1752,129 @@ def write(live: LiveData, version: str, frames_from: str | None = None, *,
                             "Mids import/export will not work until the Mids map is built")
     return {"manifest": manifest, "sizes": sizes, "report": ex.report, "ids_added": ex.ids.added,
             "mids": mids, "warnings": warnings, "version": version, "root": root, "frames": frames,
-            "icons": icon_plan["summary"] if icon_plan else None}
+            "icons": icon_plan["summary"] if icon_plan else None, "pets": pets_summary,
+            "henchmen": henchmen_summary, "info": info_summary, "recipes": recipes_summary}
+
+
+def write_recipes(version: str, warnings: list[str], assets: bool = True, replace_icons: bool = False) -> dict | None:
+    """Write a version's recipe file beside its folder (pipeline.recipes), for a server that has one.
+
+    It reads the same client the version was just made from. The set finder's shopping list alone
+    reads the file, so a failure here never stops a version's export: it is reported instead.
+
+    @param version Game version id.
+    @param warnings The run's warnings, added to.
+    @param assets Write the salvage icon files too (--no-assets: the recipe file only).
+    @param replace_icons Replace salvage icons already there (not for an older version's run).
+    @return The recipe export's summary, or None when no file was written.
+    """
+    from pipeline import recipes
+
+    if not recipes.wanted():
+        return None
+    try:
+        summary, notes = recipes.export_version(version, icons=assets, replace_icons=replace_icons)
+    except Exception as e:  # noqa: BLE001 -- a side file: report it and carry on
+        warnings.append(f"WARNING: no recipe file written ({type(e).__name__}: {config.scrub(str(e))[:200]})")
+        return None
+    warnings += notes
+    return summary
+
+
+def write_pets(pets: dict, version: str) -> dict:
+    """Write a version's pseudo-pet file, <server data>/pets/<version>.json (Exporter.build_pets).
+
+    @param pets build_pets()'s result; its summary is taken out of it.
+    @param version Game version id.
+    @return The summary, with the file's size ("bytes").
+    """
+    summary = pets.pop("summary")
+    text = _dump(pets)
+    config.atomic_write(config.DATA_OUT / config.PETS_FOLDER / f"{version}.json", text)
+    summary["bytes"] = len(text.encode("utf-8"))
+    return summary
+
+
+def write_henchmen(henchmen: dict, version: str) -> dict:
+    """Write a version's real pets file, <server data>/henchmen/<version>.json (Exporter.build_henchmen).
+
+    @param henchmen build_henchmen()'s result; its summary is taken out of it.
+    @param version Game version id.
+    @return The summary, with the file's size ("bytes").
+    """
+    summary = henchmen.pop("summary")
+    text = _dump(henchmen)
+    config.atomic_write(config.DATA_OUT / config.HENCHMEN_FOLDER / f"{version}.json", text)
+    summary["bytes"] = len(text.encode("utf-8"))
+    return summary
+
+
+def henchmen_warnings(summary: dict) -> list[str]:
+    """@return What a real pets export should tell the owner: an EntCreate param layout that reads
+    none of the client's pet mods, or a client that names no EntCreate attribute."""
+    out = []
+    if summary["no_entcreate"]:
+        out.append("WARNING: the client names no EntCreate attribute; no pets for the Pets and Minions cards")
+    bad = summary["skipped"].get("no EntCreate params", 0)
+    if bad:
+        out.append(f"WARNING: {bad} EntCreate mods have Params this client's EntCreate param layout "
+                   "doesn't read; their real pets are left out (check LiveData.ent_create_layout)")
+    return out
+
+
+def write_info(info: dict, version: str) -> dict:
+    """Write a version's power-info extras, <server data>/info/<version>.json (Exporter.build_info).
+
+    @param info build_info()'s result; its summary is taken out of it.
+    @param version Game version id.
+    @return The summary, with the file's size ("bytes").
+    """
+    summary = info.pop("summary")
+    text = _dump(info)
+    config.atomic_write(config.DATA_OUT / config.INFO_FOLDER / f"{version}.json", text)
+    summary["bytes"] = len(text.encode("utf-8"))
+    return summary
+
+
+def info_warnings(summary: dict) -> list[str]:
+    """@return What a power-info export should tell the owner: powers whose groups differ from the
+    version's files, so they got no notes, and powers whose PvP-only groups were left out for want
+    of a table."""
+    out = []
+    bad = summary["mismatched"]
+    if bad:
+        out.append(f"WARNING: {len(bad)} powers' groups differ from the version's files (pipeline changed "
+                   f"since it was made?); they get no notes: {', '.join(bad[:5])}{' ...' if len(bad) > 5 else ''}")
+    bare = summary.get("untabled") or []
+    if bare:
+        out.append(f"WARNING: {len(bare)} powers' PvP-only groups scale by tables the version's files don't "
+                   f"carry; they are not listed: {', '.join(bare[:5])}{' ...' if len(bare) > 5 else ''}")
+    return out
+
+
+def pet_warnings(summary: dict) -> list[str]:
+    """What a pseudo-pet export should tell the owner about the client it read.
+
+    The pet rules (config.Server.pet_extra, the engine's petDamage) come from reading each client's
+    code, so a client exe no one has read gets a warning, as does an EntCreate param layout that
+    reads none of the client's pet mods.
+
+    @param summary build_pets()'s summary.
+    @return Report lines.
+    """
+    out = []
+    if summary["no_entcreate"]:
+        out.append("WARNING: the client names no EntCreate attribute; no pseudo-pet damage")
+    bad = summary["skipped"].get("no EntCreate params", 0)
+    if bad:
+        out.append(f"WARNING: {bad} EntCreate mods have Params this client's EntCreate param layout "
+                   "doesn't read; their pets are left out (check LiveData.ent_create_layout)")
+    exe = sha1(config.EXE)
+    if exe not in config.SERVER.pet_checked:
+        out.append(f"WARNING: no one has read this client's pseudo-pet rules (exe {exe}): check its "
+                   "getTotalDamage and power_AddEffects (docs/game-rules.md, \"Pseudo-pet damage\"), "
+                   "then add the hash to pet_checked (and pet_extra if it changed) in pipeline/config.py")
+    return out
 
 
 def write_indexes(version: str, label: str, content_hash_: str, make_default: bool, extra: dict | None = None) -> str:

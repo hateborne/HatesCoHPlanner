@@ -1,19 +1,26 @@
 /**
  * Limits on what an import may make the tab do: a share link or Mids code from a stranger must be
  * refused with a readable message, quickly, however it was built. Decompressed data has a ceiling
- * (MAX_INFLATED / the 2 MB build-file size), counts past any real build's are refused, and a Mids
- * file whose fields have the wrong types is reported as damaged instead of failing part way.
+ * (IMPORT_LIMITS.inflated / the 2 MB build-file size), counts past any real build's are refused, and a Mids
+ * file whose fields have the wrong types is reported as damaged instead of failing part way. A
+ * /build_save file is held to the same: its length, its powers, its slots and the lines it can't place.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { brotliCompressSync, deflateSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
-import { ByteWriter, MAX_INFLATED, streamBytes, toBase64, toBase64Url, TooLarge } from '../src/io/binary.ts';
+import { MAX_PET_SWITCHES } from '../src/engine/build.ts';
+import { ByteWriter, streamBytes, toBase64, toBase64Url, TooLarge } from '../src/io/binary.ts';
+import { finishBuildTxt, isBuildTxt, readBuildTxt } from '../src/io/buildtxt.ts';
 import { safeFileName } from '../src/io/fileName.ts';
 import { ImportProblem } from '../src/io/importProblem.ts';
+import { IMPORT_LIMITS } from '../src/io/limits.ts';
 import { importMbd, importMidsText, parseMidsText, type Mbd, type MidsMap } from '../src/io/mids.ts';
 import { decodeShare } from '../src/io/share.ts';
 import { loadData } from './helpers/data.ts';
+
+// what a share link's or a Mids code's data may inflate to
+const MAX_INFLATED = IMPORT_LIMITS.inflated;
 
 // brotli-wasm's default (web) build fetches its .wasm, which Node can't: use its Node build
 vi.mock('brotli-wasm', async () => {
@@ -118,6 +125,54 @@ describe('Mids build files with the wrong shape', () => {
   });
 });
 
+describe('/build_save files have the same kind of limits', () => {
+  const head = ['Example Guy: Level 50 Science Class_Blaster', '', 'Character Profile:', '------------------'];
+  const flares = 'Level 1: Blaster_Ranged Fire_Blast Flares';
+  const caltrops = 'Level 1: Blaster_Support Gadgets Caltrops';
+  /** @return A file's ImportProblem and how long the reader took to refuse it. */
+  const refused = (text: string) => {
+    const t0 = Date.now();
+    let e: unknown;
+    try {
+      readBuildTxt(gd, text);
+    } catch (err) {
+      e = err;
+    }
+    expect(e).toBeInstanceOf(ImportProblem);
+    return { e: e as ImportProblem, ms: Date.now() - t0 };
+  };
+
+  it('refuses a power with more slots than any build has, at once (it froze the tab for minutes)', () => {
+    // 1.7 MB: one real power, then a quarter of a million empty slots under it
+    const { e, ms } = refused([...head, caltrops, flares, ...Array.from({ length: 250_000 }, () => '\tEMPTY')].join('\n'));
+    expect(e.reason).toContain('more powers or slots');
+    expect(ms).toBeLessThan(2000);
+  });
+
+  it('refuses more powers than any build has, and a power list of lines it cannot place', () => {
+    expect(refused([...head, ...Array.from({ length: 5000 }, () => flares)].join('\n')).e.reason).toContain('more powers or slots');
+    expect(refused([...head, flares, ...Array.from({ length: 5000 }, () => '\tnot an enhancement line')].join('\n')).e.reason).toContain('/build_save');
+  });
+
+  it('refuses text longer than a build file may be, pasted or opened', () => {
+    const long = [...head, caltrops, flares, ' '.repeat(2_100_000)].join('\n');
+    expect(isBuildTxt(long)).toBe(false); // so the paste box reports it as too long, like any text
+    expect(refused(long).e.reason).toContain('too long');
+  });
+
+  it('books the slots of the most it accepts in no time', () => {
+    // every pick the schedule has, each listed with the most slots a line of powers may carry
+    const fire = gd.setByName.get('blaster_ranged.fire_blast')!;
+    const powers = fire.p.map((id, i) => ({ n: gd.power(id).n.split('.'), level: (fire.av[i] ?? 0) + 1 })).filter((p) => p.level >= 1);
+    const lines = powers.flatMap((p) => [`Level ${p.level}: ${p.n.join(' ')}`, ...Array.from({ length: 64 }, () => '\tEMPTY')]);
+    const imp = readBuildTxt(gd, [...head, caltrops, ...lines].join('\n'));
+    const t0 = Date.now();
+    const b = finishBuildTxt(gd, imp, { alignment: 'Hero', respec: true });
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(b.picks.some((p) => p && p.slots.length === 64)).toBe(true); // checkBuild trims these as it opens the build
+  });
+});
+
 describe('export file names', () => {
   it('keeps characters file systems refuse out of a downloaded file name', () => {
     expect(safeFileName('Ill/Rad AV Soloer.mbd')).toBe('Ill_Rad AV Soloer.mbd');
@@ -178,5 +233,19 @@ describe('Hero Plan text above a legacy Mids chunk', () => {
     expect((await withHead('Level 1: \u202Esralf\u202C -- x\n')).warnings).toEqual(lost); // reversed text is not "Flares"
     expect((await withHead('Level 1: Nothing At All\u0000\u0007 -- x\n')).warnings).toEqual(lost);
     expect((await withHead('<script>alert(1)</script>\nLevel 1: Blaster_Ranged.Fire_Blast.Flares\n')).warnings).toEqual(lost); // internal full names are not names
+  });
+});
+
+describe('the import limits table', () => {
+  it('holds the numbers each reader has always had (a share link is never read with lower ones)', () => {
+    expect(IMPORT_LIMITS).toEqual({
+      text: 2_000_000,
+      inflated: 1_048_576,
+      link: { payload: 65_536, picks: 64, slots: 32, granted: 512, petSwitches: 64, petName: 160 },
+      mids: { sets: 32, powers: 512, slots: 64 },
+      buildTxt: { powers: 512, slots: 64, skipped: 200 },
+    });
+    // one number for the pet switches a checked build keeps and a link reads
+    expect(IMPORT_LIMITS.link.petSwitches).toBe(MAX_PET_SWITCHES);
   });
 });

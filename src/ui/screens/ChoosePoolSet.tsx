@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { Power, Powerset } from '../../data/types.ts';
+import { earlierOption } from '../../engine/actions.ts';
 import { BuildRules, patronArcNote } from '../../engine/rules.ts';
-import { currentPick, useStore } from '../../state/store.ts';
+import { autoAdvanceReady, currentPick, inRespec, useStore } from '../../state/store.ts';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
@@ -35,7 +36,9 @@ function PoolDesc({ skin, phone, power, chosen }: { skin: Skin; phone: boolean; 
  * 2. choose one power from it on the right; Finish returns to Choose a New Power with it picked.
  */
 export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic' }) {
-  const { gd, steps, level, closeSetPicker, tell } = useStore(useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, closeSetPicker: s.closeSetPicker, tell: s.tell })));
+  const { gd, steps, level, closeSetPicker, finishLevel, tell, advanced } = useStore(
+    useShallow((s) => ({ gd: s.gd, steps: s.steps, level: s.level, closeSetPicker: s.closeSetPicker, finishLevel: s.finishLevel, tell: s.tell, advanced: s.advancedRespec })),
+  );
   useFreshHover(); // hover lives in useHover: hovering a bar redraws only the description box
   useEscape(() => closeSetPicker()); // back to the power list
   const pick = level ? currentPick(steps, level) : -1;
@@ -50,7 +53,10 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
 
   const choices = rules.newSetChoices(kind, pick);
   const chosen = setId !== undefined ? gd.powerset(setId) : undefined;
-  const powers = chosen ? chosen.p.map((pid) => rules.powerOption(pid, pick)) : [];
+  // reopened from the overview, or chosen again after a swap: a power the build takes later can be
+  // taken here instead
+  const earlier = level.mode === 'edit';
+  const powers = chosen ? chosen.p.map((pid) => rules.powerOption(pid, pick)).map((o) => (earlier ? earlierOption(gd, level.base, pick, o) : o)) : [];
   const desc = <PoolDesc skin={skin} phone={phone} power={power !== undefined ? gd.power(power) : undefined} chosen={chosen} />;
   const setBars = (x0: number, y0: number, wd: number) =>
     choices.map((c, i) => (
@@ -79,6 +85,18 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         onHover={(on) => useHover.setState({ desc: on ? { s: c.set } : null })}
       />
     ));
+  // Advanced Respec (a Respec build): a click on a power takes it and moves on, as on Choose a New Power
+  const auto = advanced && inRespec(gd, level.base, pick) && setId !== undefined;
+  const pickPower = (id: number) => {
+    if (auto) {
+      // the second click of a double-click would take a power on the next screen too
+      if (!autoAdvanceReady()) return;
+      closeSetPicker(setId, id);
+      finishLevel();
+      return;
+    }
+    setPower(id === power ? undefined : id);
+  };
   const powerBars = (x0: number, y0: number, wd: number) =>
     powers.map((o, i) => (
       <CheckBar
@@ -94,7 +112,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         isPower
         icon={o.power.id === power ? icon('powers', o.power.icon || 'power_missing') : undefined}
         title={o.reason}
-        onClick={o.state === 'available' ? () => setPower(o.power.id === power ? undefined : o.power.id) : undefined}
+        onClick={o.state === 'available' ? () => pickPower(o.power.id) : undefined}
         onLongPress={phone ? (pt) => pressPickTip(rules, o.power, pick, pt, o.state === 'available' ? undefined : o.reason) : undefined}
         onHover={(on, at) => useHover.setState({ desc: on ? { p: o.power, at } : null })}
       />
@@ -115,7 +133,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
         {desc}
         <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
         <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
-        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} />
+        <PhoneTipLayer gd={gd} skin={skin} at={rules.at} level={rules.pickLevel(pick)} rules={rules} />
       </>
     );
   }
@@ -159,7 +177,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
       {desc}
       <NextButton skin={skin} dir="left" text="Back" onClick={() => closeSetPicker()} />
       <NextButton skin={skin} dir="right" text="Finish" locked={power === undefined} onClick={() => closeSetPicker(setId, power)} />
-      <PickTip gd={gd} rules={rules} pick={pick} />
+      <PickTip gd={gd} skin={skin} rules={rules} pick={pick} />
     </>
   );
 }

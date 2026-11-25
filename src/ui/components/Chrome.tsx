@@ -38,6 +38,16 @@ export interface TitleAlt {
 const TITLE_ALT_MS = 1500;
 
 /**
+ * @return Desktop: the stage x where a one-line title's bar ends once open (TitleBar's x + the
+ *   title's width + its 45s right cap), for what sits beside it.
+ * @param text The title.
+ */
+export function titleBarEnd(text: string): number {
+  const f = FONTS.title_18;
+  return vx(10) + textWidth(f, f.size * TITLE_SCALE * S, text) + 45 * S;
+}
+
+/**
  * drawMenuTitle(10*sx, 30*sy, s): glowing dot, black bar with pipes and right cap that slides
  * open by 30s per frame, and the title_18 x 1.5 title starting on top of the dot.
  *
@@ -478,8 +488,9 @@ export function MenuBar({ skin, x, y, wd: wdIn, sc: scIn = S, text, onClick, onH
   const ov = phone ? Math.max(2 * getDevPx(), snap(2 * sc)) : 0;
   const band = snap(2 * sc);
   const frameBridge = (key: string, l: number, r: number) =>
-    [0, fH - band].map((t) => (
-      <div key={`${key}${t}`} className="abs" style={{ left: l, top: t, width: r - l, height: band, overflow: 'hidden', zIndex: 5 }}>
+    // keyed by place, not by offset: at a height no taller than the band both rows sit at 0
+    [0, fH - band].map((t, row) => (
+      <div key={`${key}${row}`} className="abs" style={{ left: l, top: t, width: r - l, height: band, overflow: 'hidden', zIndex: 5 }}>
         <Sprite src={ui(`${dir}/checkbar_frame_lg_selected_mid${tt}`, skin)} x={0} y={-t} w={r - l} h={fH} tint="#ffffff" />
       </div>
     ));
@@ -671,8 +682,7 @@ export function SetTitle({ x, y, text, center, width, size = 12 * 1.2 * S, skin 
  * The border measures dark grey on the user's screenshots, so it is drawn with those colors.
  */
 export function SetFrame({ x, y, w, h, skin }: { x: number; y: number; w: number; h: number; skin: Skin }) {
-  const fill = skin.name === 'villain' ? 'rgba(255,0,0,0.153)' : skin.name === 'praetorian' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,255,0.153)';
-  return <div className="abs" style={{ left: x, top: y, width: w, height: Math.max(0, h), border: `${2 * S}px solid #3a3a3e`, borderTopColor: '#4d4d50', borderRadius: 6 * S, background: fill, boxSizing: 'border-box' }} />;
+  return <div className="abs" style={{ left: x, top: y, width: w, height: Math.max(0, h), border: `${2 * S}px solid #3a3a3e`, borderTopColor: '#4d4d50', borderRadius: 6 * S, background: skin.setFill, boxSizing: 'border-box' }} />;
 }
 
 /**

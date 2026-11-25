@@ -8,6 +8,7 @@ import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Archetype, Power, Powerset } from '../data/types.ts';
 import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import { canSlot, ioLevelRange, levelsAbove, shortName } from './enhance.ts';
+import { aimedAt, nobody, withProps, withSlotted } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { countAtLevel, countForLevel } from './schedule.ts';
 import { isExclusiveToggle } from './totals.ts';
@@ -44,6 +45,7 @@ export interface BuildEntry {
   source: 'pick' | 'grant';
   pickIndex?: number;
   on?: boolean;
+  inherent?: boolean; // a piece of the archetype's inherent: always on (isArchetypeInherent)
 }
 
 export interface Issue {
@@ -90,6 +92,25 @@ export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: st
   if (toAlignment(b.alignment) !== 'Hero' || !isPatronSet(gd, set)) return null;
   const text = `${set.dn} is a Patron pool. In the game, Patron pools unlock by finishing a Patron story arc, a villain arc offered from level 35. Heroes have to switch to villain to run it; the pools stay unlocked after switching back.`;
   return gd.server === DEFAULT_SERVER ? { text, link: { phrase: 'Patron pool', href: PATRON_WIKI } } : { text };
+}
+
+/**
+ * Whether a power is a piece of an archetype's inherent (Defiance, Fury, Assassination, ...).
+ *
+ * The data marks them: auto powers of the Inherent set whose BuyRequires asks for the archetype
+ * alone ("$archetype @Class_Blaster =="). In the game they are always running, so the planner
+ * counts them on whatever a build stores (a Mids import's StatInclude included).
+ *
+ * @param gd Game data.
+ * @param at The build's archetype.
+ * @param p The power.
+ * @return True for the archetype's own inherent pieces.
+ */
+export function isArchetypeInherent(gd: GameData, at: Archetype, p: Power): boolean {
+  if (p.type !== 'Auto' || !p.auto) return false;
+  const br = p.br ?? [];
+  if (br.length !== 3 || br[0]?.toLowerCase() !== '$archetype' || br[1]?.toLowerCase() !== `@${at.n.toLowerCase()}` || br[2] !== '==') return false;
+  return gd.setOfPower.get(p.id)?.set.n === 'Inherent.Inherent';
 }
 
 // levelUpRespec() per archetype (undefined is kept too: the archetype never respecs on training)
@@ -161,11 +182,7 @@ export function respecOnlyNote(gd: GameData, at: Archetype): { title: string; te
  * @return The sets, in the data's order.
  */
 export function startingSets(gd: GameData, cat: string, at: Archetype): Powerset[] {
-  const ctx: EvalContext = {
-    ownsPower: () => false,
-    ownsSet: () => false,
-    prop: (n: string) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0),
-  };
+  const ctx = nobody((n) => (n === 'archetype' ? at.n : n === 'level' ? 1 : 0));
   // a level-1 power a player can buy: Thunderspy's client has no SetRequires, and hides its staff-only
   // sets (Organic Armor) by their powers' BuyRequires ("accesslevel char> 0 >") instead
   return gd
@@ -186,6 +203,21 @@ export class BuildRules {
   ) {
     this.at = gd.archetype(b.at);
     this.pickLevels = gd.core.schedule.power;
+  }
+
+  /**
+   * The rules of the same build with other enhancements in its slots.
+   *
+   * Which powers are granted depends on the picks and power sets alone, so the copy keeps this
+   * one's granted powers instead of working them out again (the costly part of a new BuildRules).
+   *
+   * @param b A build that differs from this one in its slots' enhancements only.
+   * @return Its rules.
+   */
+  reslotted(b: Build): BuildRules {
+    const r = new BuildRules(this.gd, b);
+    r.grantedCache = this.granted();
+    return r;
   }
 
   // ---- basic lookups ---------------------------------------------------------------------------
@@ -528,14 +560,37 @@ export class BuildRules {
     for (const [pid, level] of grants) {
       const power = this.gd.power(pid);
       const st = this.b.granted[pid];
+      const inherent = isArchetypeInherent(this.gd, this.at, power);
       out.push({
         key: `grant:${pid}`,
         power,
         level,
         slots: this.normSlots(power, level, st?.slots),
         source: 'grant',
-        on: st?.on,
+        // the inherent always runs; a switch an older build stored for it is not read here, and is
+        // dropped when the build is checked (checkBuild), so a link made from it carries none
+        on: inherent ? true : st?.on,
+        ...(inherent ? { inherent: true } : {}),
       });
+    }
+    return out;
+  }
+
+  /**
+   * The archetype's inherent as the overview's Inherent section lists it: one power per name
+   * (Domination is six pieces in the data), the first of each in set order, of the pieces the
+   * game hides from Manage.
+   *
+   * @return Keys of the entries to list.
+   */
+  inherentShown(): Set<string> {
+    const names = new Set<string>();
+    const out = new Set<string>();
+    const idx = (e: BuildEntry) => this.gd.setOfPower.get(e.power.id)?.index ?? 0;
+    for (const e of this.entries().filter((x) => x.inherent && x.power.sm === 0).sort((a, b) => idx(a) - idx(b))) {
+      if (names.has(e.power.dn)) continue;
+      names.add(e.power.dn);
+      out.add(e.key);
     }
     return out;
   }
@@ -710,10 +765,12 @@ export class BuildRules {
    * Why an enhancement's own settings are impossible, if they are.
    *
    * Boosters go on boostable pieces only (attuned pieces, procs and TO/DO/SO take none), +5 at most
-   * (boost_IsBoostable: the boosters table). A TO/DO/SO-style piece works from 3 levels below the
-   * character to 3 above: Homecoming combines one 3 times (its client refuses a 4th), so a level-50
-   * SO reaches 50+3 (boost_IsValidCombination, boost_EffectivenessLevel). An IO is made only at its
-   * set's levels (a common IO from 10).
+   * (boost_IsBoostable: the boosters table). A TO/DO/SO-style piece reaches 3 levels above the
+   * character: Homecoming combines one 3 times (its client refuses a 4th), so a level-50 SO reaches
+   * 50+3 (boost_IsValidCombination, boost_EffectivenessLevel). One 4 or more levels below is
+   * outleveled, not impossible: the game keeps it slotted and it gives nothing (effectiveness 0,
+   * its level drawn red), so it isn't refused. An IO is made only at its set's levels (a common IO
+   * from 10); a handed-out pre-order piece has no made level (isCraftedIO).
    *
    * @param enh The enhancement as slotted.
    * @param boost Its enhancement power.
@@ -727,10 +784,8 @@ export class BuildRules {
       if (boosters < 0 || boosters > be.boosters.length - 1) return `Boosters go from +0 to +${be.boosters.length - 1}`;
     }
     if (!boost.bie) {
-      const rel = enh.rel ?? 0;
-      const lo = -(be.below.length - 1);
       const hi = be.above.length - 1;
-      if (rel < lo || rel > hi) return `Relative level goes from ${lo} to +${hi}`;
+      if ((enh.rel ?? 0) > hi) return `Relative level goes up to +${hi}`;
     }
     const range = ioLevelRange(this.gd, boost);
     if (range && enh.ioLevel !== undefined && (enh.ioLevel < range[0] || enh.ioLevel > range[1])) {
@@ -744,7 +799,8 @@ export class BuildRules {
    *
    * The character's level must be within the piece's MinSlotLevel..MaxSlotLevel, and an IO works
    * from `levelsAbove` levels below its own (boost_Effectiveness: 3 on Homecoming, none on
-   * Thunderspy); attuned pieces and TO/DO/SO-style pieces follow the character.
+   * Thunderspy); attuned pieces and TO/DO/SO-style pieces follow the character. A handed-out
+   * pre-order piece is judged at its own level when it has one, as boost_Effectiveness counts it.
    *
    * @param boost The piece.
    * @param ioLevel Its IO level when it has one; else the lowest level it is made at.
@@ -753,7 +809,7 @@ export class BuildRules {
   private levelRefusal(boost: Power, ioLevel: number | undefined): string | null {
     const last = this.lastLevel();
     const [minSlot, maxSlot] = boost.slot ?? [-3, MAX_LEVEL];
-    const lvl = ioLevelRange(this.gd, boost) ? (ioLevel ?? ioLevelRange(this.gd, boost)![0]) : undefined;
+    const lvl = boost.bie && !boost.bup ? (ioLevel ?? ioLevelRange(this.gd, boost)?.[0]) : undefined;
     const from = lvl === undefined ? minSlot : Math.max(minSlot, lvl - levelsAbove(this.gd));
     if (last < from) return `Usable from level ${from + 1}`;
     if (last > maxSlot) return `Usable up to level ${maxSlot + 1}`;
@@ -812,18 +868,17 @@ export class BuildRules {
     const cur = e.slots[slot];
     const curName = cur?.enh && cur.level <= last && e.level <= last ? shortName(gd.power(cur.enh.boost)).toLowerCase() : '';
     const inPower = others.map((o) => shortName(o).toLowerCase());
-    const ctx: EvalContext = {
-      ...base,
-      boostsSlotted: (n) => {
+    const ctx = withSlotted(base, {
+      all: (n) => {
         const k = n.toLowerCase();
         return (counts.get(k) ?? 0) - (k === curName ? 1 : 0);
       },
-      powerBoostsSlotted: (n) => inPower.filter((x) => x === n.toLowerCase()).length,
-    };
+      inPower: (n) => inPower.filter((x) => x === n.toLowerCase()).length,
+    });
     if (evalRequires(boost.slr, ctx)) return null;
 
     // which part failed: the same test with nothing else slotted, then also at level 50
-    const alone: EvalContext = { ...ctx, boostsSlotted: () => 0, powerBoostsSlotted: () => 0 };
+    const alone = withSlotted(ctx, { all: () => 0, inPower: () => 0 });
     if (evalRequires(boost.slr, alone)) {
       const named = new Set(boost.slr.map((t) => t.toLowerCase()));
       const where = this.entries().find((o) =>
@@ -831,7 +886,7 @@ export class BuildRules {
       );
       return where ? `Unique, also slotted in ${where.power.dn}` : 'Unique piece';
     }
-    if (evalRequires(boost.slr, { ...alone, prop: (n) => (n === 'level' ? MAX_LEVEL + 1 : base.prop(n)) })) return 'Needs level 50';
+    if (evalRequires(boost.slr, withProps(alone, (n) => (n === 'level' ? MAX_LEVEL + 1 : undefined)))) return 'Needs level 50';
     const classes = boost.slr.filter((t) => /^Class_/i.test(t)).map((t) => gd.archetypeByName.get(t.toLowerCase())?.dn ?? t);
     return classes.length ? `Only for ${classes.join(' or ')}` : 'Not slottable by this character';
   }
@@ -859,7 +914,7 @@ export interface CharacterTraits {
 function characterContext(gd: GameData, at: Archetype, who: CharacterTraits, level: number, owned: Set<number>, ownedSets: Set<number>): EvalContext {
   const origin = gd.core.origins.find((o) => o.id === who.origin);
   const align = toAlignment(who.alignment).toLowerCase();
-  return {
+  const self: EvalContext = {
     ownsPower: (name) => {
       const p = gd.powerByName.get(name.toLowerCase());
       return !!p && owned.has(p.id);
@@ -902,8 +957,9 @@ function characterContext(gd: GameData, at: Archetype, who: CharacterTraits, lev
           return 0;
       }
     },
-    targetEntType: 'critter',
   };
+  // until someone aims it (the totals at the character, a pet card at a pet), a power lands on a foe
+  return aimedAt(self, { type: 'critter', isSource: false });
 }
 
 /**

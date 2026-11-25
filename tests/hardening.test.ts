@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LEGACY_GAME_VERSION, normalizeVersion, resolveVersion, type GameVersions } from '../src/data/versions.ts';
-import { pickHoldsEnhancements } from '../src/engine/actions.ts';
+import { capLevel, raiseToCap, swapPick } from '../src/engine/actions.ts';
 import { newBuild, type Build } from '../src/engine/build.ts';
 import { defaultOn } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
@@ -38,19 +38,66 @@ function peacebringer(): Build {
 }
 const DMG = () => pid(gd, 'Boosts.Crafted_Damage.Crafted_Damage');
 
-describe('changing a pick that holds enhancements', () => {
-  it('is locked by an enhancement in the pick itself', () => {
+const RECH = () => pid(gd, 'Boosts.Crafted_Recharge.Crafted_Recharge');
+const NOVA_BOLT = () => pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Bright_Nova_Bolt');
+
+describe('swapping a pick that holds enhancements', () => {
+  it('keeps what the new power takes and drops the rest (Gleaming Bolt -> Inner Light)', () => {
     const b = peacebringer();
-    expect(pickHoldsEnhancements(gd, b, 0)).toBe(false);
-    b.picks[0]!.slots[0]!.enh = { boost: DMG(), ioLevel: 49 };
-    expect(pickHoldsEnhancements(gd, b, 0)).toBe(true);
+    b.picks[0]!.slots = [
+      { level: 0, enh: { boost: DMG(), ioLevel: 49 } },
+      { level: 2, enh: { boost: RECH(), ioLevel: 49 } },
+      { level: 4 },
+    ];
+    const sw = swapPick(gd, b, 0, pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Build_Up'));
+    expect(sw.dropped.map((d) => [d.slot, d.enh.boost])).toEqual([[0, DMG()]]);
+    expect(sw.kept.map((d) => [d.slot, d.enh.boost])).toEqual([[1, RECH()]]);
+    expect(sw.freed).toEqual([]);
+    // every slot stays, the damage one emptied
+    expect(sw.build.picks[0]!.slots).toEqual([{ level: 0 }, { level: 2, enh: { boost: RECH(), ioLevel: 49 } }, { level: 4 }]);
+    expect(b.picks[0]!.slots[0]!.enh).toBeDefined(); // the old build is untouched
   });
-  it('is locked by an enhancement in a power the pick grants (Bright Nova -> Bright Nova Bolt)', () => {
+  it('frees every bought slot when the new power takes none (Incandescence -> Quantum Acceleration)', () => {
     const b = peacebringer();
-    b.granted[pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Bright_Nova_Bolt')] = { slots: [{ level: P[5]!, enh: { boost: DMG(), ioLevel: 49 } }] };
-    expect(b.picks[5]!.slots.some((s) => s.enh)).toBe(false);
-    expect(pickHoldsEnhancements(gd, b, 5)).toBe(true);
-    expect(pickHoldsEnhancements(gd, b, 0)).toBe(false); // other picks stay editable
+    b.picks[1]!.slots = [{ level: 0 }, { level: 6, enh: { boost: RECH(), ioLevel: 49 } }, { level: 2 }];
+    const sw = swapPick(gd, b, 1, pid(gd, 'Peacebringer_Defensive.Luminous_Aura.Quantum_Boost'));
+    expect(sw.build.picks[1]!.slots).toEqual([]);
+    expect(sw.freed).toEqual([2, 6]); // lowest first
+    expect(sw.dropped).toHaveLength(1);
+  });
+  it('drops the powers the old one granted, with their slots (Bright Nova -> Bright Nova Bolt)', () => {
+    const b = peacebringer();
+    b.granted[NOVA_BOLT()] = { slots: [{ level: P[5]!, enh: { boost: DMG(), ioLevel: 49 } }, { level: 30 }] };
+    const sw = swapPick(gd, b, 5, pid(gd, 'Peacebringer_Offensive.Luminous_Blast.Radiant_Strike'));
+    expect(sw.dropped.map((d) => d.key)).toEqual([`grant:${NOVA_BOLT()}`]);
+    expect(sw.freed).toEqual([30]);
+    expect(sw.build.granted[NOVA_BOLT()]!.slots).toEqual([]);
+    // picking the same power again changes nothing
+    const same = swapPick(gd, b, 5, b.picks[5]!.power);
+    expect(same.dropped).toEqual([]);
+    expect(same.freed).toEqual([]);
+  });
+});
+
+describe('Build Level or Set Max Level', () => {
+  const TC = () => pid(gd, 'Boosts.Crafted_Titanium_Coating_A.Crafted_Titanium_Coating_A');
+  const SP = () => pid(gd, 'Boosts.Crafted_Steadfast_Protection_A.Crafted_Steadfast_Protection_A');
+  it('caps a piece at the build level plus 3, or its set top', () => {
+    expect(capLevel(gd, gd.power(TC()), 31)).toBe(34); // a level 32 build: Titanium Coating at 35
+    expect(capLevel(gd, gd.power(TC()), 49)).toBe(49);
+    expect(capLevel(gd, gd.power(SP()), 49)).toBe(29); // Steadfast Protection stops at 30
+    expect(capLevel(gd, gd.power(pid(gd, 'Boosts.Attuned_Titanium_Coating_A.Attuned_Titanium_Coating_A')), 49)).toBeNull();
+  });
+  it('raises pieces to the cap and never lowers one', () => {
+    const b = peacebringer();
+    b.picks[1]!.slots = [{ level: 0, enh: { boost: TC(), ioLevel: 24 } }, { level: 2, enh: { boost: SP(), ioLevel: 29 } }];
+    b.granted[NOVA_BOLT()] = { slots: [{ level: P[5]!, enh: { boost: DMG(), ioLevel: 49 } }] };
+    const up = raiseToCap(gd, { ...b, endLevel: 31 });
+    expect(up.picks[1]!.slots.map((s) => s.enh!.ioLevel)).toEqual([34, 29]);
+    expect(up.granted[NOVA_BOLT()]!.slots[0]!.enh!.ioLevel).toBe(49); // above a level 32 cap: kept
+    expect(b.picks[1]!.slots[0]!.enh!.ioLevel).toBe(24); // the old build is untouched
+    const done = raiseToCap(gd, up);
+    expect(raiseToCap(gd, done)).toBe(done); // nothing to raise: the same build
   });
 });
 

@@ -6,14 +6,16 @@ import { create } from 'zustand';
 import { loadGameData, type GameData } from '../data/gamedata.ts';
 import { dataRoot, DEFAULT_SERVER, defaultServer, serverById, serverFromPath, serverHref, serverOf, SERVERS, versionServer, withServer, type GameServer } from '../data/servers.ts';
 import { loadVersions, missingVersionNote, normalizeVersion, resolveVersion, type GameVersion, type GameVersions } from '../data/versions.ts';
-import { addSlot, pickHoldsEnhancements, setPick } from '../engine/actions.ts';
+import { STALLED_MS, Watch } from '../data/watch.ts';
+import { addSlot, laterPick, moveLater, raiseToCap, rebookRespecSlots, setPick, swapPick, takeEarlier, type SwapPiece } from '../engine/actions.ts';
+import { pieceName } from '../engine/enhance.ts';
 import { cleanName, cloneBuild, hasWork, newBuild, type Alignment, type Build } from '../engine/build.ts';
 import { BuildRules, buildPairProblem, levelUpRespec, MAX_LEVEL } from '../engine/rules.ts';
-import { checkBuild } from '../engine/validate.ts';
+import { checkBuild, type Checked } from '../engine/validate.ts';
 import { levelSteps, lowestFreeLevels, respecSteps, stepSlotLevels, type LevelStep } from '../engine/schedule.ts';
 import { describeImportFailure, ImportProblem, refusedBuild, unknownServer, wrongServer } from '../io/importProblem.ts';
+import { saveFirstText } from '../io/library.ts';
 import { decodeShare, encodeShare } from '../io/share.ts';
-import { stageLayout } from '../ui/stageLayout.ts';
 import { lastServer, rememberServer } from './lastServer.ts';
 import { returning, trackUse } from './lastUsed.ts';
 import { tabTitle } from './tabTitle.ts';
@@ -37,6 +39,12 @@ export const TIP_MODES: TipMode[] = ['enabled', 'advanced', 'disabled'];
 export type LevelSub = 'power' | 'pool' | 'epic' | 'slots';
 
 /** Where the level-up flow is and what the user has chosen but not yet confirmed. */
+/** A list under a dialog's text, with the line that introduces it (askConfirm's `sections`). */
+export interface DialogSection {
+  heading: string; // the line above the list ("will drop the following enhancements:")
+  lines: string[]; // one item per line, drawn as a bullet
+}
+
 /** A phrase in a dialog's text that opens a page in a new tab (an address in the planner's own code, never one from a build or file). */
 export interface DialogLink {
   phrase: string; // the words in the text to link (the first time they appear)
@@ -54,6 +62,9 @@ export interface LevelCtx {
   pendingSet?: number; // a new pool/epic set chosen on the set picker
   pendingSlots: string[]; // entry keys, one per slot placed at this level
   flow?: LevelStep[]; // a Respec build's wizard order (respecSteps); absent: the leveling order
+  freed?: boolean; // the slot screen after a power swap freed slots: `flow` holds one step with just those slots
+  chain?: { freed: number[] }; // a later pick to choose again (a power taken earlier): the slots to place after it
+  then?: number[]; // picks of the same level to reopen after this one (level 1's orb: its secondary pick)
 }
 
 interface Store {
@@ -68,7 +79,7 @@ interface Store {
    * @return Whether it is shown (the build is cleared only then).
    */
   selectServer(id: string): Promise<boolean>;
-  serverAsk: { cancellable: boolean; preselect: string; resume?: string; resolve: (id: string | null) => void } | null; // the server list dialog, while open
+  serverAsk: { cancellable: boolean; preselect: string; resume?: ResumeLabel; resolve: (id: string | null) => void } | null; // the server list dialog, while open
   /**
    * Ask which game server to use, in the server list dialog.
    *
@@ -79,7 +90,7 @@ interface Store {
    *   long break); it starts highlighted then.
    * @return The picked server's id, CONTINUE_BUILD for the resume button, or null when cancelled.
    */
-  askServer(cancellable: boolean, preselect: string, resume?: string): Promise<string | null>;
+  askServer(cancellable: boolean, preselect: string, resume?: ResumeLabel): Promise<string | null>;
   /** Close the server list dialog with a pick, or with null as cancelled. */
   closeServerAsk(id: string | null): void;
   gd?: GameData; // the data of the version being shown (the build's, or the one picked on New Build)
@@ -91,8 +102,8 @@ interface Store {
   view: View;
   build?: Build;
   level?: LevelCtx;
-  muted: boolean; // the Sound switch, off is muted (this tab's; new tabs start from the last change in any tab)
-  musicOn: boolean; // the login-screen music switch (this tab's, like muted; on by default, off on phones)
+  muted: boolean; // the Sound switch, off is muted (this tab's; new tabs start from the last change in any tab; off until switched on)
+  musicOn: boolean; // the login-screen music switch (this tab's, like muted; off until switched on)
   setupAlign: Alignment; // the alignment picked on the setup screen (its skin and backdrop)
   tips: TipMode; // hover tooltip setting (the browser's: open tabs follow a change in any tab)
   shift: boolean; // Shift held: Enabled tooltips show the Advanced view
@@ -111,6 +122,8 @@ interface Store {
     cancelLabel?: string; // the last button's label (default Cancel)
     altLabel?: string; // a third button between them (askThreeWay)
     lines?: string[];
+    sections?: DialogSection[]; // lists with headings, in the list box (askConfirm)
+    highlight?: string[]; // phrases in the text drawn in the game's yellow (power names)
     choices?: DialogChoice[];
     alert?: boolean; // a message with one OK button (tell)
     link?: DialogLink; // a phrase in the text that opens a page
@@ -118,7 +131,7 @@ interface Store {
     resolve: (answer: boolean | 'alt', picked?: string[], replaced?: boolean) => void; // replaced: by a newer dialog, unanswered
   } | null;
   /** Ask a yes / no question in the planner's dialog (with an optional list under it); resolves true on Proceed. */
-  askConfirm(q: { title: string; text: string; okLabel?: string; cancelLabel?: string; lines?: string[] }): Promise<boolean>;
+  askConfirm(q: { title: string; text: string; okLabel?: string; cancelLabel?: string; lines?: string[]; sections?: DialogSection[]; highlight?: string[] }): Promise<boolean>;
   /**
    * Ask a question with two ways forward and Cancel in the planner's dialog.
    *
@@ -153,6 +166,11 @@ interface Store {
   /** Close the dialog: true for its OK button, 'alt' for askThreeWay's second, false to cancel. */
   closeConfirm(answer: boolean | 'alt'): void;
   load(): Promise<void>;
+  /**
+   * Load again from scratch: every download is fetched anew, so one that never answered no longer
+   * holds the page on its loading screen. The load before it, if still waiting, shows nothing.
+   */
+  retryLoad(): void;
   /** Start a new build's wizard; `respecTo` (0-based) makes it a Respec: every power first, then the slots. */
   startBuild(args: { name: string; at: number; origin: number; alignment: Alignment; primary: number; secondary: number; respecTo?: number }): void;
   setBuild(b: Build): void;
@@ -166,7 +184,13 @@ interface Store {
   finishLevel(): void;
   backLevel(): void;
   cancelLevel(): void;
-  editPick(pickIndex: number): void;
+  /**
+   * Reopen a pick of the build on its power screen (a power bar, a level orb).
+   *
+   * @param pickIndex The pick.
+   * @param then Picks to reopen after it, in turn (a level with two picks: level 1's orb).
+   */
+  editPick(pickIndex: number, then?: number[]): void;
   editSlots(level: number): void;
   stopHere(openMenu: boolean): void;
   continueLeveling(): void;
@@ -174,6 +198,10 @@ interface Store {
   setMusicOn(on: boolean): void;
   menuOpen: boolean;
   setMenu(open: boolean): void;
+  advancedRespec: boolean; // Advanced Respec (browser setting): a Respec build's power picks advance on a click, and swaps ask nothing
+  setAdvancedRespec(on: boolean): void;
+  enhAtCap: boolean; // Max Slot/Build Level (browser setting): pieces go in at the highest level the build can use, and rise with it
+  setEnhAtCap(on: boolean): void;
   /**
    * Open a build from outside (link, saved, import) with its own game version's data.
    *
@@ -192,6 +220,15 @@ interface Store {
 const STORAGE_KEY = 'hcp.current';
 const NOTES_KEY = 'hcp.patchNotes';
 
+/**
+ * The resume button's label, in the two parts the button keeps apart: a long build name is cut
+ * short to fit, the server it continues on never is.
+ */
+export interface ResumeLabel {
+  build: string; // 'Continue "Fire Guy"', or 'Continue your last build' for one without a name
+  server: string; // 'on Thunderspy'
+}
+
 /** What the server list answers when its resume button (continue the last build) is used. */
 export const CONTINUE_BUILD = ':continue';
 
@@ -199,6 +236,14 @@ export const CONTINUE_BUILD = ':continue';
 const AWAY_AT_LOAD = returning(Date.now());
 // the answer to the return question, once given: Try again on the error screen keeps it
 let returnAnswer: string | null = null;
+// load() calls so far: only the newest may show what it loaded (retryLoad starts another while the
+// one before may still be waiting on its downloads)
+let loadSeq = 0;
+// a share link came into the address while the page was still loading: read once the load is done
+let linkWhileLoading = false;
+
+/** What the error screen says when the game data won't load (the details go to the console). */
+export const LOAD_FAILED = "Couldn't load the game data. Check your connection, then try again.";
 
 /** @return What ties patch notes to one build (they are dropped when another build opens; a rename keeps them). */
 function buildTag(b: Build): string {
@@ -226,16 +271,57 @@ function restoreNotes(b: Build): PatchNotes | null {
   }
 }
 
+/** A download behind one of the two caches below, while it is under way. */
+interface UnderWay {
+  made: Promise<unknown>; // the download, as its cache holds it
+  watch: Watch; // hears of what the download receives, and gives it up
+}
+// the downloads behind the two caches below that have not ended yet (retryLoad looks through them)
+const underWay = new Set<UnderWay>();
+
+/**
+ * Keep one download per key for the page, watched while it is under way.
+ *
+ * A download that fails leaves its cache, so the next ask fetches again. With `retry`, so does one
+ * that has stalled (nothing received for STALLED_MS): it is given up and started anew, as Try again
+ * would do. New Build's picks ask that way, since New Build has no Try again of its own; nothing
+ * else does, so a download someone else waits for is never given up behind their back.
+ *
+ * @param cache The cache.
+ * @param key What the download is kept under.
+ * @param start Starts the download, handed the watch on it.
+ * @param retry Whether a cached download that has stalled is given up and started anew.
+ * @return The cached download, or the one just started.
+ */
+function kept<T>(cache: Map<string, Promise<T>>, key: string, start: (watch: Watch) => Promise<T>, retry: boolean): Promise<T> {
+  const have = cache.get(key);
+  if (have) {
+    const stalled = retry ? [...underWay].find((u) => u.made === have && u.watch.quiet(STALLED_MS)) : undefined;
+    if (!stalled) return have;
+    underWay.delete(stalled);
+    cache.delete(key);
+    stalled.watch.cancel();
+  }
+  const watch = new Watch();
+  const made = start(watch);
+  const d: UnderWay = { made, watch };
+  underWay.add(d);
+  made.then(
+    () => underWay.delete(d),
+    () => {
+      underWay.delete(d);
+      // a failed fetch may be retried (unless a retry already put a newer one in its place)
+      if (cache.get(key) === made) cache.delete(key);
+    },
+  );
+  cache.set(key, made);
+  return made;
+}
+
 // one fetch of each server's version list per page (revalidated on every visit: see loadVersions)
 const versionCache = new Map<string, Promise<GameVersions>>();
-function versionsFor(s: GameServer): Promise<GameVersions> {
-  let p = versionCache.get(s.id);
-  if (!p) {
-    p = loadVersions(dataRoot(s, import.meta.env.BASE_URL));
-    p.catch(() => versionCache.delete(s.id)); // a failed fetch may be retried
-    versionCache.set(s.id, p);
-  }
-  return p;
+function versionsFor(s: GameServer, retry = false): Promise<GameVersions> {
+  return kept(versionCache, s.id, (watch) => loadVersions(dataRoot(s, import.meta.env.BASE_URL), watch), retry);
 }
 
 /**
@@ -260,15 +346,8 @@ export function shareServer(named: { server?: GameServer }, version: string | un
 
 // one fetch per game version per page: switching back to a version already seen is instant
 const dataCache = new Map<string, Promise<GameData>>();
-function dataFor(s: GameServer, v: GameVersion): Promise<GameData> {
-  const key = `${s.id}/${v.id}`;
-  let p = dataCache.get(key);
-  if (!p) {
-    p = loadGameData(s, import.meta.env.BASE_URL, v);
-    p.catch(() => dataCache.delete(key)); // a failed fetch may be retried
-    dataCache.set(key, p);
-  }
-  return p;
+function dataFor(s: GameServer, v: GameVersion, retry = false): Promise<GameData> {
+  return kept(dataCache, `${s.id}/${v.id}`, (watch) => loadGameData(s, import.meta.env.BASE_URL, v, watch), retry);
 }
 
 /**
@@ -455,13 +534,13 @@ function hasPicks(b: Build): boolean {
   return Array.isArray(b.picks) && b.picks.some((p) => p);
 }
 
-/** @return The resume button's label for a build ('Continue "Fire Guy" on Thunderspy'). */
-function resumeLabel(b: Build, server: GameServer): string {
+/** @return The resume button's label for a build ('Continue "Fire Guy"', 'on Thunderspy'). */
+function resumeLabel(b: Build, server: GameServer): ResumeLabel {
   const name = cleanName(b.name).trim();
-  return `${name ? `Continue "${name}"` : 'Continue your last build'} on ${server.label}`;
+  return { build: name ? `Continue "${name}"` : 'Continue your last build', server: `on ${server.label}` };
 }
 
-// selectServer calls in flight: only the newest may show its server
+// New Build's data switches in flight (selectServer, selectVersion): only the newest may show its data
 let serverSeq = 0;
 
 /** @return The steps the level-up flow walks: a Respec's own order, else the leveling steps. */
@@ -503,7 +582,8 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
     const entries = new BuildRules(gd, b).entries();
     const pending = l.pendingSlots.map((key) => entries.find((x) => x.key === key));
     const span = new Set(step.slotLevels ?? []);
-    const taken = entries.flatMap((x) => x.slots.filter((sl, i) => i > 0 && span.has(sl.level)).map((sl) => sl.level));
+    // a freed-slot screen offers exactly the freed levels: other slots at those levels aren't its own
+    const taken = l.freed ? [] : entries.flatMap((x) => x.slots.filter((sl, i) => i > 0 && span.has(sl.level)).map((sl) => sl.level));
     const levels = spreadSlots(step, pending.map((e) => e?.level ?? 0), taken);
     pending.forEach((e, i) => {
       if (e) b = addSlot(b, e.key, levels[i]!, e.level);
@@ -511,9 +591,41 @@ export function previewBuild(gd: GameData, steps: LevelStep[], l: LevelCtx): Bui
     return b;
   }
   const pick = currentPick(steps, l);
-  // editing a level from the overview: the pick's slots and enhancements come from the original
-  const carry = l.mode === 'edit' ? l.orig.picks[pick] : undefined;
-  return l.pendingPower !== undefined && pick >= 0 ? setPick(gd, l.base, pick, l.pendingPower, carry) : l.base;
+  if (l.pendingPower === undefined || pick < 0) return l.base;
+  if (l.mode !== 'edit') return setPick(gd, l.base, pick, l.pendingPower);
+  // a level reopened from the overview: the build Finish would make (store.finishSwap), so the
+  // totals never count a power twice or show slots the swap drops
+  if (l.chain) {
+    const next = laterPick(l.base, pick, l.pendingPower);
+    return next < 0 ? swapPick(gd, l.base, pick, l.pendingPower).build : takeEarlier(gd, l.base, pick, next).build;
+  }
+  const later = laterPick(l.orig, pick, l.pendingPower);
+  if (later < 0) return swapPick(gd, l.orig, pick, l.pendingPower).build;
+  return l.orig.picks[pick] && !inRespec(gd, l.orig, later) ? moveLater(gd, l.orig, pick, later).result.build : takeEarlier(gd, l.orig, pick, later).build;
+}
+
+/**
+ * The build a finished slot screen leaves: within a Respec build's respec, where the planner picked
+ * the slots' levels (the respec's slot screen, a swap's freed slots), its empty slots booked again
+ * (rebookRespecSlots), as slots kept from earlier screens may hold the levels a later power needs.
+ *
+ * Done once the screen is finished, not while it shows (it tells its own slots by their levels), and
+ * only on the flow's last screen (the respec's slot screen ends its flow; a freed-slot screen is a
+ * flow of one), so Back never meets a screen whose slots were booked again under it. A slot level
+ * reopened from the overview keeps the level the player placed: its slots may go on any power, at
+ * that level.
+ *
+ * @param gd Game data.
+ * @param steps The leveling steps.
+ * @param l The screen being finished.
+ * @param b The build it made (previewBuild).
+ * @return The build to keep.
+ */
+function booked(gd: GameData, steps: LevelStep[], l: LevelCtx, b: Build): Build {
+  const step = stepsOf(steps, l)[l.step];
+  const top = b.respecTo;
+  if (l.sub !== 'slots' || !l.flow || l.step !== l.flow.length - 1 || !step || top === undefined || !l.pendingSlots.length) return b;
+  return stepSlotLevels(step).some((lv) => lv <= top) ? rebookRespecSlots(gd, b) : b;
 }
 
 /**
@@ -581,14 +693,67 @@ function offerAgain(gd: GameData, base: Build, pick: number, power: number | und
 
 const LOCKED = 'Remove enhancements first';
 
-/** @return The Music switch when the browser remembers none: off on phones (the phone layout), on elsewhere. */
-function defaultMusic(): boolean {
+/** @return A browser setting switch (off when unset or storage is unavailable). */
+function readSwitch(key: string): boolean {
   try {
-    const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-    return !stageLayout(window.innerWidth, window.innerHeight, touch).dims.phone;
+    return localStorage.getItem(key) === '1';
   } catch {
-    return true;
+    return false;
   }
+}
+
+/** Remember a browser setting switch (kept for this page only when storage is unavailable). */
+function writeSwitch(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** @return The build as it reaches the overview from leveling: its pieces raised to the cap when Max Slot/Build Level is on. */
+function atOverview(gd: GameData, b: Build): Build {
+  return useStore.getState().enhAtCap ? raiseToCap(gd, b) : b;
+}
+
+/**
+ * How a power swap's question names an enhancement: "Unbreakable Guard: Resistance (50)",
+ * "Invention: Recharge Reduction (50)", with the power it sits in when that isn't the pick itself
+ * (a power the old one granted).
+ *
+ * @param gd Game data.
+ * @param b The build before the swap.
+ * @param p The piece.
+ * @param pickKey The swapped pick's entry key.
+ * @return The line.
+ */
+function swapPieceLabel(gd: GameData, b: Build, p: SwapPiece, pickKey: string): string {
+  const boost = gd.powerById.get(p.enh.boost);
+  if (!boost) return 'Unknown enhancement';
+  const ref = gd.boostSetOf.get(boost.id);
+  // a set piece's name drops its set's ("Resistance"); others carry their kind ("Invention: Damage")
+  const name = ref ? `${ref.set.dn}: ${pieceName(boost, ref.set.dn) || boost.dn}` : boost.dn;
+  const rel = p.enh.rel ?? 0;
+  const label = boost.bup ? 'Attuned' : boost.bie ? (p.enh.ioLevel !== undefined ? String(p.enh.ioLevel + 1) : '') : rel > 0 ? `+${rel}` : rel < 0 ? String(rel) : '';
+  const where = p.key === pickKey ? '' : ` (in ${new BuildRules(gd, b).entries().find((e) => e.key === p.key)?.power.dn ?? 'a granted power'})`;
+  return `${name}${label ? ` (${label})` : ''}${where}`;
+}
+
+
+/**
+ * Whether Sound starts off (muted) for what the browser has stored for it.
+ *
+ * Sound and Music both start off and stay off until switched on: a page that plays nothing
+ * downloads none of the sounds (ui/sound.ts). Sound's stored value is "1" for muted and "0" for on,
+ * as it always was, so only a visitor who switched it on here before starts with it on; a first
+ * visit, cleared storage and blocked storage all start silent. Music reads as any switch does
+ * (readSwitch): on only when stored as on.
+ *
+ * @param stored The stored hcp.muted value (null: none).
+ * @return True unless it was switched on.
+ */
+export function startsMuted(stored: string | null): boolean {
+  return stored !== '0';
 }
 
 /** @return Whether a step's picks are made and its slots (if it grants any) are all placed. */
@@ -623,6 +788,241 @@ export function respecUnfinished(gd: GameData, b: Build, steps: LevelStep[]): bo
   return respecSteps(steps, b.respecTo).some((s) => !stepDone(rules, b, s));
 }
 
+/**
+ * @return Whether a pick is in a Respec build's respec (at or below its respec level): there the
+ *   player is trusted more (the respec flow, Advanced Respec); picks after it level as usual.
+ */
+export function inRespec(gd: GameData, b: Build, pick: number): boolean {
+  return b.respecTo !== undefined && (gd.core.schedule.power[pick] ?? MAX_LEVEL) <= b.respecTo;
+}
+
+/**
+ * The picks a change leaves breaking a rule they didn't break before (a pool prerequisite gone, a
+ * set limit reached), as a swap's question lists them: they are flagged in red, never changed.
+ *
+ * @param gd Game data.
+ * @param before The build before the change.
+ * @param after The build after it.
+ * @param skip The picks the change itself is about.
+ * @return One line per pick ("Level 14: Air Superiority (Requirements not met)").
+ */
+function newlyFlagged(gd: GameData, before: Build, after: Build, skip: number[]): string[] {
+  const had = new Set(new BuildRules(gd, before).issues().map((i) => `${i.key}|${i.message}`));
+  const out: string[] = [];
+  for (const i of new BuildRules(gd, after).issues()) {
+    const k = i.key.startsWith('pick:') ? Number(i.key.slice(5)) : -1;
+    const p = k >= 0 ? after.picks[k] : null;
+    if (!p || i.slot !== undefined || skip.includes(k) || had.has(`${i.key}|${i.message}`)) continue;
+    out.push(`Level ${p.level + 1}: ${gd.power(p.power).dn} (${i.message})`);
+  }
+  return out;
+}
+
+/** @return The section listing the picks a change flags, if any. */
+function flaggedSection(lines: string[]): DialogSection[] {
+  return lines.length ? [{ heading: 'These picks will be flagged in red (they no longer meet a rule):', lines }] : [];
+}
+
+/**
+ * @return Whether the level-up flow is still on the screen a question was asked from (the same pick
+ *   of the same swap), so its answer may still act.
+ */
+function sameScreen(a: LevelCtx | undefined, b: LevelCtx): boolean {
+  return !!a && a.orig === b.orig && a.base === b.base && a.step === b.step && a.pickInStep === b.pickInStep && a.sub === b.sub && a.pendingPower === b.pendingPower;
+}
+
+/** Say how many enhancements a swap that asked nothing (Advanced Respec) dropped. */
+function toldDropped(n: number): void {
+  if (n) useStore.getState().notify(`${n} enhancement${n > 1 ? 's' : ''} dropped by the swap`);
+}
+
+/**
+ * Finish a pick reopened from the overview: swap its power (swapPick), asking first when that drops
+ * enhancements, frees slots or flags other picks (never in Advanced Respec's respec), then show the
+ * overview, or the slot screen when slots were freed. Cancel leaves the player on the power screen.
+ *
+ * @param gd Game data.
+ * @param steps The leveling steps.
+ * @param level The power screen's state (edit mode).
+ */
+async function finishSwap(gd: GameData, steps: LevelStep[], level: LevelCtx): Promise<void> {
+  const pick = currentPick(steps, level);
+  const power = level.pendingPower;
+  if (power === undefined || pick < 0) return;
+  // a power the build takes at a later pick, taken here instead (in a chain, later than the swap so far)
+  const later = laterPick(level.chain ? level.base : level.orig, pick, power);
+  if (later >= 0) return takeEarlierFlow(gd, steps, level, pick, later);
+  const old = level.chain ? null : level.orig.picks[pick];
+  const sw = swapPick(gd, level.chain ? level.base : level.orig, pick, power);
+  const st = useStore.getState();
+  const advanced = st.advancedRespec && inRespec(gd, level.orig, pick);
+  const flagged = old ? newlyFlagged(gd, level.orig, sw.build, [pick]) : [];
+  if (old && !advanced && (sw.dropped.length || sw.freed.length || flagged.length)) {
+    const from = gd.power(old.power).dn;
+    const to = gd.power(power).dn;
+    const key = `pick:${pick}`;
+    const label = (p: SwapPiece) => swapPieceLabel(gd, level.orig, p, key);
+    // a kept piece the game would refuse in the new power stays (flagged in red on the overview): say so
+    const after = new BuildRules(gd, sw.build);
+    const entry = after.entries().find((e) => e.key === key);
+    const keptLabel = (p: SwapPiece) => {
+      const why = entry ? after.enhRefusal(entry, p.slot, p.enh) : null;
+      return why ? `${label(p)} - kept, but flagged: ${why}` : label(p);
+    };
+    const n = sw.freed.length;
+    const frees = `${n} enhancement slot${n > 1 ? 's' : ''}. You'll place ${n > 1 ? 'them' : 'it'} next.`;
+    const intro = `Changing ${from} to ${to} for the level ${(gd.core.schedule.power[pick] ?? 0) + 1} power choice`;
+    const sections = [
+      ...(sw.dropped.length ? [{ heading: '', lines: sw.dropped.map(label) }] : []),
+      ...(sw.dropped.length && sw.kept.length ? [{ heading: 'The following enhancements will be kept:', lines: sw.kept.map(keptLabel) }] : []),
+      ...(sw.dropped.length && n ? [{ heading: `It also frees ${frees}`, lines: [] }] : []),
+      ...flaggedSection(flagged),
+    ];
+    const ok = await st.askConfirm({
+      title: 'Change power?',
+      text: sw.dropped.length ? `${intro} will drop the following enhancements:` : n ? `${intro} frees ${frees}` : `${intro}.`,
+      sections: sections.length ? sections : undefined,
+      highlight: [from, to],
+      okLabel: 'OK',
+    });
+    // Cancel (or a newer dialog) stays on the power screen; so does a screen that moved on meanwhile
+    if (!ok || !sameScreen(useStore.getState().level, level)) return;
+  } else if (advanced) toldDropped(sw.dropped.length);
+  // a later pick chosen again: the slots its old power held are placed now too
+  finishWith(level.orig, sw.build, [...(level.chain?.freed ?? []), ...sw.freed], level.then);
+}
+
+/**
+ * End a swap: show the overview with the new build, or first the slot screen for the slots it freed;
+ * then the next pick of a reopened level (`then`), on its own power screen.
+ *
+ * @param orig The build before the swap (Cancel on the slot screen restores it).
+ * @param b The build after it.
+ * @param freed The freed slots' levels, one per slot.
+ * @param then Picks to reopen next (level 1's orb: its secondary pick).
+ */
+function finishWith(orig: Build, b: Build, freed: number[], then?: number[]): void {
+  if (freed.length) {
+    // one screen for the freed slots, each keeping its own level (previewBuild spreads them)
+    const levels = [...freed].sort((x, y) => x - y);
+    const step: LevelStep = { level: Math.max(...levels), picks: [], slots: levels.length, slotLevels: levels };
+    useStore.setState({ level: { step: 0, pickInStep: 0, mode: 'edit', sub: 'slots', base: b, orig, pendingSlots: [], flow: [step], freed: true, ...(then?.length ? { then } : {}) } });
+    return;
+  }
+  persist(b);
+  useStore.setState({ build: b, view: 'overview', level: undefined });
+  openNext(then);
+}
+
+/**
+ * Reopen the next pick of a level on its power screen, once the one before it is done (level 1's
+ * orb: the primary pick, then the secondary). The build is the store's, the earlier change in it.
+ *
+ * @param then The picks still to reopen, in turn.
+ */
+function openNext(then: readonly number[] | undefined): void {
+  if (then?.length) useStore.getState().editPick(then[0]!, then.slice(1));
+}
+
+/**
+ * Take a power the build has at a later pick at a reopened earlier one (B at E, from L).
+ *
+ * Outside a Respec build's respec, the earlier pick's power (A) moves up to L (moveLater: it keeps
+ * the slots gained at L or after, and so do the powers it grants; the ones before are freed, their
+ * enhancements dropped); when A can't be taken at L the swap is refused, saying why. Within the
+ * respec (or for an earlier pick that held nothing) L is emptied instead: A leaves with its
+ * enhancements, and the player chooses L again (A offered first), then places A's bought slots.
+ * Both ask first, listing the picks it flags (Advanced Respec asks nothing within the respec);
+ * Cancel stays on the power screen, and Undo Swap later on undoes it all. A pick being chosen again
+ * (a chain) may take a later power too: the move starts from the swap so far, the chain goes on to
+ * that later pick, and the slots to place gather along it.
+ *
+ * @param gd Game data.
+ * @param steps The leveling steps.
+ * @param level The power screen's state (edit mode, B chosen).
+ * @param pick The earlier pick (E).
+ * @param later The later pick holding B (L).
+ */
+async function takeEarlierFlow(gd: GameData, steps: LevelStep[], level: LevelCtx, pick: number, later: number): Promise<void> {
+  // the build the move starts from: a pick being chosen again (a chain) moves within the swap so far,
+  // and Undo Swap still goes back to the build before it all (level.orig)
+  const orig = level.chain ? level.base : level.orig;
+  const st = useStore.getState();
+  const old = orig.picks[pick];
+  const b = gd.power(orig.picks[later]!.power).dn;
+  const a = old ? gd.power(old.power).dn : '';
+  const atE = (gd.core.schedule.power[pick] ?? 0) + 1;
+  const atL = (gd.core.schedule.power[later] ?? 0) + 1;
+  const key = `pick:${pick}`;
+  const label = (p: SwapPiece) => swapPieceLabel(gd, orig, p, key);
+  if (old && !inRespec(gd, orig, later)) {
+    // leveling: more guardrails. A must be legal at L, else nothing changes
+    const { result: put, refusal } = moveLater(gd, orig, pick, later);
+    if (refusal) {
+      await st.tell({ title: "Can't swap these powers", text: `Taking ${b} at level ${atE} would move ${a} to level ${atL}, but ${a} can't be taken there: ${refusal}.` });
+      return;
+    }
+    const n = put.freed.length;
+    const frees = n ? ` It frees ${n} enhancement slot${n > 1 ? 's' : ''} gained before level ${atL}; you'll place ${n > 1 ? 'them' : 'it'} next.` : '';
+    const sections = [...(put.dropped.length ? [{ heading: '', lines: put.dropped.map(label) }] : []), ...flaggedSection(newlyFlagged(gd, orig, put.build, [pick, later]))];
+    const ok = await st.askConfirm({
+      title: 'Change power?',
+      text: `Taking ${b} at level ${atE} moves ${a} to level ${atL}.${frees}${put.dropped.length ? ' The following enhancements will be dropped:' : ''}`,
+      sections: sections.length ? sections : undefined,
+      highlight: [b, a],
+      okLabel: 'OK',
+    });
+    if (!ok || !sameScreen(useStore.getState().level, level)) return;
+    finishWith(level.orig, put.build, [...(level.chain?.freed ?? []), ...put.freed], level.then);
+    return;
+  }
+  // within a Respec build's respec (or nothing at E): L is chosen again
+  const moved = takeEarlier(gd, orig, pick, later);
+  const advanced = st.advancedRespec && inRespec(gd, orig, later);
+  if (!advanced) {
+    const slotsAt = moved.freed.length ? ', as well as reinserting enhancement slots' : '';
+    const sections = [
+      ...(moved.dropped.length ? [{ heading: 'The following enhancements will be dropped:', lines: moved.dropped.map(label) }] : []),
+      ...flaggedSection(newlyFlagged(gd, orig, moved.build, [pick, later])),
+    ];
+    const ok = await st.askConfirm({
+      title: 'Change power?',
+      text: old
+        ? `Selecting ${b} instead of ${a} at level ${atE} will require that ${a} be reselected at level ${atL}${slotsAt}.`
+        : `Selecting ${b} at level ${atE} will require that a power be reselected at level ${atL}.`,
+      sections: sections.length ? sections : undefined,
+      highlight: old ? [b, a] : [b],
+      okLabel: 'OK',
+    });
+    if (!ok || !sameScreen(useStore.getState().level, level)) return;
+  } else toldDropped(moved.dropped.length);
+  const step = steps.findIndex((s) => s.picks.includes(later));
+  if (step < 0) return;
+  // A offered first at L when it can be taken there
+  const offer = old && new BuildRules(gd, moved.build).powerOption(old.power, later).state === 'available' ? offerAgain(gd, moved.build, later, old.power) : {};
+  useStore.setState({
+    level: { step, pickInStep: steps[step]!.picks.indexOf(later), mode: 'edit', sub: 'power', base: moved.build, orig: level.orig, ...offer, pendingSlots: [], chain: { freed: [...(level.chain?.freed ?? []), ...moved.freed] }, ...(level.then?.length ? { then: level.then } : {}) },
+  });
+}
+
+// Advanced Respec's auto-advance: when the last click took a power and moved on (performance.now())
+let autoAt = -Infinity;
+// a second click this soon after is the same double-click, landing on the next screen: ignored
+const AUTO_GAP_MS = 450;
+
+/**
+ * Whether an Advanced Respec click may take a power and move on: not the second click of a
+ * double-click, which would land on the next screen's bar under the pointer and take that too.
+ *
+ * @return True (and the click is counted) when it may.
+ */
+export function autoAdvanceReady(): boolean {
+  const now = performance.now();
+  if (now - autoAt < AUTO_GAP_MS) return false;
+  autoAt = now;
+  return true;
+}
+
 export const useStore = create<Store>((set, get) => ({
   // the address's server from the start, so the logo and footer don't show another one while loading
   server: (typeof location !== 'undefined' ? serverFromPath(location.pathname, import.meta.env.BASE_URL).server : undefined)?.id ?? defaultServer().id,
@@ -642,8 +1042,9 @@ export const useStore = create<Store>((set, get) => ({
     if (!s || get().view !== 'setup') return false;
     const seq = ++serverSeq;
     try {
-      const versions = await versionsFor(s);
-      const gd = await dataFor(s, resolveVersion(versions, undefined).version);
+      // a pick again of a server whose download has stalled starts it anew (New Build has no Try again)
+      const versions = await versionsFor(s, /*retry=*/ true);
+      const gd = await dataFor(s, resolveVersion(versions, undefined).version, /*retry=*/ true);
       // left New Build while it loaded, or a newer switch was asked for
       if (get().view !== 'setup' || seq !== serverSeq) return false;
       forget(get().build);
@@ -651,6 +1052,7 @@ export const useStore = create<Store>((set, get) => ({
       set({ server: s.id, versions, gd, steps: levelSteps(gd.core), build: undefined, patchNotes: null, menuOpen: false });
       return true;
     } catch (e) {
+      if (seq !== serverSeq) return false; // a switch already replaced: nothing to say
       // in plain words: the details go to the console
       console.error(`couldn't load ${s.id}'s game data`, e);
       get().notify(`Couldn't load ${s.label}'s game data. Check your connection, then try again.`);
@@ -661,21 +1063,24 @@ export const useStore = create<Store>((set, get) => ({
   view: 'loading',
   muted: (() => {
     try {
-      return localStorage.getItem('hcp.muted') === '1';
+      return startsMuted(localStorage.getItem('hcp.muted'));
     } catch {
-      return false;
+      return true;
     }
   })(),
-  musicOn: (() => {
-    try {
-      const v = localStorage.getItem('hcp.music');
-      return v === null ? defaultMusic() : v !== '0';
-    } catch {
-      return defaultMusic();
-    }
-  })(),
+  musicOn: readSwitch('hcp.music'),
 
   menuOpen: false,
+  advancedRespec: readSwitch('hcp.advancedRespec'),
+  setAdvancedRespec(on) {
+    writeSwitch('hcp.advancedRespec', on);
+    set({ advancedRespec: on });
+  },
+  enhAtCap: readSwitch('hcp.enhAtCap'),
+  setEnhAtCap(on) {
+    writeSwitch('hcp.enhAtCap', on);
+    set({ enhAtCap: on });
+  },
   setupAlign: 'Hero',
   lockFlash: null,
   poolsBlinked: false,
@@ -748,7 +1153,7 @@ export const useStore = create<Store>((set, get) => ({
   notify(text) {
     const id = (get().notice?.id ?? 0) + 1;
     set({ notice: { id, text } });
-    window.setTimeout(() => {
+    setTimeout(() => {
       if (get().notice?.id === id) set({ notice: null });
     }, 3200); // the phone toast's stay (index.css .phone-toast); desktop's text fades by 2.2s
   },
@@ -782,14 +1187,19 @@ export const useStore = create<Store>((set, get) => ({
     const { versions, gd } = get();
     const v = versions?.versions.find((x) => x.id === id);
     if (!v) return false;
+    // counted before anything else: picking the version already shown takes back a pick still loading
+    const seq = ++serverSeq;
     if (gd?.core.manifest.dataVersion === id) return true;
     const server = shownServer();
     try {
-      const data = await dataFor(server, v);
-      if (get().server !== server.id) return false; // the server changed while it loaded
+      // a pick again of a version whose download has stalled starts it anew (New Build has no Try again)
+      const data = await dataFor(server, v, /*retry=*/ true);
+      // left New Build while it loaded, the server changed, or a newer version or server was picked
+      if (get().view !== 'setup' || get().server !== server.id || seq !== serverSeq) return false;
       set({ gd: data, steps: levelSteps(data.core) });
       return true;
     } catch (e) {
+      if (seq !== serverSeq) return false; // a pick already replaced: nothing to say
       console.error(`couldn't load ${server.id}/${v.id}`, e);
       get().notify(`Couldn't load ${v.label}'s game data. Check your connection, then try again.`);
       return false;
@@ -824,7 +1234,32 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  retryLoad() {
+    // A download still coming in is kept: the new load waits for it too, and starting it over
+    // would only throw away what it has (and, for one that has no answer yet, its place in line).
+    // One that has stalled (nothing received for STALLED_MS) is given up: its requests are cancelled, so
+    // the browser lets go of them, and its files are asked for past the browser's cache
+    // (Watch.cancel). All else, what has arrived included, leaves the caches and is fetched
+    // afresh, as Try again has always done.
+    const coming = new Set<Promise<unknown>>();
+    for (const d of [...underWay]) {
+      if (d.watch.quiet(STALLED_MS)) {
+        underWay.delete(d);
+        d.watch.cancel();
+      } else coming.add(d.made);
+    }
+    const caches: Map<string, Promise<unknown>>[] = [versionCache, dataCache];
+    for (const cache of caches) {
+      for (const [key, made] of cache) if (!coming.has(made)) cache.delete(key);
+    }
+    set({ view: 'loading' });
+    void get().load();
+  },
+
   async load() {
+    const run = ++loadSeq;
+    const stale = () => run !== loadSeq;
+    const read = location.hash; // the address's link as this load reads it
     try {
       // the server the address names (/HatesCoHPlanner/Homecoming/), if any
       const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
@@ -846,6 +1281,7 @@ export const useStore = create<Store>((set, get) => ({
       ];
       let linkFailed: unknown; // why the address's share link couldn't be opened, if it couldn't
       let lastFailed: unknown; // why the remembered build couldn't be opened, if it couldn't
+      let lastUnreadable = false; // the remembered build made the check itself fail
       // a bad link falls back to the remembered build, then says so
       const tellLink = (opened: boolean) => {
         if (linkFailed === undefined) return;
@@ -864,6 +1300,7 @@ export const useStore = create<Store>((set, get) => ({
           if (k === 0) linkFailed = e;
           continue;
         }
+        if (stale()) return;
         if (!raw) continue;
         if (k === 0) linkFor = serverOf(raw);
         const server = serverById(serverOf(raw));
@@ -875,6 +1312,7 @@ export const useStore = create<Store>((set, get) => ({
         // reloaded tab keeps in its address) doesn't reopen unannounced: the server list asks first,
         // with a button that continues it. A link someone sent opens as always.
         if (AWAY_AT_LOAD && !asked && SERVERS.length > 1 && hasPicks(raw) && (k === 1 || (await isRemembered(link?.[1] ?? '', server.id)))) {
+          if (stale()) return; // a newer load asks for itself
           asked = true;
           prefetch(server, raw.dataVersion); // what Continue opens
           const id = returnAnswer ?? (await get().askServer(/*cancellable=*/ false, (named.server ?? lastServer() ?? server).id, resumeLabel(raw, server)));
@@ -888,20 +1326,51 @@ export const useStore = create<Store>((set, get) => ({
           }
           continued = server;
         }
-        const versions = await versionsFor(server);
+        let versions: GameVersions;
+        try {
+          versions = await versionsFor(server);
+        } catch (e) {
+          // A link whose server's version list won't load stops on the error screen with its
+          // address as it was, so Try again reads the link again; so does a build the player just
+          // asked to continue (Try again keeps that answer). Any other remembered build's is left
+          // like one whose data won't load (below): its server being down must not keep the
+          // player from the others.
+          if (k === 0 || continued) throw e;
+          if (stale()) return;
+          console.error(`couldn't load ${server.id}'s version list for a remembered build`, e);
+          lastFailed = e;
+          continue;
+        }
+        if (stale()) return;
         const { version, missing } = resolveVersion(versions, typeof raw.dataVersion === 'string' ? raw.dataVersion : undefined);
         let gd: GameData;
         try {
           gd = await dataFor(server, version);
         } catch (e) {
+          if (stale()) return;
           // that version's data won't load (a network hiccup): try the next build, then New Build,
           // rather than stopping on the error screen
-          console.error(`couldn't load ${server.id}/${version.id} for a remembered build`, e);
+          console.error(`couldn't load ${server.id}/${version.id} for a ${k === 0 ? 'linked' : 'remembered'} build`, e);
           if (k === 0) linkFailed = e;
           else lastFailed = e;
           continue;
         }
-        const c = checkBuild(gd, raw);
+        if (stale()) return;
+        let c: Checked;
+        try {
+          c = checkBuild(gd, raw);
+        } catch (e) {
+          // a build the check itself can't read (it should refuse it, not throw): left like one it
+          // refuses, and said so, since a stored one would otherwise fail every load until the
+          // browser's site data is cleared
+          console.error(`couldn't check a ${k === 0 ? 'linked' : 'remembered'} build`, e);
+          if (k === 0) linkFailed = e;
+          else {
+            lastFailed = e;
+            lastUnreadable = true;
+          }
+          continue;
+        }
         if (!c.build) {
           // a build started but with no power picked yet (the address keeps it from New Build's
           // first screen) is nothing to open, not a broken link
@@ -918,9 +1387,10 @@ export const useStore = create<Store>((set, get) => ({
         tellLink(true);
         return;
       }
-      // asked to continue a build that then couldn't open: say so (a link already says why), and show
-      // New Build on its server rather than asking again
-      if (continued && linkFailed === undefined && lastFailed !== undefined) {
+      // asked to continue a build that then couldn't open, or a remembered build the check couldn't
+      // read at all: say so (a link already says why), and show New Build on its server rather than
+      // asking again
+      if ((continued || lastUnreadable) && linkFailed === undefined && lastFailed !== undefined) {
         const f = describeImportFailure(lastFailed, "Your last build couldn't be opened", "Couldn't open your last build");
         void get().tell({ title: f.title, text: f.text });
       }
@@ -944,6 +1414,7 @@ export const useStore = create<Store>((set, get) => ({
       picked ??= defaultServer();
       const versions = await versionsFor(picked);
       const gd = await dataFor(picked, resolveVersion(versions, undefined).version);
+      if (stale()) return;
       // a link that couldn't open stays in the address for a reload to retry, but only on its own
       // server: shown on another (a bare Thunderspy code whose data didn't load, Homecoming picked)
       // the address would name the wrong server for it. At the site root it moves to its own
@@ -958,7 +1429,18 @@ export const useStore = create<Store>((set, get) => ({
       set({ server: picked.id, versions, gd, steps: levelSteps(gd.core), build: undefined, view: 'setup' });
       tellLink(false);
     } catch (e) {
-      set({ view: 'error', error: e instanceof Error ? e.message : String(e) });
+      if (stale()) return;
+      // in plain words: the details go to the console
+      console.error("couldn't load the planner", e);
+      set({ view: 'error', error: LOAD_FAILED });
+    } finally {
+      // a link pasted into the address while this load ran changed only the hash, and the load had
+      // read the address already: read it now, as a link pasted into an open planner (it asks
+      // before it replaces a build with work)
+      if (!stale() && linkWhileLoading && get().versions) {
+        linkWhileLoading = false;
+        if (location.hash !== read) readPastedLink();
+      }
     }
   },
 
@@ -1053,10 +1535,15 @@ export const useStore = create<Store>((set, get) => ({
   finishLevel() {
     const { gd, steps, level } = get();
     if (!gd || !level) return;
-    const b = previewBuild(gd, steps, level);
+    if (level.mode === 'edit' && level.sub === 'power') {
+      void finishSwap(gd, steps, level);
+      return;
+    }
+    const b = booked(gd, steps, level, previewBuild(gd, steps, level));
     persist(b);
     if (level.mode === 'edit') {
       set({ build: b, view: 'overview', level: undefined });
+      openNext(level.then);
       return;
     }
     // advance the wizard
@@ -1075,7 +1562,9 @@ export const useStore = create<Store>((set, get) => ({
     }
     const next = flow[step];
     if (!next) {
-      set({ build: b, view: 'overview', level: undefined });
+      const done = atOverview(gd, b);
+      persist(done);
+      set({ build: done, view: 'overview', level: undefined });
       return;
     }
     set({
@@ -1147,17 +1636,11 @@ export const useStore = create<Store>((set, get) => ({
     else get().backLevel();
   },
 
-  editPick(pickIndex) {
+  editPick(pickIndex, then) {
     const { build, steps } = get();
     if (!build) return;
-    // swapping a power that holds enhancements (itself, or the powers it grants) could leave set
-    // pieces in a power that can't take them (an AoE set in a single-target attack): empty its
-    // slots first
+    // a swap that drops enhancements or slots is asked about on Finish (finishSwap)
     const gd = get().gd;
-    if (gd && pickHoldsEnhancements(gd, build, pickIndex)) {
-      get().flashLocked(`pick:${pickIndex}`);
-      return;
-    }
     const step = steps.findIndex((s) => s.picks.includes(pickIndex));
     if (step < 0) return;
     const base = cloneBuild(build);
@@ -1174,6 +1657,7 @@ export const useStore = create<Store>((set, get) => ({
         orig: build,
         ...(gd ? offerAgain(gd, base, pickIndex, power) : { pendingPower: power }),
         pendingSlots: [],
+        ...(then?.length ? { then: [...then] } : {}),
       },
     });
   },
@@ -1206,7 +1690,7 @@ export const useStore = create<Store>((set, get) => ({
     if (!step) return;
     const now = previewBuild(gd, steps, level);
     // a respec stopped on its slot screens has every power: it ends at its respec level
-    const b = { ...now, endLevel: level.flow && !step.picks.length ? (now.respecTo ?? 49) : step.level };
+    const b = atOverview(gd, { ...now, endLevel: level.flow && !step.picks.length ? (now.respecTo ?? 49) : step.level });
     persist(b);
     set({ build: b, view: 'overview', level: undefined, menuOpen: openMenu });
   },
@@ -1337,68 +1821,75 @@ if (typeof document !== 'undefined') {
   });
 }
 
-// A share link pasted into a tab that already has the planner open only changes the hash (the
-// page does not reload), so load the linked build when the hash changes too
-if (typeof window !== 'undefined') {
-  window.addEventListener('hashchange', () => {
-    const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
-    const { versions, loadBuild, view, serverAsk, closeServerAsk, load } = useStore.getState();
-    if (!m) return;
-    if (!versions) {
-      // still loading: a question the load asked (the first visit's server list, the return
-      // question) would hold the link back until a reload, so the load starts over with it
-      if (view === 'loading' && serverAsk && !serverAsk.cancellable) {
-        closeServerAsk(null); // the waiting load stops there
-        void load();
-      }
-      return;
-    }
-    const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
-    // for the server the address names (or, naming none, the one the code's game version belongs to)
-    const decoding = named.unknown
-      ? Promise.reject(unknownServer(named.unknown))
-      : decodeShare(m[1]!).then((d) => withServer(d, shareServer(named, d.dataVersion)));
-    void decoding.then(
-      async (b) => {
-        // the build open now, after the waits above (it may have changed meanwhile)
-        const current = useStore.getState().build;
-        // the link's name isn't checked yet: shown as the planner would keep it
-        const incoming = cleanName(b.name) ? `"${cleanName(b.name)}"` : 'another build';
-        // as the Build menu does: a build with work is only replaced once the user agrees (and the
-        // link to the build already open replaces nothing)
-        if (current && hasWork(current)) {
-          if ((await encodeShare(current)) === m[1] && serverOf(current) === serverOf(b)) return;
-          const ok = await useStore.getState().askConfirm({
-            title: 'Replace the current build?',
-            text: `The link opens ${incoming}, replacing ${current.name ? `"${current.name}"` : 'your current build'}. Save it first if you want to keep it.`,
-            okLabel: 'Replace',
-          });
-          if (!ok) {
-            // keep the address on the build that stays open (on its own server's address)
-            void encodeShare(current).then((code) => history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}#b=${code}`));
-            return;
-          }
-        } else if (!current) {
-          const answer = await askOverRemembered('Replace your last build?', `Opening the link's build ${incoming}`, 'Replace');
-          if (answer !== 'go') {
-            // Cancel stays on New Build, and the declined link leaves the address so a reload
-            // doesn't open it, unless the address has moved on to another link since. A question a
-            // newer dialog replaced decided nothing: the link stays. Opening the remembered build
-            // instead writes that build's code.
-            if (answer === 'cancel' && location.hash === `#b=${m[1]}`) history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}`);
-            return;
-          }
+/**
+ * Read the share link in the address into the open planner: a link pasted into a tab that already
+ * has the planner open only changes the hash (the page does not reload), so the linked build loads
+ * when the hash changes too.
+ *
+ * While the page is still loading there is nothing to open it on yet. A question the load asked
+ * (the first visit's server list, the return question) would hold the link back until a reload, so
+ * the load starts over with it; a load still downloading reads it once it is done (load()).
+ */
+export function readPastedLink(): void {
+  const m = /#b=([A-Za-z0-9_-]+)/.exec(location.hash);
+  const { versions, loadBuild, view, serverAsk, closeServerAsk, load } = useStore.getState();
+  if (!m) return;
+  if (!versions) {
+    if (view !== 'loading') return; // the error screen: Try again reads the address
+    if (serverAsk && !serverAsk.cancellable) {
+      closeServerAsk(null); // the waiting load stops there
+      void load();
+    } else linkWhileLoading = true;
+    return;
+  }
+  const named = serverFromPath(location.pathname, import.meta.env.BASE_URL);
+  // for the server the address names (or, naming none, the one the code's game version belongs to)
+  const decoding = named.unknown
+    ? Promise.reject(unknownServer(named.unknown))
+    : decodeShare(m[1]!).then((d) => withServer(d, shareServer(named, d.dataVersion)));
+  void decoding.then(
+    async (b) => {
+      // the build open now, after the waits above (it may have changed meanwhile)
+      const current = useStore.getState().build;
+      // the link's name isn't checked yet: shown as the planner would keep it
+      const incoming = cleanName(b.name) ? `"${cleanName(b.name)}"` : 'another build';
+      // as the Build menu does: a build with work is only replaced once the user agrees (and the
+      // link to the build already open replaces nothing)
+      if (current && hasWork(current)) {
+        if ((await encodeShare(current)) === m[1] && serverOf(current) === serverOf(b)) return;
+        const keep = await saveFirstText(current);
+        const ok = await useStore.getState().askConfirm({
+          title: 'Replace the current build?',
+          text: `The link opens ${incoming}, replacing ${current.name ? `"${current.name}"` : 'your current build'}.${keep}`,
+          okLabel: 'Replace',
+        });
+        if (!ok) {
+          // keep the address on the build that stays open (on its own server's address)
+          void encodeShare(current).then((code) => history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}#b=${code}`));
+          return;
         }
-        await loadBuild(b); // loads its game version, checks it first, and says when it can't
-      },
-      (e: unknown) => {
-        // a bad link leaves the current build alone, and says why
-        const f = describeImportFailure(e, "The share link couldn't be opened", "Couldn't open the share link");
-        void useStore.getState().tell({ title: f.title, text: f.text });
-      },
-    );
-  });
+      } else if (!current) {
+        const answer = await askOverRemembered('Replace your last build?', `Opening the link's build ${incoming}`, 'Replace');
+        if (answer !== 'go') {
+          // Cancel stays on New Build, and the declined link leaves the address so a reload
+          // doesn't open it, unless the address has moved on to another link since. A question a
+          // newer dialog replaced decided nothing: the link stays. Opening the remembered build
+          // instead writes that build's code.
+          if (answer === 'cancel' && location.hash === `#b=${m[1]}`) history.replaceState(history.state, '', `${addressPath(useStore.getState())}${location.search}`);
+          return;
+        }
+      }
+      await loadBuild(b); // loads its game version, checks it first, and says when it can't
+    },
+    (e: unknown) => {
+      // a bad link leaves the current build alone, and says why
+      const f = describeImportFailure(e, "The share link couldn't be opened", "Couldn't open the share link");
+      void useStore.getState().tell({ title: f.title, text: f.text });
+    },
+  );
 }
+
+if (typeof window !== 'undefined') window.addEventListener('hashchange', readPastedLink);
 
 /**
  * What a switch changed in another tab of the site means for this one (the storage event).

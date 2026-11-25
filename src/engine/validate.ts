@@ -6,8 +6,8 @@
  */
 import type { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
-import { cleanName, toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
-import { BuildRules } from './rules.ts';
+import { cleanName, MAX_PET_SWITCHES, toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
+import { BuildRules, isArchetypeInherent } from './rules.ts';
 
 export interface Checked {
   build: Build | null; // null: unusable, start a new build
@@ -15,6 +15,25 @@ export interface Checked {
 }
 
 const isInt = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi;
+
+// a pet power's full name ("Mastermind_Pets.Protector.Force_Shield"): dotted words
+const PET_POWER_NAME = /^[A-Za-z0-9_']{1,64}(\.[A-Za-z0-9_']{1,64}){1,3}$/;
+
+/**
+ * The pet pane's switches of a build from outside: the well-formed ones (a pet power's full name
+ * and a boolean), at most MAX_PET_SWITCHES. A name the version's real pets file lacks is kept: it
+ * switches nothing, and that file may not have arrived yet.
+ *
+ * @param raw The build's petOn.
+ * @return The switches, or undefined for none.
+ */
+function petSwitches(raw: unknown): Record<string, boolean> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const kept = Object.entries(raw as Record<string, unknown>)
+    .filter((e): e is [string, boolean] => PET_POWER_NAME.test(e[0]) && typeof e[1] === 'boolean')
+    .slice(0, MAX_PET_SWITCHES);
+  return kept.length ? Object.fromEntries(kept) : undefined;
+}
 
 /**
  * Validate and repair a build.
@@ -85,7 +104,9 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
       fixes.push('dropped settings for an unknown granted power');
       continue;
     }
-    granted[pid] = { slots: slotsOk(g.slots, pw.dn), on: typeof g.on === 'boolean' ? g.on : undefined };
+    // the archetype's inherent always runs: a switch an older build stored for it isn't kept
+    const on = typeof g.on === 'boolean' && !isArchetypeInherent(gd, gd.archetype(b.at), pw) ? g.on : undefined;
+    granted[pid] = { slots: slotsOk(g.slots, pw.dn), on };
   }
 
   const out: Build = {
@@ -104,6 +125,8 @@ export function checkBuild(gd: GameData, raw: unknown): Checked {
     endLevel: isInt(b.endLevel, 0, 49) ? b.endLevel : undefined,
     respecTo: isInt(b.respecTo, 0, 49) ? b.respecTo : undefined,
   };
+  const petOn = petSwitches(b.petOn);
+  if (petOn) out.petOn = petOn;
 
   // A build left mid-way through leveling (no stop level, picks missing from some point on) is
   // treated as stopped just before its first missing pick, so it shows Continue Leveling.

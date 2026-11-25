@@ -31,6 +31,24 @@ export interface Skin {
   poolDesc: string; // pool picker description text (uiPowers.c gSmallTextAttr)
   poolHeader: string; // drawMenuHeader bottom color ("POOL POWERS")
   menuBorder: string;
+  button: [string, string]; // the planner's own buttons (.info-button): gradient top, bottom (also the glow)
+  setFill: string; // SetFrame's PSET_FRAME_CLR fill (uiPowers.c: 0000ff44 / ff000044 / 00000066)
+  // planner: hover boxes and the enhancement picker in the set frames' colour as seen on screen (the
+  // skin's background_skyline_normal averaged over the overview's panels, x 0.467 for the panels'
+  // 0x00000088, then setFill over it; the hero and villain skies are even, the Praetorian one a
+  // gradient)
+  panel: string;
+  panelBorder: string; // planner: those boxes' outline
+  select: [string, string]; // planner: drop-down lists' gradient (top, bottom; the bottom also fills their options)
+  orb: OrbColors; // planner: the overview's level strip
+}
+
+/** The overview's level orbs (a planner extra): ring and filled colour for slot and power levels. */
+export interface OrbColors {
+  slotRing: string;
+  slotFill: string;
+  pickRing: string;
+  pickFill: string;
 }
 
 /** 0xRRGGBBAA -> CSS rgba(). */
@@ -83,6 +101,12 @@ export const SKINS: Record<SkinName, Skin> = {
     poolDesc: '#00ff00',
     poolHeader: '#88b6ff',
     menuBorder: rgba(0x4f94ffff),
+    button: ['#1f6dff', '#0a3fb5'],
+    setFill: 'rgba(0,0,255,0.153)',
+    panel: 'rgba(1,5,63,0.97)',
+    panelBorder: '#3a55d6',
+    select: ['#0c2a6e', '#04102e'],
+    orb: { slotRing: '#4f94ff', slotFill: '#0b3d9a', pickRing: '#ffd200', pickFill: '#6b5400' },
   },
   villain: {
     name: 'villain',
@@ -110,6 +134,13 @@ export const SKINS: Record<SkinName, Skin> = {
     poolDesc: '#ff8800',
     poolHeader: '#aaaaaa',
     menuBorder: rgba(0xff944fff),
+    // the skin's own bar colours: selected meat over standard meat
+    button: [rgba(0xa00008ff), rgba(0x580008ff)],
+    setFill: 'rgba(255,0,0,0.153)',
+    panel: 'rgba(47,0,0,0.97)',
+    panelBorder: rgba(0xff944fff),
+    select: [rgba(0x580008ff), '#240003'],
+    orb: { slotRing: rgba(0xff944fff), slotFill: rgba(0x580008ff), pickRing: '#ffd200', pickFill: '#6b5400' },
   },
   praetorian: {
     name: 'praetorian',
@@ -137,6 +168,13 @@ export const SKINS: Record<SkinName, Skin> = {
     poolDesc: '#e8cc4c',
     poolHeader: '#ffffff',
     menuBorder: rgba(CLR_GREY),
+    // the skin's own bar colours: selected meat over standard meat
+    button: [rgba(0x989898ff), rgba(0x424242ff)],
+    setFill: 'rgba(0,0,0,0.4)',
+    panel: 'rgba(63,55,34,0.97)', // the upper third: its gold sky shows most behind the sets' frames
+    panelBorder: rgba(CLR_GREY),
+    select: [rgba(0x424242ff), '#1a1a1a'],
+    orb: { slotRing: rgba(CLR_GREY), slotFill: rgba(0x424242ff), pickRing: '#e8cc4c', pickFill: '#5a4c10' },
   },
 };
 
@@ -178,7 +216,7 @@ export function ui(path: string, skin?: Skin): string {
  * @param name The icon name from the game data.
  * @return The asset URL.
  */
-export function icon(kind: 'powers' | 'enh' | 'at' | 'origin', name: string): string {
+export function icon(kind: 'powers' | 'enh' | 'at' | 'origin' | 'salvage', name: string): string {
   const base = import.meta.env.BASE_URL;
   const at = name.indexOf(':');
   const own = at > 0 ? serverById(name.slice(0, at)) : undefined;
