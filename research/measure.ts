@@ -5,6 +5,7 @@
 import type { GameData } from '../src/data/gamedata.ts';
 import type { Archetype, BoostSet, Power } from '../src/data/types.ts';
 import { newBuild, type Build } from '../src/engine/build.ts';
+import { inCombatState } from '../src/engine/context.ts';
 import { enhKind, type EnhKind } from '../src/engine/enhance.ts';
 import { evalRequires, type EvalContext } from '../src/engine/requires.ts';
 import { BuildRules, startingSets } from '../src/engine/rules.ts';
@@ -64,7 +65,8 @@ function addInto(into: StatMap, key: string, value: number): void {
  * @return The context.
  */
 export function bonusContext(rules: BuildRules, level: number): EvalContext {
-  return { ...rules.ctx(level, rules.ownedAt(level)), targetEntType: 'player' };
+  // the set finder's combat state: in combat, travel speed and stealth counted (FinderBase)
+  return inCombatState({ ...rules.ctx(level, rules.ownedAt(level)), targetEntType: 'player' }, rules.gd, 'travel');
 }
 
 /**
@@ -77,7 +79,7 @@ export function bonusContext(rules: BuildRules, level: number): EvalContext {
  */
 export function measure(gd: GameData, b: Build, offer: Offer): BuildFacts {
   const rules = new BuildRules(gd, b);
-  const t = computeTotals(gd, rules, b);
+  const t = computeTotals(gd, rules, b, undefined, 'travel');
   const ctx = bonusContext(rules, t.level);
   const entries = rules.entries().filter((e) => e.level <= t.level);
 

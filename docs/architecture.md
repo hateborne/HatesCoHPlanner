@@ -30,6 +30,8 @@ src/
     rules.ts                 BuildRules: availability, picks, auto-granted powers, slots, issues
     requires.ts              the game's RPN requirement evaluator
     context.ts               the contexts it evaluates with, built from parts (aimedAt: the target, whole)
+    combat.ts                in combat or out of it: each version's power events, a fight's events,
+                             the suppressions it starts (combatHooks; the Out of Combat switch)
     schedule.ts              pick / slot / pool / epic level schedules
     enhance.ts               enhancement values, ED, origin and set validity, set rarity, help text
     setbonus.ts, totals.ts   set bonuses (rule of 5) and the totals panel
@@ -73,6 +75,7 @@ src/
   state/finder.ts            the set finder's store: statistics, search, results, kept swaps,
                              the shopping list
   state/finderOpen.ts        whether its pane is open (apart, so the engine loads on demand)
+  state/combat.ts            the totals' Out of Combat switch (in memory only: off on every visit)
   state/lastServer.ts        the server last shown in this browser (the server list starts on it)
   state/lastUsed.ts          when this browser last used the planner (the 4-hour return)
   state/tabTitle.ts          the browser tab's title, which follows the build's name
@@ -502,6 +505,12 @@ the totals glows under the pointer. A heading's lettering (`TitleText`) lets cli
 line under it, which its fill reaches over.
 The engine is pure and synchronous; keep React and the DOM out of it.
 
+The totals show the character in combat: what a fight stops (Hide's and pool Stealth's extra
+defense, a travel power's speed) is left out until the Out of Combat switch at the totals' top is
+turned on (`src/state/combat.ts`, in memory only: off on every visit, never in a build or a link).
+The set finder reads its own state, in combat with travel and stealth counted. The rules:
+`docs/game-rules.md`, "Combat state".
+
 What the totals count by default (`defaultsOf` in `totals.ts`; every power can be switched per
 build): autos and toggles on, clicks off, except
 - the inherent utility toggles (Rest, Walk, Sprint);
@@ -817,6 +826,8 @@ has no such column, nor one whose enhancements change no number.
   `phonepicker.spec.ts` (phone only) long presses a slotted power (its info shows the slotted
   bonuses), then in the enhancement picker reaches the last category in the scrolling row, long presses a
   set's name (its bonuses close without closing the picker) and a piece (ticks Select several).
+  `combat.spec.ts` opens a link and turns on the totals' Out of Combat switch: the totals change,
+  the link and the saved build don't, and a reload opens with it off.
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.

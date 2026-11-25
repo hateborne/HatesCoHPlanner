@@ -59,6 +59,17 @@ export interface EvalContext {
    * meter; `group target>`: a pet's villain group). Absent, or undefined for a name: 0, as before.
    */
   targetProp?(name: string): number | string | undefined;
+  /**
+   * Seconds since a power event (`Attacked source.EventTimeSince> 10 >`), as the totals' combat
+   * state has it (combatHooks). Absent, or undefined for an event: the old answers, long ago for
+   * `target.EventTimeSince>` and 0 for `source.EventTimeSince>`.
+   */
+  sinceEvent?(event: string): number | undefined;
+  /**
+   * Whether a mod's suppressions (its Suppress pairs) stop it in the combat state, given the
+   * attributes it changes (combatHooks). Absent: never.
+   */
+  suppressed?(sup: unknown, attribs?: readonly number[]): boolean;
 }
 
 type Val = number | string;
@@ -262,10 +273,17 @@ export function evalValue(tokens: readonly string[], ctx: EvalContext): number {
         continue;
       }
       case 'target.eventtimesince>':
-      case 'eventtimesince>':
-        popRaw();
-        st.push(1e9);
+      case 'eventtimesince>': {
+        const since = ctx.sinceEvent?.(popStr());
+        st.push(since ?? 1e9);
         continue;
+      }
+      case 'source.eventtimesince>': {
+        // the combat state's answer; else 0, as every unknown `>` function reads
+        const since = ctx.sinceEvent?.(popStr());
+        st.push(since ?? 0);
+        continue;
+      }
       case 'isvip?':
       case 'loyaltynodesbought>':
       case 'loyaltypointsearned>':

@@ -25,70 +25,70 @@
      "share": 0.0075,
      "lift": 0.43,
      "unit": 0.025,
-     "total": 0.1954,
+     "total": 0.1876,
      "bonus": 0.025
     },
     "def.01": {
      "share": 0.0131,
      "lift": 0.8704,
      "unit": 0.0201,
-     "total": 0.2221,
+     "total": 0.217,
      "bonus": 0.05
     },
     "def.02": {
      "share": 0.0048,
      "lift": 0.2394,
      "unit": 0.025,
-     "total": 0.1719,
+     "total": 0.1717,
      "bonus": 0
     },
     "def.03": {
      "share": 0.0137,
      "lift": 0.7969,
      "unit": 0.0158,
-     "total": 0.2229,
+     "total": 0.2133,
      "bonus": 0.0375
     },
     "def.04": {
      "share": 0.0137,
      "lift": 0.7969,
      "unit": 0.0158,
-     "total": 0.2236,
+     "total": 0.2133,
      "bonus": 0.0375
     },
     "def.05": {
      "share": 0.0089,
      "lift": 0.3197,
      "unit": 0.0156,
-     "total": 0.1829,
+     "total": 0.1729,
      "bonus": 0
     },
     "def.06": {
      "share": 0.0089,
      "lift": 0.3197,
      "unit": 0.0156,
-     "total": 0.1829,
+     "total": 0.1729,
      "bonus": 0
     },
     "def.07": {
      "share": 0.0106,
      "lift": 0.5006,
      "unit": 0.0164,
-     "total": 0.2149,
+     "total": 0.203,
      "bonus": 0.0188
     },
     "def.08": {
      "share": 0.0106,
      "lift": 0.5006,
      "unit": 0.0164,
-     "total": 0.2079,
+     "total": 0.1999,
      "bonus": 0.0188
     },
     "def.09": {
      "share": 0.0019,
      "lift": 0.1986,
      "unit": 0.0313,
-     "total": 0.1687,
+     "total": 0.1633,
      "bonus": 0
     },
     "def.10": {
@@ -716,63 +716,63 @@
      "share": 0.0049,
      "lift": 0.2986,
      "unit": 0.025,
-     "total": 0.5347,
+     "total": 0.4837,
      "bonus": 0.025
     },
     "def.01": {
      "share": 0.0217,
      "lift": 1.5093,
      "unit": 0.0219,
-     "total": 0.4887,
+     "total": 0.4424,
      "bonus": 0.0907
     },
     "def.02": {
      "share": 0.0134,
      "lift": 0.6941,
      "unit": 0.025,
-     "total": 0.4594,
+     "total": 0.406,
      "bonus": 0.075
     },
     "def.03": {
      "share": 0.0185,
      "lift": 1.0649,
      "unit": 0.0156,
-     "total": 0.4557,
+     "total": 0.4077,
      "bonus": 0.0531
     },
     "def.04": {
      "share": 0.0185,
      "lift": 1.0649,
      "unit": 0.0156,
-     "total": 0.4557,
+     "total": 0.4077,
      "bonus": 0.0531
     },
     "def.05": {
      "share": 0.0224,
      "lift": 0.8203,
      "unit": 0.0156,
-     "total": 0.4646,
+     "total": 0.4197,
      "bonus": 0.0845
     },
     "def.06": {
      "share": 0.0224,
      "lift": 0.8203,
      "unit": 0.0156,
-     "total": 0.4646,
+     "total": 0.4197,
      "bonus": 0.0845
     },
     "def.07": {
      "share": 0.0069,
      "lift": 0.3306,
      "unit": 0.0156,
-     "total": 0.4347,
+     "total": 0.3798,
      "bonus": 0.0125
     },
     "def.08": {
      "share": 0.0069,
      "lift": 0.3306,
      "unit": 0.0156,
-     "total": 0.4347,
+     "total": 0.3798,
      "bonus": 0.0125
     },
     "def.09": {
@@ -1281,63 +1281,63 @@
      "share": 0.0047,
      "lift": 0.2851,
      "unit": 0.025,
-     "total": 0.5233,
+     "total": 0.4653,
      "bonus": 0
     },
     "def.01": {
      "share": 0.0075,
      "lift": 0.5238,
      "unit": 0.0219,
-     "total": 0.6032,
+     "total": 0.5452,
      "bonus": 0
     },
     "def.02": {
      "share": 0.0033,
      "lift": 0.1683,
      "unit": 0.025,
-     "total": 0.5191,
+     "total": 0.4611,
      "bonus": 0
     },
     "def.03": {
      "share": 0.0053,
      "lift": 0.305,
      "unit": 0.0156,
-     "total": 0.4132,
+     "total": 0.3552,
      "bonus": 0
     },
     "def.04": {
      "share": 0.0053,
      "lift": 0.305,
      "unit": 0.0156,
-     "total": 0.4132,
+     "total": 0.3552,
      "bonus": 0
     },
     "def.05": {
      "share": 0.0051,
      "lift": 0.1864,
      "unit": 0.0156,
-     "total": 0.4132,
+     "total": 0.3552,
      "bonus": 0
     },
     "def.06": {
      "share": 0.0051,
      "lift": 0.1864,
      "unit": 0.0156,
-     "total": 0.4132,
+     "total": 0.3552,
      "bonus": 0
     },
     "def.07": {
      "share": 0.0059,
      "lift": 0.2834,
      "unit": 0.0156,
-     "total": 0.4145,
+     "total": 0.3566,
      "bonus": 0
     },
     "def.08": {
      "share": 0.0059,
      "lift": 0.2834,
      "unit": 0.0156,
-     "total": 0.4145,
+     "total": 0.3566,
      "bonus": 0
     },
     "def.09": {
@@ -1881,7 +1881,7 @@
      "share": 0.0112,
      "lift": 0.6015,
      "unit": 0.025,
-     "total": 0.2094,
+     "total": 0.2069,
      "bonus": 0.05
     },
     "def.01": {
@@ -1930,14 +1930,14 @@
      "share": 0.0167,
      "lift": 0.7512,
      "unit": 0.0172,
-     "total": 0.2094,
+     "total": 0.207,
      "bonus": 0.0375
     },
     "def.08": {
      "share": 0.0167,
      "lift": 0.7512,
      "unit": 0.0172,
-     "total": 0.2093,
+     "total": 0.2047,
      "bonus": 0.0375
     },
     "def.09": {
@@ -3207,14 +3207,14 @@
      "share": 0.009,
      "lift": 0.5925,
      "unit": 0.0188,
-     "total": 0.218,
+     "total": 0.2169,
      "bonus": 0.0313
     },
     "def.02": {
      "share": 0.0039,
      "lift": 0.1975,
      "unit": 0.025,
-     "total": 0.1837,
+     "total": 0.1804,
      "bonus": 0
     },
     "def.03": {
@@ -3842,35 +3842,35 @@
      "share": 0.0146,
      "lift": 0.8005,
      "unit": 0.025,
-     "total": 0.2422,
+     "total": 0.2399,
      "bonus": 0.075
     },
     "def.01": {
      "share": 0.01,
      "lift": 0.6603,
      "unit": 0.0188,
-     "total": 0.2127,
+     "total": 0.2115,
      "bonus": 0.0313
     },
     "def.02": {
      "share": 0.0058,
      "lift": 0.2749,
      "unit": 0.025,
-     "total": 0.2001,
+     "total": 0.1993,
      "bonus": 0
     },
     "def.03": {
      "share": 0.0077,
      "lift": 0.4698,
      "unit": 0.0156,
-     "total": 0.2115,
+     "total": 0.2094,
      "bonus": 0.0156
     },
     "def.04": {
      "share": 0.0077,
      "lift": 0.4698,
      "unit": 0.0156,
-     "total": 0.2115,
+     "total": 0.2094,
      "bonus": 0.0156
     },
     "def.05": {
@@ -3891,14 +3891,14 @@
      "share": 0.0141,
      "lift": 0.6962,
      "unit": 0.0172,
-     "total": 0.2303,
+     "total": 0.2275,
      "bonus": 0.0376
     },
     "def.08": {
      "share": 0.0141,
      "lift": 0.6962,
      "unit": 0.0172,
-     "total": 0.2163,
+     "total": 0.2137,
      "bonus": 0.0376
     },
     "def.09": {
@@ -4477,21 +4477,21 @@
      "share": 0.0164,
      "lift": 0.9102,
      "unit": 0.025,
-     "total": 0.2355,
+     "total": 0.2323,
      "bonus": 0.075
     },
     "def.01": {
      "share": 0.0049,
      "lift": 0.3249,
      "unit": 0.0188,
-     "total": 0.1761,
+     "total": 0.1758,
      "bonus": 0
     },
     "def.02": {
      "share": 0.0045,
      "lift": 0.2147,
      "unit": 0.025,
-     "total": 0.1523,
+     "total": 0.1448,
      "bonus": 0
     },
     "def.03": {
@@ -4526,14 +4526,14 @@
      "share": 0.0144,
      "lift": 0.718,
      "unit": 0.0172,
-     "total": 0.2065,
+     "total": 0.2052,
      "bonus": 0.0375
     },
     "def.08": {
      "share": 0.0144,
      "lift": 0.718,
      "unit": 0.0172,
-     "total": 0.2042,
+     "total": 0.2014,
      "bonus": 0.0375
     },
     "def.09": {
@@ -7519,7 +7519,7 @@
      "share": 0.0073,
      "lift": 0.4203,
      "unit": 0.025,
-     "total": 0.173,
+     "total": 0.1673,
      "bonus": 0.0345
     },
     "def.01": {
@@ -7533,56 +7533,56 @@
      "share": 0.0052,
      "lift": 0.2676,
      "unit": 0.025,
-     "total": 0.1589,
+     "total": 0.1572,
      "bonus": 0.025
     },
     "def.03": {
      "share": 0.0144,
      "lift": 0.8256,
      "unit": 0.0156,
-     "total": 0.1833,
+     "total": 0.1814,
      "bonus": 0.0406
     },
     "def.04": {
      "share": 0.0144,
      "lift": 0.8256,
      "unit": 0.0156,
-     "total": 0.1833,
+     "total": 0.1814,
      "bonus": 0.0406
     },
     "def.05": {
      "share": 0.0129,
      "lift": 0.4687,
      "unit": 0.0156,
-     "total": 0.2007,
+     "total": 0.1881,
      "bonus": 0.0313
     },
     "def.06": {
      "share": 0.0129,
      "lift": 0.4687,
      "unit": 0.0156,
-     "total": 0.2007,
+     "total": 0.1881,
      "bonus": 0.0313
     },
     "def.07": {
      "share": 0.017,
      "lift": 0.8004,
      "unit": 0.0172,
-     "total": 0.2503,
+     "total": 0.2355,
      "bonus": 0.0625
     },
     "def.08": {
      "share": 0.017,
      "lift": 0.8004,
      "unit": 0.0172,
-     "total": 0.2503,
+     "total": 0.2355,
      "bonus": 0.0625
     },
     "def.09": {
      "share": 0.0045,
      "lift": 0.4788,
      "unit": 0.0313,
-     "total": 0.1833,
+     "total": 0.1812,
      "bonus": 0
     },
     "def.10": {
@@ -8217,77 +8217,77 @@
      "share": 0.0043,
      "lift": 0.2602,
      "unit": 0.025,
-     "total": 0.2248,
+     "total": 0.181,
      "bonus": 0
     },
     "def.01": {
      "share": 0.0142,
      "lift": 0.9055,
      "unit": 0.0188,
-     "total": 0.2623,
+     "total": 0.2174,
      "bonus": 0.05
     },
     "def.02": {
      "share": 0.0103,
      "lift": 0.4971,
      "unit": 0.025,
-     "total": 0.6479,
+     "total": 0.2133,
      "bonus": 0.05
     },
     "def.03": {
      "share": 0.0234,
      "lift": 1.2821,
      "unit": 0.0156,
-     "total": 0.2859,
+     "total": 0.2424,
      "bonus": 0.0656
     },
     "def.04": {
      "share": 0.0234,
      "lift": 1.2821,
      "unit": 0.0156,
-     "total": 0.2859,
+     "total": 0.2424,
      "bonus": 0.0656
     },
     "def.05": {
      "share": 0.0138,
      "lift": 0.4868,
      "unit": 0.0156,
-     "total": 0.2454,
+     "total": 0.2019,
      "bonus": 0.025
     },
     "def.06": {
      "share": 0.0138,
      "lift": 0.4868,
      "unit": 0.0156,
-     "total": 0.2454,
+     "total": 0.2019,
      "bonus": 0.025
     },
     "def.07": {
      "share": 0.0064,
      "lift": 0.3075,
      "unit": 0.0156,
-     "total": 0.236,
+     "total": 0.1925,
      "bonus": 0
     },
     "def.08": {
      "share": 0.0064,
      "lift": 0.3075,
      "unit": 0.0156,
-     "total": 0.236,
+     "total": 0.1925,
      "bonus": 0
     },
     "def.09": {
      "share": 0.0008,
      "lift": 0.0838,
      "unit": 0.0313,
-     "total": 0.2068,
+     "total": 0.1633,
      "bonus": 0
     },
     "def.10": {
      "share": 0,
      "lift": 0,
      "unit": 0,
-     "total": 0.2107,
+     "total": 0.1672,
      "bonus": 0
     },
     "def.11": {
@@ -8908,7 +8908,7 @@
      "share": 0.0105,
      "lift": 0.7366,
      "unit": 0.0219,
-     "total": 0.218,
+     "total": 0.2178,
      "bonus": 0.05
     },
     "def.02": {
@@ -10110,7 +10110,7 @@
      "share": 0,
      "lift": 0,
      "unit": 0,
-     "total": 0,
+     "total": 32.75,
      "bonus": 0
     },
     "tohit": {

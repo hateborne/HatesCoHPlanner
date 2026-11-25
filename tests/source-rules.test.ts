@@ -38,6 +38,8 @@ function put(b: Build, i: number, power: string, pieces: SlottedEnh[] = [], on?:
 /** A set piece or IO by its short name ("Crafted_Luck_of_the_Gambler_A"), at level 50 when it has levels. */
 const io = (short: string): SlottedEnh => ({ boost: pid(gd, `Boosts.${short}.${short}`), ioLevel: 49 });
 const totals = (b: Build) => computeTotals(gd, new BuildRules(gd, b), b);
+// out of combat: a travel power's speed stops for a moment after each attack (src/engine/combat.ts)
+const moving = (b: Build) => computeTotals(gd, new BuildRules(gd, b), b, 49, /*outOfCombat=*/ true);
 const pieceIssues = (b: Build) => new BuildRules(gd, b).issues().filter((x) => x.slot !== undefined);
 
 describe('current values are the class base x (1 + mods), capped (character_attribs.c CalcCur; character_mods.c ClampMax, ClampCur)', () => {
@@ -46,7 +48,7 @@ describe('current values are the class base x (1 + mods), capped (character_attr
     put(b, 3, 'Pool.Flight.Fly');
     // Fly: Melee_SpeedFlying 1.365 x 1.1788 = +1.609062; Swift (Fitness): 1.365 x 0.1 = +0.1365
     // 1.5 x (1 + 1.609062 + 0.1365) = 4.118343, under the cap of 4.095 + 2.0475 (Fly) + 1 (Afterburner)
-    const fly = totals(b).speeds.fly;
+    const fly = moving(b).speeds.fly;
     expect(fly).toBeCloseTo(4.118343, 6);
     expect(fly * FT).toBeCloseTo(86.485, 3);
   });
@@ -55,7 +57,7 @@ describe('current values are the class base x (1 + mods), capped (character_attr
     const b = blaster();
     put(b, 3, 'Pool.Speed.Super_Speed');
     // Super Speed: Melee_SpeedRunning 3.5 x 1; Swift: 3.5 x 0.1. 1 x (1 + 3.5 + 0.35) = 4.85
-    expect(totals(b).speeds.run).toBeCloseTo(4.85, 6);
+    expect(moving(b).speeds.run).toBeCloseTo(4.85, 6);
 
     // three level-50 Run IOs: 1 x (1 + 3.5 x (1 + s) + 0.35) is past the class maximum of 6.46,
     // which Super Speed raises by 1.938 to 8.398 (the class MaxMax)
@@ -66,11 +68,11 @@ describe('current values are the class base x (1 + mods), capped (character_attr
     const run = 1 + 3.5 * (1 + s) + 0.35;
     expect(run).toBeGreaterThan(6.46);
     expect(run).toBeLessThan(8.398);
-    expect(totals(b).speeds.run).toBeCloseTo(run, 6);
+    expect(moving(b).speeds.run).toBeCloseTo(run, 6);
 
     // Speed of Sound as well: its own +1.938 would make 10.336, held at the MaxMax of 8.398 (176.4 ft/s)
     put(b, 5, 'Pool.Experimentation.Speed_of_Sound', run3);
-    expect(totals(b).speeds.run).toBeCloseTo(8.398, 6);
+    expect(moving(b).speeds.run).toBeCloseTo(8.398, 6);
   });
 
   it('caps regeneration in absolute units: 0.25 x (1 + 10.65) is under the Scrapper maximum of 7.5', () => {

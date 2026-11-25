@@ -5,6 +5,10 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ## Unreleased
 
+### Changed
+
+- The totals now show your character in combat, where powers such as Hide, Stealth, Evasive Maneuvers and the travel powers lose the bonuses a fight stops (stealth that only a mission object's click breaks, like Cloak of Darkness, still counts); turn on the new Out of Combat switch at the top of the totals to see the full bonuses.
+
 ### Fixed
 
 - Mids exports and imports no longer drop or mix up about 50 powers Mids names differently, epic powers in old Mids codes, Artillery, DOs, or attuned and other pieces Mids lacks (Mids gets the nearest piece it has). Mids files and share codes carry the build's share link in their comment, so the planner reopens them as they were, with your changes made in Mids. Mids export is best effort, and the planner says so.

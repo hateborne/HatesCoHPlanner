@@ -93,8 +93,9 @@ function sameSlots(a: readonly Slot[], b: readonly Slot[]): boolean {
 export function buildDiff(gd: GameData, rules: BuildRules, after: Build): BuildDiff {
   const afterRules = rules.reslotted(after);
   const level = rules.lastLevel();
-  const t0 = computeTotals(gd, rules, rules.b, level);
-  const t1 = computeTotals(gd, afterRules, after, level);
+  // as the search reads them: in combat, travel speed and stealth counted (FinderBase)
+  const t0 = computeTotals(gd, rules, rules.b, level, 'travel');
+  const t1 = computeTotals(gd, afterRules, after, level, 'travel');
 
   const rows: DiffRow[] = [];
   for (const key of new Set([...t0.lines.keys(), ...t1.lines.keys()])) {
