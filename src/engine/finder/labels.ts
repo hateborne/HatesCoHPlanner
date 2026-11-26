@@ -65,7 +65,7 @@ export function statLabel(gd: GameData, key: string): string {
     case 'mezres':
       return `${MEZ[rest] ?? rest} (Status Res)`;
     case 'resx':
-      // an attribute with no name here is its own name in words ("DefenseType03" stays as it is)
+      // an attribute with no name here is its own name cut into words ("EnduranceDiscount" reads "Endurance Discount")
       return `${DEBUFF[rest] ?? rest.replace(/([a-z])([A-Z])/g, '$1 $2')} (Debuff Res)`;
     case 'max':
       return `${SINGLE[rest] ?? rest} cap`;

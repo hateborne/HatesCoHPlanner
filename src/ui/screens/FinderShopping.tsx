@@ -9,6 +9,7 @@ import { CheckBar } from '../components/CheckBar.tsx';
 import { SlotRing } from '../components/Chrome.tsx';
 import { TitleText } from '../components/GameText.tsx';
 import { rarityStyle } from '../components/PowerTip.tsx';
+import { listenCopy } from '../copyEnh.ts';
 import { useHover } from '../hover.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
@@ -70,11 +71,8 @@ function hoverShop(on: { boost: number; level: number | null } | null): void {
 }
 
 /**
- * While the list shows: the browser's copy (Ctrl+C, Cmd+C) with the pointer over an enhancement
- * copies the auction house search for that enhancement alone (itemSearch), in place of nothing.
- *
- * It answers the copy event itself, so it needs no clipboard permission. Text the player has
- * selected (a search line) is still theirs to copy.
+ * While the list shows: the copy keys (Ctrl+C, Cmd+C) with the pointer over an enhancement copy
+ * the auction house search for that enhancement alone (itemSearch; listenCopy hears the keys).
  *
  * @param gd Game data.
  * @param recipes The game version's recipes, once in.
@@ -82,22 +80,22 @@ function hoverShop(on: { boost: number; level: number | null } | null): void {
  */
 function useCopyHovered(gd: GameData, recipes: RecipeData | null, onCopied: (name: string) => void): void {
   useEffect(() => {
-    const onCopy = (e: ClipboardEvent) => {
-      const over = useHover.getState().shop;
-      if (!over || !e.clipboardData || window.getSelection()?.toString()) return;
-      const text = itemSearch(gd, recipes, over).join('\n');
-      if (!text) return;
-      e.clipboardData.setData('text/plain', text);
-      e.preventDefault();
-      onCopied(gd.powerById.get(over.boost)?.dn ?? 'this enhancement');
-    };
-    document.addEventListener('copy', onCopy);
-    return () => {
-      document.removeEventListener('copy', onCopy);
-      // the list closes with no mouseleave: nothing is left to copy
-      hoverShop(null);
-    };
+    // the enhancement the last answer was for: named once its text is on the clipboard
+    let name = '';
+    return listenCopy(
+      () => {
+        const over = useHover.getState().shop;
+        const text = over ? itemSearch(gd, recipes, over).join('\n') : '';
+        if (!over || !text) return null;
+        name = gd.powerById.get(over.boost)?.dn ?? 'this enhancement';
+        return { text };
+      },
+      (ok) => (ok ? onCopied(name) : undefined),
+    );
   }, [gd, recipes, onCopied]);
+  // the list closes with no mouseleave: nothing is left to copy (apart from the effect above, so
+  // the recipes arriving under a resting pointer do not forget what it rests on)
+  useEffect(() => () => hoverShop(null), []);
 }
 
 /**

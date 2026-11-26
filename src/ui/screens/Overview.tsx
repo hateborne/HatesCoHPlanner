@@ -339,9 +339,9 @@ export function Overview({ skin }: { skin: Skin }) {
   // picks it, and nothing here changes the build meanwhile (a changed build would drop the finder's
   // kept swaps and results)
   const { picking, picked } = useFinderOpen(useShallow((s) => ({ picking: s.picking, picked: s.picked })));
-  // the copy keys over a slotted enhancement copy its recipe and salvage (with the set finder, whose
-  // shopping list this is a piece of; not under the enhancement picker, nor while the finder's powers are picked)
-  useCopyHoveredSlot(gd ?? null, SET_FINDER && !opened && !picking);
+  // the copy keys over a slotted enhancement copy its recipe and salvage (where the set finder shows:
+  // this is a piece of its shopping list; not under the enhancement picker, nor while the finder's powers are picked)
+  useCopyHoveredSlot(gd ?? null, SET_FINDER && gd?.server === DEFAULT_SERVER && !opened && !picking);
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
@@ -435,7 +435,8 @@ export function Overview({ skin }: { skin: Skin }) {
         };
         // the set finder's powers to consider: a power a set can go into is picked by its bar, and lit while picked
         const pickable = picking && rules.slottable(e.power) && e.level <= rules.lastLevel() && e.slots.some((s) => s.level <= rules.lastLevel());
-        if (picking && picked.some((x) => x.key === e.key && x.power === e.power.id)) {
+        const isPicked = picking && picked.some((x) => x.key === e.key && x.power === e.power.id);
+        if (isPicked) {
           items.push(
             <div
               key={`${e.key}:picked`}
@@ -461,7 +462,8 @@ export function Overview({ skin }: { skin: Skin }) {
             text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
             state={flagged.length ? 'unselectable' : on ? 'selected' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
-            title={flagged.map((f) => f.message).join('\n') || undefined}
+            // while picking, the bar says what a press does (the gold ring is a picture only)
+            title={picking ? (!pickable ? 'Takes no sets' : isPicked ? 'Picked for the set finder: press to let it go' : 'Press to pick it for the set finder') : flagged.map((f) => f.message).join('\n') || undefined}
             onClick={picking ? (pickable ? () => togglePickedPower({ key: e.key, power: e.power.id }) : () => flashLocked(e.key, 'Takes No Sets')) : e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
             // a refused bar has the refusal's own sound (flashLocked), not the click's as well
             clickSounds={picking && !pickable ? [] : undefined}

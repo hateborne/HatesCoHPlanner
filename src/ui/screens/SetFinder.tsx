@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Build } from '../../engine/build.ts';
@@ -822,8 +822,13 @@ function PickPowers({ skin, onDone }: { skin: Skin; onDone: () => void }) {
   const n = useFinderOpen((s) => s.picked.length);
   const color = n > 0 ? '#00ff00' : '#ff0000';
   const box = pickBox(stage);
+  // the pane that held the keyboard's place is gone: Done takes it, so it is one key away and not
+  // behind every power of the build
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => ref.current?.querySelector<HTMLElement>('button, [role="button"]')?.focus(), []);
   return (
-    <div data-testid="finder:picking" className="abs" style={{ left: 0, top: 0, zIndex: 60 }}>
+    // read out as it changes: what to do, and how many powers are picked
+    <div ref={ref} data-testid="finder:picking" className="abs" role="status" aria-label={`Select powers to consider: ${n} picked. Done or Escape returns to the set finder.`} style={{ left: 0, top: 0, zIndex: 60 }}>
       {stage.phone ? <div className="abs" style={{ left: 0, top: box.y - 10, width: stage.w, height: box.h + 20, background: '#000' }} /> : null}
       <FlatFrame x={box.x} y={box.y} w={box.w} h={box.h} sc={S} border={color} back="#000" />
       <GameText font="game_12" scale={S} x={box.x + box.w / 2} y={box.y + box.h / 2} centerY align="center" colors={[color, color]} text="Select Powers to Consider" z={2} />

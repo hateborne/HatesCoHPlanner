@@ -609,9 +609,13 @@ button {
 .switch-hover:hover {
   filter: brightness(1.35);
 }
-/* ...but not while the set finder's powers are picked on the overview (PickGuard): no switch works then */
+/* ...but not while the set finder's powers are picked on the overview (PickGuard): no switch works
+   then, though its hover text and long press stay */
 .pick-guard .switch-hover {
-  pointer-events: none;
+  cursor: default !important;
+}
+.pick-guard .switch-hover:hover {
+  filter: none;
 }
 
 .switch-box:has(> input:focus-visible) {

@@ -598,8 +598,8 @@ screens are described under "Set finder (screens)" below. The parts:
   moves, and `atCap` marks a stat at its cap (defense: the 45% soft cap, which has no cap to
   show; max HP glows standing at its cap, regeneration and recovery only past theirs). A damage
   bonus of a type none of the build's own powers deal is marked `unused` (`dealt.ts`: the powers'
-  effects, the powers they execute and their pseudo-pets; not Brawl, not slotted procs). A pet's
-  damage is in files the app never waits for, and a real pet's attacks are not read: with a power
+  effects, the powers they execute or redirect to and their pets, pseudo-pets and real ones; not
+  Brawl, not slotted procs). A pet's damage is in files the app never waits for: with a power
   that makes a pet whose powers are not at hand nothing is marked. Each damage proc a changed
   power holds on either side is a row of its own: its damage a minute, named with its rate
   (`procs.ts`, `docs/game-rules.md`; two of one proc and type in a power are one row). A click
@@ -656,8 +656,9 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   phone's row of tabs), since a changed build drops the finder's kept swaps and results and
   another screen would leave the picking behind: the level orbs, the title's rename, New Build,
   Save / Share, Origin / Alignment, the slot rings, the on/off switches, the exclusive toggles'
-  boxes and the pet pane's switches do nothing, and the phone's menu stays shut (`Settings.tsx`).
-  Scrolling, hover texts and long presses stay.
+  boxes and the pet pane's switches do nothing, and the phone's menu stays shut and says why
+  (`Settings.tsx`). Done takes the keyboard's focus as the pane goes, the box is read out with
+  the count of picked powers, and each bar's text says what a press does. Scrolling, hover texts and long presses stay.
   The build's name stops short of the box (`pickBox`, `finderPick.ts`). Done or Escape brings the pane back with the picked
   powers as the search's `powers` (none picked: every power again); the box then reads "N powers
   selected" with a line under it saying only those are searched, and picking a set type or every
@@ -741,19 +742,23 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
     Homecoming the owner got 8 names (123 characters) into the box and no further one
     (checked in game, November 17, 2026).
   - Desktop only: with the pointer over an enhancement of the list (a piece's ring, or a row
-    under Recipes or Enhancements; `hover.ts`: `shop`), the browser's copy (Ctrl+C, Cmd+C)
-    copies the search for that enhancement alone (`itemSearch`): its recipe and that recipe's
-    salvage as one auction house line, or its own name when no recipe makes it. The list answers
-    the page's `copy` event (`useCopyHovered`), so no clipboard permission is asked; text the
-    player has selected is copied as usual. A line under the sets says what was copied.
-  - The same on the build overview (`src/ui/copyEnh.ts`, `useCopyHoveredSlot`; desktop, and only
-    where the set finder shows: `SET_FINDER`): with the pointer over a filled slot (`ringTip`),
+    under Recipes or Enhancements; `hover.ts`: `shop`), the copy keys (Ctrl+C, Cmd+C) copy the
+    search for that enhancement alone (`itemSearch`): its recipe and that recipe's salvage as one
+    auction house line (two for a long recipe), or its own name when no recipe makes it. A line
+    under the sets says what was copied.
+  - The same on the build overview (`useCopyHoveredSlot`; desktop, and only where the set finder
+    shows: `SET_FINDER` and a Homecoming build): with the pointer over a filled slot (`ringTip`),
     the copy keys copy that enhancement's search, at the level it is slotted at. The recipes are
-    downloaded when a filled slot is first pointed at, apart from the finder's own copy of them
-    (the finder's code is not loaded for this); keys pressed before they are in write the text
-    when they arrive, and a download that failed copies nothing and is tried again. An
-    enhancement in no set (a common IO, an SO) has no list and keeps the browser's own copy.
-    Nothing is heard under the enhancement picker or while the finder's powers are picked.
+    downloaded when a filled slot is pointed at, apart from the finder's own copy of them (the
+    finder's code is not loaded for this); keys pressed before they are in copy when they arrive.
+    A copy that fails (the download, or the browser refusing the clipboard) is said in the red
+    notice, and the download is tried again at the next slot. An enhancement in no set (a common
+    IO, an SO) has no list and keeps the browser's own copy. Nothing is heard under the
+    enhancement picker or while the finder's powers are picked.
+  - Both hear the keys through `listenCopy` (`src/ui/copyEnh.ts`): the page's `copy` event is
+    answered with the text itself, which asks no clipboard permission; a browser that sends no
+    `copy` event with nothing selected still sends the key press, and the text is then written
+    to the clipboard directly. Selected text, and a text box in use, are the browser's to copy.
 
 The numbers marked `UNCONFIRMED` in the finder's source are defaults waiting for the owner's
 ruling.
@@ -922,6 +927,10 @@ has no such column, nor one whose enhancements change no number.
   `phonepicker.spec.ts` (phone only) long presses a slotted power (its info shows the slotted
   bonuses), then in the enhancement picker reaches the last category in the scrolling row, long presses a
   set's name (its bonuses close without closing the picker) and a piece (ticks Select several).
+  `finder.spec.ts` opens the set finder on an imported build: "Select powers..." leaves an
+  overview where only the power bars (and the phone's tabs) answer, a bar picks its power and
+  Done brings the pane back kept to it; on the desktop, Ctrl+C over a slot puts that
+  enhancement's recipe and salvage on the clipboard.
   `combat.spec.ts` opens a link and turns on the totals' Out of Combat switch: the totals change,
   the link and the saved build don't, and a reload opens with it off.
 

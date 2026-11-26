@@ -146,8 +146,10 @@ function PhoneMenu({ skin }: { skin: Skin }) {
   // while the set finder's powers are picked on the overview nothing may change the build or leave
   // the screen (Overview.tsx, PickGuard): the menu stays shut
   const picking = useFinderOpen((s) => s.picking);
+  const notify = useStore((s) => s.notify);
   const toggle = () => {
-    if (picking) return;
+    // refused out loud: a button that does nothing reads as broken
+    if (picking) return notify('Finish selecting powers first: press Done.');
     // a refusal toast still showing would cover the pane's first row
     if (!open) dismissNotice();
     setOpen(!open);

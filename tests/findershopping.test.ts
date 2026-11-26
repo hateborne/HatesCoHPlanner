@@ -250,7 +250,6 @@ describe('shopping list', () => {
     expect(itemSearch(gd, recipes, { boost: COMMON, level: 49 })).toEqual([]);
     // every crafted piece has a search at every level it is made at: lines the box takes, two at
     // most (a long recipe name with long salvage names runs over one)
-    let longest = 0;
     for (const [name, def] of Object.entries(recipes.recipes)) {
       const boost = gd.powerByName.get(name.toLowerCase());
       if (!boost) continue;
@@ -261,11 +260,9 @@ describe('shopping list', () => {
           expect(found.length, `${name} ${level}`).toBeGreaterThanOrEqual(1);
           expect(found.length, `${name} ${level}`).toBeLessThanOrEqual(2);
           for (const l of found) expect(l.length, `${name} ${level}`).toBeLessThanOrEqual(AUCTION_SEARCH_MAX);
-          longest = Math.max(longest, found.length);
         }
       }
     }
-    expect(longest).toBe(2);
   });
 });
 

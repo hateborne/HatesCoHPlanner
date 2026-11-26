@@ -163,8 +163,8 @@ export function buildDiff(gd: GameData, rules: BuildRules, after: Build, dealt: 
   const rech1 = t1.lines.get('rech')?.capped ?? 0;
   const holdsProc = (slots: readonly Slot[]) =>
     slots.some((s) => {
-      // an enhancement the data doesn't know holds no proc
-      const boost = s.enh ? gd.powerById.get(s.enh.boost) : undefined;
+      // an enhancement the data doesn't know holds no proc, nor does a slot placed past the level worked out
+      const boost = s.enh && s.level <= level ? gd.powerById.get(s.enh.boost) : undefined;
       return !!boost && isDamageProc(gd, boost);
     });
   const powers: PowerDiff[] = [];
