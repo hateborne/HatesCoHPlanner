@@ -376,7 +376,7 @@ describe('Thunderspy and the other server', () => {
     expect(notReadableOn(thunderspy, 'x'.repeat(2_000_001)).reason).toBe("it's too long to be a build (over 2 MB of text)");
   });
 
-  it("keeps the Patron note on Thunderspy, without Homecoming's wiki link", () => {
+  it('gives no Patron note on Thunderspy: its text and link describe Homecoming', () => {
     const patron = ts.core.archetypes
       .flatMap((a) => ts.setsInCategory(a.cats.epic))
       .find((s) => isPatronSet(ts, s));
@@ -385,8 +385,8 @@ describe('Thunderspy and the other server', () => {
     const at = ts.core.archetypes.find((a) => ts.setsInCategory(a.cats.epic).includes(patron!))!;
     const b = walkTo50(ts, at.n, startingSets(ts, at.cats.pri, at)[0]!.id, startingSets(ts, at.cats.sec, at)[0]!.id);
     const note = patronArcNote(ts, { ...b, alignment: 'Hero' }, patron!);
-    expect(note?.text).toContain('is a Patron pool');
-    expect(note?.link).toBeUndefined();
+    expect(note).toBeNull();
+    expect(patronArcNote(ts, { ...b, alignment: 'Praetorian' }, patron!)).toBeNull();
   });
 });
 

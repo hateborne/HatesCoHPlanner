@@ -797,7 +797,7 @@ has no such column, nor one whose enhancements change no number.
 - Questions use `askConfirm` (or `askChoices` for rows of options, `askThreeWay` for two ways
   forward and Cancel; Cancel has the keyboard focus, so Escape and Enter stay); messages with one OK button
   use `tell` (its optional `link` makes one phrase open a fixed https page in a new tab, as the
-  hero Patron note links the wiki; its optional `wait` greys OK for that many seconds, counted down
+  Patron note links the wiki; its optional `wait` greys OK for that many seconds, counted down
   on the button); refusals use `notify` or `flashLocked`. The server list is `askServer`.
 - Hover state (tooltips, glows) lives in `src/ui/hover.ts`, so a hover redraws only the piece it
   affects, never a whole screen. Keep it that way.

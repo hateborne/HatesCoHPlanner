@@ -79,19 +79,23 @@ export function isPatronSet(gd: GameData, set: Powerset): boolean {
 export const PATRON_WIKI = 'https://homecoming.wiki/wiki/Patron_Power_Pools';
 
 /**
- * What a hero build choosing a Patron pool should know: in game the pools unlock through a villain
- * story arc.
+ * What a build choosing a Patron pool should know: in game the pools unlock through a villain story
+ * arc, and a non-villain has to change alignment to run it.
+ *
+ * Homecoming only: the arcs' level and the wiki page describe Homecoming's game (the owner's choice,
+ * November 25, 2026).
  *
  * @param gd Game data.
  * @param b The build.
  * @param set The epic set chosen.
- * @return The note, or null when there is nothing to say (not a Patron pool, or not a hero). On
- *   Homecoming "Patron pool" links to its wiki's page; the page describes Homecoming's game only.
+ * @return The note, with "Patron Power Pools" linking to the wiki's page, or null when there is
+ *   nothing to say (not a Patron pool, or another server).
  */
-export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: string; link?: { phrase: string; href: string } } | null {
-  if (toAlignment(b.alignment) !== 'Hero' || !isPatronSet(gd, set)) return null;
-  const text = `${set.dn} is a Patron pool. In the game, Patron pools unlock by finishing a Patron story arc, a villain arc offered from level 35. Heroes have to switch to villain to run it; the pools stay unlocked after switching back.`;
-  return gd.server === DEFAULT_SERVER ? { text, link: { phrase: 'Patron pool', href: PATRON_WIKI } } : { text };
+export function patronArcNote(gd: GameData, b: Build, set: Powerset): { text: string; link: { phrase: string; href: string } } | null {
+  if (gd.server !== DEFAULT_SERVER || !isPatronSet(gd, set)) return null;
+  const arcs = 'Patron Power Pools are unlocked by completing villain-only story arcs that unlock at level 35.';
+  const text = toAlignment(b.alignment) === 'Villain' ? arcs : `${arcs} One must change alignment to unlock these permanently.`;
+  return { text, link: { phrase: 'Patron Power Pools', href: PATRON_WIKI } };
 }
 
 /**
