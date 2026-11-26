@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { S, snap, SY } from '../skin/metrics.ts';
 import { ui, type Skin } from '../skin/skin.ts';
 import { Sprite } from './Sprite.tsx';
@@ -31,7 +31,8 @@ export function GameScroll({ skin, left, top, width, height, barX, barTop = top,
   const [st, setSt] = useState({ off: 0, doc: 0 });
   // the offset and height last handed to setSt
   const last = useRef(st);
-  const update = () => {
+  // reads only refs: the same function every render (the content's ResizeObserver keeps the first)
+  const update = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const off = el.scrollTop;
@@ -43,8 +44,17 @@ export function GameScroll({ skin, left, top, width, height, barX, barTop = top,
     if (off === last.current.off && doc === last.current.doc) return;
     last.current = { off, doc };
     setSt(last.current);
-  };
+  }, []);
   useLayoutEffect(update);
+  // the content can grow or shrink without this redrawing (a section opened in it): measure again then
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = content.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [update]);
   const color = scrollColor(skin);
   const s = S;
   // virtual units, as the client computes them
@@ -85,7 +95,10 @@ export function GameScroll({ skin, left, top, width, height, barX, barTop = top,
   return (
     <>
       <div ref={ref} className="abs noscrollbar" onScroll={update} style={{ left: snap(left), top: snap(top), width: snap(left + width) - snap(left), height: snap(top + height) - snap(top), overflowY: 'auto', overflowX: 'hidden' }}>
-        {children}
+        {/* display: flow-root keeps the content's own margins inside it, so it measures what scrolls */}
+        <div ref={content} style={{ display: 'flow-root' }}>
+          {children}
+        </div>
       </div>
       {show ? (
         <>

@@ -33,6 +33,13 @@ export const IMPORT_LIMITS = {
     sets: 32,
     powers: 512,
     slots: 64, // on one power
+    // the Hero Plan text posted above a legacy |MxDz; chunk (a real one is ~60 lines of ~200 characters)
+    plan: {
+      chars: 64_000, // read from its start
+      line: 400, // characters: a longer line is skipped
+      entries: 200, // power lines kept
+      name: 80, // characters of a power's name: a longer one is skipped
+    },
   },
   // a /build_save file (about 60 power lines with the inherents)
   buildTxt: {

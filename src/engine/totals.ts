@@ -12,7 +12,8 @@ import { GameData } from '../data/gamedata.ts';
 import type { Archetype, BoostSet, Effect, Mod, Power } from '../data/types.ts';
 import type { Build, Slot } from './build.ts';
 import { boostMods, effectiveness, powerStrength } from './enhance.ts';
-import { aimedAt } from './context.ts';
+import type { CombatState } from './combat.ts';
+import { aimedAt, inCombatState } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import type { BuildEntry, BuildRules } from './rules.ts';
 import { earnedBonuses, type EarnedBonus } from './setbonus.ts';
@@ -234,7 +235,8 @@ export function walkEffects(effs: Effect[] | undefined, ctx: EvalContext, fn: (m
     if (!onCharacter(e)) continue;
     if (e.tag?.some((t) => t.toLowerCase() === 'stealthcrit')) continue;
     if (!evalRequires(e.req, ctx)) continue;
-    for (const m of e.m ?? []) if (standing(m)) fn(m);
+    // a mod stopped by an event the combat state has just set off (Hide's defense in combat)
+    for (const m of e.m ?? []) if (standing(m) && !(m.sup && ctx.suppressed?.(m.sup, m.a))) fn(m);
     walkEffects(e.sub, ctx, fn);
   }
 }
@@ -490,12 +492,15 @@ export interface TotalsState {
  * @param rules Rules view of the build.
  * @param b The build (for per-power toggles).
  * @param level 0-based level (default 49, or the exemplar or stop level).
+ * @param outOfCombat The combat state (CombatState): by default the character is in combat, so a
+ *   bonus a fight stops isn't counted; true counts it (the Out of Combat switch), and 'travel'
+ *   counts only travel speed and stealth (the set finder).
  * @return The state.
  */
-export function totalsState(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): TotalsState {
+export function totalsState(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49, outOfCombat: CombatState = false): TotalsState {
   const owned = rules.ownedAt(level);
   // what the totals count lands on the character: the target is a player, and is the source
-  const ctx = aimedAt(rules.ctx(level, owned), { type: 'player', isSource: true });
+  const ctx = inCombatState(aimedAt(rules.ctx(level, owned), { type: 'player', isSource: true }), gd, outOfCombat);
   // defaults from the whole build, so which form of an exclusive group runs doesn't change with
   // the level the totals are worked out at
   const defaults = defaultsOf(gd, rules.entries());
@@ -641,14 +646,6 @@ export function lineCap(at: ClassTables, key: string, level: number): number | u
   return undefined;
 }
 
-/**
- * Compute totals for a build.
- *
- * @param gd Game data.
- * @param rules Rules view of the build.
- * @param b The build (for per-power toggles).
- * @param level 0-based level to compute at (default 49, or the exemplar level).
- */
 /** Totals lines being summed: each made on first use, every contribution kept as a source. */
 export interface LineBook {
   lines: Map<string, StatLine>;
@@ -676,14 +673,25 @@ export function lineBook(): LineBook {
   return { lines, line, add };
 }
 
-export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49): Totals {
+/**
+ * Compute totals for a build.
+ *
+ * @param gd Game data.
+ * @param rules Rules view of the build.
+ * @param b The build (for per-power toggles).
+ * @param level 0-based level to compute at (default 49, or the exemplar level).
+ * @param outOfCombat The combat state (totalsState): in combat by default, out of it for the
+ *   Out of Combat switch, or travelling for the set finder.
+ * @return The totals.
+ */
+export function computeTotals(gd: GameData, rules: BuildRules, b: Build, level = b.exemplar ?? b.endLevel ?? 49, outOfCombat: CombatState = false): Totals {
   const at: Archetype = rules.at;
   const { lines, line, add } = lineBook();
 
   const damageName = (i: number) => damageNameOf(gd, i);
   const defenseName = (i: number) => defenseNameOf(gd, i);
 
-  const st = totalsState(gd, rules, b, level);
+  const st = totalsState(gd, rules, b, level, outOfCombat);
   const { ctx, entries, isOn } = st;
 
   const apply = (p: Power, m: Mod, strength: Map<number, number> | null, srcName: string) => {

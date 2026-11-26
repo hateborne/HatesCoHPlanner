@@ -85,8 +85,9 @@ export class FinderBase {
     this.at = rules.at;
     this.last = rules.lastLevel();
     this.level = this.last;
-    this.totals = computeTotals(gd, rules, build, this.level);
-    this.st = totalsState(gd, rules, build, this.level);
+    // in combat, but with travel speed and stealth counted: a travel power is slotted for getting about
+    this.totals = computeTotals(gd, rules, build, this.level, 'travel');
+    this.st = totalsState(gd, rules, build, this.level, 'travel');
     this.vecs = new BonusVecs(gd, this.at, this.level, this.st.ctx);
     for (const bn of this.totals.bonuses) this.copies.set(bn.power.id, (this.copies.get(bn.power.id) ?? 0) + 1);
     this.endDiscount = gd.attribByName.get('EnduranceDiscount') ?? 368;

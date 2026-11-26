@@ -1,0 +1,167 @@
+Invulnerability / Super Strength Tanker, from the retail-forum archive thread "Inv/SS please review."
+(Mids' Hero Designer 1.952 post: Hero Plan text, then the legacy MxDz data chunk): https://forumarchive.cityofheroes.dev/index.php?/topic/125988-invss-please-review/
+
+Hero Plan by Mids' Hero Designer 1.952
+
+http://www.cohplanner.com/
+
+
+
+Click this DataLink to open the build!
+
+
+
+inv ss soft cap: Level 50 Natural Tanker
+
+Primary Power Set: Invulnerability
+
+Secondary Power Set: Super Strength
+
+Power Pool: Leaping
+
+Power Pool: Speed
+
+Power Pool: Fighting
+
+Ancillary Pool: Energy Mastery
+
+
+
+Hero Profile:
+
+Level 1: Temp Invulnerability -- RctvArm-ResDam/EndRdx(A), RctvArm-ResDam/Rchg(3), RctvArm-ResDam(3), RctvArm-ResDam/EndRdx/Rchg(5)
+
+Level 1: Jab -- S'ngH'mkr-Acc/Dmg(A), S'ngH'mkr-Dmg/EndRdx(5), S'ngH'mkr-Dmg/Rchg(7), S'ngH'mkr-Dmg/EndRdx/Rchg(7)
+
+Level 2: Dull Pain -- Dct'dW-Rchg(A), Dct'dW-Heal(19), Dct'dW-Heal/EndRdx(33), Dct'dW-Heal/Rchg(34), Dct'dW-Heal/EndRdx/Rchg(34)
+
+Level 4: Haymaker -- S'ngH'mkr-Acc/Dmg(A), S'ngH'mkr-Dmg/EndRdx(9), S'ngH'mkr-Dmg/Rchg(9), S'ngH'mkr-Dmg/EndRdx/Rchg(11)
+
+Level 6: Resist Physical Damage -- RctvArm-ResDam/EndRdx/Rchg(A), RctvArm-ResDam(25), RctvArm-ResDam/Rchg(25), RctvArm-ResDam/EndRdx(27)
+
+Level 8: Unyielding -- RctvArm-ResDam(A), RctvArm-ResDam/EndRdx(11), RctvArm-ResDam/Rchg(13), RctvArm-ResDam/EndRdx/Rchg(13)
+
+Level 10: Taunt -- Zinger-Acc/Rchg(A), Zinger-Taunt/Rchg/Rng(15), Zinger-Taunt/Rchg(15), Zinger-Taunt(17), Zinger-Dam%(17), Zinger-Taunt/Rng(19)
+
+Level 12: Combat Jumping -- LkGmblr-Rchg+(A)
+
+Level 14: Super Jump -- Jump-I(A)
+
+Level 16: Hasten -- RechRdx-I(A), RechRdx-I(33)
+
+Level 18: Invincibility -- DefBuff-I(A), DefBuff-I(23), Rec'dRet-ToHit(34), Rec'dRet-ToHit/Rchg(36), Rec'dRet-Pcptn(46)
+
+Level 20: Knockout Blow -- S'ngH'mkr-Acc/Dmg(A), S'ngH'mkr-Dmg/EndRdx(21), S'ngH'mkr-Dmg/Rchg(21), S'ngH'mkr-Dmg/EndRdx/Rchg(23)
+
+Level 22: Resist Elements -- RctvArm-ResDam(A), RctvArm-ResDam/EndRdx(27), RctvArm-ResDam/Rchg(29), RctvArm-ResDam/EndRdx/Rchg(29)
+
+Level 24: Resist Energies -- ResDam-I(A), ResDam-I(40)
+
+Level 26: Tough Hide -- DefBuff-I(A), DefBuff-I(31)
+
+Level 28: Rage -- AdjTgt-ToHit(A), AdjTgt-ToHit/Rchg(37), AdjTgt-Rchg(37), AdjTgt-ToHit/EndRdx/Rchg(37)
+
+Level 30: Boxing -- S'ngH'mkr-Acc/Dmg(A), S'ngH'mkr-Dmg/EndRdx(31), S'ngH'mkr-Dmg/EndRdx/Rchg(31), S'ngH'mkr-Dmg/Rchg(33)
+
+Level 32: Unstoppable -- RechRdx-I(A)
+
+Level 35: Tough -- S'fstPrt-ResDam/Def+(A), ResDam-I(36), EndRdx-I(36)
+
+Level 38: Foot Stomp -- Oblit-Acc/Dmg/EndRdx/Rchg(A), Oblit-%Dam(39), Oblit-Dmg(39), Oblit-Dmg/Rchg(39), Oblit-Acc/Rchg(40), Oblit-Acc/Dmg/Rchg(40)
+
+Level 41: Weave -- DefBuff-I(A), DefBuff-I(42), EndRdx-I(46)
+
+Level 44: Conserve Power -- RechRdx-I(A)
+
+Level 47: Physical Perfection -- Efficacy-EndMod/Acc/Rchg(A), Efficacy-EndMod/Acc(48), Efficacy-EndMod/EndRdx(48), Efficacy-EndMod(48), Efficacy-EndMod/Rchg(50)
+
+Level 49: Spring Attack -- Dmg-I(A), Dmg-I(50), EndRdx-I(50)
+
+------------
+
+Level 2: Swift -- Run-I(A)
+
+Level 2: Health -- Dct'dW-Heal(A), Dct'dW-Heal/EndRdx(43), Dct'dW-EndRdx/Rchg(45), Dct'dW-Heal/Rchg(45), Dct'dW-Heal/EndRdx/Rchg(45)
+
+Level 2: Hurdle -- Jump-I(A)
+
+Level 2: Stamina -- Efficacy-EndMod(A), Efficacy-EndMod/Rchg(42), Efficacy-EndMod/Acc/Rchg(42), Efficacy-EndMod/EndRdx(43), Efficacy-EndMod/Acc(43), Efficacy-Acc/Rchg(46)
+
+Level 1: Brawl -- Empty(A)
+
+Level 1: Gauntlet 
+
+Level 1: Sprint -- Empty(A)
+
+Level 2: Rest -- Empty(A)
+
+Level 4: Ninja Run 
+
+------------
+
+Set Bonus Totals:12.5% DamageBuff(Smashing)
+12.5% DamageBuff(Lethal)
+12.5% DamageBuff(Fire)
+12.5% DamageBuff(Cold)
+12.5% DamageBuff(Energy)
+12.5% DamageBuff(Negative)
+12.5% DamageBuff(Toxic)
+12.5% DamageBuff(Psionic)
+22.38% Defense(Smashing)
+22.38% Defense(Lethal)
+3% Defense(Fire)
+3% Defense(Cold)
+8% Defense(Energy)
+8% Defense(Negative)
+3% Defense(Psionic)
+15.5% Defense(Melee)
+5.5% Defense(Ranged)
+3% Defense(AoE)
+32.5% Enhancement(RechargeTime)
+8% Enhancement(Heal)
+18% Enhancement(Accuracy)
+105.4 HP (5.63%) HitPoints
+MezResist(Immobilize) 13.2%
+MezResist(Stun) 2.2%
+MezResist(Terrorized) 7.15%
+20% Perception
+3% (0.05 End/sec) Recovery
+36% (2.81 HP/sec) Regeneration
+2.52% Resistance(Fire)
+2.52% Resistance(Cold)
+1.26% Resistance(Energy)
+1.26% Resistance(Negative)
+
+
+
+
+
+
+
+
+	Code:
+| Copy & Paste this data into Mids' Hero Designer to view the build |
+|-------------------------------------------------------------------|
+|MxDz;1480;691;1382;HEX;|
+|78DA65944B531A411485BB610882184514343C04D42808A324EEB388266505D02AB|
+|3A726A6C5A9500361062B2EB3CF739D87A9CA2E8BFC98BC93FF90C73E0F7267EE11|
+|93620AF87A6E5FCE3D7DBB676A773622AFAFDEBD2464E472CBB0EDC675C3BAA5BAC|
+|1BAE1F4BA464BD0356E5A8759DBCEDAED7D27BB67748214CB705A6343ED2BCB56FA|
+|9675D86B59AA6BDC305BA67394C4744DB594D2777B1D1AEF3A5D65359D83E89675A|
+|068E8E82783C84EBBDDD2ABCAE8985633ECDDEC7694BA39E60DAF98CD038726A2DE|
+|1D15326D93ABC4363BE69EBE49659B478D9A613BAA7B3443E616E9FB36443FD2B5D|
+|FF78B0C0D9634E19B03F34C2DC72C85052ECAAD12F23457639EA983DBCC7721C88A|
+|BE26776854D1C4E436337B8D99AB8175A64EFA7EE8FBA13F02FD11E887A1FF86F40|
+|3F01D80BF19F89D81FF7358CF07CA0D2237889C30E6226E6E9A088D55F210620F81|
+|D06D9FE7EB6C076C33272CD0664E769971DAF151AE2346A7794D098A8DB19E185B1|
+|65E2C4FB1718EC9F1158E65C14F543C2AA5D7B76886637130F784EAC43431FF9459|
+|7EC6AC90E718FA1643DFA6D0B729F42D8EBEBD27FD69F4623AFF7F9F52E85B0ABDF|
+|848B909CE9589127B58023FD3DC2CE666E12F035E203F496FF7FBFEE473F238A589|
+|8563EED1C24BF00553522FD2F09E86F70CBC67E0398B357CA19A73E8E51CFAE5A7F|
+|FE7D9872F9FE0BD9C773DBACC71CE7A98CFBABBA78B7DAE7BDE3D692E7FE2FE3773|
+|E917F887A991FE32F497B1BE025886FE3149ADC0D70A7CBDA24DD7F97F9AFE80B55|
+|61F818FC17BCCCA7DF4222EC41AEBF8D6D2AC5339216A7DA5B5489C3159E6D8F7D3|
+|9826F18C15F18C95AA209EB5129EB56FFFEAE05CFE388D0524BC15E0AD803514E1B|
+|D88B5941F3253DAE0DD401FBA44411BBC59FAC5A1D9B5A1486528727128B23E14A9|
+|0E4576B4C19B47482F129A18BC57FA7F01F428DEFB|
+|-------------------------------------------------------------------|

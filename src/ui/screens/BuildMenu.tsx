@@ -24,6 +24,8 @@ const btn = (left: number, top: number) => ({ left, top, position: 'absolute' as
 
 // the most gaps the "Imported, with gaps" list shows before "... and N more"
 const MAX_GAP_LINES = 40;
+// shown with every Mids export: the planner doesn't chase what Mids lacks
+const MIDS_BEST_EFFORT = "Warning: Mids export is best effort. Mids doesn't have all of the game's powers and enhancements, so the build may not match in Mids.";
 
 /** @return An issue as a line for the patch-move dialog ("Knockout Blow: Available at level 24"). */
 function issueLine(gd: GameData, b: Build, i: Issue): string {
@@ -367,10 +369,10 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
                   className="info-button"
                   style={{ position: 'static' }}
                   onClick={() =>
-                    void buildData().then(({ bgd, map }) => {
-                      const { mbd, warnings } = exportMbd(bgd, map, build);
+                    void buildData().then(async ({ bgd, map }) => {
+                      const { mbd, warnings } = exportMbd(bgd, map, build, await shareLink(build));
                       download(`${build.name || 'build'}.mbd`, JSON.stringify(mbd, null, 2));
-                      say('Mids .mbd downloaded.', ...warnings.map((w) => `Warning: ${w}`));
+                      say('Mids .mbd downloaded.', MIDS_BEST_EFFORT, ...warnings.map((w) => `Warning: ${w}`));
                     }).catch(midsFailed)
                   }
                 >
@@ -383,9 +385,9 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
                   style={{ position: 'static' }}
                   onClick={() =>
                     void buildData().then(async ({ bgd, map }) => {
-                      const { mbd, warnings } = exportMbd(bgd, map, build);
+                      const { mbd, warnings } = exportMbd(bgd, map, build, await shareLink(build));
                       await copy(await mbdToChunk(mbd), 'Mids share code');
-                      if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
+                      setStatus((s) => [...s, MIDS_BEST_EFFORT, ...warnings.map((w) => `Warning: ${w}`)]);
                     }).catch(midsFailed)
                   }
                 >
@@ -400,7 +402,7 @@ export function BuildMenu({ skin, onClose }: { skin: Skin; onClose: () => void }
                     void buildData().then(async ({ bgd, map }) => {
                       const { text: code, warnings } = await buildToMxDz(bgd, map, build);
                       await copy(code, 'Legacy Mids (MxDz) code');
-                      if (warnings.length) setStatus((s) => [...s, ...warnings.map((w) => `Warning: ${w}`)]);
+                      setStatus((s) => [...s, MIDS_BEST_EFFORT, ...warnings.map((w) => `Warning: ${w}`)]);
                     }).catch(midsFailed)
                   }
                 >

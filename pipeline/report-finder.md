@@ -1,6 +1,6 @@
 # Build research report -- data i28p4
 
-Generated 2026-11-22T18:40:10Z (UTC) by `npm run research`. Aggregates only; the builds themselves stay on the machine that ran it.
+Generated 2026-11-26T04:08:28Z (UTC) by `npm run research`. Aggregates only; the builds themselves stay on the machine that ran it.
 
 ## What was read
 
@@ -14,7 +14,7 @@ Generated 2026-11-22T18:40:10Z (UTC) by `npm run research`. Aggregates only; the
 | Made on another server's Mids database (left out) | 3 |
 | Could not be imported | 0 |
 | Imported | 3101 |
-| Imported without a picked power that could not be placed (counted without it) | 422 |
+| Imported without a picked power that could not be placed (counted without it) | 95 |
 | Too empty to count (under 12 powers or 20 enhancements) | 0 |
 | Copies of another build (left out) | 25 |
 | Farm builds (left out of the values) | 60 |
@@ -40,35 +40,20 @@ Builds by Mids database year:
 
 ## Import check
 
-Every build was imported against i28p4 with the planner's own Mids importer. 2701 of 3101 imported with no warning.
+Every build was imported against i28p4 with the planner's own Mids importer. 3031 of 3101 imported with no warning.
 
 ### Builds that could not be imported
 
 _None._
 
-### Warning: a power is not in the game data (479)
+### Warning: a power is not in the game data (70)
 
 | Item | Times |
 |---|---|
-| Psychokinetic Barrier (Psionic Armor) | 117 |
-| Reactive Regeneration (Regeneration) | 74 |
-| Power of the Depths (Marine Affinity) | 68 |
 | Multipurpose Missiles (Pyrotechnic Control) | 46 |
-| Sparkling Chain (Pyrotechnic Control) | 45 |
-| Tri Cannon (Arsenal Control) | 27 |
-| Conserve Power (Energy Aura) | 19 |
-| Power Armor (Energy Aura) | 19 |
-| Smoke Canister (Arsenal Control) | 13 |
-| Sound Booster (Sonic Melee) | 9 |
-| Umbral Torrent (Dark Mastery Controller) | 9 |
-| Elbow Strike (Arsenal Assault) | 8 |
-| Rime (Ice Armor) | 6 |
-| FRT Fate Sealed (Fortunata Teamwork) | 4 |
-| Assassins Whisper (Sonic Melee) | 3 |
+| Reconstruction (Willpower) | 10 |
+| Blinding Powder (Ninjitsu) | 9 |
 | Bo Ryaku Clone (Ninjitsu) | 3 |
-| Build Up (Ice Mastery DefCorr) | 3 |
-| NW Pain Tolerance (Widow Teamwork) | 2 |
-| Umbral Torrent (Dark Mastery Dominator) | 2 |
 | Quantum Acceleration (Inherent) | 1 |
 | Up to the Challenge Clone (Willpower) | 1 |
 
@@ -76,27 +61,26 @@ _None._
 
 | Repair | Times |
 |---|---|
-| unfinished build: stopped at level N | 422 |
+| unfinished build: stopped at level N | 95 |
 | Explosive Blast: dropped a bad slot | 4 |
 
-### Rule issues the planner flags (615 builds)
+### Rule issues the planner flags (550 builds)
 
 A Mids build can break a game rule Mids does not check, so these are leads to look into, not proven planner faults.
 
 | Issue | Builds |
 |---|---|
 | Level N has N slots placed but grants N | 316 |
-| This power can't take it | 192 |
-| Available at level N | 157 |
+| This power can't take it | 125 |
+| Available at level N | 116 |
 | Not available to this archetype | 19 |
-| Not allowed at this level | 17 |
 | Choose a secondary power now | 14 |
 | Slot is below the power level | 12 |
 | Choose a primary power now | 6 |
-| Requirements not met | 2 |
 | Made at levels N to N | 1 |
 | No powers available yet | 1 |
 | Relative level goes up to +N | 1 |
+| Requirements not met | 1 |
 
 ## Builds counted, by archetype
 
@@ -124,36 +108,36 @@ Share: the mean share of a build's set bonuses spent on the stat, counted in typ
 
 | Stat | Share | Offered | Lift |
 |---|---|---|---|
-| Max HP | 14.1% | 9.9% | 1.42 |
-| Recharge | 12.3% | 7.9% | 1.56 |
+| Max HP | 14.1% | 9.9% | 1.43 |
+| Recharge | 12.4% | 7.9% | 1.57 |
 | Damage resistance | 11.9% | 12.5% | 0.95 |
-| Status resistance | 11.0% | 12.3% | 0.90 |
-| Recovery | 9.5% | 9.2% | 1.03 |
-| Defense | 9.4% | 19.4% | 0.48 |
-| Accuracy | 6.8% | 5.5% | 1.23 |
-| Regeneration | 6.2% | 5.4% | 1.16 |
-| Damage | 5.0% | 7.0% | 0.71 |
-| Debuff resistance | 4.7% | 2.1% | 2.17 |
-| Endurance Reduction | 3.0% | 0.8% | 3.75 |
-| Movement | 2.3% | 3.1% | 0.73 |
-| Max Endurance | 2.3% | 3.6% | 0.63 |
-| Range | 0.9% | 0.5% | 1.72 |
-| Status protection | 0.8% | 0.7% | 1.09 |
+| Status resistance | 11.0% | 12.3% | 0.89 |
+| Recovery | 9.5% | 9.2% | 1.04 |
+| Defense | 9.4% | 19.5% | 0.48 |
+| Accuracy | 6.8% | 5.5% | 1.22 |
+| Regeneration | 6.3% | 5.4% | 1.16 |
+| Damage | 4.9% | 6.9% | 0.71 |
+| Debuff resistance | 4.6% | 2.1% | 2.15 |
+| Endurance Reduction | 3.0% | 0.8% | 3.81 |
+| Movement | 2.3% | 3.2% | 0.72 |
+| Max Endurance | 2.2% | 3.6% | 0.62 |
+| Range | 0.9% | 0.5% | 1.71 |
+| Status protection | 0.7% | 0.7% | 1.08 |
 
 ### Defense, type by type
 
 | Stat | Share | Lift | Typical bonus | Median total | Median from set bonuses |
 |---|---|---|---|---|---|
-| Smashing (Def) | 1.4% | 0.80 | 1.6% | 22.3% | 3.3% |
-| Lethal (Def) | 1.4% | 0.80 | 1.6% | 22.4% | 3.3% |
-| Melee (Def) | 1.3% | 0.87 | 2.0% | 22.2% | 5.0% |
-| Energy (Def) | 1.1% | 0.50 | 1.6% | 21.5% | 1.9% |
-| Negative Energy (Def) | 1.1% | 0.50 | 1.6% | 20.8% | 1.9% |
-| Fire (Def) | 0.9% | 0.32 | 1.6% | 18.1% | 0.0% |
-| Cold (Def) | 0.9% | 0.32 | 1.6% | 18.1% | 0.0% |
-| Ranged (Def) | 0.8% | 0.43 | 2.5% | 19.5% | 2.5% |
+| Smashing (Def) | 1.4% | 0.80 | 1.6% | 21.3% | 3.8% |
+| Lethal (Def) | 1.4% | 0.80 | 1.6% | 21.3% | 3.8% |
+| Melee (Def) | 1.3% | 0.87 | 2.0% | 21.7% | 5.0% |
+| Energy (Def) | 1.1% | 0.50 | 1.6% | 20.3% | 1.9% |
+| Negative Energy (Def) | 1.1% | 0.50 | 1.6% | 20.0% | 1.9% |
+| Fire (Def) | 0.9% | 0.32 | 1.6% | 17.3% | 0.0% |
+| Cold (Def) | 0.9% | 0.32 | 1.6% | 17.3% | 0.0% |
+| Ranged (Def) | 0.8% | 0.43 | 2.5% | 18.8% | 2.5% |
 | Area (Def) | 0.5% | 0.24 | 2.5% | 17.2% | 0.0% |
-| Psionic (Def) | 0.2% | 0.20 | 3.1% | 16.9% | 0.0% |
+| Psionic (Def) | 0.2% | 0.20 | 3.1% | 16.3% | 0.0% |
 | Toxic (Def) | 0.0% | 0.00 | 0.0% | 16.2% | 0.0% |
 
 ### Damage resistance, type by type
@@ -161,41 +145,41 @@ Share: the mean share of a build's set bonuses spent on the stat, counted in typ
 | Stat | Share | Lift | Typical bonus | Median total | Median from set bonuses |
 |---|---|---|---|---|---|
 | Fire (Dmg Res) | 2.2% | 1.24 | 3.0% | 35.0% | 17.3% |
-| Cold (Dmg Res) | 2.2% | 1.24 | 3.0% | 32.8% | 17.3% |
-| Smashing (Dmg Res) | 1.7% | 1.00 | 2.3% | 57.5% | 9.8% |
-| Lethal (Dmg Res) | 1.7% | 1.00 | 2.3% | 57.1% | 9.8% |
-| Energy (Dmg Res) | 1.6% | 1.48 | 2.7% | 32.0% | 9.8% |
-| Negative Energy (Dmg Res) | 1.6% | 1.48 | 2.7% | 27.4% | 9.8% |
+| Cold (Dmg Res) | 2.2% | 1.24 | 3.0% | 33.3% | 17.3% |
+| Smashing (Dmg Res) | 1.7% | 1.00 | 2.3% | 57.9% | 9.8% |
+| Lethal (Dmg Res) | 1.7% | 1.00 | 2.3% | 57.4% | 9.8% |
+| Energy (Dmg Res) | 1.6% | 1.46 | 2.7% | 32.0% | 9.8% |
+| Negative Energy (Dmg Res) | 1.6% | 1.46 | 2.7% | 27.4% | 9.8% |
 | Psionic (Dmg Res) | 0.4% | 0.24 | 3.8% | 18.9% | 3.0% |
-| Toxic (Dmg Res) | 0.4% | 0.24 | 3.8% | 26.1% | 3.0% |
+| Toxic (Dmg Res) | 0.4% | 0.24 | 3.8% | 26.3% | 3.0% |
 
 ### Everything else
 
 | Stat | Share | Lift | Typical bonus | Median total | Median from set bonuses |
 |---|---|---|---|---|---|
-| Max HP | 14.1% | 1.42 | 19.2 | 1466.8 | 158.1 |
-| Recharge | 12.3% | 1.56 | 6.3% | 141.3% | 48.8% |
-| Recovery | 9.5% | 1.03 | 2.1% | 83.4% | 12.5% |
-| Accuracy | 6.8% | 1.23 | 9.0% | 39.0% | 38.0% |
-| Regeneration | 6.2% | 1.16 | 10.0% | 124.4% | 38.0% |
-| Endurance Reduction | 3.0% | 3.75 | 3.0% | 6.3% | 6.3% |
-| Max Endurance | 2.3% | 0.63 | 1.80 | 3.60 | 2.25 |
-| Confuse (Status Res) | 1.8% | 0.90 | 5.0% | 86.3% | 65.0% |
-| Hold (Status Res) | 1.8% | 0.90 | 5.0% | 75.0% | 65.0% |
-| Immobilize (Status Res) | 1.8% | 0.90 | 5.0% | 116.8% | 65.0% |
-| Sleep (Status Res) | 1.8% | 0.90 | 5.0% | 127.2% | 65.0% |
-| Stun (Status Res) | 1.8% | 0.90 | 5.0% | 73.8% | 65.0% |
-| Terrorize (Status Res) | 1.8% | 0.90 | 5.0% | 86.3% | 65.0% |
-| RechargeTime (Debuff Res) | 1.6% | 2.17 | 10.0% | 60.0% | 30.0% |
-| SpeedFlying (Debuff Res) | 1.6% | 2.17 | 10.0% | 55.0% | 30.0% |
-| SpeedRunning (Debuff Res) | 1.6% | 2.17 | 10.0% | 55.0% | 30.0% |
-| Range | 0.9% | 1.72 | 5.9% | 0.0% | 0.0% |
-| Fly Speed | 0.6% | 0.73 | 6.0% | 21.1% | 7.5% |
-| Jump Height | 0.6% | 0.73 | 6.0% | 374.3% | 7.5% |
-| Jump Speed | 0.6% | 0.73 | 6.0% | 133.0% | 7.5% |
-| Run Speed | 0.6% | 0.73 | 6.0% | 57.5% | 7.5% |
-| Knockback (Status Prot) | 0.4% | 1.09 | 3.00 | 9.00 | 0.00 |
-| Knockup (Status Prot) | 0.4% | 1.09 | 3.00 | 9.00 | 0.00 |
+| Max HP | 14.1% | 1.43 | 19.2 | 1504.6 | 160.4 |
+| Recharge | 12.4% | 1.57 | 6.3% | 143.8% | 48.8% |
+| Recovery | 9.5% | 1.04 | 2.1% | 83.9% | 13.0% |
+| Accuracy | 6.8% | 1.22 | 9.0% | 39.0% | 38.0% |
+| Regeneration | 6.3% | 1.16 | 10.0% | 151.6% | 38.0% |
+| Endurance Reduction | 3.0% | 3.81 | 3.0% | 6.3% | 6.3% |
+| Max Endurance | 2.2% | 0.62 | 1.80 | 3.60 | 2.25 |
+| Confuse (Status Res) | 1.8% | 0.89 | 5.0% | 86.3% | 66.3% |
+| Hold (Status Res) | 1.8% | 0.89 | 5.0% | 76.3% | 66.3% |
+| Immobilize (Status Res) | 1.8% | 0.89 | 5.0% | 117.3% | 66.3% |
+| Sleep (Status Res) | 1.8% | 0.89 | 5.0% | 128.1% | 66.3% |
+| Stun (Status Res) | 1.8% | 0.89 | 5.0% | 73.8% | 66.3% |
+| Terrorize (Status Res) | 1.8% | 0.89 | 5.0% | 87.5% | 66.3% |
+| Recharge (Debuff Res) | 1.5% | 2.15 | 10.0% | 60.0% | 30.0% |
+| Fly Speed (Debuff Res) | 1.5% | 2.15 | 10.0% | 55.0% | 30.0% |
+| Run Speed (Debuff Res) | 1.5% | 2.15 | 10.0% | 55.0% | 30.0% |
+| Range | 0.9% | 1.71 | 5.9% | 0.0% | 0.0% |
+| Fly Speed | 0.6% | 0.72 | 6.0% | 21.1% | 7.5% |
+| Jump Height | 0.6% | 0.72 | 6.0% | 374.3% | 7.5% |
+| Jump Speed | 0.6% | 0.72 | 6.0% | 133.0% | 7.5% |
+| Run Speed | 0.6% | 0.72 | 6.0% | 57.5% | 7.5% |
+| Knockback (Status Prot) | 0.4% | 1.08 | 3.00 | 9.00 | 0.00 |
+| Knockup (Status Prot) | 0.4% | 1.08 | 3.00 | 9.00 | 0.00 |
 
 ## Stat values by archetype
 
@@ -203,20 +187,20 @@ Share of set-bonus spend by stat family, largest first (lift in brackets).
 
 | Archetype | Builds | Top families |
 |---|---|---|
-| Tanker | 402 | Damage resistance 16.0% (1.23), Max HP 15.7% (1.59), Status resistance 15.3% (1.18), Recharge 9.8% (1.30), Recovery 7.7% (0.83), Regeneration 7.0% (1.25) |
-| Brute | 347 | Damage resistance 16.4% (1.27), Status resistance 15.0% (1.17), Max HP 14.6% (1.47), Defense 9.9% (0.51), Recovery 8.6% (0.98), Recharge 8.1% (1.05) |
-| Sentinel | 338 | Max HP 14.9% (1.49), Defense 12.3% (0.64), Recharge 11.9% (1.48), Damage resistance 10.8% (0.88), Status resistance 9.8% (0.82), Recovery 8.1% (0.86) |
-| Scrapper | 320 | Max HP 15.9% (1.62), Damage resistance 13.4% (1.08), Status resistance 11.8% (0.99), Recharge 10.6% (1.33), Defense 10.4% (0.53), Recovery 9.8% (1.01) |
+| Tanker | 402 | Damage resistance 15.9% (1.22), Max HP 15.8% (1.60), Status resistance 15.2% (1.18), Recharge 10.1% (1.34), Recovery 7.8% (0.84), Regeneration 7.0% (1.25) |
+| Brute | 347 | Damage resistance 16.3% (1.26), Status resistance 14.9% (1.16), Max HP 14.6% (1.47), Defense 9.8% (0.51), Recovery 8.6% (0.98), Recharge 8.3% (1.08) |
+| Sentinel | 338 | Max HP 14.9% (1.49), Defense 12.3% (0.64), Recharge 12.0% (1.49), Damage resistance 10.7% (0.89), Status resistance 9.7% (0.82), Recovery 8.1% (0.87) |
+| Scrapper | 320 | Max HP 15.9% (1.62), Damage resistance 13.3% (1.08), Status resistance 11.8% (0.98), Recharge 10.8% (1.35), Defense 10.4% (0.53), Recovery 9.9% (1.02) |
 | Blaster | 290 | Recharge 13.1% (1.63), Max HP 13.0% (1.30), Defense 10.1% (0.52), Recovery 9.4% (1.00), Damage resistance 8.5% (0.70), Status resistance 7.9% (0.66) |
-| Controller | 257 | Recharge 15.0% (1.93), Max HP 13.9% (1.38), Recovery 10.6% (1.20), Damage resistance 9.5% (0.76), Status resistance 8.8% (0.72), Defense 8.8% (0.44) |
-| Stalker | 247 | Damage resistance 13.2% (1.07), Status resistance 11.8% (0.98), Max HP 11.7% (1.24), Defense 11.7% (0.59), Recharge 11.4% (1.43), Recovery 10.3% (1.06) |
-| Dominator | 243 | Recharge 14.9% (1.92), Recovery 13.8% (1.56), Defense 10.5% (0.54), Accuracy 10.4% (1.83), Max HP 9.9% (0.98), Damage resistance 9.4% (0.74) |
-| Corruptor | 219 | Recharge 14.9% (1.84), Max HP 14.6% (1.46), Recovery 9.8% (1.10), Defense 9.1% (0.47), Damage resistance 9.0% (0.74), Status resistance 8.6% (0.71) |
-| Defender | 188 | Recharge 15.9% (1.98), Max HP 14.9% (1.50), Recovery 9.8% (1.04), Damage resistance 8.5% (0.70), Status resistance 8.0% (0.67), Defense 7.5% (0.39) |
-| Mastermind | 134 | Recharge 15.7% (1.97), Max HP 14.8% (1.49), Damage resistance 11.5% (0.88), Status resistance 10.9% (0.84), Accuracy 7.8% (1.40), Recovery 7.5% (0.86) |
+| Controller | 257 | Recharge 15.1% (1.94), Max HP 13.8% (1.37), Recovery 10.7% (1.21), Damage resistance 9.5% (0.76), Status resistance 8.8% (0.72), Defense 8.8% (0.45) |
+| Stalker | 247 | Damage resistance 13.1% (1.07), Max HP 11.8% (1.25), Status resistance 11.8% (0.98), Defense 11.7% (0.59), Recharge 11.5% (1.44), Recovery 10.3% (1.06) |
+| Dominator | 243 | Recharge 15.0% (1.93), Recovery 13.8% (1.55), Defense 10.7% (0.54), Accuracy 10.4% (1.84), Max HP 9.8% (0.97), Damage resistance 9.4% (0.74) |
+| Corruptor | 219 | Recharge 15.0% (1.85), Max HP 14.7% (1.46), Recovery 9.8% (1.11), Defense 9.1% (0.46), Damage resistance 9.0% (0.73), Status resistance 8.5% (0.71) |
+| Defender | 188 | Recharge 16.0% (1.99), Max HP 14.9% (1.50), Recovery 9.9% (1.05), Damage resistance 8.5% (0.70), Status resistance 8.0% (0.67), Defense 7.5% (0.39) |
+| Mastermind | 134 | Recharge 15.8% (1.97), Max HP 14.9% (1.50), Damage resistance 11.4% (0.87), Status resistance 10.9% (0.83), Accuracy 7.8% (1.39), Recovery 7.6% (0.87) |
 | Arachnos Soldier | 12 | Max HP 14.8% (1.43), Defense 13.9% (0.73), Recharge 10.5% (1.37), Damage resistance 9.8% (0.80), Status resistance 9.2% (0.77), Recovery 8.9% (0.96) |
 | Peacebringer | 8 | Max HP 14.1% (1.42), Recharge 14.0% (1.76), Recovery 13.2% (1.41), Damage resistance 10.4% (0.83), Defense 10.2% (0.53), Status resistance 10.1% (0.82) |
-| Arachnos Widow | 7 | Max HP 16.2% (1.56), Recharge 13.3% (1.74), Recovery 12.0% (1.29), Damage resistance 9.0% (0.73), Accuracy 8.8% (1.60), Damage 8.3% (1.36) |
+| Arachnos Widow | 7 | Max HP 16.3% (1.57), Recharge 13.6% (1.78), Recovery 12.2% (1.30), Damage resistance 9.0% (0.73), Accuracy 8.6% (1.56), Status resistance 8.2% (0.68) |
 | Warshade | 4 | Recharge 18.1% (2.26), Max HP 18.0% (1.82), Recovery 11.1% (1.19), Accuracy 8.7% (1.57), Damage resistance 8.3% (0.67), Status resistance 7.9% (0.64) |
 
 ## Needs: status protection added with enhancements
@@ -282,31 +266,31 @@ The 40 sets most often slotted for a bonus (2 or more pieces in one power).
 
 | Set | Rarity | Category | Builds | x2 | x3 | x4 | x5 | x6 |
 |---|---|---|---|---|---|---|---|---|
+| Preventive Medicine | Rare | Healing | 67.5% | 91 | 644 | 12 | 0 | 1598 |
 | Shield Wall | PvP | Defense Sets | 66.0% | 2 | 42 | 3028 | 1 | 2 |
-| Preventive Medicine | Rare | Healing | 65.5% | 91 | 644 | 11 | 0 | 1490 |
-| Unbreakable Guard | Rare | Resist Damage | 58.1% | 24 | 696 | 984 | 17 | 171 |
+| Unbreakable Guard | Rare | Resist Damage | 58.2% | 24 | 696 | 984 | 17 | 172 |
 | Performance Shifter | Rare | Endurance Modification | 57.2% | 944 | 786 | 0 | 1 | 2 |
 | Reactive Defenses | Rare | Defense Sets | 54.4% | 10 | 21 | 7 | 3 | 1607 |
 | Apocalypse | Very Rare | Ranged Damage | 50.7% | 4 | 631 | 0 | 691 | 206 |
 | Superior Avalanche | Superior Winter Pack | Melee AoE Damage | 50.4% | 1113 | 13 | 0 | 34 | 402 |
-| Superior Blistering Cold | Superior Winter Pack | Melee Damage | 48.0% | 1243 | 0 | 1 | 9 | 268 |
+| Superior Blistering Cold | Superior Winter Pack | Melee Damage | 48.2% | 1248 | 0 | 1 | 9 | 268 |
 | Armageddon | Very Rare | Melee AoE Damage | 43.4% | 5 | 44 | 3 | 969 | 289 |
-| Superior Frozen Blast | Superior Winter Pack | Ranged AoE Damage | 41.3% | 1217 | 1 | 0 | 3 | 48 |
+| Superior Frozen Blast | Superior Winter Pack | Ranged AoE Damage | 41.5% | 1227 | 1 | 0 | 3 | 48 |
 | Gladiator's Armor | PvP | Resist Damage | 39.1% | 80 | 718 | 504 | 38 | 23 |
 | Titanium Coating | Uncommon | Resist Damage | 38.0% | 75 | 930 | 1017 | 0 | 8 |
 | Superior Winter's Bite | Superior Winter Pack | Ranged Damage | 36.4% | 395 | 354 | 0 | 4 | 347 |
-| Hecatomb | Very Rare | Melee Damage | 36.0% | 8 | 67 | 3 | 761 | 248 |
+| Hecatomb | Very Rare | Melee Damage | 36.1% | 8 | 67 | 3 | 761 | 249 |
 | Luck of the Gambler | Rare | Defense Sets | 31.3% | 259 | 1294 | 77 | 18 | 209 |
-| Efficacy Adaptor | Uncommon | Endurance Modification | 27.4% | 2 | 938 | 0 | 0 | 1 |
+| Panacea | PvP | Healing | 27.5% | 20 | 15 | 0 | 989 | 3 |
+| Efficacy Adaptor | Uncommon | Endurance Modification | 27.4% | 2 | 939 | 0 | 0 | 1 |
 | Ragnarok | Very Rare | Ranged AoE Damage | 23.7% | 4 | 6 | 1 | 700 | 5 |
-| Panacea | PvP | Healing | 22.8% | 20 | 15 | 0 | 843 | 3 |
-| Positron's Blast | Rare | Ranged AoE Damage | 21.2% | 18 | 76 | 1 | 618 | 39 |
+| Positron's Blast | Rare | Ranged AoE Damage | 21.2% | 18 | 76 | 1 | 619 | 39 |
 | Synapse's Shock | Rare | Endurance Modification | 19.1% | 17 | 476 | 1 | 63 | 34 |
 | Aegis | Rare | Resist Damage | 16.3% | 6 | 170 | 207 | 50 | 110 |
 | Adjusted Targeting | Uncommon | To Hit Buff | 15.0% | 3 | 406 | 5 | 43 | 2 |
-| Expedient Reinforcement | Rare | Recharge Intensive Pets | 14.2% | 2 | 4 | 259 | 0 | 200 |
+| Expedient Reinforcement | Rare | Recharge Intensive Pets | 14.8% | 2 | 4 | 267 | 0 | 210 |
 | Scirocco's Dervish | Rare | Melee AoE Damage | 12.5% | 3 | 242 | 136 | 19 | 5 |
-| Doctored Wounds | Uncommon | Healing | 12.4% | 2 | 454 | 0 | 11 | 71 |
+| Doctored Wounds | Uncommon | Healing | 12.4% | 2 | 470 | 0 | 11 | 77 |
 | Ice Mistral's Torment | Rare | Slow Movement | 12.3% | 5 | 78 | 1 | 248 | 60 |
 | Thunderstrike | Uncommon | Ranged Damage | 12.1% | 3 | 377 | 1 | 1 | 16 |
 | Superior Gauntleted Fist | Superior Archetype Origin | Tanker Archetype Sets | 11.5% | 1 | 163 | 3 | 18 | 185 |
@@ -321,19 +305,19 @@ The 40 sets most often slotted for a bonus (2 or more pieces in one power).
 | Bombardment | Rare | Ranged AoE Damage | 9.6% | 8 | 39 | 2 | 169 | 175 |
 | Unbreakable Constraint | Very Rare | Holds | 9.6% | 26 | 2 | 0 | 259 | 3 |
 | Impervious Skin | Rare | Resist Damage | 9.5% | 5 | 274 | 2 | 7 | 0 |
-| Superior Defiant Barrage | Superior Archetype Origin | Blaster Archetype Sets | 9.4% | 1 | 0 | 0 | 142 | 141 |
+| Annihilation | Rare | Ranged AoE Damage | 9.4% | 28 | 250 | 0 | 1 | 13 |
 
 Set placements by rarity:
 
 | Rarity | Placements | Share |
 |---|---|---|
-| Rare | 17773 | 37.6% |
-| Uncommon | 6767 | 14.3% |
-| PvP | 5924 | 12.5% |
-| Very Rare | 5717 | 12.1% |
-| Superior Winter Pack | 5478 | 11.6% |
-| Superior Archetype Origin | 5305 | 11.2% |
-| Event | 242 | 0.5% |
+| Rare | 17922 | 37.6% |
+| Uncommon | 6808 | 14.3% |
+| PvP | 6070 | 12.7% |
+| Very Rare | 5749 | 12.1% |
+| Superior Winter Pack | 5493 | 11.5% |
+| Superior Archetype Origin | 5312 | 11.2% |
+| Event | 243 | 0.5% |
 | Archetype Origin | 25 | 0.1% |
 | Winter Pack | 1 | 0.0% |
 
@@ -347,16 +331,16 @@ Pieces whose own global effect a build earns, by share of builds.
 |---|---|
 | Luck of the Gambler: Defense/Increased Global Recharge Speed | 99.9% |
 | Reactive Defenses: Scaling Damage Resistance | 95.8% |
-| Steadfast Protection: Resistance/Defense | 88.8% |
+| Steadfast Protection: Resistance/Defense | 89.0% |
 | Gladiator's Armor: Teleportation Protection, +Def(All) | 88.4% |
+| Preventive Medicine: Absorb Proc | 85.6% |
 | Shield Wall: Teleportation Protection, +Res(All) | 85.4% |
-| Preventive Medicine: Absorb Proc | 82.1% |
 | Unbreakable Guard: +7.5% Max HP | 67.4% |
 | Winter's Gift: Slow Resistance (20%) | 63.8% |
 | Synapse's Shock: Endurance Modification/Increased Run Speed | 43.6% |
 | Aegis: Psionic/Status Resistance | 21.0% |
 | Impervious Skin: Status Resistance/Regeneration | 16.1% |
-| Expedient Reinforcement: Resist Bonus Aura for Pets | 11.6% |
+| Expedient Reinforcement: Resist Bonus Aura for Pets | 12.0% |
 | Superior Brute's Fury: Recharge/Fury Bonus | 10.8% |
 | Impervium Armor: Psionic Resistance | 10.5% |
 | Superior Scrapper's Strike: Recharge/Critical Hit Bonus | 10.5% |
@@ -380,13 +364,13 @@ Pieces whose own global effect a build earns, by share of builds.
 
 | Measure | Value |
 |---|---|
-| Slots per build (mean) | 97.0 |
-| Slots left empty | 5.4% |
-| Set pieces that are attuned | 17.7% |
-| Enhancements carrying boosters | 10.7% |
+| Slots per build (mean) | 97.7 |
+| Slots left empty | 5.3% |
+| Set pieces that are attuned | 17.6% |
+| Enhancements carrying boosters | 10.9% |
 | Bonus copies lost to the rule of 5, per build (mean) | 0.05 |
 | Builds slotting at least one proc | 100.0% |
-| Procs per build (mean) | 15.9 |
+| Procs per build (mean) | 16.0 |
 
 Enhancements by family:
 
@@ -401,7 +385,7 @@ Crafted set pieces by level (the 8 most used):
 
 | Level | Share |
 |---|---|
-| 50 | 86.7% |
+| 50 | 86.8% |
 | 30 | 7.8% |
 | 40 | 4.0% |
 | 20 | 1.4% |

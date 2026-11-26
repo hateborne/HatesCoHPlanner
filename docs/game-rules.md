@@ -86,10 +86,16 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   character keeps them after changing alignment. A plan takes the accolade as earned
   (`PLANNED_BADGES` in `src/engine/rules.ts`), so the pools are offered at level 35; every other
   badge counts as not earned. Arachnos Soldiers and Widows have no other epic pools. Patron arcs
-  are villain content, so a Hero build choosing a Patron pool is told (once a visit to Choose an
-  Epic Power Set) that the character has to switch to villain in game for the arc; the pools stay
-  unlocked after switching back (`patronArcNote`; `isPatronSet` finds the pools from that
-  accolade check).
+  are villain content, so on Homecoming a build choosing a Patron pool is told (once a visit to
+  Choose an Epic Power Set) that the arcs are villain-only, and a Hero or Praetorian build also that
+  the character has to change alignment to unlock the pools for good (`patronArcNote`; `isPatronSet`
+  finds the pools from that accolade check). Arachnos Soldiers and Widows need the accolade too
+  (`Epic_VEAT_*_Mastery.powers`) but get no note, as these are their only epic pools. Thunderspy
+  gets no note: its text and wiki link describe Homecoming.
+  The screen lists the Patron pools in a box of their own below the other epic pools, always in the
+  villain skin's colours, with a chosen Patron pool's powers and their descriptions; Arachnos
+  Soldiers and Widows, who have no other epic pools, see them as plain epic pools (planner choice,
+  not the client's).
 - Specialization sets (`SpecializeAt != 0`, VEAT branches): offered alongside the trunk once
   `L >= SpecializeAt` and `SpecializeRequires` passes; only for sets in the class primary or
   secondary category. Branches exclude each other through their requires, so the first branch
@@ -268,7 +274,8 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   +15% recovery, Numina's +20% regeneration / +10% recovery, Regenerative Tissue's and Impervious
   Skin's +25% regeneration, Kismet's +6% ToHit, Thrust's run speed, Launch's jump height, Warp's
   perception and the travel sets' stealth count while their power runs (an auto, a toggle that is
-  on, or a click switched on in the totals). Their mods stack by replacement, so one piece in two
+  on, or a click switched on in the totals); a fight suppresses the stealth and the speed pieces, so
+  in combat they count only with the Out of Combat switch on ("Combat state" below). Their mods stack by replacement, so one piece in two
   running powers counts once. Chance and PPM procs are left out, and a "Null" mod only carries a
   number for help text (Luck of the Gambler's recharge comes from its set's global bonus).
 
@@ -285,6 +292,48 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   the caster alone doesn't (`aimedAt` in `src/engine/petstats.ts`; the creator's context comes from
   the totals, where the target is the source, and must not carry that over). From the data's own
   requirement; Grant Cover on a pet is still to be checked in game.
+
+## Combat state (the totals' Out of Combat switch)
+
+`src/engine/combat.ts`. The totals are worked out in combat unless the Out of Combat switch is on
+(the owner's decision, November 23, 2026: in combat by default, so the totals never overstate how a
+character holds up in a fight). The switch is not part of a build or a link and is off on every
+visit. A power stronger out of combat says so in one of three ways, all read:
+
+- A group's requirement on the time since an event, `Attacked source.EventTimeSince> 10 >` (pool
+  Stealth's extra defense, +7% on a Blaster; Infiltration, Superior Invisibility, Mask Presence,
+  Super Speed's stealth). In combat, a fight's events (attacking, helping, being attacked, hit or
+  damaged, commanding pets and the same by pets) are 0 seconds ago; out of combat they are long
+  ago. A mission object's click is long ago in both states: every out-of-combat bonus asks for it as
+  well, and it is no part of a fight. Other events (status effects, `NearGround`, `Moved`) keep the
+  old answers: 0 for `source.`, long ago for `target.`.
+- A mod's suppression, its `Suppress` pairs (`Event`, `Seconds`, `Always`): Hide's defense, Evasive
+  Maneuvers', a travel power's speed for 4 s after an attack (`ActivateAttackClick`). In combat a
+  mod is left out when any of its events is a fight's. `Always` 0 (it only blocks applying, and
+  leaves a mod already applied) is read as 1: a buff a fight sets off isn't counted either way.
+  Any suppression on a fight's event counts as lasting the whole fight, however short: in combat,
+  Fly and Super Speed (and Thunderspy's Sprint, Prowler Form and Hunter Form) add no speed to the
+  base, though in game a pause of a few seconds between attacks gives it back.
+- Homecoming's Engagement inherent sets the `Engaged` mode while the character was attacked or
+  attacked by another within 8 s, else `OutOfCombat`; Targeting Drone's +60% damage asks for
+  `kOutOfCombat` (its one-time bonus to the first attack out of combat).
+
+The pairs number the events by each game version's own `kPowerEvent` list, read from the
+StaticDefine name table in that version's executable (`VERSION_EVENTS`): Homecoming i28p4 has 52
+(it added `QueuedClick`, the `EndActivate` kinds, `Taunted`, `CommandedPet` and the pet events),
+i28p3 51 (no `Taunted`, so every later event is one lower), Thunderspy 9.6 35. A new version's list
+is read from its client and added with its data (`tests/combat.test.ts` fails until it is); until
+then it reads with its server's latest. A server whose list isn't known suppresses nothing.
+
+Some stealth asks only for a mission object's click (Cloak of Darkness, Shadow Cloak, Superior
+Invisibility's 200 ft, Cloaking Device), so it counts in combat as well: in game, attacking doesn't
+stop it.
+
+The same state reaches what reads the totals: the pet cards (a pet's own powers and what reaches
+it fight when its creator does) and the damage in a power's info. The set finder and the build
+research read a third state, `'travel'`: in combat, but with travel speed, jump height and stealth
+as out of combat, since a travel power or a piece's stealth is slotted for getting about, not for a
+fight.
 
 ## To-hit and the defense soft cap (set finder)
 

@@ -1,6 +1,6 @@
 # Forum builds
 
-Builds posted by players on the Homecoming forums, kept as posted, all legal on the patch they were made on.
+Builds posted by players on the Homecoming forums and, for the two `retail-` files, on the retail-era forums of the original game (before the November 30, 2012 shutdown, read from the forum archive), kept as posted, all legal on the patch they were made on.
 The browser tests (`e2e/`) recreate them through the planner's screens, and
 `tests/buildfixtures.test.ts` checks that each one imports. (The Sentinel is the exception: it is
 here for its save format, and only the import test reads it.)
@@ -11,6 +11,8 @@ here for its save format, and only the import test reads it.)
 | `archery-traps-corruptor.txt` | Archery / Traps Corruptor, level 50 (Mids `\|MBD;` chunk) | ["Build - Archery/Traps corrupter, looking for a critique"](https://forums.homecomingservers.com/topic/51860-build-archerytraps-corrupter-looking-for-a-critique) |
 | `elec-sonic-stalker-leveling.mbd` | Electrical Melee / Sonic Aura Stalker, a leveling build: each power and slot at the level it was taken (Mids `.mbd` file, Mids Reborn 3.8.6.1, Homecoming database 2026.10.8.3) | ["Electrical Melee + Sonic Aura"](https://forums.homecomingservers.com/topic/66234-electrical-melee-sonic-aura/), the attachment "Stalker (Electrical Melee - Sonic Aura)pre50 v2.1.mbd" |
 | `infinitum-tanker-inv-ss.txt` | Infinitum, Invulnerability / Super Strength Tanker, level 50, made on Issue 28, Page 3 (Mids `\|MBD;` chunk, database 2026.1.1242); `tests/patches.test.ts` opens it on Page 3 and moves it to Page 4 | ["Infinitum Build Collection"](https://forums.homecomingservers.com/topic/20288-infinitum-build-collection/) |
+| `retail-fire-kin-controller.txt` | Fire Control / Kinetics Controller, level 50, posted with Mids' Hero Designer 1.955 on 2012-05-03 by test_rat: the Hero Plan text, then a legacy `\|MxDz;` chunk (the importer reads the plan to name Afterburner, which the chunk's index can't) | ["Ranged Softcapped Fire/Kin/Fire Controller, can you streamline my build?"](https://forumarchive.cityofheroes.dev/index.php?/topic/136070-ranged-softcapped-firekinfire-controller-can-you-streamline-my-build/) |
+| `retail-inv-ss-tanker.txt` | Invulnerability / Super Strength Tanker, level 50, posted with Mids' Hero Designer 1.952 on 2011-11-10 by tulare: the Hero Plan text, then a legacy `\|MxDz;` chunk (the plan names Unyielding); Knockout Blow at level 20 is flagged on Homecoming, where it is available at level 24 | ["Inv/SS please review."](https://forumarchive.cityofheroes.dev/index.php?/topic/125988-invss-please-review/) |
 | `archery-bio-sentinel.txt` | Archery / Bio Armor Sentinel, level 50 (legacy Mids `\|MxDz;` chunk in Mids' save version 3.10, which lacks the inherent-slot fields of 3.20) | ["Build list?"](https://forums.homecomingservers.com/topic/34989-build-list/?do=findComment&comment=454902), the first build of the post |
 
 The `.mbd` file is the attachment as downloaded, with line endings changed to LF (the repository

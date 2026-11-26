@@ -92,7 +92,11 @@ the project)
   another's. They are append-only: never renumber, reuse, reorder or delete entries.
 - Each game version's data lives in its own folder, `public/data/<id>/` (for example `i28p4` for
   Issue 28, Page 4), listed in `public/data/versions.json`. Never edit or delete a published
-  version folder: links made on that patch load it. A new patch gets a new folder.
+  version folder: links made on that patch load it. A new patch gets a new folder. The one
+  exception, the owner's (November 23, 2026): a folder's `mids-map.json` may be rebuilt by
+  `python -m pipeline.mids_map --game-version <id>` from the folder's own files. No link, saved
+  build or loader reads it; only Mids import and export do, and the planner reads its own older
+  Mids exports as it always did (`docs/architecture.md`, "Names between Mids and the game").
 - A version's pseudo-pet file sits beside its folder, in the server's `pets/` folder
   (`public/data/pets/<id>.json`, `public/data/thunderspy/pets/<id>.json`; the owner's choice, so a
   published folder never changes). It only adds pet damage and effects to the power info and
@@ -267,6 +271,7 @@ python -m pipeline.pets --game-version i28p3     # a published version's pseudo-
 python -m pipeline.info --game-version i28p3     # its power-info extras file (its own client, after pets)
 python -m pipeline.henchmen --game-version i28p3 # its real pets file (its own client)
 python -m pipeline.recipes                       # a published version's recipes and salvage (its own client)
+python -m pipeline.mids_map --game-version i28p4 # rebuild a published version's mids-map.json (no client)
 ```
 
 Before you hand back a change, run lint, typecheck and tests. Run the build for anything that
@@ -278,7 +283,7 @@ touches configuration or dependencies.
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `node scripts/audit-dev.mjs` (tools: high and critical advisories, except the few its `ALLOWED` lets through, each with its reason, until a fixed release exists) |
-| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.henchmen_test pipeline.info_test pipeline.pvp_test pipeline.recipes_test pipeline.check_ids_test pipeline.patch_history_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the real pets export, the power-info extras export, the PvP-only test, the recipe export, the stable ids check, the patch timeline's fields); `pipeline/check_ids.py` (every ids file well formed, and every id the base branch has kept unchanged, in each ids file the base branch holds); every JSON file under `public/data` and in `pipeline/` parses |
+| Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.henchmen_test pipeline.info_test pipeline.pvp_test pipeline.recipes_test pipeline.check_ids_test pipeline.patch_history_test pipeline.mids_map_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the real pets export, the power-info extras export, the PvP-only test, the recipe export, the stable ids check, the patch timeline's fields, the Mids map's power matching); `pipeline/check_ids.py` (every ids file well formed, and every id the base branch has kept unchanged, in each ids file the base branch holds); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
 
 The checks always run as main's `ci.yml` has them (`pull_request_target`), on the pull request's own
@@ -364,7 +369,7 @@ it, and the full list of what counts: `docs/releases.md`.
   deploy puts the new lines at the top of the release's notes, then moves them under the version's
   own heading on main by itself (`docs/releases.md`, "The changelog"): no pull request does that.
 - Generated files (`public/data`, `public/assets`, `src/ui/skin/skinVariants.ts`,
-  `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/ids.json`) change only through a
+  `pipeline/report.md`, `pipeline/report-<id>.md`, `pipeline/report-<server>-diff.md`, `pipeline/report-mids-<id>.md`, `pipeline/ids.json`) change only through a
   pipeline run, never by hand. The same goes for the build research's `public/data/finder/stats.json`
   and `pipeline/report-finder.md` (`npm run research`).
 

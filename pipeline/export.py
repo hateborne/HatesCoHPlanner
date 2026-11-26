@@ -1384,6 +1384,8 @@ class Exporter:
         for name in self.export_powers:
             powers_by_name[name] = self.conv_power(name)
         self.exported_names = set(powers_by_name)
+        # name, id and shown name of every exported power, for the Mids map (mids_map.build)
+        self.exported_powers = [{"n": p["n"], "id": p["id"], "dn": p.get("dn", "")} for p in powers_by_name.values()]
         boost_names = {self.power_name(b) for b in self.boost_powers if self.power_name(b)}
         bonus_names = {n for n in self.export_powers if n.lower().startswith("set_bonus.")}
         exported_ids = {p["id"] for p in powers_by_name.values()}
@@ -1425,6 +1427,9 @@ class Exporter:
             "boostEffect": {k: [num(x) for x in v] for k, v in self.L.boost_effect.items()},
             "exemplar": {k: [num(x) for x in v] for k, v in self.L.exemplar.items()},
         }
+        # the power sets players pick from (the Mids map matches their powers by the name players see)
+        in_cats = {i for ids in core["categories"].values() for i in ids}
+        self.player_sets = {s["n"].lower() for s in sets if s["id"] in in_cats}
         powers = [p for n, p in powers_by_name.items() if n not in boost_names and n not in bonus_names]
         # each enhancement's category line (its Boosts.* set's short help: "Invention",
         # "Training (All Origins)", "Set: Apocalypse", ...) for the enhancement tooltip
