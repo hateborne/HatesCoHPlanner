@@ -42,6 +42,7 @@ export interface ShopRow {
   rarity: number; // 1 common, 2 uncommon, 3 rare, 4 very rare (0: none known)
   level?: number; // recipes: the recipe's level as the game shows it
   boost?: Power; // recipes and enhancements: the enhancement, for its icon
+  at?: number | null; // enhancements to buy: the 0-based level the (first such) piece is slotted at, null for one with no level
   icon?: string; // salvage: its icon's name
 }
 
@@ -181,7 +182,7 @@ export function shoppingList(gd: GameData, recipes: RecipeData | null, items: re
     if (!made) {
       const row = buyRows.get(boost.id);
       if (row) row.count++;
-      else buyRows.set(boost.id, { key: String(boost.id), name: boost.dn, count: 1, rarity: 0, boost });
+      else buyRows.set(boost.id, { key: String(boost.id), name: boost.dn, count: 1, rarity: 0, boost, at: item.level });
       return;
     }
     const key = `${boost.id}:${made.level}`;
@@ -207,4 +208,22 @@ export function shoppingList(gd: GameData, recipes: RecipeData | null, items: re
     unknown,
     lines: { recipes: auctionLines(recipeList.map((r) => r.name)), salvage: auctionLines(salvage.map((r) => r.name)), buy: auctionLines(buy.map((r) => r.name)) },
   };
+}
+
+/**
+ * The auction house search for one enhancement alone: what the list would ask for if it held
+ * only that piece.
+ *
+ * A crafted piece is its recipe and that recipe's salvage; a piece no recipe makes is itself.
+ * Whether the player has marked it owned does not matter: they asked for this one.
+ *
+ * @param gd Game data.
+ * @param recipes The game version's recipes; null while they load or when there are none.
+ * @param item The enhancement and the level it is slotted at.
+ * @return The search lines, each short enough for the search box (nearly always one); none for
+ *   an enhancement this game data lacks or that is in no set.
+ */
+export function itemSearch(gd: GameData, recipes: RecipeData | null, item: Pick<ShopItem, 'boost' | 'level'>): string[] {
+  const list = shoppingList(gd, recipes, [{ boost: item.boost, level: item.level, owned: false }]);
+  return auctionLines([...list.recipes, ...list.salvage, ...list.buy].map((r) => r.name));
 }

@@ -686,6 +686,20 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
     can't be pasted from a phone into the game. The limit is from the game's source; on
     Homecoming the owner got 8 names (123 characters) into the box and no further one
     (checked in game, November 17, 2026).
+  - Desktop only: with the pointer over an enhancement of the list (a piece's ring, or a row
+    under Recipes or Enhancements; `hover.ts`: `shop`), the browser's copy (Ctrl+C, Cmd+C)
+    copies the search for that enhancement alone (`itemSearch`): its recipe and that recipe's
+    salvage as one auction house line, or its own name when no recipe makes it. The list answers
+    the page's `copy` event (`useCopyHovered`), so no clipboard permission is asked; text the
+    player has selected is copied as usual. A line under the sets says what was copied.
+  - The same on the build overview (`src/ui/copyEnh.ts`, `useCopyHoveredSlot`; desktop, and only
+    where the set finder shows: `SET_FINDER`): with the pointer over a filled slot (`ringTip`),
+    the copy keys copy that enhancement's search, at the level it is slotted at. The recipes are
+    downloaded when a filled slot is first pointed at, apart from the finder's own copy of them
+    (the finder's code is not loaded for this); keys pressed before they are in write the text
+    when they arrive, and a download that failed copies nothing and is tried again. An
+    enhancement in no set (a common IO, an SO) has no list and keeps the browser's own copy.
+    Nothing is heard under the enhancement picker or while the finder's powers are picked.
 
 The numbers marked `UNCONFIRMED` in the finder's source are defaults waiting for the owner's
 ruling.

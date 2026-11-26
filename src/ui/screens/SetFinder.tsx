@@ -801,11 +801,11 @@ function SearchButton({ width, onSearch }: { width: number | string; onSearch: (
  * @param props.width The room the sets' bars have (stage px).
  */
 function Shopping({ gd, skin, phone, width, part }: { gd: GameData; skin: Skin; phone: boolean; width: number; part: 'sets' | 'needs' | 'both' }) {
-  const { list, recipes } = useShoppingList(gd);
+  const { list, recipes, data } = useShoppingList(gd);
   return (
     <>
       {part === 'needs' ? null : <Note />}
-      {part === 'needs' ? null : <ShopSets gd={gd} skin={skin} list={list} phone={phone} width={width} />}
+      {part === 'needs' ? null : <ShopSets gd={gd} skin={skin} list={list} phone={phone} width={width} recipes={data} />}
       {part === 'both' && list.sets.length ? <div style={{ height: 12 }} /> : null}
       {part === 'sets' ? null : <ShopNeeds gd={gd} list={list} phone={phone} recipes={recipes} />}
     </>

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
+import type { RecipeData } from '../../data/recipes.ts';
 import { boostPog, enhLevelLabel, setRarity, type SetRarity } from '../../engine/enhance.ts';
-import { shoppingList, type ShopItem, type ShoppingList, type ShopRow, type ShopSet } from '../../engine/finder/shopping.ts';
+import { itemSearch, shoppingList, type ShopItem, type ShoppingList, type ShopRow, type ShopSet } from '../../engine/finder/shopping.ts';
 import { shopItems, useFinder } from '../../state/finder.ts';
 import { CheckBar } from '../components/CheckBar.tsx';
 import { SlotRing } from '../components/Chrome.tsx';
 import { TitleText } from '../components/GameText.tsx';
 import { rarityStyle } from '../components/PowerTip.tsx';
+import { useHover } from '../hover.ts';
 import { icon, type Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
 
@@ -31,9 +33,10 @@ export type RecipesState = 'ready' | 'loading' | 'missing' | 'failed';
  * recipes.
  *
  * @param gd Game data.
- * @return The sets, the rows still needed and the auction house search lines; where this game version's recipes stand.
+ * @return The sets, the rows still needed and the auction house search lines; where this game
+ *   version's recipes stand, and the recipes themselves once they are in (`data`).
  */
-export function useShoppingList(gd: GameData): { list: ShoppingList; recipes: RecipesState } {
+export function useShoppingList(gd: GameData): { list: ShoppingList; recipes: RecipesState; data: RecipeData | null } {
   const { shop, shopFor, kept, shopOwned, settled, recipes, recipesFor, missing, failed } = useFinder(
     useShallow((s) => ({
       shop: s.shop,
@@ -54,7 +57,47 @@ export function useShoppingList(gd: GameData): { list: ShoppingList; recipes: Re
   const list = useMemo(() => shoppingList(gd, fit, items), [gd, fit, items]);
   // not asked for yet (the list has only just shown, or another version's are held) reads as on their way
   const state: RecipesState = fit ? 'ready' : recipesFor === version && missing ? 'missing' : failed === version ? 'failed' : 'loading';
-  return { list, recipes: state };
+  return { list, recipes: state, data: fit };
+}
+
+/**
+ * Say which enhancement of the list the pointer is over, or that it left it (hover.ts: `shop`).
+ *
+ * @param on The enhancement and its 0-based level, or null when the pointer leaves it.
+ */
+function hoverShop(on: { boost: number; level: number | null } | null): void {
+  useHover.setState((h) => (on ? { shop: on } : h.shop ? { shop: null } : h));
+}
+
+/**
+ * While the list shows: the browser's copy (Ctrl+C, Cmd+C) with the pointer over an enhancement
+ * copies the auction house search for that enhancement alone (itemSearch), in place of nothing.
+ *
+ * It answers the copy event itself, so it needs no clipboard permission. Text the player has
+ * selected (a search line) is still theirs to copy.
+ *
+ * @param gd Game data.
+ * @param recipes The game version's recipes, once in.
+ * @param onCopied Told the enhancement's name when its search was copied.
+ */
+function useCopyHovered(gd: GameData, recipes: RecipeData | null, onCopied: (name: string) => void): void {
+  useEffect(() => {
+    const onCopy = (e: ClipboardEvent) => {
+      const over = useHover.getState().shop;
+      if (!over || !e.clipboardData || window.getSelection()?.toString()) return;
+      const text = itemSearch(gd, recipes, over).join('\n');
+      if (!text) return;
+      e.clipboardData.setData('text/plain', text);
+      e.preventDefault();
+      onCopied(gd.powerById.get(over.boost)?.dn ?? 'this enhancement');
+    };
+    document.addEventListener('copy', onCopy);
+    return () => {
+      document.removeEventListener('copy', onCopy);
+      // the list closes with no mouseleave: nothing is left to copy
+      hoverShop(null);
+    };
+  }, [gd, recipes, onCopied]);
 }
 
 /**
@@ -105,6 +148,8 @@ function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; g
             pog={boostPog(gd, p.boost)}
             level={enhLevelLabel(gd, p.boost, { boost: p.boost.id, ioLevel: p.item.level ?? undefined }, LAST_LEVEL)}
             title={`${p.boost.dn}${p.item.owned ? ' (owned: click to mark it as still needed)' : ' (click to mark it as owned)'}`}
+            // phones have no hover and no copy keys
+            onHover={phone ? undefined : (on) => hoverShop(on ? { boost: p.boost.id, level: p.item.level } : null)}
             onClick={() => setOwned([p.index], /*owned=*/ !p.item.owned)}
           />
         </div>
@@ -113,8 +158,21 @@ function SetBar({ gd, skin, group, phone, width }: { gd: GameData; skin: Skin; g
   );
 }
 
-/** The sets on the list, one bar each. */
-export function ShopSets({ gd, skin, list, phone, width }: { gd: GameData; skin: Skin; list: ShoppingList; phone: boolean; width: number }) {
+/**
+ * The sets on the list, one bar each. It also hears the copy keys for the enhancement under the
+ * pointer, here or among the rows of what is needed (useCopyHovered), and says what was copied.
+ *
+ * @param props.recipes The game version's recipes, once in (useShoppingList's `data`).
+ */
+export function ShopSets({ gd, skin, list, phone, width, recipes }: { gd: GameData; skin: Skin; list: ShoppingList; phone: boolean; width: number; recipes: RecipeData | null }) {
+  // the enhancement whose search was just copied: said for two seconds
+  const [copied, setCopied] = useState<string | null>(null);
+  useCopyHovered(gd, recipes, setCopied);
+  useEffect(() => {
+    if (copied === null) return;
+    const t = setTimeout(() => setCopied(null), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
   if (!list.sets.length) {
     return (
       <div className="desc-text" data-testid="shop:empty">
@@ -132,6 +190,11 @@ export function ShopSets({ gd, skin, list, phone, width }: { gd: GameData; skin:
           {list.unknown} {list.unknown === 1 ? 'item is' : 'items are'} not shown: this game version has no such set piece.
         </div>
       ) : null}
+      {copied !== null ? (
+        <div className="body-text" data-testid="shop:copied" role="status" style={{ color: TEXT, fontSize: 16, marginTop: 6 }}>
+          Copied the auction house search for {copied}.
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -147,8 +210,15 @@ function NeedRow({ gd, row, phone, recipe }: { gd: GameData; row: ShopRow; phone
   const set = row.boost ? gd.boostSetOf.get(row.boost.id)?.set : undefined;
   const kind = RARITY_KIND[row.rarity];
   const colour = kind ? rarityStyle({ kind, name: '' }) : row.rarity ? { color: '#fff' } : { color: '#fff', ...rarityStyle(set ? setRarity(set) : undefined) };
+  const over = row.boost && !phone ? { boost: row.boost.id, level: row.level !== undefined ? row.level - 1 : (row.at ?? null) } : null;
   return (
-    <div data-testid={`shop:row:${row.key}`} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: size + 4 }}>
+    <div
+      data-testid={`shop:row:${row.key}`}
+      // a recipe's or an enhancement's row is that enhancement for the copy keys (a recipe's level is shown 1-based)
+      onMouseEnter={over ? () => hoverShop(over) : undefined}
+      onMouseLeave={over ? () => hoverShop(null) : undefined}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: size + 4 }}
+    >
       <div style={{ width: size, height: size, flexShrink: 0 }}>
         {row.boost && recipe ? (
           <img src={icon('enh', row.boost.icon)} width={size} height={size} alt="" />

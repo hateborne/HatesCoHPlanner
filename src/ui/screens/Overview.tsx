@@ -33,6 +33,7 @@ import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
 import { pickBox } from './finderPick.ts';
+import { useCopyHoveredSlot } from '../copyEnh.ts';
 import { useEscape } from '../escape.ts';
 import { clearHover, useFreshHover, useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
@@ -337,6 +338,9 @@ export function Overview({ skin }: { skin: Skin }) {
   // picks it, and nothing here changes the build meanwhile (a changed build would drop the finder's
   // kept swaps and results)
   const { picking, picked } = useFinderOpen(useShallow((s) => ({ picking: s.picking, picked: s.picked })));
+  // the copy keys over a slotted enhancement copy its recipe and salvage (with the set finder, whose
+  // shopping list this is a piece of; not under the enhancement picker, nor while the finder's powers are picked)
+  useCopyHoveredSlot(gd ?? null, SET_FINDER && !opened && !picking);
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);

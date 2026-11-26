@@ -20,6 +20,7 @@ export interface HoverState {
   swap: string | null; // set finder: the result row under the pointer (its id), whose gains and losses show
   petPower: { card: PetCard; power: Power; x: number; y: number; at?: DOMRect } | null; // pet pane: the pet power under the pointer (its power info shows), the point (stage px) and its name (window px)
   setTip: { set: BoostSet; lines: SetBonusLine[]; x: number; y: number } | null; // enhancement picker: the set name under the pointer, its bonuses as they stand for the power (setBonusLines), the point (stage px)
+  shop: { boost: number; level: number | null } | null; // set finder's shopping list: the enhancement under the pointer (its id, its 0-based level), which the copy keys copy the search for
 }
 
 /**
@@ -37,7 +38,7 @@ export type PressTip = { x: number; y: number } & (
   | { kind: 'set'; set: BoostSet; lines: SetBonusLine[] }
 );
 
-const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null, press: null, swap: null, petPower: null, setTip: null };
+const EMPTY: HoverState = { desc: null, tip: null, ringTip: null, blink: null, orb: null, press: null, swap: null, petPower: null, setTip: null, shop: null };
 
 export const useHover = create<HoverState>(() => EMPTY);
 
