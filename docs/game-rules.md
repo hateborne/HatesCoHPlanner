@@ -86,10 +86,16 @@ Evaluator: `libs/UtilitiesLib/src/utils/eval.c` + `Common/entity/character_eval.
   character keeps them after changing alignment. A plan takes the accolade as earned
   (`PLANNED_BADGES` in `src/engine/rules.ts`), so the pools are offered at level 35; every other
   badge counts as not earned. Arachnos Soldiers and Widows have no other epic pools. Patron arcs
-  are villain content, so a Hero build choosing a Patron pool is told (once a visit to Choose an
-  Epic Power Set) that the character has to switch to villain in game for the arc; the pools stay
-  unlocked after switching back (`patronArcNote`; `isPatronSet` finds the pools from that
-  accolade check).
+  are villain content, so on Homecoming a build choosing a Patron pool is told (once a visit to
+  Choose an Epic Power Set) that the arcs are villain-only, and a Hero or Praetorian build also that
+  the character has to change alignment to unlock the pools for good (`patronArcNote`; `isPatronSet`
+  finds the pools from that accolade check). Arachnos Soldiers and Widows need the accolade too
+  (`Epic_VEAT_*_Mastery.powers`) but get no note, as these are their only epic pools. Thunderspy
+  gets no note: its text and wiki link describe Homecoming.
+  The screen lists the Patron pools in a box of their own below the other epic pools, always in the
+  villain skin's colours, with a chosen Patron pool's powers and their descriptions; Arachnos
+  Soldiers and Widows, who have no other epic pools, see them as plain epic pools (planner choice,
+  not the client's).
 - Specialization sets (`SpecializeAt != 0`, VEAT branches): offered alongside the trunk once
   `L >= SpecializeAt` and `SpecializeRequires` passes; only for sets in the class primary or
   secondary category. Branches exclude each other through their requires, so the first branch

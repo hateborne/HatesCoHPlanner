@@ -7,6 +7,7 @@ in plain words. The full notes of every release are on the repository's GitHub R
 
 ### Changed
 
+- Patron Power Pools now have their own red section on the epic power set screen, and picking one explains that they are unlocked by villain story arcs (and, for heroes and Praetorians, that the character must change alignment to get them).
 - The totals now show your character in combat, where powers such as Hide, Stealth, Evasive Maneuvers and the travel powers lose the bonuses a fight stops (stealth that only a mission object's click breaks, like Cloak of Darkness, still counts); turn on the new Out of Combat switch at the top of the totals to see the full bonuses.
 
 ### Fixed

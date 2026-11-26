@@ -105,18 +105,22 @@ describe('Patron Power Pools', () => {
     }
   });
 
-  it('tell hero builds choosing one that the arc is villain content, and nobody else', () => {
+  it('tell builds choosing one that the arcs are villain content, and non-villains to change alignment', () => {
     const mace = gd.setByName.get('epic.controller_mace_mastery')!;
     const fire = gd.setByName.get('epic.fire_mastery')!;
     const hero = buildFor(gd, 'class_controller');
-    const note = patronArcNote(gd, { ...hero, alignment: 'Hero' }, mace)!;
-    expect(note.text).toMatch(/^Mace Mastery is a Patron pool\..*switch to villain/);
-    // "Patron pool" links to the wiki's page, the first time it appears
-    expect(note.link).toEqual({ phrase: 'Patron pool', href: 'https://homecoming.wiki/wiki/Patron_Power_Pools' });
-    expect(note.text.indexOf(note.link!.phrase)).toBe('Mace Mastery is a '.length);
+    const text = 'Patron Power Pools are unlocked by completing villain-only story arcs that unlock at level 35. One must change alignment to unlock these permanently.';
+    for (const alignment of ['Hero', 'Praetorian'] as const) {
+      const note = patronArcNote(gd, { ...hero, alignment }, mace)!;
+      expect(note.text).toBe(text);
+      // "Patron Power Pools", its first words, link to the wiki's page
+      expect(note.link).toEqual({ phrase: 'Patron Power Pools', href: 'https://homecoming.wiki/wiki/Patron_Power_Pools' });
+      expect(note.text.indexOf(note.link.phrase)).toBe(0);
+    }
     expect(patronArcNote(gd, { ...hero, alignment: 'Hero' }, fire)).toBeNull();
-    expect(patronArcNote(gd, { ...hero, alignment: 'Villain' }, mace)).toBeNull();
-    expect(patronArcNote(gd, { ...hero, alignment: 'Praetorian' }, mace)).toBeNull();
+    const villain = patronArcNote(gd, { ...hero, alignment: 'Villain' }, mace)!;
+    expect(villain.text).toBe('Patron Power Pools are unlocked by completing villain-only story arcs that unlock at level 35.');
+    expect(villain.link.phrase).toBe('Patron Power Pools');
   });
 
   it('count only the Patron accolades as earned, no other badge', () => {
