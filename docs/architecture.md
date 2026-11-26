@@ -672,7 +672,8 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   kept swaps are ordered the same way (the phone's Kept tab too). A line says so when the
   form, or the kept swaps (a ranking given up or failed), have changed since the list was made.
   Pointing at a swap (tapping it, on a phone) shows its net gains and losses from `buildDiff`:
-  what a result would change on top of the kept swaps, or what a kept swap is adding. The hovered
+  what a result would change on top of the kept swaps, or what a kept swap is adding. A row whose
+  change is too small to show in its figures as written is left out (`shownDiff`). The hovered
   row is in `hover.ts` (`swap`, desktop only), so only the gains and losses pane redraws; ticking
   a box clears it, as the row moves to the other list with no mouseleave. The search's progress
   redraws only its own label. With nothing pointed at, the pane shows the kept swaps together

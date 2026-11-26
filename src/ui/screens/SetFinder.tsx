@@ -126,6 +126,27 @@ const rowText = (r: DiffRow, power: boolean): string =>
     .map((x) => x.text)
     .join('');
 
+/**
+ * @param r A row.
+ * @param power Whether the row is a power's own figure.
+ * @return Whether the row's change shows in its figures as they are written: a change smaller than
+ *   the last digit shown would read "1.85/s -> 1.85/s".
+ */
+function shows(r: DiffRow, power: boolean): boolean {
+  const f = (v: number | undefined) => (v === undefined ? undefined : figure(r.key, v, power));
+  return f(r.before) !== f(r.after) || f(r.rawBefore) !== f(r.rawAfter);
+}
+
+/** @return A change's gains and losses without the rows whose change is too small to show (shows). */
+function shownDiff(d: BuildDiff): BuildDiff {
+  const keep = (rows: DiffRow[], power: boolean) => rows.filter((r) => shows(r, power));
+  return {
+    gains: keep(d.gains, /*power=*/ false),
+    losses: keep(d.losses, /*power=*/ false),
+    powers: d.powers.map((p) => ({ ...p, gains: keep(p.gains, /*power=*/ true), losses: keep(p.losses, /*power=*/ true) })),
+  };
+}
+
 // a figure standing at its cap: amber, with a glow
 const AT_CAP: CSSProperties = { color: WARN, textShadow: '0 0 6px rgba(255, 210, 74, 0.75), 0 0 12px rgba(255, 170, 0, 0.5)' };
 // at a soft cap (defense's 45%): purple, to tell it from a cap nothing gets past
@@ -211,9 +232,11 @@ function PowerHead({ gd, skin, power, phone, width }: { gd: GameData; skin: Skin
  * The gains and losses of a change: the powers it re-slots first, each under its bar (PowerHead)
  * with its own figures (the better ones, then the worse), then the totals' net gains and net losses. A
  * power the change only reaches from afar (its procs fire more or less often with the build's
- * recharge) comes under the gains or the losses, with its name over its rows.
+ * recharge) comes under the gains or the losses, with its name over its rows. A row whose change
+ * is too small to show in its figures is left out (shownDiff).
  */
-function Diff({ gd, diff, skin, phone, width }: { gd: GameData; diff: BuildDiff; skin: Skin; phone: boolean; width: number }) {
+function Diff({ gd, diff: all, skin, phone, width }: { gd: GameData; diff: BuildDiff; skin: Skin; phone: boolean; width: number }) {
+  const diff = shownDiff(all);
   const active = diff.powers.filter((p) => p.slotted && (p.gains.length || p.losses.length));
   const others = diff.powers.filter((p) => !p.slotted);
   if (!diff.gains.length && !diff.losses.length && !active.length && !others.some((p) => p.gains.length || p.losses.length)) return <div className="desc-text">No change in the totals.</div>;
