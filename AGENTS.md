@@ -192,7 +192,8 @@ src/state/      store.ts (zustand: data, build, level-up flow, dialogs); finder.
                 finderOpen.ts (the set finder's own state)
 src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, escape.ts
 tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for the e2e tests;
-                fixtures/golden/ for the golden numbers (the engine's figures for whole builds)
+                fixtures/golden/ for the golden numbers (the engine's figures for whole builds);
+                fixtures/corpus/ for the recorded corpus (what each release wrote); corpus/ records it
 e2e/            Playwright browser tests (local only)
 research/       the build research (owner's machine only): community builds -> set finder statistics
 public/data/    generated game data per version, versions.json; <server>/ for other servers;
@@ -263,6 +264,7 @@ npm run lint         # ESLint
 npm run typecheck    # tsc -b
 npm test             # vitest
 npx vitest run --config tests/goldenwrite.config.ts   # write the golden numbers again
+node tests/corpus/record.mjs v1.3.0                   # record what a release wrote into the corpus
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
 npm run build        # type check + production build into dist/
 npm run research     # the build research (owner's machine; needs HCP_BUILD_CORPUS, else skipped)
@@ -357,6 +359,10 @@ it, and the full list of what counts: `docs/releases.md`.
   rather than by numeric ids.
 - Share links, Mids formats and `checkBuild` changes need round-trip or backward-compatibility
   tests. Old links must keep decoding.
+- The recorded corpus (`tests/recordedcorpus.test.ts`, `tests/fixtures/corpus/`) holds the links,
+  stored builds and Mids exports each release wrote, made by that release's own code, and checks
+  that each opens as the build it was. Its entries are never edited or taken out; a release is
+  added with `node tests/corpus/record.mjs <tag>` (`docs/architecture.md`, "Recorded corpus").
 - The golden numbers (`tests/goldennumbers.test.ts`, `tests/fixtures/golden/`) hold the engine to
   its figures for whole builds on each server's default game version. A change that moves a figure
   on purpose writes them again in the same pull request and says why; a change that should move

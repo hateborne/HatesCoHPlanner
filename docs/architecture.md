@@ -101,6 +101,9 @@ tests/                       vitest; tests/helpers/data.ts loads public/data lik
   fixtures/builds/           forum builds (Mids data chunks, .mbd files) the browser tests recreate
   fixtures/golden/           the golden numbers: recorded builds and the engine's figures for them,
                              per server and game version (see "Golden numbers" below)
+  fixtures/corpus/           the recorded corpus: the links, stored builds and Mids exports each
+                             release wrote (see "Recorded corpus" below)
+  corpus/                    what records it: record.mjs and recordrelease.ts
 e2e/                         Playwright browser tests (playwright.config.ts; local only)
 research/                    the build research (npm run research; owner's machine only): reads a
                              folder of community builds and writes the set finder's statistics
@@ -975,6 +978,42 @@ What they do not hold: the set finder's ranking (its own tests; it reads the bui
 statistics, which change with every research run), the level-up rules (`tests/invariants.test.ts`
 walks every power set), the colors and sizes the screens add themselves, and versions that were
 never a default while the golden numbers existed.
+
+## Recorded corpus
+
+`tests/recordedcorpus.test.ts` holds the planner to what its releases wrote: a link, a build kept
+in the browser or a Mids export made by any release must open today as the build it was then
+(`AGENTS.md`, "links never break"). `tests/fixtures/corpus/` keeps, per game version and build,
+with the release tags that wrote each:
+
+- `links.json`: the share link, and a digest of the build that release itself opened it as (a
+  link cannot hold everything a build can, so the release's own reading is the measure);
+- `stored.json`: the build as the release held it, which is what it kept in the browser (the
+  tab's build and the saved builds are that JSON), for the builds recorded in full;
+- `mids.json`: its Mids exports, the legacy code and for some builds the `.mbd` file, with a
+  digest of the build each opened as on main when it was recorded. Mids export is best effort and
+  its reader has been corrected since those releases, so main is the measure there.
+
+The builds are the golden numbers' builds of each server's default version (every one for the
+links; the forum builds, the links on record and each archetype's first build in full), a build
+per archetype on an older version, leveled by each release's own walk, and special cases: a pet
+switched in the pet pane, and an origin enhancement at a relative level a link cannot hold.
+
+The test opens every link and checks the build against the digest; opens every stored build and
+checks that it comes out as it went in; has today's writer write the link of each stored build,
+and of the build each newest link opens, and checks it against what the newest release wrote (the
+format only grows by optional fields at its end); and opens every Mids export.
+
+Each entry was written by that release's own code. `node tests/corpus/record.mjs <tag>...` checks
+each tag out into a folder of its own under `.claude/worktrees/` (taken away again afterwards),
+runs `tests/corpus/recordrelease.ts` there as a test file of that checkout, and has this checkout
+take the records in (`tests/corpuswrite.config.ts`). A release whose dependencies differ from this
+checkout's is refused, and a release that had to repair one of the builds fails the run. A
+release that wrote what an earlier one wrote only joins its tag list, so the files grow by what
+changed. Nothing in them is edited or taken out: a link that stops opening as recorded is the bug.
+What the first four releases showed: every one wrote the same link for the same build, except
+that v1.0.0 wrote a relative level below -8 another way than later ones did, and the planner
+still opens each as its own release did.
 
 ## Browser tests
 
