@@ -18,7 +18,11 @@ import { useStage } from './Stage.tsx';
 import { SupportDialog } from './SupportDialog.tsx';
 import { POPUP_LAYER } from '../floating.ts';
 
-/** A rounded planner button (not game chrome): the sound / music / tooltip switches, Support, View Build. */
+/**
+ * A rounded planner button (not game chrome): the sound / music / tooltip switches, Support, View
+ * Build. Its outline is the skin's frame colour (the stage sets --menu-border), as the planner's
+ * other own buttons' is, and its words are white, greyed while the switch is off.
+ */
 function Pill({ x, y, w, h, fontSize, dim, title, onClick, children }: { x: number; y: number; w: number; h: number; fontSize: number; dim?: boolean; title?: string; onClick: () => void; children: ReactNode }) {
   const bw = h > 30 ? 2 : 1;
   return (
@@ -27,7 +31,7 @@ function Pill({ x, y, w, h, fontSize, dim, title, onClick, children }: { x: numb
       onClick={onClick}
       {...pressKeys(onClick)}
       title={title}
-      style={{ left: x, top: y, width: w, height: h, borderRadius: h / 2, border: `${bw}px solid #4f94ff`, fontSize, color: dim ? '#8fa1b8' : '#cfe8ff', textAlign: 'center', lineHeight: `${h - 2 * bw}px`, cursor: 'pointer', background: '#000', zIndex: 40 }}
+      style={{ left: x, top: y, width: w, height: h, borderRadius: h / 2, border: `${bw}px solid var(--menu-border)`, fontSize, color: dim ? '#8fa1b8' : '#ffffff', textAlign: 'center', lineHeight: `${h - 2 * bw}px`, cursor: 'pointer', background: '#000', zIndex: 40 }}
     >
       {children}
     </div>

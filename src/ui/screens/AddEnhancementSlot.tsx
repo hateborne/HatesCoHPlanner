@@ -157,7 +157,7 @@ function phoneCounter(pg: PhoneGeom): Rect {
  * of an 80-wide icon column; short help (game_14, aadeff) at ty + 30, then the set name (099cde)
  * at ty + 30 + the short help's pixel height; the icon centered in the header.
  */
-function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
+function PowInfoBox({ power, set, skin }: { power?: Power; set?: Powerset; skin: Skin }) {
   const ref = useRef<HTMLDivElement>(null);
   const [h1, setH1] = useState(0);
   // measured after every render on purpose (the help text changes size); it settles once h1 matches
@@ -178,7 +178,8 @@ function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
   const headerHt = Math.max(75, 30 + h1 + Math.round(1.255 * px) + 5);
   return (
     <>
-      <MenuFrame x={vx(tx - 4)} y={vy(ty)} w={vx(wd + 4)} h={vy(ht)} style={{ background: '#000' }} />
+      {/* the skin's frame, as every other frame of the screen is */}
+      <MenuFrame x={vx(tx - 4)} y={vy(ty)} w={vx(wd + 4)} h={vy(ht)} style={{ background: '#000' }} skin={skin} />
       {power ? (
         <>
           <GameText font="title_14" scale={nameSc} x={vx(tx) + 80 * S} y={vy(ty) + 28 * S} colors={['#ffffff', '#ffffff']} text={name} />
@@ -196,7 +197,7 @@ function PowInfoBox({ power, set }: { power?: Power; set?: Powerset }) {
 }
 
 /** The last hovered power's info box (desktop) or its name and short help over the counter (phone). */
-function HoveredInfo({ gd, phone }: { gd: GameData; phone?: PhoneGeom }) {
+function HoveredInfo({ gd, skin, phone }: { gd: GameData; skin: Skin; phone?: PhoneGeom }) {
   const hovered = useHover((h) => h.desc?.p);
   if (phone) {
     const c = phoneCounter(phone);
@@ -206,7 +207,7 @@ function HoveredInfo({ gd, phone }: { gd: GameData; phone?: PhoneGeom }) {
       </div>
     ) : null;
   }
-  return <PowInfoBox power={hovered} set={hovered ? gd.setOfPower.get(hovered.id)?.set : undefined} />;
+  return <PowInfoBox power={hovered} set={hovered ? gd.setOfPower.get(hovered.id)?.set : undefined} skin={skin} />;
 }
 
 /** The slot-details / Advanced tooltip for the power bar under the pointer. */
@@ -486,7 +487,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         {renderPanel(g, panelGroups(tab), 0)}
         {counter(phoneCounter(pg))}
         {noSlotFades}
-        <HoveredInfo gd={gd} phone={pg} />
+        <HoveredInfo gd={gd} skin={skin} phone={pg} />
         <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(preview!.at)} level={L} rules={rules} />
         <NextButton skin={skin} dir="left" text={backText} onClick={backLevel} />
         <NextButton skin={skin} dir="right" text={finishText} locked={remaining > 0 && anyPlaceable} onClick={finish} />
@@ -515,7 +516,7 @@ export function AddEnhancementSlot({ skin }: { skin: Skin }) {
         </>
       )}
       {[0, 1, 2].map((i) => renderPanel(desktopPanel(i), panelGroups(i), i))}
-      <HoveredInfo gd={gd} />
+      <HoveredInfo gd={gd} skin={skin} />
       <SlotTipLayer gd={gd} skin={skin} atId={preview!.at} level={L} rules={rules} />
       {counter()}
       {noSlotFades}
