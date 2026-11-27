@@ -59,8 +59,8 @@ const MARK_W = 20; // the +/- column (a little wider than the + so it never touc
 
 interface RowProps {
   label: string;
-  value: string; // collapsed value
-  openValue?: string; // header value while expanded (default: value)
+  value: ReactNode; // collapsed value (the set finder marks a figure at its cap inside it)
+  openValue?: ReactNode; // header value while expanded (default: value)
   tone?: number; // signed distance from the neutral value; undefined = never colored
   over?: string; // the uncapped value when it is past the cap: shown as "cap (actual)"
   line?: StatLine;
@@ -68,6 +68,7 @@ interface RowProps {
   detail?: ReactNode; // expanded content in place of the source list
   cap?: boolean;
   noMark?: boolean; // no +/- column: a list where nothing expands (the enhancement picker)
+  wrapRight?: boolean; // a value too long for its line wraps against the right edge (the set finder's "cap (actual)" figures)
 }
 
 /**
@@ -78,7 +79,7 @@ export function TotalsRow(props: RowProps) {
   return <Row {...props} />;
 }
 
-function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, detail, cap, noMark }: RowProps) {
+function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, detail, cap, noMark, wrapRight }: RowProps) {
   const [open, setOpen] = useState(false);
   const chances = line?.chances ?? [];
   const has = !!detail || (!!line && (line.sources.length > 0 || chances.length > 0));
@@ -95,7 +96,7 @@ function Row({ label, value, openValue, tone, over, line, fmt = srcDefault, deta
           {noMark ? null : <span style={{ width: MARK_W, flex: 'none', textAlign: 'center' }}>{has ? (open ? '-' : '+') : ''}</span>}
           <span>{label}</span>
         </span>
-        <span style={{ color: toneColor(tone, plain) }}>
+        <span style={{ color: toneColor(tone, plain), textAlign: wrapRight ? 'right' : undefined }}>
           {open ? (openValue ?? value) : value}
           {/* chance sources aren't in the value: they're listed under Chance */}
           {chances.length ? ' (*)' : null}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../../data/servers.ts';
@@ -9,7 +9,7 @@ import { setEnh, setExclusive, setOn, setPetOn } from '../../engine/actions.ts';
 import { BuildRules, buildPairProblem, type BuildEntry } from '../../engine/rules.ts';
 import type { LevelStep } from '../../engine/schedule.ts';
 import { computeTotals, defaultOn, defaultsOf, exclusiveGroups } from '../../engine/totals.ts';
-import { openSetFinder } from '../../state/finderOpen.ts';
+import { openSetFinder, togglePickedPower, useFinderOpen } from '../../state/finderOpen.ts';
 import { respecUnfinished, useStore, useTipLevel } from '../../state/store.ts';
 import { CheckBar, OnSwitch } from '../components/CheckBar.tsx';
 import { FINDER_NAME, FinderIcon } from '../components/FinderIcon.tsx';
@@ -32,6 +32,8 @@ import { S, snap, SX, SY, TOP_LABEL_RIGHT, vs, vx, vy } from '../skin/metrics.ts
 import { icon, type Skin } from '../skin/skin.ts';
 import { play } from '../sound.ts';
 import { EnhancementPicker } from './EnhancementPicker.tsx';
+import { pickBox } from './finderPick.ts';
+import { useCopyHoveredSlot } from '../copyEnh.ts';
 import { useEscape } from '../escape.ts';
 import { clearHover, useFreshHover, useHover } from '../hover.ts';
 import { longPress, pressKeys } from '../press.ts';
@@ -77,6 +79,36 @@ const NOTES_BAR = 56;
 const OA_W = vx(150);
 // desktop: the build's name ends this far short of the Origin / Alignment button
 const TITLE_GAP = 12;
+
+// what still answers while the set finder's powers are picked: the power bars, and a phone's row of
+// tabs (to reach every bar)
+const PICK_OK = '[data-testid^="bar:"], [data-testid="tabs"]';
+
+/**
+ * Holds the overview still while the set finder's powers to consider are picked on it.
+ *
+ * A changed build would drop the finder's kept swaps and results, and another screen would leave
+ * the picking behind: so no click, right click or key press reaches anything but the power bars
+ * (which pick) and the phone's tabs. Scrolling, hover texts and long presses change nothing and
+ * stay. It is always drawn, a box that takes no room, so the screen under it is never rebuilt as
+ * the picking starts and ends.
+ *
+ * @param props.on Whether powers are being picked.
+ */
+function PickGuard({ on, children }: { on: boolean; children: ReactNode }) {
+  const stop = (e: SyntheticEvent) => {
+    if (!on || (e.target as Element).closest(PICK_OK)) return;
+    e.stopPropagation();
+    e.preventDefault();
+  };
+  // Enter and Space press what a click would (pressKeys); Tab and Escape pass
+  const keys = (e: KeyboardEvent) => (e.key === 'Enter' || e.key === ' ' ? stop(e) : undefined);
+  return (
+    <div className={on ? 'pick-guard' : undefined} style={{ display: 'contents' }} onClickCapture={stop} onContextMenuCapture={stop} onKeyDownCapture={keys}>
+      {children}
+    </div>
+  );
+}
 // the build name's longest length (New Build's field; checkBuild cuts imports to it)
 const NAME_MAX = 40;
 
@@ -283,8 +315,8 @@ function OverviewTips({ gd, skin, build, rules, end }: { gd: GameData; skin: Ski
  */
 export function Overview({ skin }: { skin: Skin }) {
   // only the fields drawn here: a store change elsewhere (Shift, a notice) must not redraw the screen
-  const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling, lockFlash } = useStore(
-    useShallow((s) => ({ gd: s.gd, build: s.build, steps: s.steps, editPick: s.editPick, editSlots: s.editSlots, toSetup: s.toSetup, setBuild: s.setBuild, setMenu: s.setMenu, continueLeveling: s.continueLeveling, lockFlash: s.lockFlash })),
+  const { gd, build, steps, editPick, editSlots, toSetup, setBuild, setMenu, continueLeveling, lockFlash, flashLocked } = useStore(
+    useShallow((s) => ({ gd: s.gd, build: s.build, steps: s.steps, editPick: s.editPick, editSlots: s.editSlots, toSetup: s.toSetup, setBuild: s.setBuild, setMenu: s.setMenu, continueLeveling: s.continueLeveling, lockFlash: s.lockFlash, flashLocked: s.flashLocked })),
   );
   // for the room it takes: the list itself is drawn by PatchNotesBox / PatchNotesBar
   const notes = useStore((s) => s.patchNotes);
@@ -303,6 +335,13 @@ export function Overview({ skin }: { skin: Skin }) {
   // hover redraws only the glow / orb / tooltip that subscribes to it, not this whole screen.
   useFreshHover();
   useEffect(() => clearHover(), [build]); // entries are rebuilt; drop any tooltip holding an old one
+  // the set finder is out of the way while its powers to consider are picked here: a bar's click
+  // picks it, and nothing here changes the build meanwhile (a changed build would drop the finder's
+  // kept swaps and results)
+  const { picking, picked } = useFinderOpen(useShallow((s) => ({ picking: s.picking, picked: s.picked })));
+  // the copy keys over a slotted enhancement copy its recipe and salvage (where the set finder shows:
+  // this is a piece of its shopping list; not under the enhancement picker, nor while the finder's powers are picked)
+  useCopyHoveredSlot(gd ?? null, SET_FINDER && gd?.server === DEFAULT_SERVER && !opened && !picking);
   const stage = useStage();
   const { phone } = stage;
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
@@ -311,7 +350,7 @@ export function Overview({ skin }: { skin: Skin }) {
   // the pets the build makes, at the totals' level (computeTotals' default)
   const pets = usePetCards(gd, rules, build, build ? (build.exemplar ?? build.endLevel ?? 49) : 49);
   // the pet pane's switch: whether a pet power counts in the pets' stats (its default stored as none)
-  const switchPet = (p: Power, on: boolean) => build && setBuild(setPetOn(build, p.n, gd && on === petPowerDefault(gd, p) ? undefined : on));
+  const switchPet = (p: Power, on: boolean) => !picking && build && setBuild(setPetOn(build, p.n, gd && on === petPowerDefault(gd, p) ? undefined : on));
   const issues = useMemo(() => (rules ? rules.issues() : []), [rules]);
   // an older build whose power sets can't go together: its title alternates with INVALID_TITLE
   const pairInvalid = useMemo(() => !!(gd && build && buildPairProblem(gd, build)), [gd, build]);
@@ -385,8 +424,8 @@ export function Overview({ skin }: { skin: Skin }) {
         // phones: a long press shows the power's tooltip (with the rule it breaks, if any)
         const longBar = g.phone ? (pt: { x: number; y: number }) => useHover.setState({ press: { kind: 'power', entry: e, notes: flagged.map((f) => f.message), ...pt } }) : undefined;
         const toggleOn = () => {
-          // the archetype's inherent always runs: its switch stays on
-          if (e.inherent) return;
+          // the archetype's inherent always runs: its switch stays on (and no switch moves while the set finder's powers are picked)
+          if (e.inherent || picking) return;
           let nb = setOn(build, e.key, !on === dflt ? undefined : !on);
           // as in the game, switching on one of toggles that exclude each other switches the rest off
           if (!on) {
@@ -394,6 +433,19 @@ export function Overview({ skin }: { skin: Skin }) {
           }
           setBuild(nb);
         };
+        // the set finder's powers to consider: a power a set can go into is picked by its bar, and lit while picked
+        const pickable = picking && rules.slottable(e.power) && e.level <= rules.lastLevel() && e.slots.some((s) => s.level <= rules.lastLevel());
+        const isPicked = picking && picked.some((x) => x.key === e.key && x.power === e.power.id);
+        if (isPicked) {
+          items.push(
+            <div
+              key={`${e.key}:picked`}
+              data-testid={`picked:${e.key}`}
+              className="abs"
+              style={{ left: g.barCX - 19 * S, top: y - 16 * S, width: barW + 17 * S, height: 32 * S, borderRadius: 16 * S, zIndex: 21, pointerEvents: 'none', border: '2px solid #ffd24a', boxShadow: '0 0 10px #ffd24a, inset 0 0 8px rgba(255, 210, 74, 0.6)', boxSizing: 'border-box' }}
+            />,
+          );
+        }
         if (e.source === 'pick') {
           // picked at the hovered orb's level: the bar lit half-white (LockFlash's shape)
           items.push(<OrbLight key={`${e.key}:light`} level={e.level} style={{ left: g.barCX - 19 * S, top: y - 16 * S, width: barW + 17 * S, height: 32 * S, borderRadius: 16 * S, zIndex: 20 }} />);
@@ -410,8 +462,11 @@ export function Overview({ skin }: { skin: Skin }) {
             text={lockFlash?.key === e.key ? lockFlash.label : e.power.dn}
             state={flagged.length ? 'unselectable' : on ? 'selected' : 'standard'}
             icon={icon('powers', e.power.icon || 'power_missing')}
-            title={flagged.map((f) => f.message).join('\n') || undefined}
-            onClick={e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            // while picking, the bar says what a press does (the gold ring is a picture only)
+            title={picking ? (!pickable ? 'Takes no sets' : isPicked ? 'Picked for the set finder: press to let it go' : 'Press to pick it for the set finder') : flagged.map((f) => f.message).join('\n') || undefined}
+            onClick={picking ? (pickable ? () => togglePickedPower({ key: e.key, power: e.power.id }) : () => flashLocked(e.key, 'Takes No Sets')) : e.pickIndex !== undefined ? () => editPick(e.pickIndex!) : undefined}
+            // a refused bar has the refusal's own sound (flashLocked), not the click's as well
+            clickSounds={picking && !pickable ? [] : undefined}
             // a pick flagged in red still opens on a click, so the rule it breaks can be fixed
             fixable
             onLongPress={longBar}
@@ -433,6 +488,7 @@ export function Overview({ skin }: { skin: Skin }) {
               className="abs body-text"
               value={chosen?.id ?? ''}
               title="Which one is running (counted in the totals)"
+              disabled={picking}
               onChange={(ev) => {
                 const v = ev.target.value;
                 play('powerselect2');
@@ -495,14 +551,14 @@ export function Overview({ skin }: { skin: Skin }) {
                         blink: h ? orbLevel : st.blink === orbLevel ? null : st.blink,
                       }))
               }
-              onClick={() => setPicker({ entry: e, slot: i, on: build })}
+              onClick={() => (picking ? undefined : setPicker({ entry: e, slot: i, on: build }))}
               onLongPress={
                 g.phone
                   ? (pt) => useHover.setState({ press: boost ? { kind: 'enh', entry: e, slot: i, ...pt } : { kind: 'text', text: `Empty slot (level ${s.level + 1}).\nTap it to choose an enhancement.`, ...pt } })
                   : undefined
               }
               onRightClick={
-                boost
+                boost && !picking
                   ? () => {
                       play('delete');
                       useHover.setState({ ringTip: null });
@@ -683,9 +739,9 @@ export function Overview({ skin }: { skin: Skin }) {
     // the level log replaces the orb strip and Continue sits in the menu, so the panel runs down
     // to Back / Next
     const pg = phoneGeom(stage, false);
-    const P = phonePanel(pg, 4, notes ? NOTES_BAR : 0);
+    const P = phonePanel(pg, notes ? NOTES_BAR : 0);
     return (
-      <>
+      <PickGuard on={picking}>
         <TitleBar skin={skin} text={title} reserve={LOG_RESERVE} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
         <LevelLog gd={gd} skin={skin} build={build} shown={shown} entries={entries} />
         <PhoneTabs skin={skin} labels={['Primary', 'Secondary', 'Pools', 'Totals']} active={tab} onChange={setTab} y={pg.tabsY} />
@@ -709,14 +765,16 @@ export function Overview({ skin }: { skin: Skin }) {
         {picker_}
         <PetPaneLayer gd={gd} skin={skin} entries={pets} build={build} onSwitch={switchPet} />
         <PhoneTipLayer gd={gd} skin={skin} at={gd.archetype(build.at)} level={end} rules={rules} />
-      </>
+      </PickGuard>
     );
   }
 
+  // the name stops just short of the Origin / Alignment button (two half-size lines past it), or of
+  // the set finder's box over it while its powers are picked
+  const titleEnd = Math.min(oaCenter(stage.w / 2, OA_W) - OA_W / 2, picking ? pickBox(stage).x : Infinity) - TITLE_GAP;
   return (
-    <>
-      {/* the name stops just short of the Origin / Alignment button (two half-size lines past it) */}
-      <TitleBar skin={skin} text={title} limit={oaCenter(stage.w / 2, OA_W) - OA_W / 2 - TITLE_GAP} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
+    <PickGuard on={picking}>
+      <TitleBar skin={skin} text={title} limit={titleEnd} edit={rename} alt={pairInvalid ? INVALID_TITLE : undefined} />
       <GameText font="title_14" scale={S} x={TOP_LABEL_RIGHT} y={vy(38)} align="right" colors={skin.heading} text={who} />
       {/* the set finder's button, right of the origin and archetype (Homecoming builds; see flags.ts) */}
       {SET_FINDER && gd.server === DEFAULT_SERVER ? (
@@ -752,6 +810,6 @@ export function Overview({ skin }: { skin: Skin }) {
       <NextButton skin={skin} dir="left" text="New Build" onClick={toSetup} />
       <NextButton skin={skin} dir="right" text="Save / Share" onClick={() => setMenu(true)} />
       {picker_}
-    </>
+    </PickGuard>
   );
 }

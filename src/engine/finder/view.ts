@@ -8,7 +8,7 @@ import type { BuildEntry } from '../rules.ts';
 import { setsOfPower } from './eligible.ts';
 import { familyOf, groupFor } from './goals.ts';
 import { statLabel } from './labels.ts';
-import type { FinderQuery } from './query.ts';
+import type { FinderQuery, PowerPick } from './query.ts';
 import type { RankedSwap } from './search.ts';
 
 /** A bonus a search can ask for. */
@@ -135,14 +135,16 @@ export function setGroupsOf(gd: GameData, entries: readonly BuildEntry[]): strin
  * The form is kept while the pane is closed, and another build may be opened meanwhile: a wanted
  * bonus, an additional bonus or a set type the new build's lists lack would still filter the
  * search while its box shows "any". A bonus this build's list names by another key of the same
- * kind (StatChoice.same) is carried over to that key, not dropped.
+ * kind (StatChoice.same) is carried over to that key, not dropped. The powers a search is kept to
+ * are cut down to those the build still has in the same place.
  *
  * @param q The search.
  * @param sections The bonuses this build's form lists (bonusChoices).
  * @param groups The set types this build's form lists (setGroupsOf).
+ * @param powers The powers this build's search can go into (pickablePowers); absent: the search's powers are left as they are.
  * @return The search without what the lists lack; the same object when nothing changed.
  */
-export function fitQuery(q: FinderQuery, sections: readonly StatSection[], groups: readonly string[]): FinderQuery {
+export function fitQuery(q: FinderQuery, sections: readonly StatSection[], groups: readonly string[], powers?: readonly PowerPick[]): FinderQuery {
   const choices = sections.flatMap((s) => s.stats);
   // the key this build's list has for a bonus: its own first, then one it is the same as
   const keyOf = new Map<string, string>();
@@ -154,8 +156,67 @@ export function fitQuery(q: FinderQuery, sections: readonly StatSection[], group
   const kept = q.groups?.filter((g) => groups.includes(g));
   const fitGroups = kept?.length ? kept : undefined;
   const sameExtra = extra.length === q.extra.length && extra.every((k, i) => k === q.extra[i]);
-  if (main === q.main && sameExtra && (fitGroups?.length ?? 0) === (q.groups?.length ?? 0)) return q;
-  return { ...q, main, extra, groups: fitGroups };
+  const still = powers && q.powers ? q.powers.filter((x) => powers.some((y) => y.key === x.key && y.power === x.power)) : q.powers;
+  const fitPowers = still?.length ? still : undefined;
+  if (main === q.main && sameExtra && (fitGroups?.length ?? 0) === (q.groups?.length ?? 0) && (fitPowers?.length ?? 0) === (q.powers?.length ?? 0)) return q;
+  return { ...q, main, extra, groups: fitGroups, powers: fitPowers };
+}
+
+/**
+ * The powers of a build a search can go into: those with enhancement slots at the build's last level.
+ *
+ * @param entries The build's powers.
+ * @param slottable Whether a power takes enhancements (BuildRules.slottable).
+ * @param last The build's last level (0-based).
+ * @return Each such power's entry key and id.
+ */
+export function pickablePowers(entries: readonly BuildEntry[], slottable: (p: BuildEntry['power']) => boolean, last: number): PowerPick[] {
+  return entries.filter((e) => e.level <= last && slottable(e.power) && e.slots.some((s) => s.level <= last)).map((e) => ({ key: e.key, power: e.power.id }));
+}
+
+/** How the result lists are ordered. */
+export type FinderSort =
+  | { by: 'default' } // by rank, each set's placements folded under its best one
+  | { by: 'power'; desc: boolean } // by the name of the power a swap goes into
+  | { by: 'slots'; desc: boolean }; // by the number of pieces of the set the power ends up with (the list's "x4")
+
+// the orders in the order a click on the sort label steps through them
+const SORT_STEPS: FinderSort[] = [{ by: 'default' }, { by: 'power', desc: false }, { by: 'power', desc: true }, { by: 'slots', desc: false }, { by: 'slots', desc: true }];
+
+/**
+ * The order after the one shown: Default, Power A to Z, Power Z to A, fewest slots, most slots,
+ * and Default again.
+ *
+ * @param sort The order shown.
+ * @return The next one.
+ */
+export function nextSort(sort: FinderSort): FinderSort {
+  const at = SORT_STEPS.findIndex((s) => s.by === sort.by && (s.by === 'default' || (sort.by !== 'default' && s.desc === sort.desc)));
+  return SORT_STEPS[(at + 1) % SORT_STEPS.length]!;
+}
+
+/**
+ * Swaps in a list's order.
+ *
+ * Default leaves them as ranked. By power: the name of the power each goes into, A to Z (or Z to
+ * A). By slots: the pieces of the set each power ends up holding (the list's "x4"), fewest first
+ * (or most first). Swaps that tie keep
+ * their rank order, in either direction.
+ *
+ * @param gd Game data (power names).
+ * @param swaps The swaps, best first.
+ * @param sort The order wanted.
+ * @return A new list in that order.
+ */
+export function sortSwaps<T extends RankedSwap>(gd: GameData, swaps: readonly T[], sort: FinderSort): T[] {
+  if (sort.by === 'default') return swaps.slice();
+  const sign = sort.desc ? -1 : 1;
+  const name = (s: T) => gd.powerById.get(s.power)?.dn ?? '';
+  const cmp = sort.by === 'power' ? (a: T, b: T) => name(a).localeCompare(name(b)) : (a: T, b: T) => a.count - b.count;
+  return swaps
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => sign * cmp(a.s, b.s) || a.i - b.i)
+    .map((x) => x.s);
 }
 
 /** One set's swaps in a result list. */

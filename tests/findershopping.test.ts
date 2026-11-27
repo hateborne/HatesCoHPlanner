@@ -9,8 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkRecipes, loadRecipes, RECIPES_FOLDER, type RecipeData } from '../src/data/recipes.ts';
 import { ioLevelRange } from '../src/engine/enhance.ts';
 import type { Swap } from '../src/engine/finder/pending.ts';
-import { AUCTION_SEARCH_MAX, auctionLines, recipeOf, searchWord, shoppingList, swapItems, type ShopItem } from '../src/engine/finder/shopping.ts';
+import { AUCTION_SEARCH_MAX, auctionLines, itemSearch, recipeOf, searchWord, shoppingList, swapItems, type ShopItem } from '../src/engine/finder/shopping.ts';
 import { MAX_SHOP_ITEMS, readShopping, SHOPPING_KEY, writeShopping } from '../src/io/shopping.ts';
+import { slotSearch } from '../src/ui/copyEnh.ts';
 import { dataDir, loadData, pid } from './helpers/data.ts';
 
 const gd = loadData();
@@ -218,6 +219,50 @@ describe('shopping list', () => {
     expect(searchWord('Aura, for Pets (Recipe)')).toBe('for Pets');
     // every real name fits the box on its own
     for (const r of Object.values(recipes.recipes)) expect(searchWord(r.dn).length).toBeLessThanOrEqual(AUCTION_SEARCH_MAX);
+  });
+
+  it('gives the search for one enhancement alone: its recipe and that recipe\'s salvage', () => {
+    // a crafted piece: the recipe's name first (without "(Recipe)"), then its five salvage at that level
+    const made = recipeOf(gd, recipes, item(LOTG, 49))!;
+    const lines = itemSearch(gd, recipes, { boost: LOTG, level: 49 });
+    expect(lines).toHaveLength(1);
+    const words = lines[0]!.split(', ');
+    expect(words[0]).toBe('Luck of the Gambler: +7.5% Recharge Speed');
+    expect(words.slice(1).sort()).toEqual([...new Set(made.salvage.map((i) => searchWord(recipes.salvage[i]![0])))].sort());
+    expect(lines[0]!.length).toBeLessThanOrEqual(AUCTION_SEARCH_MAX);
+    // another level of the same piece takes other salvage
+    expect(itemSearch(gd, recipes, { boost: LOTG, level: 24 })).not.toEqual(lines);
+    // nothing else on the list comes along, and a piece marked owned still has its search
+    const whole = shoppingList(gd, recipes, [item(LOTG, 49, /*owned=*/ true), item(LOTG_A, 49), item(WINTER, null)]);
+    expect(whole.lines.recipes.join(', ')).not.toContain('Recharge Speed');
+    expect(itemSearch(gd, recipes, whole.sets[0]!.pieces[0]!.item)).toEqual(lines);
+    // a piece no recipe makes, or with no recipes at hand, is itself
+    expect(itemSearch(gd, recipes, { boost: WINTER, level: null })).toEqual(["Winter's Bite: Accuracy/Damage"]);
+    expect(itemSearch(gd, null, { boost: LOTG, level: 49 })).toEqual([gd.power(LOTG).dn]);
+    // a slot on the overview copies the same, read from the enhancement as it is slotted
+    expect(slotSearch(gd, recipes, { boost: LOTG, ioLevel: 49 })).toBe(lines[0]);
+    expect(slotSearch(gd, recipes, { boost: WINTER })).toBe("Winter's Bite: Accuracy/Damage");
+    expect(slotSearch(gd, recipes, { boost: COMMON, ioLevel: 49 })).toBe('');
+    // a bought row carries the level its piece is slotted at, for the row's own copy
+    expect(whole.buy.map((r) => r.at)).toEqual([null]);
+    // an enhancement the data lacks, or one in no set, has none
+    expect(itemSearch(gd, recipes, { boost: 999_999_999, level: 49 })).toEqual([]);
+    expect(itemSearch(gd, recipes, { boost: COMMON, level: 49 })).toEqual([]);
+    // every crafted piece has a search at every level it is made at: lines the box takes, two at
+    // most (a long recipe name with long salvage names runs over one)
+    for (const [name, def] of Object.entries(recipes.recipes)) {
+      const boost = gd.powerByName.get(name.toLowerCase());
+      if (!boost) continue;
+      for (const [lo, hi] of def.t) {
+        for (const level of [lo, hi]) {
+          const found = itemSearch(gd, recipes, { boost: boost.id, level: level - 1 });
+          if (def.lv && !def.lv.includes(level)) continue;
+          expect(found.length, `${name} ${level}`).toBeGreaterThanOrEqual(1);
+          expect(found.length, `${name} ${level}`).toBeLessThanOrEqual(2);
+          for (const l of found) expect(l.length, `${name} ${level}`).toBeLessThanOrEqual(AUCTION_SEARCH_MAX);
+        }
+      }
+    }
   });
 });
 

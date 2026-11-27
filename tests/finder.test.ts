@@ -301,7 +301,8 @@ describe('finder: search', () => {
     // and no search result guts it without saying so
     for (const s of findSwaps({ gd, stats, build: b, query: q, limit: 500 }).swaps.filter((x) => x.key === flames.key)) {
       const heal = scorer.score(flames, base.state(flames, flames.slots), base.state(flames, rules.reslotted(applySwap(b, s)).entries().find((e) => e.key === flames.key)!.slots));
-      expect(s.warnings.filter((w) => w.kind === 'crippled')).toHaveLength(heal.crippled.length);
+      // (a loss of recharge alone is a choice, not a warning)
+      expect(s.warnings.filter((w) => w.kind === 'crippled')).toHaveLength(heal.crippled.filter((c) => c.aspect !== 'rech').length);
     }
   });
 

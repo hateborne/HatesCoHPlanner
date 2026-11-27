@@ -224,8 +224,8 @@ describe('the report', () => {
   });
 
   it('names stats the way the totals do', () => {
-    expect(statLabel(gd, 'res.00')).toBe('Smashing (Res)');
-    expect(statLabel(gd, 'mezprot.Knock')).toBe('Knockback (Prot)');
+    expect(statLabel(gd, 'res.00')).toBe('Smashing (Dmg Res)');
+    expect(statLabel(gd, 'mezprot.Knock')).toBe('Knockback (Status Prot)');
     expect(statLabel(gd, 'rech')).toBe('Recharge');
   });
 });

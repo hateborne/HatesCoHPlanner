@@ -84,18 +84,47 @@ export function phoneMenuButton(g: PhoneGeom): Rect {
 }
 
 /**
- * One row of tabs that scrolls sideways (a drag, or the wheel), for a screen short of room: the
- * enhancement picker's categories. Each tab is as wide as three and a bit fit the row, so the
- * next one always peeks in; the chosen tab is brought into view.
+ * One row of tabs that scrolls sideways (a drag, or the wheel), for more tabs than fit a row: the
+ * enhancement picker's categories, and any screen's four tabs (PhoneTabs). Each tab is as wide as
+ * three and a bit fit the row, so the next one always peeks in; the chosen tab is brought into
+ * view.
  *
  * @param props.y Center of the row.
  * @param props.x Left edge of the row.
  * @param props.width Width of the row.
+ * @param props.disabled Tabs shown grey and not tappable (nothing to choose there yet).
+ * @param props.flash A tab that blinks green twice as it appears (it just became available).
+ * @param props.testId The row's data-testid (the picker's is "tabstrip").
  */
-export function PhoneTabStrip({ skin, labels, active, onChange, y, x, width, clickSounds = ['n_select'] }: { skin: Skin; labels: string[]; active: number; onChange: (i: number) => void; y: number; x: number; width: number; clickSounds?: string[] }) {
+export function PhoneTabStrip({
+  skin,
+  labels,
+  active,
+  onChange,
+  y,
+  x,
+  width,
+  disabled,
+  flash,
+  clickSounds = ['n_select'],
+  testId = 'tabstrip',
+}: {
+  skin: Skin;
+  labels: string[];
+  active: number;
+  onChange: (i: number) => void;
+  y: number;
+  x: number;
+  width: number;
+  disabled?: boolean[];
+  flash?: number;
+  clickSounds?: string[];
+  testId?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const s = 1.3;
   const bulb = 22 * s + 4; // the check box's center from the cell's left edge
+  // three tabs and a third of the next: the cut-off tab says the row slides
   const cell = Math.round(width / 3.3);
   const shown = useRef(false); // it has been drawn once: later changes glide
   useEffect(() => {
@@ -108,7 +137,7 @@ export function PhoneTabStrip({ skin, labels, active, onChange, y, x, width, cli
     <div
       ref={ref}
       className="abs noscrollbar"
-      data-testid="tabstrip"
+      data-testid={testId}
       onWheel={(e) => {
         // an up-down wheel turns the row; a sideways one already scrolls it
         if (!e.deltaX) e.currentTarget.scrollLeft += e.deltaY;
@@ -116,44 +145,46 @@ export function PhoneTabStrip({ skin, labels, active, onChange, y, x, width, cli
       style={{ left: x, top: y - PHONE_TAB_ROW / 2, width, height: PHONE_TAB_ROW, overflowX: 'auto', overflowY: 'hidden', touchAction: 'pan-x' }}
     >
       <div style={{ position: 'relative', width: labels.length * cell, height: PHONE_TAB_ROW }}>
-        {labels.map((l, i) => (
-          <CheckBar
-            key={l}
-            skin={skin}
-            x={i * cell + bulb}
-            y={PHONE_TAB_ROW / 2}
-            wd={cell - bulb - 8}
-            scale={s}
-            hitPad={(PHONE_TAB_ROW - 38 * s) / 2}
-            text={l}
-            state={i === active ? 'selected' : 'standard'}
-            down={i === active}
-            clickSounds={clickSounds}
-            onClick={() => onChange(i)}
-            testId={`tab:${l}`}
-          />
-        ))}
+        {labels.map((l, i) => {
+          const off = !!disabled?.[i];
+          return (
+            <CheckBar
+              // by place: a tab whose label changes ("Kept (2)" to "Kept (3)") stays the same tab
+              key={i}
+              skin={skin}
+              x={i * cell + bulb}
+              y={PHONE_TAB_ROW / 2}
+              wd={cell - bulb - 8}
+              scale={s}
+              hitPad={(PHONE_TAB_ROW - 38 * s) / 2}
+              text={l}
+              state={off ? 'unselectable' : i === active ? 'selected' : 'standard'}
+              down={!off && i === active}
+              clickSounds={clickSounds}
+              onClick={off ? undefined : () => onChange(i)}
+              testId={`tab:${l}`}
+            />
+          );
+        })}
+        {/* LockFlash's shape, in green */}
+        {flash !== undefined && labels[flash] !== undefined ? (
+          <div className="abs unlock-flash" style={{ left: flash * cell + bulb - 19 * s, top: PHONE_TAB_ROW / 2 - 16 * s, width: cell - bulb - 8 + 17 * s, height: 32 * s, borderRadius: 16 * s, zIndex: 20 }} />
+        ) : null}
       </div>
     </div>
   );
 }
 
-/** @return How many rows `n` tabs take on a phone (four go two by two, more go three to a row). */
-export function phoneTabRows(n: number): number {
-  return n === 4 ? 2 : Math.ceil(n / 3);
-}
-
 /**
- * The phone's one panel: under `tabs` tabs and above a block `below` px tall that sits on top of
- * Back / Next (the description box, a counter).
+ * The phone's one panel: under the row of tabs (always one row: PhoneTabs) and above a block
+ * `below` px tall that sits on top of Back / Next (the description box, a counter).
  *
  * @param g Phone bands.
- * @param tabs How many tabs the screen shows.
  * @param below Height of what sits between the panel and Back / Next.
  * @return The panel's frame.
  */
-export function phonePanel(g: PhoneGeom, tabs: number, below: number): Rect {
-  const top = g.tabsY + (phoneTabRows(tabs) - 1) * PHONE_TAB_ROW + PHONE_TAB_ROW / 2 + 4;
+export function phonePanel(g: PhoneGeom, below: number): Rect {
+  const top = g.tabsY + PHONE_TAB_ROW / 2 + 4;
   return { x: PHONE_PAD, y: top, w: g.w - 2 * PHONE_PAD, h: g.navTop - 8 - below - top };
 }
 
@@ -171,25 +202,52 @@ export function phoneDesc(g: PhoneGeom, above = 0): Rect {
 }
 
 /**
- * Row(s) of in-game check bars used as tabs to switch the visible panel on phones: up to three
- * in a row (four go two by two). Switching plays the character creator's tab sound
- * (drawHybridTab: N_Select) unless `clickSounds` says otherwise.
+ * A row of in-game check bars used as tabs to switch the visible panel on phones: up to three
+ * share the row; more than three are one row that slides sideways (PhoneTabStrip), never a second
+ * row. Switching plays the character creator's tab sound (drawHybridTab: N_Select) unless
+ * `clickSounds` says otherwise.
  *
- * @param props.y Center of the first row (default: the phone's tab band).
- * @param props.x Left edge of the rows (default: the phone margin).
- * @param props.width Width of the rows (default: the stage less both margins).
+ * @param props.y Center of the row (default: the phone's tab band).
+ * @param props.x Left edge of the row (default: the phone margin).
+ * @param props.width Width of the row (default: the stage less both margins).
  * @param props.disabled Tabs shown grey and not tappable (nothing to choose there yet).
  * @param props.flash A tab that blinks green twice as it appears (it just became available).
+ * @param props.testId The sliding row's data-testid (default "tabs"; a pane over a screen with tabs of its own names another).
  */
-export function PhoneTabs({ skin, labels, active, onChange, y, x = PHONE_PAD, width, disabled, flash, clickSounds = ['n_select'] }: { skin: Skin; labels: string[]; active: number; onChange: (i: number) => void; y?: number; x?: number; width?: number; disabled?: boolean[]; flash?: number; clickSounds?: string[] }) {
+export function PhoneTabs({
+  skin,
+  labels,
+  active,
+  onChange,
+  y,
+  x = PHONE_PAD,
+  width,
+  disabled,
+  flash,
+  clickSounds = ['n_select'],
+  testId = 'tabs',
+}: {
+  skin: Skin;
+  labels: string[];
+  active: number;
+  onChange: (i: number) => void;
+  y?: number;
+  x?: number;
+  width?: number;
+  disabled?: boolean[];
+  flash?: number;
+  clickSounds?: string[];
+  testId?: string;
+}) {
   const stage = useStage();
   const y0 = y ?? phoneGeom(stage).tabsY;
   const wd = width ?? stage.w - 2 * PHONE_PAD;
-  const perRow = labels.length === 4 ? 2 : Math.min(3, labels.length);
+  const perRow = Math.min(3, labels.length);
   const cell = wd / perRow;
   const s = 1.3;
   const bulb = 22 * s + 4; // the check box's center from the cell's left edge
-  const at = (i: number) => ({ cx: x + (i % perRow) * cell + bulb, cy: y0 + Math.floor(i / perRow) * PHONE_TAB_ROW, wd: cell - bulb - 8 });
+  const at = (i: number) => ({ cx: x + i * cell + bulb, cy: y0, wd: cell - bulb - 8 });
+  if (labels.length > 3) return <PhoneTabStrip skin={skin} labels={labels} active={active} onChange={onChange} y={y0} x={x} width={wd} disabled={disabled} flash={flash} clickSounds={clickSounds} testId={testId} />;
   return (
     <>
       {labels.map((l, i) => {

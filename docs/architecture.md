@@ -51,6 +51,8 @@ src/
       warnings.ts            what a swap costs that the player should see
       pending.ts             kept swaps and the build they make (applySwaps, keepSwap)
       diff.ts                buildDiff: exact gains and losses from two full totals
+      dealt.ts               the damage types a build's own powers deal (damageTypesDealt)
+      procs.ts               a damage proc's chance, rate and damage a minute (procChance, procFigures)
       powerNumbers.ts        a power's own numbers with a slotting (slottedNumbers)
       bonusVec.ts, eligible.ts   bonus lines kept per search; the sets each power takes
       labels.ts, view.ts     words (stat names, amounts, warnings) and lists for the screens (the
@@ -532,16 +534,25 @@ build): autos and toggles on, clicks off, except
 enhancement set into slots one power already has. It never moves a slot or changes a power. Its
 screens are described under "Set finder (screens)" below. The parts:
 
-- **A search** (`FinderQuery`, `query.ts`): one to three goals with an importance each (Low 0.5,
-  Medium 1, High 2, Critical 8), the kinds of sets to add to uncommon and rare ones (PvP,
-  seasonal, purple, archetype), an optional wanted bonus (a totals line key) with a depth (2 to 3
-  pieces, 4 to 6, anywhere), up to two additional bonuses, set categories, crafted or attuned.
+- **A search** (`FinderQuery`, `query.ts`): three priority rows, each a goal with an importance
+  (Low 0.5, Medium 1, High 2, Critical 8). A row may hold an importance and no goal: it is not
+  searched for (`chosenGoals`, which everything that reads the goals goes through), so one to
+  three goals count. Picking a goal another row holds moves it there and empties that row, which
+  keeps its importance (`setGoalAt`). Then the kinds of sets to add to uncommon and rare ones
+  (PvP, seasonal, purple, archetype), an optional wanted bonus (a totals line key) with a depth
+  (2 to 3 pieces, 4 to 6, anywhere), up to two additional bonuses, set categories or the powers
+  to keep to (`powers`: entry key and power id, so another build's entry of the same key is not
+  taken for it), crafted or attuned.
 - **Units** (`goals.ts`): everything is counted in "typical bonuses". A stat's unit is the size of
   one typical set bonus in it, from the build statistics (`public/data/finder/stats.json`) for the
   build's archetype, or for every build when the archetype has too few. A goal is a bundle of
   stats and of *power channels* (what a power's own slotting does for its role: `st.out`,
   `heal.rech`). A chosen goal counts by its importance; what the search did not name counts a
-  little when gained (`BASELINE`) and in full when given up (`LOSS_WEIGHT`). The statistics only
+  little when gained (`BASELINE`) and in full when given up (`LOSS_WEIGHT`). The part of a worth
+  the search itself names (its goals and bonuses, without `BASELINE`) is kept apart (`asked`):
+  without a wanted bonus a swap is listed only when it is a gain by that part alone
+  (`Scored.asked`), so a Damage Resistance search never lists a swap that gives resistance up
+  for regeneration or status resistance; what was not named only orders the list. The statistics only
   set units, the weight of each defense and resistance type within its goal, and the needs: they
   never decide which goal matters.
 - **Quick figures** (`core.ts`): the full totals take milliseconds, too slow for every candidate.
@@ -565,8 +576,8 @@ screens are described under "Set finder (screens)" below. The parts:
 - **Needs** (`needsFor`): stats nearly every build of the archetype or power set holds (knockback
   protection). Falling under the typical amount is marked down and warned about.
 - **The search** (`search.ts`): per power, its slots are ordered by what the build loses when
-  each is emptied (empty slots first; a proc is given a set worth, as the planner has no proc
-  numbers), a set's legal pieces by what each does for the power (procs last), and every piece
+  each is emptied (empty slots first; a proc is given a set worth in the ranking, `PROC_VALUE`),
+  a set's legal pieces by what each does for the power (procs last), and every piece
   count the search allows is tried. Pieces go in crafted at the highest level that works at the
   build's last level (set top, or build level plus the levels an IO works above the character),
   or attuned. A single piece is offered only for a unique piece's global. At 50 a Superior set
@@ -582,7 +593,25 @@ screens are described under "Set finder (screens)" below. The parts:
   before the player changed that power's slots, is left out and named in the result (`stale`).
 - **Gains and losses** (`diff.ts`): for a hovered swap or the summary, `buildDiff` compares two
   full totals and the changed powers' own numbers (`slottedNumbers`: damage, heal, accuracy,
-  endurance cost, recharge time with the build's global recharge).
+  endurance cost, recharge time with the build's global recharge). A figure past its cap also
+  carries what it holds before the cap (`rawBefore`, `rawAfter`), a row is kept when only that
+  moves, and `atCap` marks a stat at its cap (defense: the 45% soft cap, which has no cap to
+  show; max HP glows standing at its cap, regeneration and recovery only past theirs). A damage
+  bonus of a type none of the build's own powers deal is marked `unused` (`dealt.ts`: the powers'
+  effects, the powers they execute or redirect to and their pets, pseudo-pets and real ones; not
+  Brawl, not slotted procs). A pet's damage is in files the app never waits for: with a power
+  that makes a pet whose powers are not at hand nothing is marked. Each damage proc a changed
+  power holds on either side is a row of its own: its damage a minute, named with its rate
+  (`procs.ts`, `docs/game-rules.md`; two of one proc and type in a power are one row). A click
+  power whose slots stay is listed too when the build's recharge moves and it holds a damage
+  proc.
+- **Warnings** (`warnings.ts`): a need dropped ("below the N suggested for this build": the
+  amount is the research statistics' median, or 8 for knockback protection, `KNOCKBACK_NEED`;
+  the sentence does not speak of other players' builds), a gutted power (its output or accuracy; a power slotted for less recharge is marked
+  down in the ranking but is the player's choice, so it is no warning, and its recharge time is
+  in the gains and losses), a unique piece's global taken out, a proc without numbers taken out (a damage proc shows in the gains and losses), a bonus
+  past the rule of five, and a stat that was at its cap (defense: the soft cap) and falls under
+  it (`capLost`). A gain past a cap is no warning: the list shows it as "cap (actual)".
 
 **Set finder (screens).** The pane is `src/ui/screens/SetFinder.tsx`, over the build overview
 like the enhancement picker (the whole screen on phones, with Search / Results / Kept / List tabs). It is
@@ -611,17 +640,63 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
   written shows as a red line in the pane (`note`). Any change to the build (an edit, another
   build, the swaps applied) clears the results and the kept swaps: they belonged to the build as
   it was. The form is kept, less what the new build's lists can't show (`fitQuery`; a bonus the
-  new list names by another key of the same kind is carried over to that key).
+  new list names by another key of the same kind is carried over to that key, and picked powers
+  the build no longer has in the same place are dropped). The lists' order (`sort`) is kept too.
+- **Priorities.** Three rows of native selects. A goal another row holds is still offered, tinted
+  and named with its row ("Defense (priority 2)"): picking it moves it.
+- **Powers to consider.** "Select powers..." at the top of the Set type box puts the pane out of
+  the way (`finderOpen.ts`: `picking`, `picked`; the pane stays mounted, so a search is not
+  lost) and shows "Select Powers to Consider" in a box drawn like the slot screen's Slots
+  Available (red until a power is picked, then green) with Done beside it: over the Origin /
+  Alignment and Continue Leveling buttons on desktop, in the place of New Build and Save / Share
+  on phones. On the overview a click on the bar of a power a set can go into picks it or lets it
+  go (a gold ring marks it); any other bar is refused (`flashLocked`, "Takes No Sets", with that
+  refusal's sound alone). Nothing else on the overview answers meanwhile (`PickGuard` in
+  `Overview.tsx`: a click, a right click, Enter or Space reaches only the power bars and the
+  phone's row of tabs), since a changed build drops the finder's kept swaps and results and
+  another screen would leave the picking behind: the level orbs, the title's rename, New Build,
+  Save / Share, Origin / Alignment, the slot rings, the on/off switches, the exclusive toggles'
+  boxes and the pet pane's switches do nothing, and the phone's menu stays shut and says why
+  (`Settings.tsx`). Done takes the keyboard's focus as the pane goes, the box is read out with
+  the count of picked powers, and each bar's text says what a press does. Scrolling, hover texts and long presses stay.
+  The build's name stops short of the box (`pickBox`, `finderPick.ts`). Done or Escape brings the pane back with the picked
+  powers as the search's `powers` (none picked: every power again); the box then reads "N powers
+  selected" with a line under it saying only those are searched, and picking a set type or every
+  set type clears them. Closing the pane ends the picking, and so does any change to the build.
 - **Lists.** The kept swaps come first, each with its box ticked (untick to let it go), then the
-  results: each set shows its best placement, the others folded under it. A line says so when the
+  results: each set shows its best placement, the others folded under it. A row is the set, its
+  piece count, its levels and "into <power>" on one line, with the pieces' icons under it. The label at the top
+  right steps the order (`nextSort`, `sortSwaps`): Default (a dash), by the power's name A to Z
+  and Z to A, by the fewest and the most pieces (the list's "x4"), with the scroll bars' arrow
+  for the direction; in any order but the default every placement is a row of its own, and the
+  kept swaps are ordered the same way (the phone's Kept tab too). A line says so when the
   form, or the kept swaps (a ranking given up or failed), have changed since the list was made.
   Pointing at a swap (tapping it, on a phone) shows its net gains and losses from `buildDiff`:
-  what a result would change on top of the kept swaps, or what a kept swap is adding. The hovered
+  what a result would change on top of the kept swaps, or what a kept swap is adding. A row whose
+  change is too small to show in its figures as written is left out (`shownDiff`). The hovered
   row is in `hover.ts` (`swap`, desktop only), so only the gains and losses pane redraws; ticking
   a box clears it, as the row moves to the other list with no mouseleave. The search's progress
   redraws only its own label. With nothing pointed at, the pane shows the kept swaps together
   against the build as it is. Figures are written as the totals pane writes them (mph, ft, per
-  second).
+  second). The powers the change re-slots come first, each under its bar as the overview draws it
+  (`PowerHead`: a `CheckBar` with the power's icon, a picture only), with its own
+  figures (the better ones, then the worse); the totals' Net Gains and Net Losses follow, and a
+  power the change only reaches through the build's recharge (`PowerDiff.slotted` false: its
+  procs fire more or less often) is listed inside them under its name. A figure standing
+  at its cap glows amber (`atCap`, `wasAtCap`), or purple at defense's soft cap (`softCap`), and a stat past its cap is written as the
+  character sheet writes it, "cap (actual)": into the cap `old -> cap (new)`, staying past it
+  `cap (old -> new)`, out of it `cap (old) -> new`. Damage bonuses marked unused fold into one
+  greyed "Unused Damage" row that opens on a click (closed again for the next swap shown). A
+  damage type is used when one of the build's powers deals it (`damageTypesDealt`, `dealt.ts`):
+  its own effects, the powers it executes or redirects to (a Titan Weapons attack, a snipe's
+  quick form), and its pets, pseudo-pets and real ones; inherent powers and procs don't count.
+  A pet's powers are in the pets files, which the app never waits for: until they are at hand
+  nothing is called unused, the pane asks for the real pets file when a build needs it
+  (`requestHenchmen`) and reads again when a file arrives. What a swap takes out is said in short
+  (`replacedLines`, `labels.ts`): a whole set as its count ("Crushing Impact: 6/6"), two or more
+  pieces of a set by their short names on a line of their own ("Power Transfer: EndMod,
+  Dmg/Rech"), everything else on one last line ("IO: Rech, Lockdown: Acc/Rech"). A proc's row has a tooltip saying which figure is
+  its rate and which its damage a minute.
 - **Applying.** "Apply to this build" asks first (`askConfirm`, naming how many enhancements are
   replaced), then `setBuild`; if the kept swaps changed while the question was up, nothing is
   applied and the note says so. "Open as new build" is a plain link to the share link the store
@@ -630,7 +705,8 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
 - A build whose game version has no statistics, or another server's build, gets a plain sentence
   instead of a search (`finderProblem`).
 - **Shopping list** (`FinderShopping.tsx`; the "Shopping List" button on desktop, the List tab on
-  phones). It shows what the browser keeps (`src/io/shopping.ts`: localStorage `hcp.shopping`, one
+  phones; both are off until there is something to list: a kept swap, or items the browser keeps
+  from swaps applied before). It shows what the browser keeps (`src/io/shopping.ts`: localStorage `hcp.shopping`, one
   list per server, enhancement ids with a level and an owned mark, at most 600 items, every entry
   checked when read) and, after it, the pieces the kept swaps would bring in (`swapItems`: a piece
   going into a slot that already holds that enhancement is not one). A kept swap's pieces are only
@@ -666,6 +742,24 @@ server, or a build made with `HCP_SET_FINDER=1`), so a deploy does not show it.
     can't be pasted from a phone into the game. The limit is from the game's source; on
     Homecoming the owner got 8 names (123 characters) into the box and no further one
     (checked in game, November 17, 2026).
+  - Desktop only: with the pointer over an enhancement of the list (a piece's ring, or a row
+    under Recipes or Enhancements; `hover.ts`: `shop`), the copy keys (Ctrl+C, Cmd+C) copy the
+    search for that enhancement alone (`itemSearch`): its recipe and that recipe's salvage as one
+    auction house line (two for a long recipe), or its own name when no recipe makes it. A line
+    under the sets says what was copied.
+  - The same on the build overview (`useCopyHoveredSlot`; desktop, and only where the set finder
+    shows: `SET_FINDER` and a Homecoming build): with the pointer over a filled slot (`ringTip`),
+    the copy keys copy that enhancement's search, at the level it is slotted at. The recipes are
+    downloaded when a filled slot is pointed at, apart from the finder's own copy of them (the
+    finder's code is not loaded for this); keys pressed before they are in copy when they arrive.
+    A copy that fails (the download, or the browser refusing the clipboard) is said in the red
+    notice, and the download is tried again at the next slot. An enhancement in no set (a common
+    IO, an SO) has no list and keeps the browser's own copy. Nothing is heard under the
+    enhancement picker or while the finder's powers are picked.
+  - Both hear the keys through `listenCopy` (`src/ui/copyEnh.ts`): the page's `copy` event is
+    answered with the text itself, which asks no clipboard permission; a browser that sends no
+    `copy` event with nothing selected still sends the key press, and the text is then written
+    to the clipboard directly. Selected text, and a text box in use, are the browser's to copy.
 
 The numbers marked `UNCONFIRMED` in the finder's source are defaults waiting for the owner's
 ruling.
@@ -781,7 +875,10 @@ has no such column, nor one whose enhancements change no number.
   Its stage is 667 wide and shaped like the window, at least 1067 tall (`src/ui/stageLayout.ts`):
   1.5x the size of the original 1000-wide phone canvas, so the game's bars are about 33px on a
   phone. Phone screens lay out from
-  `src/ui/components/Phone.tsx` (`phoneGeom`, `phonePanel`, `phoneDesc`, `PhoneTabs`).
+  `src/ui/components/Phone.tsx` (`phoneGeom`, `phonePanel`, `phoneDesc`, `PhoneTabs`). Tabs are
+  always one row: up to three share it, more (the overview's four, the set finder's, New Build's)
+  slide sideways as the enhancement picker's categories do (`PhoneTabStrip`), each tab as wide as
+  three and a third fit, so the cut-off one shows there is more.
 - A touch screen held sideways and shorter than 500px shows a "turn your phone upright" message.
 - Phones have no hover: a long press (`longPress` in `src/ui/press.ts`) shows the tooltip
   instead. Clickable chrome takes `pressKeys` for keyboard access.
@@ -831,6 +928,10 @@ has no such column, nor one whose enhancements change no number.
   `phonepicker.spec.ts` (phone only) long presses a slotted power (its info shows the slotted
   bonuses), then in the enhancement picker reaches the last category in the scrolling row, long presses a
   set's name (its bonuses close without closing the picker) and a piece (ticks Select several).
+  `finder.spec.ts` opens the set finder on an imported build: "Select powers..." leaves an
+  overview where only the power bars (and the phone's tabs) answer, a bar picks its power and
+  Done brings the pane back kept to it; on the desktop, Ctrl+C over a slot puts that
+  enhancement's recipe and salvage on the clipboard.
   `combat.spec.ts` opens a link and turns on the totals' Out of Combat switch: the totals change,
   the link and the saved build don't, and a reload opens with it off.
 

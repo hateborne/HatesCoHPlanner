@@ -346,11 +346,55 @@ fight.
   (`DEFENSE_SOFT_CAP` in `src/engine/finder/core.ts`). @TODO the 50% is the critter classes' base
   ToHit, which the planner's data does not carry (only player archetypes are exported); enemies
   with ToHit buffs or of higher rank and level hit more often, and the finder does not model them.
+- The client's class data holds a hard limit on defense only (`maxMax.DefenseTypeNN`: 225.05% for
+  Tankers and Brutes, 200.38% for Scrappers, Stalkers and the epic archetypes, 175% for the
+  rest, from level 21), far past anything a build reaches. The 45% is nowhere in the data: it is
+  what the formula above leaves. Enemies with more ToHit (incarnate content) are hit less often
+  by defense past 45%, so the set finder only marks defense at the soft cap and never writes it
+  as capped.
 - The same function gives the finder's to-hit against accuracy exchange: a player's base ToHit is
   75%, so one point of ToHit raises the final chance as much as 4/3 of a point of accuracy.
 - A power's recharge time is its base time over 1 + its recharge strength, and a power's strength
   starts from the character's (character_mods.c), so the build's global recharge adds to the
   slotted enhancement (`slottedNumbers` in `src/engine/finder/powerNumbers.ts`).
+
+## Knockback protection (set finder)
+
+- The game has no amount of knockback protection that is "enough" for an archetype. The class
+  tables only limit the knock that can land (`max` Knock and Knockup: 2 for a Tanker, 3 for a
+  Scrapper, 4 for a Blaster) and knock resistance (`resMax` 0.99); protection is a negative
+  magnitude added to the attribute, and a character is knocked while what is left is above zero
+  (character_tick.c).
+- So the amount the set finder's warning names ("below the 8.00 suggested for this build") is not
+  a game value. The research statistics say which archetypes and power sets nearly always hold
+  knockback protection (`needs` in `public/data/finder/stats.json`); the amount is the owner's:
+  8, two knockback protection pieces (`KNOCKBACK_NEED` in `src/engine/finder/score.ts`), whatever
+  median the statistics give (3 for a Blaster, 7.5 for Fiery Aura, 16 for a Brute's Electric
+  Armor).
+
+## Procs per minute (set finder)
+
+- `CalculateModChance` (MapServer/src/entity/character_combat.c): a PPM proc's chance is its
+  ProcsPerMinute times a time, over 60 times the area factor, then held between 5% + 1.5% per
+  PPM and 90%. The time is, for a click power, its recharge time plus its TimeToActivate; for
+  any other power, the ActivatePeriod of the power the proc's template belongs to (the
+  enhancement: 10 seconds in the data, which `procChance` reads, with 10 where it is missing).
+- The area factor is `basepower_CalculateAreaFactor` (Common/entity/powers.c) times 0.75 plus
+  0.25: 1 + 0.15 x radius for a sphere, less 0.00036667 x radius x (360 - arc in degrees) for a
+  cone, 1 for anything else. @TODO the game also gives 1 to a power with
+  UseNonBoostTemplatesOnMainTarget, a flag the planner's data does not carry.
+- The click's recharge time is the one with the power's own slotted recharge and without the
+  character's global recharge (the source's comment: "boosted recharge to reduce proc chance but
+  not global recharge"; the Homecoming wiki's Procs Per Minute page says the same). @TODO the
+  source's own line multiplies the base recharge by the power's recharge strength over the
+  character's, which would raise the chance with slotted recharge; `procChance`
+  (`src/engine/finder/procs.ts`) follows the comment and the live game.
+- The set finder's rate (`procFigures`) is that chance times how often the power is used when it
+  is used every time it is ready: a click once every cast time plus recharge time (global
+  recharge counted), a toggle or an auto power once every 10 seconds. It is per target hit. The
+  damage is the proc's own at the character's level, before the target's resistance. A click
+  with no recharge and no cast time in the data is taken to cycle every 0.5 seconds (`MIN_CYCLE`):
+  the planner's own floor so the rate stays finite, not a game rule.
 
 ## Pseudo-pet damage (power info)
 

@@ -232,7 +232,7 @@ export function ChooseNewPower({ skin }: { skin: Skin }) {
     );
 
   if (phone) {
-    const P = phonePanel(pg, 3, PHONE_DESC_H + 8 + (respec ? PHONE_COUNTER_H + 8 : 0));
+    const P = phonePanel(pg, PHONE_DESC_H + 8 + (respec ? PHONE_COUNTER_H + 8 : 0));
     const lists = [primary, secondary, extra];
     const off = shownTab === 2 ? extraButtons * (BAR_H + 6) : 0;
     const g: ColumnGeom = { left: P.x, top: P.y + 8 + off, width: P.w, height: P.h - 16 - off, barX: P.x + P.w, headX: 20, barCX: 56, barW: P.w - 90, firstHead: vy(31) };

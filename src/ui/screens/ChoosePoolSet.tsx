@@ -149,7 +149,7 @@ export function ChoosePoolSet({ skin, kind }: { skin: Skin; kind: 'pool' | 'epic
 
   if (phone) {
     const pg = phoneGeom(stage, false);
-    const P = phonePanel(pg, 2, PHONE_DESC_H + 8);
+    const P = phonePanel(pg, PHONE_DESC_H + 8);
     const n = tab === 0 ? choices.length : powers.length;
     // with a Patron box the sets (and their powers) get frames, so they start below the frame's top
     const framed = patron.length > 0;

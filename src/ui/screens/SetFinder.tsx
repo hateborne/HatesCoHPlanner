@@ -1,30 +1,36 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { GameData } from '../../data/gamedata.ts';
 import type { Build } from '../../engine/build.ts';
 import { setLevelRange, setRarity } from '../../engine/enhance.ts';
+import { damageTypesDealt } from '../../engine/finder/dealt.ts';
 import { buildDiff, type BuildDiff, type DiffRow } from '../../engine/finder/diff.ts';
-import { statAmount, statLabel, warningText } from '../../engine/finder/labels.ts';
+import { replacedLines, statAmount, statLabel, warningText } from '../../engine/finder/labels.ts';
 import { applySwaps, type Swap } from '../../engine/finder/pending.ts';
-import { GOALS, MAX_EXTRA, MAX_GOALS, queryProblem, type Depth, type GoalId, type Importance, type SetTag } from '../../engine/finder/query.ts';
+import { GOALS, MAX_EXTRA, MAX_GOALS, queryProblem, setGoalAt, type Depth, type GoalId, type Importance, type SetTag } from '../../engine/finder/query.ts';
 import type { RankedSwap } from '../../engine/finder/search.ts';
-import { bonusChoices, bySet, fitQuery, setGroupsOf, type StatSection } from '../../engine/finder/view.ts';
+import { bonusChoices, bySet, fitQuery, pickablePowers, setGroupsOf, sortSwaps, type StatSection } from '../../engine/finder/view.ts';
 import { BuildRules } from '../../engine/rules.ts';
+import { readShopping } from '../../io/shopping.ts';
 import { swapId, useFinder } from '../../state/finder.ts';
-import { closeSetFinder as close } from '../../state/finderOpen.ts';
+import { closeSetFinder as close, startPickingPowers, stopPickingPowers, useFinderOpen } from '../../state/finderOpen.ts';
 import { useStore } from '../../state/store.ts';
-import { MenuFrame, SetTitle } from '../components/Chrome.tsx';
+import { CheckBar } from '../components/CheckBar.tsx';
+import { FlatFrame, InfoButton, MenuFrame, SetTitle } from '../components/Chrome.tsx';
 import { FINDER_NAME } from '../components/FinderIcon.tsx';
-import { TitleText } from '../components/GameText.tsx';
+import { GameText, TitleText } from '../components/GameText.tsx';
 import { PHONE_TAB_ROW, PhoneTabs } from '../components/Phone.tsx';
 import { rarityStyle } from '../components/PowerTip.tsx';
+import { Sprite } from '../components/Sprite.tsx';
 import { useStage } from '../components/Stage.tsx';
 import { MPH, TotalsRow } from '../components/TotalsPanel.tsx';
 import { useEscape } from '../escape.ts';
 import { useFreshHover, useHover } from '../hover.ts';
 import { pressKeys } from '../press.ts';
-import type { Skin } from '../skin/skin.ts';
+import { S } from '../skin/metrics.ts';
+import { icon, ui, type Skin } from '../skin/skin.ts';
 import { EnhIcon } from './EnhancementPicker.tsx';
+import { pickBox } from './finderPick.ts';
 import { ShopNeeds, ShopSets, useShoppingList } from './FinderShopping.tsx';
 
 const IMPORTANCES: { id: Importance; name: string }[] = [
@@ -45,10 +51,19 @@ const DEPTHS: { id: Depth; name: string }[] = [
   { id: '4-6', name: '4-6 pieces' },
 ];
 
+// the set type box's two entries that are not set types: go pick the powers, and "N powers selected"
+const PICK_POWERS = '__pick';
+const POWERS_PICKED = '__picked';
+
 const TEXT = '#cfe8ff';
 const MUTED = '#8fa1b8';
 const WARN = '#ffd24a';
 const BAD = '#ff5a5a';
+
+// what the purple figure means, for its tooltip
+const SOFT_CAP_TITLE = 'At the 45% defense soft cap: more only helps against enemies with extra chance to hit.';
+// what a proc's row shows, for its tooltip
+const PROC_TITLE = 'In brackets: how often the proc fires a minute, per target hit, with the power used whenever it is ready. The figures: its damage a minute, before and after.';
 
 // the totals pane's own names where they differ from the lines' labels
 const PANE_LABEL: Record<string, string> = { endrdx: 'End Discount', stealth: 'Stealth (PvE)' };
@@ -63,6 +78,8 @@ const PANE_LABEL: Record<string, string> = { endrdx: 'End Discount', stealth: 'S
  */
 function figure(key: string, v: number, power: boolean): string {
   if (power) {
+    // a proc's damage a minute
+    if (key.startsWith('proc:')) return v > 0 && v < 10 ? v.toFixed(1) : v.toFixed(0);
     if (key === 'accuracy') return `${v.toFixed(2)}x`;
     if (key === 'recharge') return `${v.toFixed(1)}s`;
     return v.toFixed(2);
@@ -75,68 +92,215 @@ function figure(key: string, v: number, power: boolean): string {
   return statAmount(key, v);
 }
 
-/** Rows of one side of the gains and losses, laid out like the totals pane. */
-function DiffRows({ gd, rows, gain, power }: { gd: GameData; rows: DiffRow[]; gain: boolean; power: boolean }) {
+/** A piece of a row's value: a figure or what joins two, and whether it is a figure at its cap. */
+interface ValuePart {
+  text: string; // the figure, or " -> " and the like
+  cap?: boolean; // a figure standing at its cap: it glows
+}
+
+/**
+ * A row's before and after, with what a figure holds past its cap written as the character sheet
+ * writes it, "cap (actual)": going into the cap "old -> cap (new)", staying past it
+ * "cap (old -> new)", dropping out of it "cap (old) -> new". The figure at the cap is marked.
+ *
+ * @param r The row.
+ * @param power Whether the row is a power's own figure.
+ * @return The value in parts, in reading order.
+ */
+function rowParts(r: DiffRow, power: boolean): ValuePart[] {
+  const f = (v: number) => figure(r.key, v, power);
+  const { rawBefore: rb, rawAfter: ra } = r;
+  const before: ValuePart = { text: f(r.before), cap: r.wasAtCap };
+  const after: ValuePart = { text: f(r.after), cap: r.atCap };
+  if (rb === undefined && ra === undefined) return [before, { text: ' -> ' }, after];
+  if (rb === undefined) return [before, { text: ' -> ' }, after, { text: ` (${f(ra!)})` }];
+  if (ra === undefined) return [before, { text: ` (${f(rb)}) -> ` }, after];
+  // past the cap on both sides; the cap itself moves only for a figure worked out from another (regeneration per second from max HP)
+  if (before.text === after.text) return [after, { text: ` (${f(rb)} -> ${f(ra)})` }];
+  return [before, { text: ` (${f(rb)}) -> ` }, after, { text: ` (${f(ra)})` }];
+}
+
+/** @return A row's value as plain text. */
+const rowText = (r: DiffRow, power: boolean): string =>
+  rowParts(r, power)
+    .map((x) => x.text)
+    .join('');
+
+/**
+ * @param r A row.
+ * @param power Whether the row is a power's own figure.
+ * @return Whether the row's change shows in its figures as they are written: a change smaller than
+ *   the last digit shown would read "1.85/s -> 1.85/s".
+ */
+function shows(r: DiffRow, power: boolean): boolean {
+  const f = (v: number | undefined) => (v === undefined ? undefined : figure(r.key, v, power));
+  return f(r.before) !== f(r.after) || f(r.rawBefore) !== f(r.rawAfter);
+}
+
+/** @return A change's gains and losses without the rows whose change is too small to show (shows). */
+function shownDiff(d: BuildDiff): BuildDiff {
+  const keep = (rows: DiffRow[], power: boolean) => rows.filter((r) => shows(r, power));
+  return {
+    gains: keep(d.gains, /*power=*/ false),
+    losses: keep(d.losses, /*power=*/ false),
+    powers: d.powers.map((p) => ({ ...p, gains: keep(p.gains, /*power=*/ true), losses: keep(p.losses, /*power=*/ true) })),
+  };
+}
+
+// a figure standing at its cap: amber, with a glow
+const AT_CAP: CSSProperties = { color: WARN, textShadow: '0 0 6px rgba(255, 210, 74, 0.75), 0 0 12px rgba(255, 170, 0, 0.5)' };
+// at a soft cap (defense's 45%): purple, to tell it from a cap nothing gets past
+const AT_SOFT_CAP: CSSProperties = { color: '#d2a8ff', textShadow: '0 0 6px rgba(190, 130, 255, 0.8), 0 0 12px rgba(150, 80, 255, 0.55)' };
+
+/** A row's value, the figure at its cap glowing (amber for a cap, purple for a soft cap). */
+function RowValue({ r, power }: { r: DiffRow; power: boolean }) {
   return (
     <>
-      {rows.map((r) => (
-        <TotalsRow
-          key={r.key}
-          // a line of a family ("def.03") is named by the totals with its type alone
-          label={power ? r.label : (PANE_LABEL[r.key] ?? (r.key.includes('.') ? statLabel(gd, r.key) : r.label))}
-          value={`${figure(r.key, r.before, power)} -> ${figure(r.key, r.after, power)}`}
-          tone={gain ? 1 : -1}
-          noMark
-        />
-      ))}
+      {rowParts(r, power).map((x, i) =>
+        x.cap ? (
+          <span key={i} style={r.softCap ? AT_SOFT_CAP : AT_CAP} title={r.softCap ? SOFT_CAP_TITLE : undefined}>
+            {x.text}
+          </span>
+        ) : (
+          x.text
+        ),
+      )}
     </>
   );
 }
 
-/** Net gains and net losses of a change: the totals first, then each changed power's own figures. */
-function Diff({ gd, diff }: { gd: GameData; diff: BuildDiff }) {
-  const none = !diff.gains.length && !diff.losses.length && diff.powers.every((p) => !p.gains.length && !p.losses.length);
-  if (none) return <div className="desc-text">No change in the totals.</div>;
-  const own = (side: 'gains' | 'losses') =>
-    diff.powers
+/** Rows of one side of the gains and losses, laid out like the totals pane. */
+function DiffRows({ gd, rows, gain, power }: { gd: GameData; rows: DiffRow[]; gain: boolean; power: boolean }) {
+  // the damage bonuses of types the build's powers don't deal are folded into one row
+  const [open, setOpen] = useState(false);
+  const row = (r: DiffRow) => (
+    // a proc's row carries two figures: say which is which
+    <div key={r.key} title={power && r.key.startsWith('proc:') ? PROC_TITLE : undefined}>
+      <TotalsRow
+        // a line of a family ("def.03") is named by the totals with its type alone
+        label={power ? r.label : (PANE_LABEL[r.key] ?? (r.key.includes('.') ? statLabel(gd, r.key) : r.label))}
+        value={<RowValue r={r} power={power} />}
+        tone={gain ? 1 : -1}
+        noMark
+        wrapRight
+      />
+    </div>
+  );
+  const unused = rows.filter((r) => r.unused);
+  const values = new Set(unused.map((r) => rowText(r, power)));
+  const fold = () => setOpen(!open);
+  return (
+    <>
+      {rows.filter((r) => !r.unused).map(row)}
+      {unused.length ? (
+        <>
+          {/* of no use to this build: greyed, so it draws no eye */}
+          <div
+            data-testid={`finder:unused:${gain ? 'gains' : 'losses'}`}
+            onClick={fold}
+            {...pressKeys(fold, undefined, `Unused Damage: ${open ? 'hide' : 'show'} the ${unused.length} damage types this build does not deal`)}
+            title="Damage types none of this build's powers deal"
+            style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer', color: MUTED, padding: '1px 0' }}
+          >
+            <span>{open ? '-' : '+'} Unused Damage</span>
+            <span>{values.size === 1 ? [...values][0]! : ''}</span>
+          </div>
+          {open ? <div style={{ paddingLeft: 18, opacity: 0.7 }}>{unused.map(row)}</div> : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * A re-slotted power's heading over its figures: the power's bar as the build overview draws it
+ * (its icon in the ring, its name on the bar), so it reads as the power and not as one more list
+ * title. It is a picture only: nothing happens on a click.
+ */
+function PowerHead({ gd, skin, power, phone, width }: { gd: GameData; skin: Skin; power: number; phone: boolean; width: number }) {
+  const p = gd.power(power);
+  // the overview's bar at a smaller scale; its ring reaches 19 units left of its center and its box is 32 units tall (Overview.tsx)
+  const sc = phone ? 1.25 : 1.1;
+  return (
+    <div data-testid={`finder:power:${power}`} style={{ position: 'relative', height: 36 * sc, marginBottom: 2 }}>
+      <CheckBar skin={skin} x={20 * sc} y={18 * sc} wd={width - 32 * sc} scale={sc} text={p.dn} state="standard" icon={icon('powers', p.icon || 'power_missing')} />
+    </div>
+  );
+}
+
+/**
+ * The gains and losses of a change: the powers it re-slots first, each under its bar (PowerHead)
+ * with its own figures (the better ones, then the worse), then the totals' net gains and net losses. A
+ * power the change only reaches from afar (its procs fire more or less often with the build's
+ * recharge) comes under the gains or the losses, with its name over its rows. A row whose change
+ * is too small to show in its figures is left out (shownDiff).
+ */
+function Diff({ gd, diff: all, skin, phone, width }: { gd: GameData; diff: BuildDiff; skin: Skin; phone: boolean; width: number }) {
+  const diff = shownDiff(all);
+  const active = diff.powers.filter((p) => p.slotted && (p.gains.length || p.losses.length));
+  const others = diff.powers.filter((p) => !p.slotted);
+  if (!diff.gains.length && !diff.losses.length && !active.length && !others.some((p) => p.gains.length || p.losses.length)) return <div className="desc-text">No change in the totals.</div>;
+  const afar = (side: 'gains' | 'losses') =>
+    others
       .filter((p) => p[side].length)
       .map((p) => (
         <div key={p.key} style={{ marginTop: 6 }}>
-          <div style={{ color: MUTED }}>{gd.power(p.power).dn}</div>
+          <div style={{ color: TEXT }}>{gd.power(p.power).dn}</div>
           <DiffRows gd={gd} rows={p[side]} gain={side === 'gains'} power />
         </div>
       ));
+  const none = (side: 'gains' | 'losses') => (diff[side].length || others.some((p) => p[side].length) ? null : <div style={{ color: MUTED }}>None.</div>);
   return (
     <>
-      <TitleText style={{ fontSize: 18, marginTop: 10 }}>Net Gains</TitleText>
+      {active.length ? (
+        <div data-testid="finder:powers">
+          {active.map((p) => (
+            <div key={p.key} style={{ marginTop: 10 }}>
+              <PowerHead gd={gd} skin={skin} power={p.power} phone={phone} width={width} />
+              <DiffRows gd={gd} rows={p.gains} gain power />
+              <DiffRows gd={gd} rows={p.losses} gain={false} power />
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <TitleText style={{ fontSize: 18, marginTop: 12 }}>Net Gains</TitleText>
       <div data-testid="finder:gains">
-        {diff.gains.length || diff.powers.some((p) => p.gains.length) ? null : <div style={{ color: MUTED }}>None.</div>}
+        {none('gains')}
         <DiffRows gd={gd} rows={diff.gains} gain power={false} />
-        {own('gains')}
+        {afar('gains')}
       </div>
       <TitleText style={{ fontSize: 18, marginTop: 14 }}>Net Losses</TitleText>
       <div data-testid="finder:losses">
-        {diff.losses.length || diff.powers.some((p) => p.losses.length) ? null : <div style={{ color: MUTED }}>None.</div>}
+        {none('losses')}
         <DiffRows gd={gd} rows={diff.losses} gain={false} power={false} />
-        {own('losses')}
+        {afar('losses')}
       </div>
     </>
   );
 }
 
-/** What a swap places: the set's name in its rarity colour, the power it goes into, the pieces as small icons. */
+/** What a swap places: the set's name in its rarity colour, its levels and the power it goes into on one line, the pieces as small icons under it. */
 function SwapLine({ gd, swap, phone }: { gd: GameData; swap: Swap; phone: boolean }) {
   const set = gd.boostSetById.get(swap.set);
   const [lo, hi] = set ? setLevelRange(set) : [0, 0];
+  const power = gd.powerById.get(swap.power);
   return (
     <div style={{ minWidth: 0 }}>
+      {/* one line where there is room: the set, its pieces, its levels, the power it goes into */}
       <div style={{ fontSize: phone ? 20 : 17, lineHeight: 1.2 }}>
         <span style={{ color: TEXT, ...rarityStyle(set ? setRarity(set) : undefined) }}>{set?.dn ?? 'Unknown set'}</span> <span style={{ color: '#fff' }}>x{swap.count}</span>{' '}
         <span style={{ color: MUTED, fontSize: phone ? 15 : 13 }}>
           ({lo + 1}-{hi + 1})
+        </span>{' '}
+        {/* the power stands out as the set does: its icon, then its name as large, in white; "into" stays small.
+            The icon is the planner's own size, not a client one: as tall as the line's text (17px desktop, 20px phone) and its leading */}
+        <span style={{ whiteSpace: 'nowrap' }}>
+          <span style={{ color: MUTED, fontSize: phone ? 15 : 13 }}>into</span>{' '}
+          {/* an icon file that is not there leaves its room empty, never a broken picture */}
+          {power ? <img src={icon('powers', power.icon || 'power_missing')} alt="" draggable={false} onError={(e) => (e.currentTarget.style.visibility = 'hidden')} style={{ width: phone ? 26 : 22, height: phone ? 26 : 22, verticalAlign: 'middle', marginRight: 4, position: 'relative', top: -1 }} /> : null}
+          <span style={{ color: '#fff', fontWeight: 700 }}>{power?.dn ?? 'a power'}</span>
         </span>
       </div>
-      <div style={{ color: TEXT, fontSize: phone ? 17 : 14 }}>into {gd.powerById.get(swap.power)?.dn ?? 'a power'}</div>
       <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
         {swap.pieces.map((p) => {
           const b = gd.powerById.get(p.enh.boost);
@@ -180,6 +344,11 @@ function SearchLabel({ idle }: { idle: string }) {
 /** The search form: priorities, kinds of sets, the wanted bonus and the additional ones, set type. */
 function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: StatSection[]; groups: string[]; phone: boolean }) {
   const { query, setQuery } = useFinder(useShallow((s) => ({ query: s.query, setQuery: s.setQuery })));
+  /** The set type box changed: a set type, every set type, or off to the overview to pick the powers to consider. */
+  const setType = (value: string) => {
+    if (value === PICK_POWERS) startPickingPowers(query.powers ?? []);
+    else if (value !== POWERS_PICKED) setQuery({ groups: value ? [value] : undefined, powers: undefined });
+  };
   const select: CSSProperties = {
     fontFamily: "'Montreal'",
     fontSize: 16,
@@ -195,13 +364,8 @@ function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: S
   const option: CSSProperties = { background: skin.select[1] };
   const head = (text: string) => <TitleText style={{ fontSize: 18, marginTop: 14, marginBottom: 4 }}>{text}</TitleText>;
 
-  /** Set, change or clear priority `i`; a goal can be picked once. */
-  const setGoal = (i: number, goal: GoalId | '', importance?: Importance) => {
-    const goals = query.goals.slice();
-    if (!goal) goals.splice(i, 1);
-    else goals[i] = { goal, importance: importance ?? goals[i]?.importance ?? 'medium' };
-    setQuery({ goals: goals.filter((g, k) => goals.findIndex((x) => x.goal === g.goal) === k) });
-  };
+  /** Set, change or clear priority `i`, or its importance; a goal another row holds moves here. */
+  const setGoal = (i: number, patch: { goal?: GoalId | null; importance?: Importance }) => setQuery({ goals: setGoalAt(query.goals, i, patch) });
   const setExtra = (i: number, stat: string) => {
     const extra = query.extra.slice();
     if (!stat) extra.splice(i, 1);
@@ -224,27 +388,30 @@ function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: S
   return (
     <div className="body-text" style={{ fontSize: phone ? 19 : 16, color: TEXT }}>
       {head('Priorities')}
-      {Array.from({ length: Math.min(MAX_GOALS, query.goals.length + 1) }, (_, i) => {
+      {Array.from({ length: MAX_GOALS }, (_, i) => {
         const cur = query.goals[i];
         return (
           <div key={i} style={row}>
-            <select data-testid={`finder:goal:${i}`} aria-label={`Priority ${i + 1}`} value={cur?.goal ?? ''} onChange={(e) => setGoal(i, e.target.value as GoalId | '')} style={{ ...select, flex: 3 }}>
+            <select data-testid={`finder:goal:${i}`} aria-label={`Priority ${i + 1}`} value={cur?.goal ?? ''} onChange={(e) => setGoal(i, { goal: (e.target.value as GoalId) || null })} style={{ ...select, flex: 3 }}>
               <option value="" style={option}>
                 {i === 0 ? 'Choose a priority' : 'Add a priority'}
               </option>
-              {GOALS.map((g) => (
-                <option key={g.id} value={g.id} disabled={query.goals.some((x, k) => k !== i && x.goal === g.id)} style={option}>
-                  {g.name}
-                </option>
-              ))}
+              {GOALS.map((g) => {
+                // a goal another row holds can still be picked: it moves here and that row empties
+                const used = query.goals.findIndex((x, k) => k !== i && x.goal === g.id);
+                return (
+                  <option key={g.id} value={g.id} style={used < 0 ? option : { ...option, color: WARN }}>
+                    {used < 0 ? g.name : `${g.name} (priority ${used + 1})`}
+                  </option>
+                );
+              })}
             </select>
             <select
               data-testid={`finder:importance:${i}`}
               aria-label={`Importance of priority ${i + 1}`}
               value={cur?.importance ?? 'medium'}
-              disabled={!cur}
-              onChange={(e) => cur && setGoal(i, cur.goal, e.target.value as Importance)}
-              style={{ ...select, flex: 2, opacity: cur ? 1 : 0.45 }}
+              onChange={(e) => setGoal(i, { importance: e.target.value as Importance })}
+              style={{ ...select, flex: 2 }}
             >
               {IMPORTANCES.map((m) => (
                 <option key={m.id} value={m.id} style={option}>
@@ -323,7 +490,15 @@ function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: S
 
       {head('Set type')}
       <div style={row}>
-        <select data-testid="finder:group" aria-label="Set type" value={query.groups?.[0] ?? ''} onChange={(e) => setQuery({ groups: e.target.value ? [e.target.value] : undefined })} style={{ ...select, flex: 1 }}>
+        <select data-testid="finder:group" aria-label="Set type" value={query.powers ? POWERS_PICKED : (query.groups?.[0] ?? '')} onChange={(e) => setType(e.target.value)} style={{ ...select, flex: 1 }}>
+          <option value={PICK_POWERS} style={option}>
+            Select powers...
+          </option>
+          {query.powers ? (
+            <option value={POWERS_PICKED} style={option}>
+              {query.powers.length} {query.powers.length === 1 ? 'power' : 'powers'} selected
+            </option>
+          ) : null}
           <option value="" style={option}>
             Every set type your powers take
           </option>
@@ -334,6 +509,12 @@ function SearchForm({ skin, sections, groups, phone }: { skin: Skin; sections: S
           ))}
         </select>
       </div>
+      {/* a set type and picked powers take each other's place: said where the powers would be lost */}
+      {query.powers ? (
+        <div data-testid="finder:powersnote" style={{ color: MUTED, fontSize: phone ? 16 : 13 }}>
+          Only the {query.powers.length === 1 ? 'power' : `${query.powers.length} powers`} you picked {query.powers.length === 1 ? 'is' : 'are'} searched. Choosing a set type searches every power again.
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -399,12 +580,45 @@ function ResultRow({ gd, swap, kept, selected, phone, busy, onKeep, onSelect }: 
 }
 
 /**
+ * The lists' order, at the top right of the pane: a click steps to the next one (Default, by power
+ * A to Z and Z to A, by fewest and most slots). Default shows a dash, the others an arrow.
+ */
+function SortLabel({ phone }: { phone: boolean }) {
+  const { sort, stepSort } = useFinder(useShallow((s) => ({ sort: s.sort, stepSort: s.stepSort })));
+  const name = sort.by === 'default' ? 'Default' : sort.by === 'power' ? 'Power' : 'Slots';
+  const said = sort.by === 'default' ? 'by rank' : sort.by === 'power' ? (sort.desc ? 'by power, Z to A' : 'by power, A to Z') : sort.desc ? 'most slots first' : 'fewest slots first';
+  const arrow = phone ? 16 : 13;
+  return (
+    <div
+      data-testid="finder:sort"
+      className="body-text"
+      onClick={stepSort}
+      {...pressKeys(stepSort, undefined, `Sorted ${said}. Press to change the order`)}
+      title={`Sorted ${said}. Click to change the order`}
+      style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: WARN, fontSize: phone ? 19 : 16, minHeight: phone ? 44 : undefined, userSelect: 'none' }}
+    >
+      {name}
+      {sort.by === 'default' ? (
+        <span>-</span>
+      ) : (
+        // the scroll bars' arrows (GameScroll)
+        <span style={{ position: 'relative', display: 'inline-block', width: arrow, height: arrow }}>
+          <Sprite src={ui(`hud/map/map_zoom_${sort.desc ? 'down' : 'up'}arrow`)} x={0} y={0} w={arrow} h={arrow} tint={WARN} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
  * The lists: the kept swaps first, each with its box ticked, then the results, each set with its
- * best placement and its other placements folded under it.
+ * best placement and its other placements folded under it. In another order than the default
+ * (SortLabel) every placement is a row of its own.
  */
 function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; hasSlots: boolean }) {
-  const { result, busy, kept, selected, select, keep, drop, problem, loading, query, searched, searchedKept } = useFinder(
+  const { result, busy, kept, selected, select, keep, drop, problem, loading, query, searched, searchedKept, sort } = useFinder(
     useShallow((s) => ({
+      sort: s.sort,
       result: s.result,
       busy: s.progress !== null,
       kept: s.kept,
@@ -422,7 +636,9 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
   const [more, setMore] = useState<ReadonlySet<number>>(new Set());
   const keptIds = useMemo(() => new Set(kept.map(swapId)), [kept]);
   // a kept swap shows under Kept only (a list not ranked again since it was kept still holds it)
-  const sets = useMemo(() => bySet((result?.swaps ?? []).filter((s) => !keptIds.has(swapId(s)))), [result, keptIds]);
+  const found = useMemo(() => sortSwaps(gd, (result?.swaps ?? []).filter((s) => !keptIds.has(swapId(s))), sort), [gd, result, keptIds, sort]);
+  const sets = useMemo(() => bySet(found), [found]);
+  const keptShown = useMemo(() => sortSwaps(gd, kept, sort), [gd, kept, sort]);
   if (loading) return <div className="desc-text">Loading the build statistics...</div>;
   if (problem) return <div className="desc-text">{problem}</div>;
 
@@ -447,6 +663,8 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
     results = <div className="desc-text">{result.problem}</div>;
   } else if (!result.swaps.length) {
     results = <div className="desc-text">{hasSlots ? 'Nothing found. Try another priority, or let more kinds of sets in.' : 'This build has no enhancement slots a set could go into yet.'}</div>;
+  } else if (sort.by !== 'default') {
+    results = found.map(row);
   } else {
     results = sets.map((g) => (
       <div key={g.set} style={{ marginBottom: 4 }}>
@@ -466,10 +684,13 @@ function ResultList({ gd, phone, hasSlots }: { gd: GameData; phone: boolean; has
   return (
     <div>
       <Note />
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        {kept.length ? <TitleText style={{ fontSize: 18 }}>Kept</TitleText> : null}
+        <SortLabel phone={phone} />
+      </div>
       {kept.length ? (
         <div data-testid="finder:kept" style={{ marginBottom: 10 }}>
-          <TitleText style={{ fontSize: 18 }}>Kept</TitleText>
-          {kept.map(row)}
+          {keptShown.map(row)}
           <TitleText style={{ fontSize: 18, marginTop: 10 }}>Results</TitleText>
         </div>
       ) : null}
@@ -502,11 +723,12 @@ function KeptLine({ gd, swap }: { gd: GameData; swap: RankedSwap }) {
  * together against the build as it is.
  *
  * @param props.summary Always show the kept swaps together, each with a Remove button (the phone's Kept tab).
+ * @param props.width The room its rows have (stage px), for the powers' bars.
  */
-function Detail({ gd, build, rules, phone, summary }: { gd: GameData; build: Build; rules: BuildRules; phone: boolean; summary: boolean }) {
+function Detail({ gd, build, rules, skin, phone, summary, width }: { gd: GameData; build: Build; rules: BuildRules; skin: Skin; phone: boolean; summary: boolean; width: number }) {
   // phones have no hover: only a tap selects
   const hovered = useHover((h) => (phone ? null : h.swap));
-  const { result, kept, selected } = useFinder(useShallow((s) => ({ result: s.result, kept: s.kept, selected: s.selected })));
+  const { result, kept, selected, sort } = useFinder(useShallow((s) => ({ result: s.result, kept: s.kept, selected: s.selected, sort: s.sort })));
   const shown = useMemo(() => {
     if (summary) return null;
     const all = [...kept, ...(result?.swaps ?? [])];
@@ -514,14 +736,25 @@ function Detail({ gd, build, rules, phone, summary }: { gd: GameData; build: Bui
     // a hover left over from a list that has since changed falls back to the selection
     return find(hovered) ?? find(selected) ?? null;
   }, [summary, kept, result, hovered, selected]);
+  // the damage types the build deals are the same whatever its slots hold: read once, and again
+  // when a pets file arrives (a pet's damage is in files the app never waits for)
+  const petsReady = useSyncExternalStore(gd.subscribePets, () => gd.petsSettled);
+  const henchmen = useSyncExternalStore(gd.subscribeHenchmen, () => gd.henchmen);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the pets files are read through gd: their arrival is what makes this stale
+  const dealt = useMemo(() => damageTypesDealt(gd, rules), [gd, rules, petsReady, henchmen]);
+  // no answer yet: a pet's powers are not at hand, so the real pets file is asked for (once; the
+  // totals' Pets and Minions section asks the same way)
+  useEffect(() => {
+    if (petsReady && dealt === null) gd.requestHenchmen();
+  }, [gd, petsReady, dealt]);
   const diff = useMemo(() => {
-    if (!shown) return kept.length ? buildDiff(gd, rules, applySwaps(build, kept)) : null;
+    if (!shown) return kept.length ? buildDiff(gd, rules, applySwaps(build, kept), dealt) : null;
     const others = kept.filter((k) => k.key !== shown.key);
     const isKept = kept.some((k) => swapId(k) === swapId(shown));
     // a kept swap: what it adds to the others; a result: what it would change on top of the kept ones
     const before = applySwaps(build, isKept ? others : kept);
-    return buildDiff(gd, rules.reslotted(before), applySwaps(build, [...others, shown]));
-  }, [gd, build, rules, kept, shown]);
+    return buildDiff(gd, rules.reslotted(before), applySwaps(build, [...others, shown]), dealt);
+  }, [gd, build, rules, kept, shown, dealt]);
 
   const text: CSSProperties = { fontSize: phone ? 19 : 16, color: TEXT };
   if (shown) {
@@ -529,7 +762,15 @@ function Detail({ gd, build, rules, phone, summary }: { gd: GameData; build: Bui
       <div className="body-text" style={text}>
         <SwapLine gd={gd} swap={shown} phone={phone} />
         {shown.displaced.length ? (
-          <div style={{ color: MUTED, marginTop: 6, fontSize: phone ? 16 : 13 }}>Replaces: {shown.displaced.map((id) => gd.powerById.get(id)?.dn ?? 'an enhancement').join(', ')}</div>
+          // what it takes out, in short: a whole set as its count, part of one by its pieces
+          <div data-testid="finder:replaces" style={{ marginTop: 6, fontSize: phone ? 16 : 13, display: 'flex', gap: 6 }}>
+            <span style={{ color: MUTED, flex: 'none' }}>Replaces</span>
+            <div style={{ color: TEXT }}>
+              {replacedLines(gd, shown.displaced).map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+          </div>
         ) : (
           <div style={{ color: MUTED, marginTop: 6, fontSize: phone ? 16 : 13 }}>Goes into empty slots.</div>
         )}
@@ -538,7 +779,8 @@ function Detail({ gd, build, rules, phone, summary }: { gd: GameData; build: Bui
             {warningText(gd, w)}
           </div>
         ))}
-        {diff ? <Diff gd={gd} diff={diff} /> : null}
+        {/* keyed by the swap: a fold opened for one starts closed for the next */}
+        {diff ? <Diff key={swapId(shown)} gd={gd} diff={diff} skin={skin} phone={phone} width={width} /> : null}
       </div>
     );
   }
@@ -557,8 +799,8 @@ function Detail({ gd, build, rules, phone, summary }: { gd: GameData; build: Bui
         {kept.length} kept {kept.length === 1 ? 'swap' : 'swaps'}
         {kept.length > 1 ? ', together' : ''}
       </TitleText>
-      {summary ? kept.map((k) => <KeptLine key={k.key} gd={gd} swap={k} />) : null}
-      {diff ? <Diff gd={gd} diff={diff} /> : null}
+      {summary ? sortSwaps(gd, kept, sort).map((k) => <KeptLine key={k.key} gd={gd} swap={k} />) : null}
+      {diff ? <Diff gd={gd} diff={diff} skin={skin} phone={phone} width={width} /> : null}
     </div>
   );
 }
@@ -582,15 +824,47 @@ function SearchButton({ width, onSearch }: { width: number | string; onSearch: (
  * @param props.width The room the sets' bars have (stage px).
  */
 function Shopping({ gd, skin, phone, width, part }: { gd: GameData; skin: Skin; phone: boolean; width: number; part: 'sets' | 'needs' | 'both' }) {
-  const { list, recipes } = useShoppingList(gd);
+  const { list, recipes, data } = useShoppingList(gd);
   return (
     <>
       {part === 'needs' ? null : <Note />}
-      {part === 'needs' ? null : <ShopSets gd={gd} skin={skin} list={list} phone={phone} width={width} />}
+      {part === 'needs' ? null : <ShopSets gd={gd} skin={skin} list={list} phone={phone} width={width} recipes={data} />}
       {part === 'both' && list.sets.length ? <div style={{ height: 12 }} /> : null}
       {part === 'sets' ? null : <ShopNeeds gd={gd} list={list} phone={phone} recipes={recipes} />}
     </>
   );
+}
+
+/**
+ * What shows in the pane's place while the player clicks the powers to consider on the overview:
+ * a box (pickBox; red until a power is picked, then green), and Done beside it, which brings the
+ * pane back.
+ */
+function PickPowers({ skin, onDone }: { skin: Skin; onDone: () => void }) {
+  const stage = useStage();
+  const n = useFinderOpen((s) => s.picked.length);
+  const color = n > 0 ? '#00ff00' : '#ff0000';
+  const box = pickBox(stage);
+  // the pane that held the keyboard's place is gone: Done takes it, so it is one key away and not
+  // behind every power of the build
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => ref.current?.querySelector<HTMLElement>('button, [role="button"]')?.focus(), []);
+  return (
+    // read out as it changes: what to do, and how many powers are picked
+    <div ref={ref} data-testid="finder:picking" className="abs" role="status" aria-label={`Select powers to consider: ${n} picked. Done or Escape returns to the set finder.`} style={{ left: 0, top: 0, zIndex: 60 }}>
+      {stage.phone ? <div className="abs" style={{ left: 0, top: box.y - 10, width: stage.w, height: box.h + 20, background: '#000' }} /> : null}
+      <FlatFrame x={box.x} y={box.y} w={box.w} h={box.h} sc={S} border={color} back="#000" />
+      <GameText font="game_12" scale={S} x={box.x + box.w / 2} y={box.y + box.h / 2} centerY align="center" colors={[color, color]} text="Select Powers to Consider" z={2} />
+      {/* InfoButton is centered on its point */}
+      <InfoButton skin={skin} x={box.doneX + box.doneW / 2} y={box.y + box.h / 2} w={box.doneW} h={box.h} text="Done" onClick={onDone} />
+    </div>
+  );
+}
+
+/** Hear the browser's storage change (another tab wrote), for useSyncExternalStore. */
+function onStorage(listener: () => void): () => void {
+  window.addEventListener('storage', listener);
+  return () => window.removeEventListener('storage', listener);
 }
 
 const PHONE_TABS = ['Search', 'Results', 'Kept', 'List'];
@@ -637,8 +911,17 @@ export default function SetFinder({ skin }: { skin: Skin }) {
   useEffect(() => {
     if (listShown) openShopping();
   }, [listShown, openShopping, gd]);
-  // Escape closes the pane; from the desktop's shopping list it goes back to the search first
-  useEscape(() => (shopping && !phone ? setShopping(false) : close()));
+  // out of the way while the player clicks the powers to consider on the overview
+  const picking = useFinderOpen((s) => s.picking);
+  /** Bring the pane back with the powers picked on the overview (none picked: every power again). */
+  const donePicking = () => {
+    const picked = useFinderOpen.getState().picked;
+    if (picked.length) setQuery({ powers: picked, groups: undefined });
+    else if (useFinder.getState().query.powers) setQuery({ powers: undefined });
+    stopPickingPowers();
+  };
+  // Escape closes the pane; from the desktop's shopping list it goes back to the search first, and from picking powers back to the pane
+  useEscape(() => (picking ? donePicking() : shopping && !phone ? setShopping(false) : close()));
   useFreshHover();
   // the statistics, and whether the finder can work on this build at all
   useEffect(() => prepare(), [prepare, gd, build?.dataVersion]);
@@ -647,14 +930,22 @@ export default function SetFinder({ skin }: { skin: Skin }) {
   const rules = useMemo(() => (gd && build ? new BuildRules(gd, build) : null), [gd, build]);
   const sections = useMemo(() => (gd && build && stats ? bonusChoices(gd, stats, gd.archetype(build.at).n) : []), [gd, build, stats]);
   const groups = useMemo(() => (gd && rules ? setGroupsOf(gd, rules.entries()) : []), [gd, rules]);
+  const pickable = useMemo(() => (rules ? pickablePowers(rules.entries(), (p) => rules.slottable(p), rules.lastLevel()) : []), [rules]);
+  // the shopping list has something to show: a kept swap's pieces, or what the browser keeps from
+  // swaps applied before (read again when the kept swaps or the list shown change)
+  // and when another tab of the planner saves its list, which the browser tells with a storage event)
+  const server = gd?.server;
+  const stored = useSyncExternalStore(onStorage, () => (server ? readShopping(server).length : 0));
+  const canShop = kept.length > 0 || saved > 0 || stored > 0;
   // a form kept from another build drops what this build's lists can't show
   useEffect(() => {
     if (!sections.length) return;
     const q = useFinder.getState().query;
-    const fit = fitQuery(q, sections, groups);
+    const fit = fitQuery(q, sections, groups, pickable);
     if (fit !== q) setQuery(fit);
-  }, [sections, groups, setQuery]);
+  }, [sections, groups, pickable, setQuery]);
   if (!gd || !build || !rules) return null;
+  if (picking) return <PickPowers skin={skin} onDone={donePicking} />;
 
   const hasSlots = rules.entries().some((e) => e.slots.length > 0);
   const runSearch = () => {
@@ -705,8 +996,8 @@ export default function SetFinder({ skin }: { skin: Skin }) {
     const W = stage.w;
     const bottom = stage.h - 36; // clear of the not-affiliated line
     const tabsY = 82;
-    // four tabs sit in two rows
-    const top = tabsY + PHONE_TAB_ROW * 1.5 + 8;
+    // four tabs are one row that slides sideways
+    const top = tabsY + PHONE_TAB_ROW / 2 + 8;
     const btnY = bottom - 14 - 56;
     const room = btnY - 10 - top;
     const listH = tab === 1 ? Math.round(room * 0.52) : room;
@@ -718,7 +1009,7 @@ export default function SetFinder({ skin }: { skin: Skin }) {
         <div onClick={(e) => e.stopPropagation()}>
           <MenuFrame x={6} y={6} w={W - 12} h={bottom - 6} r25 style={{ background: skin.panel }} skin={skin} />
           <SetTitle x={18} y={18} size={24} width={W - 60} text={FINDER_NAME} skin={skin} />
-          <PhoneTabs skin={skin} labels={PHONE_TABS.map((t, i) => (i === 2 && kept.length ? `Kept (${kept.length})` : t))} active={tab} onChange={setTab} y={tabsY} x={16} width={W - 20} clickSounds={['powerselect2']} />
+          <PhoneTabs skin={skin} labels={PHONE_TABS.map((t, i) => (i === 2 && kept.length ? `Kept (${kept.length})` : t))} active={tab} onChange={setTab} y={tabsY} x={16} width={W - 20} clickSounds={['powerselect2']} disabled={PHONE_TABS.map((_, i) => i === LIST_TAB && !canShop && tab !== LIST_TAB)} testId="finder:tabs" />
           <div className="abs scroll-y" style={{ left: 16, top, width: W - 32, height: listH }}>
             {tab === 0 ? (
               <SearchForm skin={skin} sections={sections} groups={groups} phone />
@@ -727,14 +1018,14 @@ export default function SetFinder({ skin }: { skin: Skin }) {
             ) : tab === LIST_TAB ? (
               <Shopping gd={gd} skin={skin} phone width={W - 32} part="both" />
             ) : (
-              <Detail gd={gd} build={build} rules={rules} phone summary />
+              <Detail gd={gd} build={build} rules={rules} skin={skin} phone summary width={W - 32 - 12} />
             )}
           </div>
           {tab === 1 ? (
             <>
               <MenuFrame x={10} y={top + listH + 8} w={W - 20} h={room - listH - 8} skin={skin} />
               <div className="abs scroll-y" style={{ left: 22, top: top + listH + 18, width: W - 44, height: room - listH - 28 }}>
-                <Detail gd={gd} build={build} rules={rules} phone summary={false} />
+                <Detail gd={gd} build={build} rules={rules} skin={skin} phone summary={false} width={W - 44 - 12} />
               </div>
             </>
           ) : null}
@@ -825,13 +1116,13 @@ export default function SetFinder({ skin }: { skin: Skin }) {
         </div>
         <MenuFrame x={det.x} y={paneY} w={det.w} h={paneH} skin={skin} />
         <div className="abs scroll-y" style={{ left: det.x + 18, top: paneY + 14, width: det.w - 36, height: paneH - 28 }}>
-          <Detail gd={gd} build={build} rules={rules} phone={false} summary={false} />
+          <Detail gd={gd} build={build} rules={rules} skin={skin} phone={false} summary={false} width={det.w - 36 - 12} />
         </div>
         <div className="abs" style={{ left: form.x, top: btnY, width: form.w, display: 'flex', justifyContent: 'center' }}>
           <SearchButton width={220} onSearch={runSearch} />
         </div>
         <div className="abs" style={{ left: list.x, top: btnY, width: det.x + det.w - list.x, display: 'flex', justifyContent: 'flex-end', gap: 14 }}>
-          <button data-testid="finder:shopping" className="info-button" title="What the kept and applied swaps need: recipes, salvage and enhancements" style={{ position: 'static', width: 190 }} onClick={() => setShopping(true)}>
+          <button data-testid="finder:shopping" className="info-button" title="What the kept and applied swaps need: recipes, salvage and enhancements" style={{ position: 'static', width: 190 }} disabled={!canShop} onClick={() => setShopping(true)}>
             Shopping List
           </button>
           {applyButtons(210)}

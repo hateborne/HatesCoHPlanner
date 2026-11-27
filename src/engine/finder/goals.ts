@@ -10,7 +10,7 @@
  */
 import { GameData } from '../../data/gamedata.ts';
 import type { FinderGroup, FinderStats } from '../../data/finderStats.ts';
-import { IMPORTANCE, type FinderQuery, type GoalId } from './query.ts';
+import { chosenGoals, IMPORTANCE, type FinderQuery, type GoalId } from './query.ts';
 import type { Aspect, Role } from './roles.ts';
 
 // what a gain in a goal the search did not pick counts: half of Low
@@ -84,6 +84,8 @@ export interface Weights {
   channel: Map<Channel, number>; // channel -> worth of one unit gained
   channelLoss: Map<Channel, number>; // channel -> worth of one unit lost
   channelUnit: Record<Channel, number>; // channel -> enhancement strength that makes one unit
+  asked: Map<string, number>; // stat key -> the part of its worth the search itself names (its priorities and bonuses), without BASELINE
+  askedChannel: Map<Channel, number>; // channel -> the part of its worth the search's priorities name
 }
 
 /**
@@ -107,7 +109,7 @@ export function groupFor(stats: FinderStats, atName: string): FinderGroup {
  * @param key A 'dmg.NN' key.
  * @return 'dmg', 'heal' or undefined.
  */
-function damageKind(gd: GameData, key: string): 'dmg' | 'heal' | undefined {
+export function damageKind(gd: GameData, key: string): 'dmg' | 'heal' | undefined {
   const name = gd.core.attribNames.Damage[Number(key.slice(4))]?.dn ?? '';
   if (/^heal/i.test(name)) return 'heal';
   return /^(special|unique)/i.test(name) ? undefined : 'dmg';
@@ -142,7 +144,9 @@ function borrowedUnit(key: string, unit: Map<string, number>, baseToHit: number)
  *    share of set-bonus spend the archetype's builds give them, against the most used type.
  * 3. A stat's worth is the sum over the chosen goals of importance x part, plus BASELINE x its
  *    largest part in any goal, plus MAIN_WEIGHT / EXTRA_WEIGHT when it is a bonus the search names.
- *    A unit lost counts at least LOSS_WEIGHT x that largest part.
+ *    A unit lost counts at least LOSS_WEIGHT x that largest part. The part of a worth that the
+ *    search itself names (everything but BASELINE) is kept apart (`asked`): a result must be a gain
+ *    by that part alone, so what the search did not name only orders the results.
  *
  * @param gd Game data.
  * @param stats The build statistics.
@@ -191,16 +195,20 @@ export function weightsFor(gd: GameData, stats: FinderStats, atName: string, q: 
     return p * spread(name!) * byShare;
   };
 
-  const chosen = q.goals.map((g) => ({ def: GOAL_DEFS[g.goal], importance: IMPORTANCE[g.importance] }));
+  const chosen = chosenGoals(q).map((g) => ({ def: GOAL_DEFS[g.goal], importance: IMPORTANCE[g.importance] }));
   const defs = Object.values(GOAL_DEFS);
   const stat = new Map<string, number>();
   const statLoss = new Map<string, number>();
+  const asked = new Map<string, number>();
+  const askedChannel = new Map<Channel, number>();
   for (const key of unit.keys()) {
     const most = Math.max(0, ...defs.map((d) => part(d, key)));
-    let w = BASELINE * most;
-    for (const c of chosen) w += c.importance * part(c.def, key);
-    if (q.main?.stat === key) w += MAIN_WEIGHT;
-    if (q.extra.includes(key)) w += EXTRA_WEIGHT;
+    let named = 0;
+    for (const c of chosen) named += c.importance * part(c.def, key);
+    if (q.main?.stat === key) named += MAIN_WEIGHT;
+    if (q.extra.includes(key)) named += EXTRA_WEIGHT;
+    if (named) asked.set(key, named);
+    const w = BASELINE * most + named;
     if (!w) continue;
     stat.set(key, w);
     statLoss.set(key, Math.max(w, LOSS_WEIGHT * most));
@@ -209,8 +217,10 @@ export function weightsFor(gd: GameData, stats: FinderStats, atName: string, q: 
   const channelLoss = new Map<Channel, number>();
   for (const ch of CHANNELS) {
     const most = Math.max(0, ...defs.map((d) => d.channels[ch] ?? 0));
-    let w = BASELINE * most;
-    for (const c of chosen) w += c.importance * (c.def.channels[ch] ?? 0);
+    let named = 0;
+    for (const c of chosen) named += c.importance * (c.def.channels[ch] ?? 0);
+    if (named) askedChannel.set(ch, named);
+    const w = BASELINE * most + named;
     if (!w) continue;
     channel.set(ch, w);
     channelLoss.set(ch, Math.max(w, LOSS_WEIGHT * most));
@@ -229,5 +239,5 @@ export function weightsFor(gd: GameData, stats: FinderStats, atName: string, q: 
   const channelUnit = Object.fromEntries(
     ROLES.flatMap((r) => ASPECTS.map((a) => [`${r}.${a}`, a === 'out' ? outUnit[r] : aspectUnit[a]])),
   ) as Record<Channel, number>;
-  return { stat, statLoss, unit, channel, channelLoss, channelUnit };
+  return { stat, statLoss, unit, channel, channelLoss, channelUnit, asked, askedChannel };
 }
