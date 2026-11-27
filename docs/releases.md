@@ -114,6 +114,14 @@ changelog stamp, which holds nothing back). From stage
   10), and 20 when the domain never switches. A deploy started meanwhile waits for it, and of
   several waiting only the newest is kept.
 
+**After a deploy: record the release.** Once a release is tagged, what it writes joins the
+recorded corpus, so that its links, stored builds and Mids exports are held to from then on:
+`node tests/corpus/record.mjs <the new tag>`, on a checkout of `main` that has fetched the tag, and
+the changed files under `tests/fixtures/corpus/` go in through a pull request of their own. A
+release that wrote what the one before it wrote only adds its tag to the lists; one that wrote a
+link another way adds lines, and those lines are the record of the change
+(`docs/architecture.md`, "Recorded corpus"). Nothing in the deploy does this by itself.
+
 ## What counts as a new version
 
 The version names the application players use, so only a change to what the site is built from

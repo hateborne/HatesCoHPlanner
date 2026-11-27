@@ -32,3 +32,6 @@ Thumbs.db
 
 # full difference reports (python -m pipeline.compare --effects N): too large to keep
 pipeline/report-*-diff-full.md
+
+# checkouts made for a while by tools (tests/corpus/record.mjs) and by agents
+.claude/worktrees/
