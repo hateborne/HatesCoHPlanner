@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { brotliDecompressSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { BuildRules } from '../src/engine/rules.ts';
 import { importMbd, importMidsText, parseMidsText, type Mbd, type MidsMap } from '../src/io/mids.ts';
 import { loadData, pid } from './helpers/data.ts';
+import { fixtureText as fixture, mbdFromChunk } from './helpers/fixtures.ts';
 
 /**
  * The forum builds the browser recreation tests (e2e/) rebuild, all legal on the current patch: each
@@ -13,19 +13,6 @@ import { loadData, pid } from './helpers/data.ts';
  */
 const gd = loadData();
 const map = JSON.parse(readFileSync(join(process.cwd(), 'public', 'data', gd.core.manifest.dataVersion, 'mids-map.json'), 'utf-8')) as MidsMap;
-const fixture = (name: string) => readFileSync(join(process.cwd(), 'tests', 'fixtures', 'builds', name), 'utf-8');
-
-/** @return The .mbd JSON inside a |MBD; chunk (Brotli + Base64), decoded with Node's own Brotli. */
-function mbdFromChunk(text: string): Mbd {
-  const lines = text.split('\n').map((l) => l.trim());
-  const head = lines.findIndex((l) => l.startsWith('|MBD;'));
-  const b64 = lines
-    .slice(head + 1)
-    .filter((l) => /^\|[A-Za-z0-9+/=]+\|$/.test(l))
-    .map((l) => l.slice(1, -1))
-    .join('');
-  return JSON.parse(brotliDecompressSync(Buffer.from(b64, 'base64')).toString('utf-8')) as Mbd;
-}
 
 describe('forum build fixtures import', () => {
   it('Symphony / Dark Dominator (legacy |MxDz; chunk)', async () => {

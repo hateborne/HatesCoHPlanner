@@ -14,10 +14,12 @@ import { BuildRules, MAX_BOUGHT_SLOTS } from '../../src/engine/rules.ts';
  * @param primary Primary powerset id.
  * @param secondary Secondary powerset id.
  * @param alignment Alignment (default Hero).
+ * @param prefer Power sets to take from before the primary, in this order, from the pick the game
+ *   first offers each at: a branch set, or a pool or epic set that may be added then (default none).
  * @return The build, every pick made and every slot placed.
  * @throws When some pick has nothing available.
  */
-export function walkTo50(gd: GameData, at: string, primary: number, secondary: number, alignment: Alignment = 'Hero'): Build {
+export function walkTo50(gd: GameData, at: string, primary: number, secondary: number, alignment: Alignment = 'Hero', prefer: readonly number[] = []): Build {
   const arch = gd.archetypeByName.get(at.toLowerCase());
   if (!arch) throw new Error(`no archetype ${at}`);
   let b = newBuild({ dataVersion: gd.core.manifest.dataVersion, at: arch.id, origin: gd.core.origins[0]!.id, alignment, primary, secondary, pickCount: gd.core.schedule.power.length });
@@ -25,7 +27,10 @@ export function walkTo50(gd: GameData, at: string, primary: number, secondary: n
     const r = new BuildRules(gd, b);
     const first = (ids: readonly number[]) => ids.find((p) => !gd.power(p).auto && r.powerOption(p, i).state === 'available');
     const owned = r.ownedSets(r.ownedAt(r.pickLevel(i), i));
+    // the pool and epic sets that may be added at this pick, looked up only when some set is preferred
+    const offered = new Set(prefer.length ? (['pool', 'epic'] as const).flatMap((kind) => r.newSetChoices(kind, i).filter((c) => !c.block).map((c) => c.set.id)) : []);
     const sets = [
+      ...prefer.map((id) => gd.powerset(id)).filter((s) => owned.has(s.id) || s.spa || offered.has(s.id)),
       gd.powerset(primary),
       gd.powerset(secondary),
       ...gd.setsInCategory(arch.cats.pri).filter((s) => s.spa),

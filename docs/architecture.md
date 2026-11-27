@@ -99,6 +99,8 @@ src/
     sound.ts                 game UI sounds and menu music (both off until switched on; see below)
 tests/                       vitest; tests/helpers/data.ts loads public/data like the site does
   fixtures/builds/           forum builds (Mids data chunks, .mbd files) the browser tests recreate
+  fixtures/golden/           the golden numbers: recorded builds and the engine's figures for them,
+                             per server and game version (see "Golden numbers" below)
 e2e/                         Playwright browser tests (playwright.config.ts; local only)
 research/                    the build research (npm run research; owner's machine only): reads a
                              folder of community builds and writes the set finder's statistics
@@ -908,6 +910,71 @@ has no such column, nor one whose enhancements change no number.
   right side for a scrollbar that floats over the text) so its text doesn't rewrap (`Floating` and `useTallWheel` in
   `src/ui/components/PowerTip.tsx`; `floatingRoom`, `routeWheel` and `scrollRoom` in
   `src/ui/floating.ts`). The phone's long-press tooltip scrolls by touch.
+
+## Golden numbers
+
+`tests/goldennumbers.test.ts` holds the engine to the figures on record: a change to any number
+the screens show (a total, a set bonus, an enhancement's strength, a line of power info, a pet's
+card) fails in `npm test`, whichever engine file it came from. Each server's default game version
+has a folder, `tests/fixtures/golden/<server>/<version>/`:
+
+- `builds.json`: the builds, made once and kept as share links. A run opens each as a link opens
+  (`decodeShare`, `checkBuild`); none is leveled again. They are:
+  - the forum builds (`tests/fixtures/builds/`), on the default version of a server Mids has a
+    database for (the others have no Mids map to import them with);
+  - the links on record (`tests/helpers/links.ts`, which `tests/invariants.test.ts` also opens: a
+    build stopped at 30, a Respec build, a Praetorian, a Kheldian, an Arachnos branch), in the
+    folder of the version they were made on;
+  - the sweep (`sweepBuilds` in `tests/helpers/goldenbuilds.ts`). For every archetype: a build of
+    each starting power set, paired in turn (a pair the server forbids takes the next secondary
+    that fits), and further builds that take two pool sets, an epic pool and the archetype's
+    branch sets before anything else, until each such set has come first once. Each is leveled to
+    50 by the first choice on every screen (`walkTo50`) and slotted by a fixed rule
+    (`slotEverything`: six pieces of a set or three each of two, crafted and attuned, with
+    boosters; one power in five on common IOs and origin enhancements at relative levels; one
+    click in three switched on).
+- `full/`: for the forum builds, the links on record and each archetype's first build, every
+  figure, a line each (`buildRecord`: the rule issues; the totals in combat, and what differs out
+  of combat, at the build's last level and again as a level 30 exemplar; the damage boosts; each
+  power's slots, enhancement strength and power info; the pets' cards). A change reads as a diff:
+  each line is a path and the value there.
+- `digests.json`: a digest of the same record, less the rule issues, for every other build. The
+  rule issues take most of a record's time and are rules, not figures: `tests/invariants.test.ts`
+  holds those.
+- `powerinfo.json`: a digest of every power's unenhanced power info at levels 50 and 10, for every
+  archetype that can own it.
+- `unslotted.json`: the enhancement sets no recorded build holds a piece of, so that gap is in
+  sight and a change to it shows.
+
+Figures are kept to 9 significant digits, game objects are written by their internal names, and
+power info text keeps its colors (`tests/helpers/golden.ts`). The order of a list is part of what
+is recorded, as it is part of what a screen shows.
+
+The test also fails when a build that is called for is not on record (a new forum fixture, a
+sweep build), when a forum build on record has no fixture left, and when a folder under
+`tests/fixtures/golden/` is no server or no listed game version.
+
+- **A change that is meant** (a rule ported, a figure corrected) writes the numbers again in the
+  same pull request, where the diff shows what moved:
+  `npx vitest run --config tests/goldenwrite.config.ts`. A change that should move no figure (a
+  refactor) leaves the folder as it is. The files are never edited by hand.
+- **A new game version** needs its folder once it is the default: the same run makes its builds
+  and writes its numbers, and `npm test` fails until it has (`docs/pipeline.md`). The run never
+  replaces a recorded build, works everything out before it touches a file, and writes every
+  folder there is. An older version's folder stays and goes on being checked.
+- **A version's optional files.** The numbers are worked out with a version's pets, info and real
+  pets files as the site has them. Adding one of those files to a published version (which
+  `AGENTS.md` allows) moves the figures they feed, so the numbers are written again with it.
+- **A forum fixture renamed or removed** leaves its build on record: take it out of `builds.json`
+  and delete its file in `full/` by hand, then write the numbers again.
+- **Behind a digest.** A failed digest names the build or power, not the figure. Set
+  `HCP_GOLDEN_DUMP` to a folder outside the repository (one inside it is refused) and run the test
+  on two checkouts (main and the branch): every record is written there in full, to compare.
+
+What they do not hold: the set finder's ranking (its own tests; it reads the build research's
+statistics, which change with every research run), the level-up rules (`tests/invariants.test.ts`
+walks every power set), the colors and sizes the screens add themselves, and versions that were
+never a default while the golden numbers existed.
 
 ## Browser tests
 

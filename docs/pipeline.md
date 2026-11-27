@@ -99,7 +99,13 @@ Re-running on an unchanged client changes no files. After a patch:
 1. Pick a new version id and label: `--game-version i29p1 --game-label "Issue 29, Page 1"`, plus
    `--make-default` once it is ready.
 2. Review `report.md`.
-3. Commit `public/data`, `public/assets` and `pipeline/ids.json` through a pull request.
+3. Once the new version is the default, write its golden numbers:
+   `npx vitest run --config tests/goldenwrite.config.ts` (about ten minutes the first time for a
+   version: it levels and slots a few hundred builds; it also writes every other version's
+   numbers again, which changes nothing while the engine is the same). `npm test` fails until a
+   server's default version has them (`docs/architecture.md`, "Golden numbers").
+4. Commit `public/data`, `public/assets`, `pipeline/ids.json` and the new folder under
+   `tests/fixtures/golden/` through a pull request.
 
 An older patch whose client survives (a copy of an old install) gets its own version: point
 `COH_CLIENT` at the copy and run `python -m pipeline.run --game-version <id> --game-label
