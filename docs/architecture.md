@@ -1015,6 +1015,30 @@ What the first four releases showed: every one wrote the same link for the same 
 that v1.0.0 wrote a relative level below -8 another way than later ones did, and the planner
 still opens each as its own release did.
 
+## Local build check
+
+`tests/localbuilds.check.ts` runs a few thousand real builds through the planner, to see whether a
+change alters what it makes of any of them. The builds are the folder of community builds the
+build research reads (`HCP_BUILD_CORPUS`, `docs/pipeline.md`), which only the owner's machine has,
+so `npm test` and CI never run it:
+
+- on `main`: `npx vitest run --config tests/localbuildsbaseline.config.ts` writes the baseline;
+- on the branch: `npx vitest run --config tests/localbuilds.config.ts` compares with it and fails
+  on any difference.
+
+For each build it records, as digests: the build as imported and checked on the default server's
+default version, the share link written for it, the build that link opens as, every figure the
+screens show of it (the golden numbers' record), and what the import and the check had to say. A
+build that does not open is recorded as that, with the kind of failure. A build is known by the
+digest of its own text, and the baseline (`.localbuilds/`, ignored by git) holds digests only: no
+file name, no build name, no path.
+
+A difference names the part that differs (the build, its link, its figures) and the builds, by
+digest. To see the figures behind one, set `HCP_LOCALBUILDS_DUMP` to a folder outside the
+repository on both checkouts (`HCP_LOCALBUILDS_IDS` picks the builds; none: those that differ) and
+compare the files. What counts as a difference is tested in `tests/localbuilds.test.ts`
+(`localChanges`).
+
 ## Browser tests
 
 - Browser tests (`e2e/`, `npm run e2e`) import forum builds from `tests/fixtures/builds/` (sources

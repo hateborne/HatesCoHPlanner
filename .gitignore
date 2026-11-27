@@ -35,3 +35,6 @@ pipeline/report-*-diff-full.md
 
 # checkouts made for a while by tools (tests/corpus/record.mjs) and by agents
 .claude/worktrees/
+
+# the local build check's baseline (tests/localbuilds.check.ts): digests of builds only this machine has
+.localbuilds/

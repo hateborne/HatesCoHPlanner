@@ -69,7 +69,9 @@ the project)
 - Tests that need a personal file read its path from an environment variable and skip when it
   is unset (for example `HCP_MIDS_SAMPLE` in `tests/io.test.ts`, `HCP_BUILDTXT_SAMPLE` in
   `tests/buildtxt.test.ts`). The build research reads its folder of builds the same way
-  (`HCP_BUILD_CORPUS`) and writes aggregates only: no file names, build names or paths.
+  (`HCP_BUILD_CORPUS`) and writes aggregates only: no file names, build names or paths. The local
+  build check (`tests/localbuilds.check.ts`) reads the same folder and keeps digests only, in a
+  folder git ignores.
 - The CI "Privacy" check fails on drive-letter paths in tracked files.
 
 **Local-only material**
@@ -265,6 +267,7 @@ npm run typecheck    # tsc -b
 npm test             # vitest
 npx vitest run --config tests/goldenwrite.config.ts   # write the golden numbers again
 node tests/corpus/record.mjs v1.3.0                   # record what a release wrote into the corpus
+npx vitest run --config tests/localbuilds.config.ts   # the local build check (owner's machine; needs HCP_BUILD_CORPUS and a baseline)
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
 npm run build        # type check + production build into dist/
 npm run research     # the build research (owner's machine; needs HCP_BUILD_CORPUS, else skipped)
