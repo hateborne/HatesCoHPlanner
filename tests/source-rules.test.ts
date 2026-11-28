@@ -231,6 +231,13 @@ describe('what a slotted enhancement may be (boost.c power_IsValidBoost, boost_I
     expect(cj([io('Crafted_Kismet_A')])).toEqual(['Made at levels 10 to 30']);
   });
 
+  it('flags a common IO at a level the game does not make it at (multiples of 5 only); set pieces take any', () => {
+    const b = blaster();
+    put(b, 0, 'Blaster_Ranged.Fire_Blast.Flares', [{ ...io('Crafted_Damage'), ioLevel: 22 }, { ...io('Crafted_Damage'), ioLevel: 24 }]);
+    expect(pieceIssues(b).map((x) => x.message)).toEqual(['Made only at levels that are multiples of 5']);
+    expect(cj([{ ...io('Crafted_Kismet_A'), ioLevel: 22 }])).toEqual([]);
+  });
+
   it('gives the handed-out pre-order pieces no made level: level 1 as /build_save lists them, usable from 1 (MinSlotLevel 0)', () => {
     const mote = pid(gd, 'Boosts.Generic_Might_of_the_Empire.Generic_Might_of_the_Empire');
     const flares = (pieces: SlottedEnh[], endLevel?: number) => {
@@ -252,9 +259,9 @@ describe('what a slotted enhancement may be (boost.c power_IsValidBoost, boost_I
   });
 
   it('judges a build that stops early at its last level: an IO works from 3 levels below its own', () => {
-    // a level-50 Defense IO works from level 47 (0-based 49 - 3 = 46); a level-43 one from 40
+    // a level-50 Defense IO works from level 47 (0-based 49 - 3 = 46); a level-45 one from 42
     expect(cj([io('Crafted_Defense_Buff')], 39)).toEqual(['Usable from level 47']);
-    expect(cj([{ ...io('Crafted_Defense_Buff'), ioLevel: 42 }], 39)).toEqual([]);
+    expect(cj([{ ...io('Crafted_Defense_Buff'), ioLevel: 44 }], 41)).toEqual([]);
     // attuned pieces work from their MinSlotLevel: Luck of the Gambler (25-50) from level 22
     expect(cj([io('Attuned_Luck_of_the_Gambler_A')], 20)).toEqual(['Usable from level 22']);
     expect(cj([io('Attuned_Luck_of_the_Gambler_A')], 21)).toEqual([]);

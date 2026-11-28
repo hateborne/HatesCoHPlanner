@@ -5,7 +5,7 @@
 import type { GameData } from '../data/gamedata.ts';
 import { cloneBuild, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
 import type { Power } from '../data/types.ts';
-import { canSlot, ioLevelRange, levelsAbove } from './enhance.ts';
+import { canSlot, ioLevelRange, levelsAbove, madeLevel } from './enhance.ts';
 import { BuildRules, MAX_BOUGHT_SLOTS, MAX_LEVEL, type BuildEntry, type PowerOption } from './rules.ts';
 import { lowestFreeLevels } from './schedule.ts';
 
@@ -311,7 +311,7 @@ export function raiseToCap(gd: GameData, b: Build): Build {
  */
 export function capLevel(gd: GameData, boost: Power, last: number): number | null {
   const r = ioLevelRange(gd, boost);
-  return r ? Math.max(r[0], Math.min(r[1], last + levelsAbove(gd))) : null;
+  return r ? madeLevel(gd, boost, Math.max(r[0], Math.min(r[1], last + levelsAbove(gd)))) : null;
 }
 
 /** Remove the power from a pick (its slots go with it). */

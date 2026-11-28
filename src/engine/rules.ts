@@ -7,7 +7,7 @@ import { GameData } from '../data/gamedata.ts';
 import { DEFAULT_SERVER } from '../data/servers.ts';
 import type { Archetype, Power, Powerset } from '../data/types.ts';
 import { toAlignment, type Build, type Pick, type Slot, type SlottedEnh } from './build.ts';
-import { canSlot, ioLevelRange, levelsAbove, shortName } from './enhance.ts';
+import { canSlot, ioLevelRange, levelsAbove, madeLevel, shortName } from './enhance.ts';
 import { aimedAt, nobody, withProps, withSlotted } from './context.ts';
 import { evalRequires, type EvalContext } from './requires.ts';
 import { countAtLevel, countForLevel } from './schedule.ts';
@@ -794,6 +794,9 @@ export class BuildRules {
     const range = ioLevelRange(this.gd, boost);
     if (range && enh.ioLevel !== undefined && (enh.ioLevel < range[0] || enh.ioLevel > range[1])) {
       return `Made at levels ${range[0] + 1} to ${range[1] + 1}`;
+    }
+    if (range && enh.ioLevel !== undefined && madeLevel(this.gd, boost, enh.ioLevel) !== enh.ioLevel) {
+      return 'Made only at levels that are multiples of 5';
     }
     return null;
   }

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { LEGACY_GAME_VERSION, normalizeVersion, resolveVersion, type GameVersions } from '../src/data/versions.ts';
 import { capLevel, raiseToCap, swapPick } from '../src/engine/actions.ts';
 import { newBuild, type Build } from '../src/engine/build.ts';
+import { madeLevel } from '../src/engine/enhance.ts';
 import { defaultOn } from '../src/engine/totals.ts';
 import { checkBuild } from '../src/engine/validate.ts';
 import { exportMbd, importMbd, type MidsMap } from '../src/io/mids.ts';
@@ -87,6 +88,17 @@ describe('Build Level or Set Max Level', () => {
     expect(capLevel(gd, gd.power(TC()), 49)).toBe(49);
     expect(capLevel(gd, gd.power(SP()), 49)).toBe(29); // Steadfast Protection stops at 30
     expect(capLevel(gd, gd.power(pid(gd, 'Boosts.Attuned_Titanium_Coating_A.Attuned_Titanium_Coating_A')), 49)).toBeNull();
+  });
+  it('caps a common IO at a multiple of 5, the only levels it is made at', () => {
+    expect(capLevel(gd, gd.power(DMG()), 19)).toBe(19); // a level 20 build: level 23 -> 20
+    expect(capLevel(gd, gd.power(DMG()), 21)).toBe(24); // a level 22 build: 25
+    expect(capLevel(gd, gd.power(DMG()), 4)).toBe(9); // below 10: its lowest, 10
+    expect(madeLevel(gd, gd.power(DMG()), 33)).toBe(29);
+    expect(madeLevel(gd, gd.power(TC()), 33)).toBe(33); // a set piece: any level of its set
+    const b = peacebringer();
+    b.picks[1]!.slots = [{ level: 0, enh: { boost: DMG(), ioLevel: 9 } }];
+    expect(raiseToCap(gd, { ...b, endLevel: 31 }).picks[1]!.slots[0]!.enh!.ioLevel).toBe(34);
+    expect(raiseToCap(gd, { ...b, endLevel: 30 }).picks[1]!.slots[0]!.enh!.ioLevel).toBe(29);
   });
   it('raises pieces to the cap and never lowers one', () => {
     const b = peacebringer();

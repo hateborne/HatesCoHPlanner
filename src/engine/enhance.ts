@@ -188,6 +188,23 @@ export function ioLevelRange(gd: GameData, boost: Power): [number, number] | nul
 }
 
 /**
+ * Bring a level the piece is to be made at down to one it is made at.
+ *
+ * Common IOs (Crafted_X outside a set) are made only at multiples of 5 (10, 15, ..., 50); set
+ * pieces at any level of their set's range.
+ *
+ * @param gd Game data.
+ * @param boost Enhancement power.
+ * @param level The wanted level (0-based), already within ioLevelRange.
+ * @return The highest level it is made at that is no higher, kept within its range.
+ */
+export function madeLevel(gd: GameData, boost: Power, level: number): number {
+  const r = ioLevelRange(gd, boost);
+  if (!r || gd.boostSetOf.has(boost.id)) return level;
+  return Math.max(r[0], Math.floor((level + 1) / 5) * 5 - 1);
+}
+
+/**
  * How many levels above the character an IO or set piece still works (power_MinBoostUseLevel).
  *
  * Homecoming's client takes the boost effect table's length (3 levels). Thunderspy's client gives

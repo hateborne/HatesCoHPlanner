@@ -5,7 +5,7 @@ import type { GameData } from '../../data/gamedata.ts';
 import type { BoostSet, Power } from '../../data/types.ts';
 import type { SlottedEnh } from '../../engine/build.ts';
 import { capLevel } from '../../engine/actions.ts';
-import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, ioLevelRange, isLegacyDuplicate, pieceName, powerStrength, strengthLines, type EnhKind } from '../../engine/enhance.ts';
+import { boostHelpText, boostPog, canSlot, defaultLevel, enhKind, enhLines, ioLevelRange, isLegacyDuplicate, madeLevel, pieceName, powerStrength, strengthLines, type EnhKind } from '../../engine/enhance.ts';
 import { placements, type Placement } from '../../engine/placing.ts';
 import type { BuildEntry } from '../../engine/rules.ts';
 import { setBonusLines, type SetBonusLine } from '../../engine/setbonus.ts';
@@ -116,7 +116,7 @@ interface Props {
 
 // the level switch's hover text
 const AT_CAP_HELP =
-  "Puts each enhancement in at the highest level this build can use: the set's top level, or your build level + 3, whichever is lower. While it's on, the level box is greyed, and enhancements rise with the build when it levels further.";
+  "Puts each enhancement in at the highest level this build can use: the set's top level, or your build level + 3, whichever is lower (common IOs come in multiples of 5). While it's on, the level box is greyed, and enhancements rise with the build when it levels further.";
 
 // the multi-selection's headings: the mock-up's yellow, in the body font
 const MULTI_HEAD = { color: '#ffd200', fontWeight: 'bold' } as const;
@@ -301,7 +301,7 @@ export function EnhancementPicker({ gd, skin, entry, entries, bonusLevel, slot, 
   const make = (b: Power, like?: SlottedEnh): SlottedEnh => {
     const range = rangeOf(b);
     const want = like?.ioLevel ?? last?.ioLevel;
-    const ioLevel = range ? (atCap ? range[1] : Math.max(range[0], Math.min(range[1], want ?? range[1]))) : defaultLevel(gd, b);
+    const ioLevel = range ? (atCap ? range[1] : madeLevel(gd, b, Math.max(range[0], Math.min(range[1], want ?? range[1])))) : defaultLevel(gd, b);
     return { boost: b.id, ioLevel, rel: b.bie ? undefined : (like?.rel ?? 0), boosters: b.bb ? (like?.boosters ?? 0) : 0 };
   };
   /**
@@ -360,7 +360,7 @@ export function EnhancementPicker({ gd, skin, entry, entries, bonusLevel, slot, 
     setPicks(
       picks.map((p) => {
         const r = rangeOf(gd.power(p.boost));
-        return r ? { ...p, ioLevel: Math.max(r[0], Math.min(r[1], n)) } : p;
+        return r ? { ...p, ioLevel: madeLevel(gd, gd.power(p.boost), Math.max(r[0], Math.min(r[1], n))) } : p;
       }),
     );
   const relPick = picks.find((p) => !gd.power(p.boost).bie);
