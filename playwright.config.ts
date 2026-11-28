@@ -9,6 +9,8 @@ const URL = `http://localhost:${PORT}/HatesCoHPlanner/`;
 
 export default defineConfig({
   testDir: 'e2e',
+  // the screenshot check has a config of its own (e2e/screens.config.ts)
+  testIgnore: 'screens/**',
   // a whole build (24 powers, 67 slots, ~100 enhancements) is walked screen by screen
   timeout: 10 * 60_000,
   expect: { timeout: 10_000 },

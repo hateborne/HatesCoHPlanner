@@ -269,6 +269,7 @@ npx vitest run --config tests/goldenwrite.config.ts   # write the golden numbers
 node tests/corpus/record.mjs v1.3.0                   # record what a release wrote into the corpus
 npx vitest run --config tests/localbuilds.config.ts   # the local build check (owner's machine; needs HCP_BUILD_CORPUS and a baseline)
 npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
+npx playwright test --config e2e/screens.config.ts   # the screenshot check (local; on main first, with --update-snapshots)
 npm run build        # type check + production build into dist/
 npm run research     # the build research (owner's machine; needs HCP_BUILD_CORPUS, else skipped)
 python -m pipeline.run --help
@@ -374,6 +375,11 @@ it, and the full list of what counts: `docs/releases.md`.
 - Browser tests (`e2e/`, `npm run e2e`) recreate forum builds from `tests/fixtures/builds/`
   through the screens (desktop clicks, phone taps) and compare the result with the import. Run
   them after changing the screens or the level-up flow (specs: `docs/architecture.md`).
+- The screenshot check (`e2e/screens/`) holds the screens, on the desktop and the phone layout, to
+  pictures taken on `main` on the same machine (local only; the pictures are never committed). A
+  change that should move nothing on screen (a refactor of the screens) takes the pictures on
+  `main` (`--update-snapshots`), then compares on its branch. It covers only the screens it walks:
+  add a walk before changing a screen it does not show (`docs/architecture.md`, "Screenshot check").
 
 **Commits and pull requests**
 - Commit messages: a short imperative summary line, a blank line, then bullets on what changed
