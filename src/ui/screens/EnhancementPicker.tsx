@@ -356,6 +356,8 @@ export function EnhancementPicker({ gd, skin, entry, entries, bonusLevel, slot, 
   // the chosen pieces stand at different levels (one with none stored reads as the top of its range,
   // as the level box shows it)
   const mixedLevels = new Set(ranged.map((p) => p.ioLevel ?? rangeOf(gd.power(p.boost))![1])).size > 1;
+  // only common IOs chosen: the box's arrows step by 5, the levels they are made at (madeLevel)
+  const levelStep = ranged.length && ranged.every((p) => !gd.boostSetOf.has(p.boost)) ? 5 : 1;
   const setLevel = (n: number) =>
     setPicks(
       picks.map((p) => {
@@ -639,6 +641,7 @@ export function EnhancementPicker({ gd, skin, entry, entries, bonusLevel, slot, 
                       data-testid="picker:level"
                       min={levelRange[0] + 1}
                       max={levelRange[1] + 1}
+                      step={levelStep}
                       disabled={atCap}
                       // pieces at different levels (each at its own cap, or chosen apart) show none
                       // of them; a level typed in sets them all
