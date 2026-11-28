@@ -38,3 +38,6 @@ pipeline/report-*-diff-full.md
 
 # the local build check's baseline (tests/localbuilds.check.ts): digests of builds only this machine has
 .localbuilds/
+
+# the screenshot check's pictures (e2e/screens/screens.spec.ts): they only mean something on the machine that took them
+.screens/

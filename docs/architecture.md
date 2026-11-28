@@ -1039,6 +1039,76 @@ repository on both checkouts (`HCP_LOCALBUILDS_IDS` picks the builds; none: thos
 compare the files. What counts as a difference is tested in `tests/localbuilds.test.ts`
 (`localChanges`).
 
+## Screenshot check
+
+`e2e/screens/screens.spec.ts` takes pictures of the planner's screens on the desktop and the phone
+layout and compares them, pixel for pixel, with pictures taken before a change. It is the net
+under a change that must move nothing on screen (a refactor of the screens); the other tests look
+at builds and numbers.
+
+- on `main`: `npx playwright test --config e2e/screens.config.ts --update-snapshots` throws the
+  old pictures away and takes them all again;
+- on the branch: `npx playwright test --config e2e/screens.config.ts` compares, and a picture that
+  differs fails with the two pictures and their difference in `test-results/`.
+
+Leave the checkout's files alone while either runs: the dev server reloads the page when one
+changes, and a walk whose page loads a second time stops with that message.
+
+Only the first command writes a picture. The comparison never does (a picture it has none of
+fails, and stays missing), so the pictures are taken whole, never one walk at a time: a comparison
+that wrote what it missed would pass the next time against the branch's own picture.
+
+Beside the pictures, `.screens/taken.json` notes what they are of (`e2e/screens/taken.ts`): main's
+commit, whether the planner pictured was main's (its `src/`, `public/` and `index.html` matched
+main's), and the browser's version. The comparison says what its pictures are of before its walks,
+says when main has moved since, and refuses to run without the note or with another Chrome version
+than the one that drew the pictures, which draws a little differently. Take the pictures again
+after Chrome has updated itself, and after a change to Windows' display scale or font smoothing
+(nothing here can see those).
+
+The pictures are kept in `.screens/`, which git ignores: they only mean something beside pictures
+taken on the same machine (fonts and the browser draw a little differently on another), so
+`npm run e2e` and CI never run this spec. It has a config of its own (`e2e/screens.config.ts`: the
+page's animations held still, one worker, drawn without the graphics card and in the device's own
+pixels).
+
+The comparison has no tolerance: a picture passes when no pixel differs. That takes two things
+the walks do before every picture. The browser does not draw a screen the same to the last pixel
+every time it loads (the round edges of frames and scaled pictures come out a few steps of a colour
+different, in a few dozen pixels), so the page is made to draw itself again, its window a little
+larger and then put back: drawn that way a screen is the same to the last bit every time. And a
+picture waits until nothing scrolls any more (a phone's row of tabs glides to the tab just
+pressed). Three full runs against pictures taken just before had not one pixel off.
+
+A picture that differs is looked at once more a second later, and only that look counts: once in
+some hundreds of pictures the browser was caught before a screen was fully drawn, where a change
+to the screens differs both times. A walk goes on after a picture that differs and fails at its
+end, so one run names every picture that does.
+
+What that lets through: only the pixels the comparison itself takes for a smoothed edge and leaves
+out (nothing here can change that). A button one pixel wider, a frame one pixel off, or a text or
+a fill one step off its colour fails the walks that show it.
+
+What it walks, with builds opened from the golden numbers' links:
+
+- the server list;
+- with a villain, a hero and a Praetorian build (each skin): the overview (every tab on a phone), a
+  power's tooltip (desktop), the enhancement picker, the phone's menu and level log, the set
+  finder, a power reopened from the overview, and a level's slot screen reopened from the overview,
+  with the totals pane at its side and its info box (desktop);
+- with the villain build: New Build (every tab on a phone), its "start a new build?" question, the
+  saved builds and import menu, the Support box, the set finder with a swap kept and its shopping
+  list, the first power and slot screens of a leveling build, and the first power and the slot
+  screens of a respec;
+- in a respec of the villain build: Choose a Pool Power Set and Choose an Epic Power Set (with the
+  patron pools), at the first pick that offers each, before and after a set is chosen;
+- with a Mastermind: the totals' Pets and Minions and a pet's pane;
+- with a Thunderspy build: the overview, the enhancement picker and a power reopened.
+
+A screen that scrolls is pictured a screenful at a time, to its end. A screen it does not walk is
+not covered (the patch notes, an import's messages, the turn-your-phone prompt, Thunderspy's
+level-up screens): add a step there before changing that screen.
+
 ## Browser tests
 
 - Browser tests (`e2e/`, `npm run e2e`) import forum builds from `tests/fixtures/builds/` (sources
