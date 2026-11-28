@@ -196,7 +196,8 @@ src/ui/         screens/, components/ (game chrome), skin/metrics.ts, hover.ts, 
 tests/          vitest (helpers/data.ts loads public/data); fixtures/builds/ for the e2e tests;
                 fixtures/golden/ for the golden numbers (the engine's figures for whole builds);
                 fixtures/corpus/ for the recorded corpus (what each release wrote); corpus/ records it
-e2e/            Playwright browser tests (local only)
+e2e/            Playwright browser tests (a pull request check too); screens/ for the screenshot
+                check (local only)
 research/       the build research (owner's machine only): community builds -> set finder statistics
 public/data/    generated game data per version, versions.json; <server>/ for other servers;
                 pets/ for each version's pseudo-pets, henchmen/ for its real pets, info/ for its
@@ -268,7 +269,7 @@ npm test             # vitest
 npx vitest run --config tests/goldenwrite.config.ts   # write the golden numbers again
 node tests/corpus/record.mjs v1.3.0                   # record what a release wrote into the corpus
 npx vitest run --config tests/localbuilds.config.ts   # the local build check (owner's machine; needs HCP_BUILD_CORPUS and a baseline)
-npm run e2e          # Playwright browser tests (local only; uses the installed Google Chrome)
+npm run e2e          # Playwright browser tests (uses the installed Google Chrome; a pull request check too)
 npx playwright test --config e2e/screens.config.ts   # the screenshot check (local; on main first, with --update-snapshots)
 npm run build        # type check + production build into dist/
 npm run research     # the build research (owner's machine; needs HCP_BUILD_CORPUS, else skipped)
@@ -290,6 +291,7 @@ touches configuration or dependencies.
 | Check | Runs |
 |---|---|
 | Web app (lint, types, tests, build) | `npm ci --ignore-scripts` (no dependency install scripts run), lint, typecheck, test, build |
+| Browser tests (builds recreated through the screens) | `npm ci --ignore-scripts`, `npx playwright install --no-shell chromium` (Playwright's own Chromium, which only a change of the Playwright version moves; three tries, then the runner's own Chrome with a warning on the run), `npm run e2e` with four workers, no traces and one fixed seed for the random test (`HCP_E2E_SEED`); what a failed test left (a picture of the screen, its error note) is kept on the run for 7 days. Not among the ruleset's required checks until the owner adds it |
 | Dependency audit | `npm audit --omit=dev --audit-level=moderate` (shipped code), `node scripts/audit-dev.mjs` (tools: high and critical advisories, except the few its `ALLOWED` lets through, each with its reason, until a fixed release exists) |
 | Data pipeline (Python compiles) | `python -m compileall pipeline tools`; `python -m unittest pipeline.watch_test pipeline.forced_respec_test pipeline.compare_test pipeline.pets_test pipeline.henchmen_test pipeline.info_test pipeline.pvp_test pipeline.recipes_test pipeline.check_ids_test pipeline.patch_history_test pipeline.mids_map_test` (the release check, the forced respec check, the difference report, the pseudo-pet export, the real pets export, the power-info extras export, the PvP-only test, the recipe export, the stable ids check, the patch timeline's fields, the Mids map's power matching); `pipeline/check_ids.py` (every ids file well formed, and every id the base branch has kept unchanged, in each ids file the base branch holds); every JSON file under `public/data` and in `pipeline/` parses |
 | Privacy (no local paths or machine settings) | `pipeline/paths.local.json` untracked; no drive-letter, network-share or home-folder paths in tracked files |
@@ -373,8 +375,9 @@ it, and the full list of what counts: `docs/releases.md`.
   none (a refactor) leaves them as they are. They are never edited by hand, and a new default
   game version gets its folder the same way (`docs/architecture.md`, "Golden numbers").
 - Browser tests (`e2e/`, `npm run e2e`) recreate forum builds from `tests/fixtures/builds/`
-  through the screens (desktop clicks, phone taps) and compare the result with the import. Run
-  them after changing the screens or the level-up flow (specs: `docs/architecture.md`).
+  through the screens (desktop clicks, phone taps) and compare the result with the import. Every
+  pull request runs them as a check; run them yourself first after changing the screens or the
+  level-up flow (specs: `docs/architecture.md`).
 - The screenshot check (`e2e/screens/`) holds the screens, on the desktop and the phone layout, to
   pictures taken on `main` on the same machine (local only; the pictures are never committed). A
   change that should move nothing on screen (a refactor of the screens) takes the pictures on

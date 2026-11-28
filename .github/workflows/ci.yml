@@ -1,4 +1,6 @@
 # Checks every pull request into main must pass before it can merge (see the main branch ruleset).
+# The browser tests are the exception for now: they run and report on every pull request, but the
+# ruleset does not list them yet (docs/releases.md).
 # Actions are pinned to release commit SHAs; the comment names the release.
 #
 # The checks are main's: `pull_request_target` runs this file as main has it, never a pull request's
@@ -40,6 +42,59 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # The browser tests (e2e/, `npm run e2e`): whole builds recreated through the planner's own
+  # screens, on the desktop and the phone layout. What the check does differently from a run at
+  # home (its browser, four workers, no traces, no `test.only`) is in playwright.config.ts, by CI.
+  browser:
+    name: Browser tests (builds recreated through the screens)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      # Playwright's own Chromium, the build its version in package-lock.json names: the browser
+      # changes only when a pull request changes that version, never under one that did not. (The
+      # runner's own Chrome moves with GitHub's image.) Downloaded each run, since nothing is cached.
+      # Three tries; if its download site stays down, the tests run in the runner's own Chrome
+      # instead (HCP_E2E_BROWSER tells playwright.config.ts) and the run carries a warning, so an
+      # outage elsewhere never fails a pull request.
+      - name: Playwright's Chromium, or the runner's Chrome
+        run: |
+          for try in 1 2 3; do
+            if npx playwright install --no-shell chromium; then exit 0; fi
+            echo "Download try ${try} of 3 failed."
+            if [ "${try}" != 3 ]; then sleep 10; fi
+          done
+          chrome="$(google-chrome --version)"
+          echo "::warning::Playwright's Chromium could not be downloaded, so the browser tests ran in the runner's own ${chrome% }."
+          echo "HCP_E2E_BROWSER=chrome" >> "${GITHUB_ENV}"
+      # The step's own time limit is under the job's, so a run that hangs fails here and the step
+      # below still keeps what it left.
+      - name: Browser tests
+        timeout-minutes: 25
+        env:
+          # boosted.spec.ts deals its treatments from a random seed: one fixed deal here, so a pull
+          # request never fails on a deal that is not its own doing (a local run stays random)
+          HCP_E2E_SEED: 20261128
+        run: npm run e2e
+      # What a failed test left (a picture of the screen and its error note; no trace, which would
+      # be some 400 MB a walk), to download from the run. It belongs to this run alone: unlike a
+      # cache, no other run is handed it.
+      - name: Keep what the failed tests left
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-tests-failures
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   audit:
     name: Dependency audit

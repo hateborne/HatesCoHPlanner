@@ -194,7 +194,7 @@ how the repository is set up (an agent never changes settings, rulesets or secre
 |---|---|---|---|
 | main: history kept | the default branch | no deleting it, no force pushes | none |
 | main: pull requests, owner approval | the default branch | a pull request with the code owner's approval (approval of the last push, stale approvals dismissed) | deploy keys (always); repository admins (for pull requests only, which is how the owner approves their own) |
-| main: required checks | the default branch | the four checks of `ci.yml`, on a branch up to date with main | deploy keys (always) |
+| main: required checks | the default branch | four checks of `ci.yml` (Web app, Dependency audit, Data pipeline, Privacy), on a branch up to date with main; its fifth, the browser tests, runs on every pull request but is not listed here yet | deploy keys (always) |
 | version tags: deploy key only | tags `v*` | no making, moving or deleting them | deploy keys (always) |
 
 Force pushes and deleting main are kept in a ruleset of their own with no bypass, so the key can

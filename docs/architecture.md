@@ -104,7 +104,8 @@ tests/                       vitest; tests/helpers/data.ts loads public/data lik
   fixtures/corpus/           the recorded corpus: the links, stored builds and Mids exports each
                              release wrote (see "Recorded corpus" below)
   corpus/                    what records it: record.mjs and recordrelease.ts
-e2e/                         Playwright browser tests (playwright.config.ts; local only)
+e2e/                         Playwright browser tests (playwright.config.ts; a pull request check
+                             too); screens/ for the screenshot check (local only)
 research/                    the build research (npm run research; owner's machine only): reads a
                              folder of community builds and writes the set finder's statistics
   builds.research.ts         the run: import every build, measure, aggregate, write
@@ -1137,3 +1138,25 @@ level-up screens): add a step there before changing that screen.
 
   They find elements by `data-testid` (`testId` on `CheckBar`, `SlotRing`, `PhoneTabs`); the shared
   driver is `e2e/player.ts`. Run them after changing the screens or the level-up flow.
+
+- Every pull request runs them too, as the "Browser tests" check of `ci.yml`, on a Linux runner.
+  What differs from a run at home (`CHECK` in `playwright.config.ts`, set by the runner's `CI`,
+  and the seed in `ci.yml`):
+  - The browser is Playwright's own Chromium, downloaded each run: the build the Playwright
+    version in `package-lock.json` names, so it changes only when a pull request changes that
+    version. The runner's own Chrome moves with GitHub's image, and could fail a pull request that
+    changed nothing. It is an older build than the installed Chrome, so a run at home is still
+    what says how the newest Chrome takes a change. The download is tried three times; if it still
+    fails (its site is down), the tests run in the runner's own Chrome instead and the run carries
+    a warning that names it, so an outage elsewhere never fails a pull request.
+  - Four workers, for the runner's four cores, where a run at home has two.
+  - `boosted.spec.ts` gets one fixed seed (`HCP_E2E_SEED`), so a pull request never fails on a deal
+    that is not its own doing. A local run stays random.
+  - A `test.only` left in a spec fails the run (`forbidOnly`), where at home it runs that test alone.
+  - No trace is recorded (a whole walk's is some 400 MB). What a failed test left in
+    `test-results/` (a picture of the screen and its error note) is kept on the run for 7 days. For
+    more, run the test at home, with the seed if it is the random one: a failure there leaves a
+    trace (`npx playwright show-trace <trace.zip>`).
+
+  Nothing is tried again: a test that fails now and then shows as one. The check is not among the
+  ruleset's required checks until the owner adds it there (`docs/releases.md`).
